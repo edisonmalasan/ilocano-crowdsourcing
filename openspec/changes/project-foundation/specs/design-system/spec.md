@@ -93,8 +93,16 @@ treatment that nudges a validator toward one answer would bias collected researc
 
 ### Requirement: Motion is restrained
 
-Motion SHALL be limited to short opacity and transform transitions. The system SHALL NOT
-introduce looping, attention-seeking, or progress-pressure animation.
+Motion SHALL be limited to short transitions on appearance properties — opacity, transform, colour,
+border colour, and surface shadow — so that a control visibly responds to hover, focus, press, and
+selection. The system SHALL NOT introduce looping, attention-seeking, or progress-pressure
+animation, and SHALL honour `prefers-reduced-motion`.
+
+> Wording note. An earlier draft said "opacity and transform transitions", which is narrower than
+> what a soft neo-brutalist control actually needs: a border or shadow that snaps rather than
+> shifts reads as broken rather than tactile. The implementation transitions `background-color`,
+> `color`, `box-shadow`, and `border-color` as well. The bound that matters is duration and
+> non-looping, not the property list, and that bound was already met and is asserted.
 
 #### Scenario: No timer or streak pressure
 
