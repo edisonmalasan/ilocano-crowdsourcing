@@ -1,0 +1,661 @@
+# AGENTS.md
+
+## Project overview
+
+**Sadino Crowdsourcing Validation Platform** is a research-focused web application for crowdsourced validation of synthesized Ilocano local-navigation dataset entries for the Sadino thesis project.
+
+The project is currently greenfield. The starting research artifact is the synthesized **Origin + Destination** dataset, `baguio_od_600.json`, containing 600 Ilocano navigation instructions with stable external IDs such as `OD_0001` through `OD_0600`. `ROADMAP.md` is the program-level development plan. The source synthetic dataset is reference research material and must remain immutable during validation; human responses are stored separately.
+
+The target architecture is a Next.js web application deployed on Vercel with Supabase PostgreSQL as the persistence layer. Validators participate anonymously, complete a self-reported Ilocano-proficiency screening, receive coverage-aware randomized batches of 10 entries, submit structured judgments/corrections/optional translations, and may continue with additional batches. Researchers use a protected admin area to monitor coverage, inspect disagreements, and export research data. The architecture must support additional dataset categories without hard-coding behavior to `OD_*` records.
+
+The primary research data flow is:
+
+    Immutable synthetic dataset
+        →
+    Dataset import / canonical dataset entries
+        →
+    Anonymous validator screening
+        →
+    Coverage-aware batch assignment
+        →
+    Per-entry validation + conditional correction
+        →
+    Optional translation
+        →
+    Persisted validation responses
+        →
+    Research review / adjudication
+        →
+    Final validated dataset export
+
+---
+
+## Stack
+
+- Language(s): TypeScript; SQL for Supabase/PostgreSQL migrations and policies; JSON for dataset import/export; Markdown for project/specification documentation
+- Framework(s): Next.js App Router; React; Tailwind CSS; shadcn/ui where useful; Zod for runtime/schema validation
+- Runtime(s): Node.js for Next.js/server tooling and modern web browsers for the client; exact versions must be pinned by the repository when initialized
+- Frontend / client: Next.js React UI, mobile-first and responsive, with a strictly soft neo-brutalist visual direction
+- Backend / server: Next.js server-side boundaries (Server Components, Server Actions and/or Route Handlers as appropriate) for authoritative allocation, validation submission, admin operations, and exports
+- Database / storage: Supabase PostgreSQL; browser-local storage may retain only the anonymous validator identifier/session convenience state and is never authoritative research storage
+- ORM / data access: Supabase client libraries and explicit repository/domain access modules; do not add an ORM unless an approved change requires one
+- Package manager: Not yet fixed; use the package manager and lockfile established during repository bootstrap and do not mix package managers
+- Build tooling: Next.js build pipeline and Tailwind CSS; exact commands must be documented only after they are executed successfully
+- Testing: Frameworks not yet selected/verified; the roadmap requires appropriate unit, integration, and end-to-end/browser verification before production crowdsourcing
+- Infra / deploy: Vercel for the Next.js application; Supabase for managed PostgreSQL and associated backend services
+- External services: Supabase; GitHub for repository/PR workflow; no other production dependency is assumed unless added by an approved change
+- Specification workflow: OpenSpec
+- Optional later infrastructure: Rate limiting, error monitoring/observability, and privacy-conscious analytics only when justified by production needs
+
+---
+
+## Architecture rules
+
+
+- Follow the project's primary architectural sequence: **immutable source dataset → server-authoritative allocation → validation persistence → research review/adjudication → export**.
+- Keep the existing/reference implementation operational until its required behavior has verified replacements when performing migration or replacement work.
+- Do not rewrite multiple major system boundaries simultaneously unless the approved change explicitly requires it.
+- `browser/client-component` code must depend on `Next.js server/domain service boundary`, never directly on `direct Supabase service-role access, raw SQL, or persistence internals`.
+- Build `explicit import/compatibility adapter` before `canonical dataset/validation domain implementation` when staged replacement is required.
+- Preserve externally meaningful IDs; modern storage may add internal IDs but must retain `source dataset entry ID (for example `OD_0001`)` where compatibility requires it.
+- Separate static definitions from runtime/player/entity state where applicable, e.g. ``DatasetEntry`` vs ``Validation`, `ValidationBatch`, or `BatchEntry``.
+- Production server actions are authoritative when the architecture is server-authoritative: clients send intent, never trusted resource/XP/HP/result deltas.
+- Standard HTTPS/JSON is the default for ordinary request/response APIs. Add WebSockets or another real-time transport only for genuinely real-time behavior.
+- Archived/reference assets or runtimes may remain under preservation paths but must never silently become modern runtime dependencies.
+- Keep transport, domain logic, persistence, and presentation boundaries explicit.
+- Do not bypass an established abstraction merely because direct access is easier.
+- Avoid shared mutable global state unless explicitly required and documented.
+- Cross-cutting services must stay focused on their defined responsibility.
+
+
+```python
+# Good: client sends intent.
+perform_action(actor_id, action_id, target_id)
+
+# Bad: client dictates authoritative outcome.
+apply_client_state(resource=999999, progress=5000)
+```
+
+---
+
+## Durable product & UX constraints
+
+- The public validation experience must follow the approved sequence: **landing/introduction → Ilocano proficiency screening → anonymous validator setup → coverage-aware batch of 10 → per-entry validation → correction when required → optional translation when applicable → batch completion → continue or finish**.
+- The approved screening question is **“How comfortable are you with Ilocano?”** with the choices: `Native / first-language speaker`, `Fluent`, `Conversational`, `Basic`, and `Not confident`.
+- Treat proficiency as self-reported research metadata. Do not silently convert it into a quality score or weighting rule; eligibility rules belong to the approved methodology/OpenSpec.
+- Validators are anonymous by default. Do not collect name, email, student ID, phone number, address, or other identifying information unless an approved research requirement explicitly adds it.
+- Each batch contains up to 10 entries. Validators may stop after a completed batch or request another batch.
+- Batch assignment is coverage-aware, randomized within the eligible lowest-coverage pool, and server-authoritative.
+- A validator must never validate the same dataset entry twice. Different validators are expected to receive overlapping entries for independent validation.
+- The independent-validation target is configurable. The current planning target is **3 independent eligible validators per dataset entry**, subject to thesis-team/adviser approval.
+- Save each completed entry promptly; do not wait for all 10 items before persisting research responses.
+- Never overwrite or mutate the imported synthetic instruction when a validator submits a correction. Corrections and translations are separate response data.
+- `Correct but sounds unnatural` and `Incorrect` require a corrected Ilocano version before continuing.
+- `Cannot confidently evaluate` requires no correction and skips translation.
+- Translation is optional and may be `English`, `Filipino`, or skipped.
+- Final validated records are produced only after thesis-approved review/adjudication. Do not silently resolve disagreement by majority vote unless the methodology explicitly approves that rule.
+- The architecture must support all planned dataset categories through shared abstractions; do not build category-specific assumptions into generic allocation, persistence, or admin logic.
+
+### Visual design
+
+- The visual design is **strictly soft neo-brutalism**.
+- The implementation model has creative freedom over component placement, page composition, spacing, responsive arrangement, visual rhythm, and decorative treatment.
+- Do not freeze the frontend to a rigid wireframe unless an approved design artifact explicitly requires it.
+- Preserve soft neo-brutalist characteristics: bold visible borders, hard offset shadows, tactile controls, strong typography, warm/light neutral surfaces, restrained accents, slightly softened corners, generous whitespace, and clear interaction states.
+- Usability, accessibility, readability, and validation accuracy take priority over visual novelty.
+- Keep the interface mobile-first and comfortable for repeated 10-item validation batches.
+- Do not use excessive animation, chaotic composition, military/terminal aesthetics, aggressive visual noise, or answer styling that nudges validators toward a particular evaluation.
+- Do not add competitive leaderboards, timers, streak pressure, or other mechanics that encourage speed over careful validation unless an approved research/product requirement explicitly introduces them.
+
+---
+
+## Setup & commands
+
+No repository bootstrap or executable project command has been verified in this planning context yet.
+
+Current entry point:
+
+> Not yet verified. Add the exact development command only after it has been executed successfully in the repository.
+
+Current dependency manifest / install command:
+
+> Not yet verified. Use the repository's chosen package manager and lockfile once initialized.
+
+Current baseline syntax / compile check:
+
+> Not yet verified. Record the exact type-check/build command only after successful execution.
+
+Important:
+
+- The supported development/runtime environment is `Next.js/Node.js server runtime plus modern evergreen browsers`; exact Node.js, framework, package-manager, and OS versions are not yet verified and must be recorded after repository bootstrap.
+- Executed dependency/package consistency check: `N/A — not yet executed`.
+- Run risky, state-mutating, legacy, or preservation checks in an appropriate disposable environment when required.
+- No verified automated test, lint, type-check, build, or runtime command exists unless it is explicitly listed in this section.
+- Do not invent commands in this file.
+- When new tooling is added, update this section only with commands that were actually executed successfully.
+- Document what each verification command proves and what it explicitly does **not** prove.
+- Do not convert a successful syntax/build command into a claim that behavior or tests passed.
+
+### Verified project tools
+
+None yet. Add a tool/check entry here only after its commands have been executed successfully, with the runtime/environment, exact commands, result, evidence scope, and limitations documented.
+
+---
+
+## Code style
+
+
+- Prefer small domain modules over giant dispatchers or god objects.
+- Use explicit names and domain types; avoid untyped dictionaries/objects crossing modern domain boundaries.
+- Keep transport, domain logic, persistence, and presentation separate.
+- Prefer pure functions for reusable calculations where practical.
+- Handle failures explicitly; never silently swallow exceptions.
+- Do not leave dead compatibility code after its replacement is verified and the related migration explicitly retires it.
+- Use consistent import conventions in new application packages.
+- Keep scenes/components/modules focused; do not create giant global managers.
+- Limit global/autoload/singleton services to genuine cross-cutting concerns such as ``Supabase/data access``, ``anonymous validator identity``, ``batch allocation``, ``validation persistence``, ``admin authorization``, and ``dataset export``.
+- Match the existing formatter/linter conventions when they are already established.
+- Prefer existing project abstractions over introducing parallel competing patterns.
+- Avoid speculative abstractions that are not needed by the active task.
+- Keep public interfaces small and explicit.
+- Prefer composition over deep inheritance unless the framework or domain clearly benefits from inheritance.
+- Keep framework-specific code at system boundaries where practical rather than spreading it through domain logic.
+
+---
+
+## Testing
+
+- Every migrated or replaced legacy behavior must have a captured fixture or equivalent behavioral evidence before replacement when parity matters.
+- Prefer golden fixtures containing `request`, `before`, `response`, and `after` state when applicable.
+- Bug fixes require a regression test when the affected system has test infrastructure.
+- Server-authoritative actions must test invalid ownership, insufficient resources, duplicate requests, stale revisions, and invalid state where applicable.
+- Runtime/asset changes must not reintroduce retired or prohibited runtime dependencies.
+- Run every relevant available check before finishing.
+- Do not claim tests passed unless they were actually run.
+- If a required check cannot be run, report exactly why.
+- Never convert “code compiles” into “tests pass.”
+- Test behavior at the narrowest useful layer first, then add integration/E2E coverage where system boundaries matter.
+- Do not weaken existing tests simply to make a change pass.
+- Do not delete failing tests without determining whether the implementation or the test is wrong.
+- When a test is intentionally changed because behavior changed, ensure the approved requirement/specification supports that change.
+- Verification evidence must distinguish automated tests, static checks, manual inspection, runtime checks, and inferred conclusions.
+
+---
+
+## Boundaries — do not touch
+
+
+- Never delete original/reference/source material merely because a replacement exists unless its retirement is explicitly approved.
+- Never overwrite raw source assets during conversion; write generated/converted/runtime assets separately.
+- Never silently drop unknown legacy/data fields during migration; preserve them for migration analysis when applicable.
+- Never manually edit generated files under `.agents/skills/`.
+- Never commit `.env`, `.env.*`, credentials, tokens, private keys, or production secrets.
+- Never hardcode production secrets.
+- Never package prohibited/retired runtimes or dependencies into the final application.
+- Do not modify reference/legacy behavior merely to make modern implementation easier; document and reproduce it first when parity is required.
+- Never modify generated artifacts by hand when a canonical generator owns them.
+- Never bypass security boundaries for convenience.
+- Never weaken authentication, authorization, validation, sandboxing, permission checks, or trust boundaries without explicit requirements.
+- Never delete user data, migration data, production data, or preservation material as part of ordinary feature work.
+- Do not modify CI/CD, deployment, infrastructure, security, or repository governance unless the active task requires it.
+- Do not touch `raw source datasets under `data/` (especially `data/baguio_od_600.json`) and any other explicitly designated immutable research-source files` unless the active task explicitly requires it.
+
+---
+
+## Change scope
+
+- Make the smallest coherent change that satisfies the active task/OpenSpec change.
+- Do not perform unrelated refactors or cleanup.
+- Do not modify unrelated files.
+- Do not upgrade dependencies without a concrete reason.
+- Do not reorganize existing files during feature work unless the active change requires it.
+- Use `git mv` when relocating preserved repository files where practical.
+- Preserve existing behavior unless the task or approved spec explicitly changes it.
+- Do not alter unrelated product behavior during parity, migration, or focused feature work.
+- Prefer one domain/vertical slice at a time.
+- Avoid “while I am here” changes.
+- Separate required cleanup from optional cleanup.
+- When additional work is discovered outside scope, record/report it rather than silently expanding the current change.
+- Do not broaden an OpenSpec change simply because related opportunities are discovered during implementation.
+
+---
+
+## Migration order
+
+
+Unless an approved OpenSpec change intentionally requires otherwise:
+
+    Project foundation
+        ↓
+    Database schema and Origin + Destination dataset import
+        ↓
+    Landing page, screening, and anonymous validator setup
+        ↓
+    Coverage-aware allocation engine
+        ↓
+    Core per-entry validation experience
+        ↓
+    Batch completion, continuation, and interrupted-batch handling
+        ↓
+    Protected researcher/admin dashboard
+        ↓
+    Research-data export pipeline
+        ↓
+    Quality assurance and security/accessibility verification
+        ↓
+    Pilot validation and protocol refinement
+        ↓
+    Production crowdsourcing and coverage monitoring
+        ↓
+    Research review, adjudication, and final validated dataset export
+
+The first major target is `an end-to-end MVP where an anonymous screened validator receives a coverage-aware batch of 10 imported Origin + Destination entries and each completed validation is persisted correctly`, not `advanced gamification, complex analytics, automated adjudication, map/routing features, or other post-MVP infrastructure`.
+
+---
+
+## Git / PR workflow
+
+`main` is the integration branch. Never perform planned work directly on `main`.
+
+Every repository-mutating OpenSpec stage must use a remote branch and PR. Local-only working branches are not allowed.
+
+### Branch naming
+
+Branch names describe the technical work, not the raw OpenSpec change name.
+
+- Proposal/docs: `docs/<technical-scope>-proposal`
+- Feature: `feat/<technical-scope>`
+- Fix: `fix/<technical-scope>`
+- Refactor: `refactor/<technical-scope>`
+- Tests/validation: `test/<technical-scope>`
+- Technical spike: `spike/<technical-scope>`
+- Spec sync: `docs/<technical-scope>-spec-sync`
+- Archive: `chore/archive-<technical-scope>`
+
+Examples:
+
+- `docs/<technical-scope>-proposal`
+- `feat/<technical-scope>`
+- `fix/<technical-scope>`
+- `docs/<technical-scope>-spec-sync`
+- `chore/archive-<technical-scope>`
+
+Do not use the OpenSpec change ID as the branch name unless it is also the clearest technical description.
+
+### Branch lifecycle
+
+Before starting any repository-mutating stage:
+
+1. Check `git status`.
+2. Switch to `main`.
+3. Pull the latest `origin/main`.
+4. Create a new branch from the updated `main`.
+5. Immediately push the new branch to `origin` and set upstream tracking.
+6. Only then begin modifying files.
+
+Never leave active repository work only on a local branch.
+
+Recommended pattern:
+
+    git switch main
+    git pull --ff-only origin main
+    git switch -c <branch-name>
+    git push -u origin <branch-name>
+
+### OpenSpec Git lifecycle
+
+#### Explore
+
+`/openspec-explore` is normally read-only.
+
+If no repository files change, no branch or PR is required.
+
+If exploration intentionally modifies tracked documentation, treat it as a normal repository-mutating stage and use a branch + PR.
+
+#### Propose
+
+For `/openspec-propose`:
+
+1. Start from updated `main`.
+2. Create a technical proposal branch such as `docs/<scope>-proposal`.
+3. Immediately push the branch to `origin`.
+4. Create/update the OpenSpec proposal, design, specs, tasks, and roadmap status.
+5. Review the diff.
+6. Commit using Conventional Commits.
+7. Push all proposal commits to the remote branch.
+8. Open a PR into `main`.
+9. After required checks pass, merge the PR using a **merge commit**.
+10. Delete the merged local and remote branch.
+11. Return to `main` and pull the merged result before starting Apply.
+
+Proposal artifacts should be committed and pushed so the exact remote PR diff can be reviewed.
+
+Do not reuse the proposal branch for Apply.
+
+#### Apply
+
+For `/openspec-apply-change`:
+
+1. Ensure the proposal PR has already been merged.
+2. Return to `main`.
+3. Pull the latest `origin/main`.
+4. Create a new implementation branch from `main`.
+5. Immediately push the new branch to `origin`.
+6. Apply only the approved OpenSpec tasks.
+7. Commit coherent implementation steps using Conventional Commits.
+8. Push commits regularly to the remote branch.
+9. Run all required verification.
+10. Review the final diff and test results.
+11. Open or update the PR into `main`.
+12. Merge after required checks pass.
+13. Merge using a **merge commit**.
+14. Delete the merged local and remote branch.
+15. Return to updated `main`.
+
+Do not reuse the proposal branch for Apply.
+
+Do not begin Sync or Archive from an unmerged Apply branch.
+
+#### Sync
+
+If `/openspec-sync` modifies repository files:
+
+1. Ensure the Apply PR has already been merged.
+2. Return to `main` and pull latest `origin/main`.
+3. Create `docs/<scope>-spec-sync`.
+4. Immediately push it to `origin`.
+5. Run the approved OpenSpec sync.
+6. Review the diff.
+7. Commit using Conventional Commits.
+8. Push the commit(s).
+9. Open a PR into `main`.
+10. Merge using a **merge commit** after required checks pass.
+11. Delete the local and remote branch.
+12. Return to updated `main`.
+
+Skip this stage when no spec synchronization is required.
+
+#### Archive
+
+For `/openspec-archive`:
+
+1. Archive only after Apply and any required Sync are merged.
+2. Return to `main`.
+3. Pull latest `origin/main`.
+4. Create `chore/archive-<technical-scope>`.
+5. Immediately push the branch to `origin`.
+6. Run the OpenSpec archive workflow.
+7. Update Project Status, roadmap references, and archive links where required.
+8. Review the diff.
+9. Commit using Conventional Commits.
+10. Push the archive commit(s).
+11. Open a PR into `main`.
+12. Merge after required checks pass.
+13. Merge using a **merge commit**.
+14. Delete the local and remote branch.
+15. Return to `main` and pull latest `origin/main` before beginning the next roadmap phase.
+
+### Commit conventions
+
+Use Conventional Commits:
+
+- `feat:` new product capability
+- `fix:` bug fix
+- `refactor:` behavior-preserving restructuring
+- `test:` tests or technical validation
+- `docs:` documentation/specification
+- `chore:` repository/tooling/archive maintenance
+
+Examples:
+
+- `docs: propose <technical scope>`
+- `test: add <technical validation>`
+- `feat: add <product capability>`
+- `fix: prevent <bug>`
+- `docs: sync <technical scope> requirements`
+- `chore: archive <technical scope>`
+
+Keep commits coherent and scoped.
+
+Do not bundle unrelated changes into one commit.
+
+### PR / merge conventions
+
+- Every Propose, Apply, Sync, and Archive stage that changes repository files must go through a PR into `main`.
+- Never silently commit completed stage work directly to `main`.
+- Keep one coherent OpenSpec stage per branch.
+- Open the PR from the remote branch, not from local-only work.
+- Use **merge commits only** for OpenSpec and development PRs.
+- Do **not** squash merge.
+- Do **not** rebase merge.
+- Preserve branch topology and individual branch commits in Git history.
+- When using GitHub CLI, merge with:
+
+      gh pr merge <PR_NUMBER> --merge --delete-branch
+
+- Do not use:
+
+      gh pr merge <PR_NUMBER> --squash
+
+  or:
+
+      gh pr merge <PR_NUMBER> --rebase
+
+- Do not replace the default GitHub merge-commit title unless there is a specific reason.
+- Prefer preserving the normal GitHub merge message, for example:
+
+      Merge pull request #123 from owner/feat/<technical-scope>
+
+- Delete local and remote branches only after the PR has successfully merged.
+- The PR and merge commit are the permanent historical record after branch deletion.
+- Never begin the next OpenSpec stage from an unmerged branch.
+- After every merge, switch back to `main` and update it from `origin/main` before creating the next branch.
+
+### Expected OpenSpec branch flow
+
+For one OpenSpec change, the normal flow is:
+
+    main
+      │
+      ├── docs/<scope>-proposal
+      │      ↓ push remote immediately
+      │      ↓ /openspec-propose
+      │      ↓ commit + push
+      │      ↓ PR
+      │      ↓ merge commit
+      │
+      ├── feat|spike|test/<scope>
+      │      ↓ push remote immediately
+      │      ↓ /openspec-apply-change
+      │      ↓ implementation
+      │      ↓ verification
+      │      ↓ commit + push
+      │      ↓ PR
+      │      ↓ merge commit
+      │
+      ├── docs/<scope>-spec-sync
+      │      ↓ only if sync is required
+      │      ↓ /openspec-sync
+      │      ↓ PR
+      │      ↓ merge commit
+      │
+      └── chore/archive-<scope>
+             ↓ /openspec-archive
+             ↓ update roadmap/status
+             ↓ PR
+             ↓ merge commit
+             ↓ delete branch
+             ↓ return to updated main
+
+### Git safety
+
+- Check `git status` before significant work.
+- Inspect `git diff` before every commit.
+- Inspect the final diff before opening a PR.
+- Never discard existing user changes.
+- Never force-push unless explicitly authorized.
+- Never use destructive Git operations unless explicitly authorized.
+- Never rewrite history unless explicitly authorized.
+- Never merge a PR with failing required checks unless explicitly authorized.
+- Never claim a branch was pushed, a PR was opened, or a merge occurred unless it actually happened.
+
+---
+
+## Source of truth
+
+When deciding what the project should do, use this order:
+
+1. Explicit user/task requirements
+2. Approved active OpenSpec change
+3. `openspec/specs/`
+4. `ROADMAP.md`, approved product/design/data contracts, and immutable research-source datasets when applicable
+5. Existing implementation and architecture
+6. Tests
+7. Repository documentation
+8. Agent assumptions
+
+When sources conflict, investigate the conflict. Do not silently invent a resolution.
+
+For preservation/parity work, observed reference behavior is evidence; an accidental implementation difference is not automatically an improvement.
+
+
+---
+
+## Existing / brownfield project rules
+
+
+Before modifying an existing capability:
+
+- Inspect its implementation.
+- Search ``src/app/`, `src/components/`, `src/lib/`, `src/schemas/`, `supabase/`, `data/`, `openspec/`, `ROADMAP.md`, and related tests` as applicable.
+- Read the relevant OpenSpec spec/change.
+- Check `openspec/changes/` for active work.
+- Identify the current request → state mutation → response/output behavior.
+- Capture or locate behavioral fixtures before replacing existing behavior when parity matters.
+- Do not assume undocumented means unused.
+- Do not rewrite working systems merely because they are unfamiliar.
+- Classify obscure systems explicitly as implemented, parity-verified, retired, deprecated, experimental, or out-of-scope.
+- Identify consumers before changing public interfaces.
+- Search for tests, documentation, migrations, fixtures, generated code, and external contracts connected to the capability.
+- Preserve backwards compatibility when required by the active specification.
+- Distinguish accidental implementation details from externally observable behavior before reproducing them.
+
+---
+
+## Spec-driven development — OpenSpec
+
+This project uses OpenSpec for nontrivial behavioral and architectural changes.
+
+Expected structure:
+
+    openspec/
+    ├── config.yaml
+    ├── specs/
+    └── changes/
+
+Rules:
+
+- Check `openspec/changes/` before starting nontrivial implementation.
+- Continue an existing relevant change instead of creating a duplicate.
+- Read the relevant `openspec/specs/` capability before modifying it.
+- Create/propose a change before implementing new nontrivial behavior when no appropriate change exists.
+- Keep implementation aligned with the active change's requirements, design, and tasks.
+- If implementation reveals a missing or incorrect requirement, update the change instead of silently diverging.
+- Do not expand an active change with unrelated work.
+- Sync approved behavior back into main specs and archive completed changes using the installed OpenSpec workflow.
+- Do not manually edit generated `.agents/skills/`; use `openspec update` when regeneration is required.
+
+Typical workflow:
+
+    Explore → Propose → Apply → Verify → Sync → Archive
+
+Use exploration for investigation only; it is not permission to implement.
+
+OpenSpec owns feature requirements and change artifacts. This file owns durable repository-wide engineering rules.
+
+---
+
+## Reconstruction workflow
+
+
+For each migrated/reconstructed/replaced feature:
+
+    1. Inspect the existing/reference implementation and related resources.
+    2. Identify interfaces/endpoints/state/dependencies involved.
+    3. Capture or locate reference fixtures/evidence when applicable.
+    4. Read/create the OpenSpec change.
+    5. Implement the smallest complete behavior.
+    6. Add/update tests.
+    7. Replay/compare against reference behavior when parity matters.
+    8. Perform visual/runtime verification when relevant.
+    9. Update migration/project status and documentation.
+    10. Inspect diff and report checks actually run.
+
+Do not mark an existing/reference feature replaced until parity has been verified or an approved spec explicitly changes its behavior.
+
+---
+
+## Orchestration mode
+
+For nontrivial OpenSpec changes, the root Codex agent acts as the orchestrator.
+
+- Use real Codex subagents when work can be divided into concrete, independent tasks without overlapping file ownership.
+- The root orchestrator owns the active OpenSpec artifacts and task status.
+- Implementation subagents must not independently edit `proposal.md`, `design.md`, specs, or `tasks.md` unless explicitly assigned that responsibility.
+- Assign each worker a bounded task, owned files/directories, requirements, dependencies, and required verification.
+- Do not parallelize tasks that depend on unfinished interfaces or behavior.
+- Do not have multiple agents edit the same files unless intentionally coordinated.
+- Worker agents must report files changed, checks run, results, and unresolved concerns.
+- The root orchestrator must review worker diffs/results before accepting them.
+- After implementation, use a separate verification pass or verifier subagent to compare the actual implementation against the active OpenSpec artifacts.
+- Do not trust checked task boxes as evidence; inspect the implementation.
+- Run OpenSpec strict validation and the installed OpenSpec verification workflow before considering the change complete.
+- Any unresolved CRITICAL verification issue blocks completion.
+- Any unresolved WARNING blocks completion unless explicitly accepted by the user or active specification.
+- If verification fails, create bounded repair tasks, delegate when useful, then rerun verification.
+- Only the root orchestrator may declare the OpenSpec change complete.
+- Worker subagents should not spawn additional subagents unless the root explicitly authorizes nested delegation.
+
+### Subagent
+
+- Default to at most two active subagents per root session.
+- Preferred roles are:
+  1. implementation agent
+  2. verification agent
+- The root agent remains the orchestrator and owns OpenSpec artifacts, architectural decisions, integration, and final acceptance.
+- Do not spawn additional agents merely because work can technically be parallelized.
+- Prefer sequential delegation when the verifier depends on implementation output.
+- Spawn additional agents beyond this default only when the task has clearly independent workstreams and the expected benefit outweighs duplicated context/token cost.
+- Give subagents only the context necessary for their assigned task; do not require every subagent to rediscover the entire repository.
+
+### OpenSpec bootstrap and resume
+
+The root orchestrator must support both bootstrap and resume workflows.
+
+Before creating a new OpenSpec change:
+
+- Inspect `openspec/changes/` and the project status recorded in the development roadmap.
+- If a relevant active change already exists, resume it instead of creating a duplicate.
+- If a completed but unverified or unarchived change exists, finish its verification/lifecycle before creating another dependent change.
+- If no active change exists, use the development roadmap and current repository state to determine the smallest coherent next change.
+- Use OpenSpec exploration before proposing a new change when repository investigation, existing/reference behavior, architecture, dependencies, or scope need confirmation.
+- Exploration must not implement code.
+- After exploration is sufficiently resolved, create the change with the installed OpenSpec propose workflow.
+- Validate the generated change before implementation.
+- Do not create an OpenSpec change for the entire development roadmap. The roadmap is the program-level plan; OpenSpec changes are bounded implementation units.
+- Do not skip ahead to a later roadmap milestone while required exit criteria or dependencies of the current milestone remain incomplete.
+- Default to completing one OpenSpec change per orchestration run unless the user explicitly requests continuous milestone execution.
+
+### Development roadmap ownership
+
+The development roadmap contains a root-orchestrator-owned `Project Status` block.
+
+- Only the root orchestrator may update the roadmap's `Project Status` block.
+- Implementation and verification subagents must not modify the roadmap unless explicitly assigned.
+- Treat the status block as a progress ledger, not as the behavioral source of truth.
+- OpenSpec specs and active change artifacts remain the source of truth for specified behavior.
+- Repository implementation and tests provide implementation evidence.
+- Reconcile the roadmap status against Git, OpenSpec, and the repository before trusting stale status from a previous session.
+- Update project status whenever the active change enters a meaningful lifecycle transition: proposed, implementing, verifying, blocked, verified, archived, or completed.
+- Record blockers and unresolved verification findings rather than hiding them.
+- After archiving a verified change, update the roadmap cursor to the next eligible objective but do not automatically begin that change unless the current orchestration request allows it.
