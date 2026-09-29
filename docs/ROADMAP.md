@@ -11,13 +11,28 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase | Phase 1 — Project Foundation |
-| Current OpenSpec change | `project-foundation` |
-| Lifecycle state | `verifying` — Apply implementation complete on `feat/project-foundation`; post-implementation review complete and all findings repaired; local gate green; awaiting PR merge |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal authored, strictly validated, and merged (PR #2, `f451a01`) |
-| Last merged PR / change | #2 — `docs: propose project foundation` (`f451a01`) |
-| Next eligible objective | Merge Apply PR for `project-foundation`, then Sync and Archive it; advance the cursor to `od-dataset-schema-and-import` |
-| Blockers | See "Active Blockers" below |
+| Current roadmap phase | Phase 1 complete — cursor advanced to Phase 2 |
+| Current OpenSpec change | none active. `project-foundation` is archived as `2026-09-30-project-foundation` |
+| Lifecycle state | `archived` — Apply merged (PR #3, `f43d722`), four capability specs synced into `openspec/specs/`, change archived |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); **`project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4)** |
+| Last merged PR / change | #3 — `feat: project foundation` (`f43d722`) |
+| Next eligible objective | Propose `od-dataset-schema-and-import` (Phase 2): migrations for the six tables, the `UNIQUE (validator_id, dataset_entry_id)` constraint, indexes, RLS, the `supabase/` repository implementations, and the verified import of the 600 `OD_*` entries |
+| Blockers | **Supabase project credentials still required for Phase 2 runtime verification** — see "Active Blockers" below |
+
+### Archived Changes
+
+| Change | Archived | Merged as | Notes |
+| --- | --- | --- | --- |
+| `project-foundation` | `openspec/changes/archive/2026-09-30-project-foundation/` | PR #3, `f43d722` | Synced into `openspec/specs/`: `application-foundation` (5 req), `design-system` (5), `domain-contracts` (7), `data-access-boundary` (4). Verified with a `PASS WITH WARNINGS` review; every finding repaired before merge (task group 7 in the archived `tasks.md`). |
+
+### Sync was performed by the archive step, not as a separate stage
+
+`AGENTS.md` describes Sync and Archive as separate stages. They were run as one here, deliberately:
+the OpenSpec CLI exposes no sync-without-archive command, and `openspec/archive` writes
+`openspec/specs/*.spec.md` from the change's deltas. Hand-writing the main specs to keep the stages
+apart would mean editing generated files by hand, which `AGENTS.md` forbids and which risks the
+main specs and the deltas drifting. The archive branch therefore carries both operations, and the
+synced specs are validated with `openspec validate --specs --strict` (4 passed, 0 failed).
 
 ### Local Verification Evidence — `project-foundation` (2026-09-30)
 
