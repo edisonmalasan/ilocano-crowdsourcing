@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { badgeClasses } from "@/components/ui/badge";
@@ -142,5 +145,85 @@ describe("BatchProgress", () => {
     // A position beyond the batch must not be rendered as-is.
     expect(BatchProgress({ index: 99, total: 10 })).toBeTruthy();
     expect(BatchProgress({ index: 0, total: 0 })).toBeTruthy();
+  });
+});
+
+/**
+ * The token file itself, read from disk.
+ *
+ * These assertions exist because the class-string tests above cannot see the *values*. A token can
+ * be named correctly and referenced correctly and still hold a value that breaks a spec
+ * requirement. That is exactly what happened: `--text-small` was 0.9375rem (15px) while the
+ * file's own comment claimed a 1rem body floor was "enforced here", and the landing page rendered
+ * whole paragraphs in it. Nothing caught it, because every class string resolved to a token that
+ * was legitimately named.
+ */
+const GLOBALS_CSS = readFileSync(
+  resolve(import.meta.dirname, "../../src/styles/globals.css"),
+  "utf8",
+);
+const LAYOUT_TSX = readFileSync(resolve(import.meta.dirname, "../../src/app/layout.tsx"), "utf8");
+
+/** Resolves a token to its declared value, or `undefined` when the token is absent. */
+function tokenValue(name: string): string | undefined {
+  return new RegExp(`^\\s*--${name}:\\s*(.+?);\\s*$`, "m").exec(GLOBALS_CSS)?.[1]?.trim();
+}
+
+/** The fixed `rem` value a token declares, or `null` for `clamp()` roles which have no fixed size. */
+function fixedRemValue(value: string | undefined): number | null {
+  if (value === undefined || value.startsWith("clamp(")) return null;
+  const match = /^([\d.]+)rem$/.exec(value);
+  return match ? Number(match[1]) : null;
+}
+
+/** The smallest size a role can render at, for both fixed and `clamp()` declarations. */
+function smallestRenderedRem(value: string | undefined): number | null {
+  const fixed = fixedRemValue(value);
+  if (fixed !== null) return fixed;
+  const clampLowerBound = /clamp\(\s*([\d.]+)rem/.exec(value ?? "")?.[1];
+  return clampLowerBound === undefined ? null : Number(clampLowerBound);
+}
+
+describe("body text size floor", () => {
+  // The `design-system` spec requires text to stay at or above the minimum readable body size the
+  // token set defines. Every role that renders PROSE is bound by that floor. `--text-label` is the
+  // single documented exception: monospace micro-label metadata, not reading copy.
+  const PROSE_ROLES = ["display", "title", "heading", "lead", "body", "small"] as const;
+  const MINIMUM_BODY_REM = 1;
+
+  it("declares the floor on the body role", () => {
+    expect(fixedRemValue(tokenValue("text-body"))).toBe(MINIMUM_BODY_REM);
+  });
+
+  it.each(PROSE_ROLES)("keeps the %s prose role at or above the floor", (role) => {
+    const declared = tokenValue(`text-${role}`);
+    expect(declared, `--text-${role} is not declared in the @theme block`).toBeDefined();
+
+    const smallest = smallestRenderedRem(declared);
+    expect(smallest, `could not read a size out of --text-${role}: ${declared}`).not.toBeNull();
+    expect(
+      smallest,
+      `--text-${role} is ${declared}, below the ${MINIMUM_BODY_REM}rem body floor`,
+    ).toBeGreaterThanOrEqual(MINIMUM_BODY_REM);
+  });
+
+  it("permits exactly one sub-floor role, and it is the metadata label", () => {
+    // The label role is allowed under the floor, and it must stay there rather than drifting up
+    // into a prose size, so that its role as metadata remains visible in the token set itself.
+    expect(smallestRenderedRem(tokenValue("text-label"))).toBeLessThan(MINIMUM_BODY_REM);
+  });
+});
+
+describe("the paper token has no second copy", () => {
+  it("keeps the viewport themeColor equal to the paper token", () => {
+    // Next.js requires `viewport.themeColor` to be a literal string, so it cannot be a token
+    // reference. That makes it a silent duplicate of `--color-paper`: changing the paper token
+    // would leave browser chrome on the old colour and nothing would report the drift.
+    const paper = tokenValue("color-paper");
+    expect(paper, "--color-paper is not declared in the @theme block").toBeDefined();
+
+    const themeColor = /themeColor:\s*"([^"]+)"/.exec(LAYOUT_TSX)?.[1];
+    expect(themeColor, "layout.tsx does not declare a literal themeColor").toBeDefined();
+    expect(themeColor, "viewport themeColor has drifted from --color-paper").toBe(paper);
   });
 });

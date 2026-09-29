@@ -102,10 +102,17 @@
   --text-body: 1rem;
   --text-body--line-height: 1.6;
 
-  --text-small: 0.9375rem;
-  --text-small--line-height: 1.55;
+  /* Density step, not a size step. This role exists to tighten leading inside a
+     block that is still body copy, so it MUST NOT drop below the 1rem floor.
+     An earlier revision had it at 0.9375rem (15px) and the landing page rendered
+     whole paragraphs in it, which silently broke the floor above. If a future
+     design wants smaller text, the correct move is to author it as metadata with
+     `--text-label`, which is explicitly not prose. */
+  --text-small: 1rem;
+  --text-small--line-height: 1.45;
 
-  /* Monospace micro-labels. Small by design — this is metadata, not prose. */
+  /* Monospace micro-labels. Small by design — this is metadata, not prose, and it
+     is the ONLY role permitted below the 1rem body floor. */
   --text-label: 0.75rem;
   --text-label--line-height: 1.2;
   --text-label--letter-spacing: 0.14em;
