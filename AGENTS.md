@@ -205,29 +205,27 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 | --- | --- | --- | --- |
 | `openspec validate project-foundation --strict` | exit 0, "Change 'project-foundation' is valid" | The active change's proposal, design, and capability deltas satisfy the OpenSpec schema strictly. | That the implementation matches the change. That is verified by inspecting the code and tests, not by this command. |
 
-#### Continuous integration — first observed run
+#### Continuous integration — observed runs
 
 `.github/workflows/verify.yml` defines a `verify` job (install, lint, format check, type-check,
 unit tests, integration tests, build) plus an `immutable-research-source` job that runs the dataset
-guard on its own. **Run 36612913931 (PR #3, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
-`12 files / 235 tests` unit and `2 files / 18 tests` integration, matching the local counts of that
-commit, and "Compiled successfully" for the production build. The dataset-guard job was read back
-from that run's log and reported `1 file / 7 tests`, confirming it really is scoped to the guard.
-
-The unit count is now 244 after the post-implementation review repairs; CI re-runs on every push, so
-the number to trust is whatever the run tied to the current commit reports, not this one. What is
-still unobserved is a *failing* run — "a failing test blocks the pull request" is inferred from the
-check being required on `pull_request`, not demonstrated.
+guard on its own. **Run 36614647692 (PR #3, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
+`12 files / 244 tests` unit and `2 files / 18 tests` integration — matching the local counts of the
+same commit — and "Compiled successfully" for the production build. The dataset-guard job was read
+back from that run's log and reported `1 file / 7 tests`, confirming it really is scoped to the
+guard rather than to the whole suite.
 
 An earlier run of the same workflow (36612616260) exposed a defect in the workflow itself. The
 dataset job used `pnpm run test:integration -- <path>`, and on Linux the `pnpm run` layer dropped
 the path filter, so the job that claims to isolate the immutability guard silently executed all 18
-integration tests. It is green either way, so nothing would have failed — the checkmark was real
+integration tests. It was green either way, so nothing would have failed — the checkmark was real
 and the job was still not doing what its name said. It is now `pnpm exec vitest run --project
 integration <path>`.
 
-The lesson generalizes: **a CI step that claims to run a subset must be read back from the run log
-to confirm it actually did.** A green job is not proof that the job did what it says.
+Two lessons, both worth keeping: **a CI step that claims to run a subset must be read back from the
+run log to confirm it actually did**, and **a green job is not proof that the workflow can go red.**
+No failing run has ever been observed, so "a failing test blocks the pull request" is still inferred
+from the check being required on `pull_request` rather than demonstrated.
 
 What CI still does not prove: nothing about Supabase, and nothing about visual rendering.
 

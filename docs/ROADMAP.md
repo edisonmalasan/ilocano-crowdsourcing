@@ -43,9 +43,9 @@ What this evidence explicitly does **not** establish:
 - PGlite proves SQL, constraints, and Row Level Security **as the PostgreSQL engine evaluates
   them**. It does not prove Supabase Auth, Storage, Realtime, PostgREST behavior, or RLS as
   enforced by the Supabase API gateway.
-- `.github/workflows/verify.yml` passed on run 36612913931 (PR #3, `ubuntu-latest`) with counts
+- `.github/workflows/verify.yml` passed on run 36614647692 (PR #3, `ubuntu-latest`) with counts
   matching local at that commit, and the dataset-guard job was confirmed from that run's log to be
-  scoped to `1 file / 7 tests`. The job-selection defect found in the previous run is fixed. No
+  scoped to `1 file / 7 tests`. The job-selection defect found in an earlier run is fixed. No
   *failing* CI run has ever been observed, so "a failing test blocks the PR" is still inferred.
 - There is **no screenshot-based or human-eye visual verification** of the design. No desktop
   browser was connected. The design was verified through rendered-HTML assertions, emitted-CSS
@@ -106,8 +106,8 @@ applier path, which has never run end to end because that directory is still emp
     `auth` schema, and RLS as enforced by the Supabase API gateway) and the first real migration
     deploy.
   - *Mitigated, with a caveat recorded:* CI can prove SQL and RLS, and `.github/workflows/verify.yml`
-    passed on run 36612913931 (PR #3, `ubuntu-latest`): 12 files / 235 unit tests and 2 files / 18
-    integration tests, matching the local counts of that commit. That run's dataset-guard job was
+    passed on run 36614647692 (PR #3, `ubuntu-latest`): 12 files / 244 unit tests and 2 files / 18
+    integration tests, matching the local counts of the same commit. That run's dataset-guard job was
     read back from the log and confirmed scoped to `1 file / 7 tests`. An earlier run had exposed a
     defect in the workflow itself — the guard job's path filter was dropped on Linux, so it ran the
     whole integration suite instead of the file it claimed to isolate. Green did not mean correct.
