@@ -1,0 +1,21 @@
+# Normalize line endings in the repository, matching .editorconfig.
+#
+# .editorconfig already declares `end_of_line = lf` for every file, but
+# .editorconfig only configures editors. Without a .gitattributes file, git
+# falls back to each contributor's local `core.autocrlf`, so the same commit
+# checks out with different line endings on different machines. That made
+# `pnpm run format:check` fail on every formatter-owned file for anyone with
+# `core.autocrlf=true` (Windows) while passing on CI, which runs on ubuntu.
+#
+# `* text=auto eol=lf` normalizes to LF in the repository and checks out LF
+# everywhere, regardless of the contributor's git configuration. Committed
+# bytes are therefore identical across platforms.
+#
+# This does not touch the research dataset's content: `data/ilocano-
+# synthetic-data.json` is already stored with LF endings in git, so its
+# committed bytes and its SHA-256 are unchanged. Verified, not assumed.
+
+* text=auto eol=lf
+
+# Binary assets must never be line-ending normalized or corrupted.
+*.ico binary
