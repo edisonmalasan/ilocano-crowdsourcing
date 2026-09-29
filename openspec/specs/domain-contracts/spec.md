@@ -144,13 +144,13 @@ entry" as a repository-level contract: a second insert for the same pair SHALL b
 typed error naming the failed operation, and SHALL NOT be silently swallowed as a no-op, because
 "already validated" is a meaningful outcome the service must be able to report to the validator.
 
-The data-layer guarantee for this rule — a uniqueness constraint over the pair of validator and
-dataset entry, enforced by the database independently of application code — is owned by the
-`od-dataset-schema-and-import` change, together with the `validations` table itself. The repository
-seam described above already exists and is what the constraint will sit behind; the constraint
-itself is **not yet implemented**, and the platform is not compliant with this requirement until it
-is. `ValidationsRepository.insert` documents the expectation at the seam so the work is inherited
-rather than rediscovered.
+The data-layer guarantee for this rule is a uniqueness constraint over the pair of validator and
+dataset entry, enforced by the database independently of application code. That constraint exists:
+`validations` carries a named uniqueness constraint over `(validator_id, dataset_entry_id)`, and
+the constraint is exercised against a real PostgreSQL engine so a duplicate is rejected by the
+database and not merely by an application check. The repository seam described above is what the
+constraint sits behind, and a repository implementation surfaces a violation as a typed error
+rather than absorbing it.
 
 #### Scenario: A duplicate insert is surfaced as a named error, not a silent success
 
@@ -166,10 +166,11 @@ rather than rediscovered.
 
 #### Scenario: The at-most-once rule is not left to application code alone
 
-- **WHEN** the schema change that owns `validations` is authored
-- **THEN** it carries a uniqueness constraint over `(validator_id, dataset_entry_id)` so the rule
-  holds even if application code is bypassed, and that constraint is asserted in the PGlite
-  integration harness rather than only in application tests
+- **WHEN** the uniqueness constraint over `(validator_id, dataset_entry_id)` is exercised against
+  the database
+- **THEN** a duplicate insert is rejected by the constraint itself, so the rule still holds if
+  application code is bypassed, and the rejection is asserted in the PostgreSQL integration
+  harness rather than only in an application test
 
 ### Requirement: Batch request contract
 

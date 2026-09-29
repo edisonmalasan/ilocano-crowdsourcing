@@ -11,19 +11,20 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase | Phase 2 — Database and Dataset Import |
-| Current OpenSpec change | `od-dataset-schema-and-import` |
-| Lifecycle state | `verifying` — on `feat/od-dataset-schema-and-import`. Migrations, schema verification, parser, import verification, and the three Supabase repository implementations delivered. An independent verification pass has completed (PASS WITH FINDINGS, one CRITICAL); the CRITICAL and all seven warnings and eight notes have been repaired, and the full gate passes again. The Apply PR is the remaining step |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`) |
-| Last merged PR / change | #6 — `docs: propose od dataset schema and import` (`f14c0bb`) |
-| Next eligible objective | The Apply PR for `od-dataset-schema-and-import`, then Sync + Archive, then the roadmap cursor moves to Phase 3 |
-| Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite |
+| Current roadmap phase | Phase 2 — Database and Dataset Import — **complete and archived**. The cursor has moved to Phase 3 — Landing and Screening; that change has not been started |
+| Current OpenSpec change | none active. `openspec/changes/` holds no unarchived change |
+| Lifecycle state | `archived` — `od-dataset-schema-and-import` applied, independently verified, merged (PR #7, `d2eea22`), synced into `openspec/specs/`, and archived as `2026-09-30-od-dataset-schema-and-import`. Sync and Archive ran as one stage on `chore/archive-od-dataset-schema-and-import` |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`) |
+| Last merged PR / change | #7 — `Merge pull request #7 from edisonmalasan/feat/od-dataset-schema-and-import` (`d2eea22`), the `od-dataset-schema-and-import` Apply stage |
+| Next eligible objective | Phase 3, `landing-and-screening`: landing, Ilocano proficiency screening, anonymous validator create/restore. Requires a new Propose stage on a `docs/landing-and-screening-proposal` branch from updated `main` |
+| Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite. Does not block Phase 3, which is UI and screening work |
 
 ### Archived Changes
 
 | Change | Archived | Merged as | Notes |
 | --- | --- | --- | --- |
 | `project-foundation` | `openspec/changes/archive/2026-09-30-project-foundation/` | PR #3, `f43d722` | Synced into `openspec/specs/`: `application-foundation` (5 req), `design-system` (5), `domain-contracts` (7), `data-access-boundary` (4). Verified with a `PASS WITH WARNINGS` review; every finding repaired before merge (task group 7 in the archived `tasks.md`). |
+| `od-dataset-schema-and-import` | `openspec/changes/archive/2026-09-30-od-dataset-schema-and-import/` | Apply stage merged by PR #7, `d2eea22` (merge commit; proposal was PR #6, `f14c0bb`). This Sync + Archive stage is the `chore/archive-od-dataset-schema-and-import` branch carrying the same stage's PR | Synced into `openspec/specs/`: `dataset-import` (3 req, new), `research-schema` (6 req, new), `domain-contracts` (1 requirement modified — the at-most-once rule flipped from "not yet implemented" to implemented). Verified with an independent `PASS WITH FINDINGS` review carrying one CRITICAL; the CRITICAL and all seven warnings and eight notes were repaired before the Apply merge. `openspec validate --specs --strict` reports **6 passed, 0 failed**. |
 
 ### Phase 2 verification approach (executed; hosted half still outstanding)
 
@@ -73,7 +74,8 @@ the OpenSpec CLI exposes no sync-without-archive command, and `openspec/archive`
 `openspec/specs/*.spec.md` from the change's deltas. Hand-writing the main specs to keep the stages
 apart would mean editing generated files by hand, which `AGENTS.md` forbids and which risks the
 main specs and the deltas drifting. The archive branch therefore carries both operations, and the
-synced specs are validated with `openspec validate --specs --strict` (4 passed, 0 failed).
+synced specs are validated with `openspec validate --specs --strict` — **6 passed, 0 failed** (the four capabilities above plus
+`dataset-import` and `research-schema`).
 
 ### Local Verification Evidence — `project-foundation` (2026-09-30)
 
@@ -170,7 +172,8 @@ contract forbids reading an unremarkable write as success: `SupabaseValidatorsRe
 .touchLastActive` is an `update`.
 
 The verification pass raised seven warnings and eight notes. All were repaired before this evidence
-was written, and each is recorded in `openspec/changes/od-dataset-schema-and-import/tasks.md`
+was written, and each is recorded in
+`openspec/changes/archive/2026-09-30-od-dataset-schema-and-import/tasks.md`
 against the task it corrects, because a reviewer who cannot see why a task was annotated cannot tell
 a deliberate decision from an oversight:
 
@@ -202,7 +205,8 @@ each touched file re-checked for a BOM, for CRLF, and for U+FFFD — the corrupt
 `AGENTS.md` and `migrations/README.md` in an earlier change.
 
 Assertions proved load-bearing by temporarily breaking the implementation, confirming the expected
-tests go red, and restoring it. `openspec/changes/od-dataset-schema-and-import/tasks.md` tasks 9.8,
+tests go red, and restoring it. `openspec/changes/archive/2026-09-30-od-dataset-schema-and-import/tasks.md`
+tasks 9.8,
 9.9, and 9.12 record exactly which tests failed in each case; the source-write scan added during
 verification was proved the same way. A test that has never failed is not known to test anything.
 
@@ -251,14 +255,15 @@ What this evidence explicitly does **not** establish:
   - *Mitigation delivered in `project-foundation`:* a `@electric-sql/pglite` (real PostgreSQL
     compiled to WASM) integration harness now exists, so schema, constraint, and transactional
     logic can be applied and asserted in CI without a container.
-    `pnpm run test:integration` exits 0 with 63 passing tests against a real engine, applied from
+    `pnpm run test:integration` exits 0 with 69 passing tests against a real engine, applied from
     the production `supabase/migrations/` directory. The remaining unverified surface is
     Supabase-managed behavior (Auth, Storage, Realtime, the `auth` schema, PostgREST, and RLS as
     enforced by the Supabase API gateway) and the first real migration deploy.
   - *Mitigated, with a caveat recorded:* CI can prove SQL and RLS, and `.github/workflows/verify.yml`
-    passed on run 36614647692 (PR #3, `ubuntu-latest`): 12 files / 244 unit tests and 2 files / 18
-    integration tests, matching the local counts of the same commit. That run's dataset-guard job was
-    read back from the log and confirmed scoped to `1 file / 7 tests`. An earlier run had exposed a
+    passed on run 36628108347 (PR #7, `ubuntu-latest`): 14 files / 312 unit tests and 4 files / 69
+    integration tests, matching the local counts of the same commit, plus "Compiled successfully"
+    for the production build. That run's dataset-guard job was read back from the log and
+    confirmed scoped to `1 file / 7 tests`. An earlier run had exposed a
     defect in the workflow itself — the guard job's path filter was dropped on Linux, so it ran the
     whole integration suite instead of the file it claimed to isolate. Green did not mean correct.
     No *failing* CI run has ever been observed, so "a failing test blocks the PR" remains inferred.
@@ -266,14 +271,16 @@ What this evidence explicitly does **not** establish:
 ### Planned Change Sequence
 
 The roadmap is executed as a sequence of bounded OpenSpec changes, one architectural step
-each, in dependency order:
+each, in dependency order. Items 1 and 2 are delivered and archived; item 3 is next and has not
+been proposed yet.
 
-1. `project-foundation` — Phase 1: Next.js/TypeScript/Tailwind shell, design tokens, lint,
-   test harness, Zod schemas, Supabase client boundary.
-2. `od-dataset-schema-and-import` — Phase 2: migrations for the six tables, constraints,
-   indexes, RLS, and import/verification of the 600 `OD_*` entries.
+1. ~~`project-foundation`~~ — Phase 1: Next.js/TypeScript/Tailwind shell, design tokens, lint,
+   test harness, Zod schemas, Supabase client boundary. **Delivered and archived.**
+2. ~~`od-dataset-schema-and-import`~~ — Phase 2: migrations for the six tables, constraints,
+   indexes, RLS, and import/verification of the 600 `OD_*` entries. **Delivered and archived**
+   (spec-level only; the hosted half is still outstanding — see "Active Blockers").
 3. `landing-and-screening` — Phase 3: landing, Ilocano proficiency screening, anonymous
-   validator create/restore.
+   validator create/restore. **Next.**
 4. `coverage-aware-allocation` — Phase 4: server-authoritative batch allocation engine.
 5. `validation-experience` — Phase 5: per-entry validation, conditional correction, optional
    translation, immediate persistence.

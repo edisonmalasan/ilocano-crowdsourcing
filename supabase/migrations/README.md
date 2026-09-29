@@ -31,10 +31,11 @@ missing grant for an RLS result.
 
 The research schema is anonymous by design: validators have no Supabase Auth session, so nothing
 in it references `auth.uid()` or `auth.users`, and primary keys are domain identifiers rather
-than `uuid` surrogates. The change that introduced it is `od-dataset-schema-and-import`; until it
-is archived it lives at `openspec/changes/od-dataset-schema-and-import/`, with its requirements
-in that change's `specs/research-schema/spec.md` and, after the archive stage, in
-`openspec/specs/research-schema/spec.md`.
+than `uuid` surrogates. The change that introduced it was `od-dataset-schema-and-import`, now
+archived at `openspec/changes/archive/2026-09-30-od-dataset-schema-and-import/`. Its requirements
+are synced into the main specs and are the current source of truth:
+`openspec/specs/research-schema/spec.md` for the schema itself, and
+`openspec/specs/dataset-import/spec.md` for the import that fills it.
 
 **Not yet done:** these migrations have never been applied to a hosted Supabase project. They are
 verified against a real PostgreSQL engine via PGlite, which evaluates the same SQL for
