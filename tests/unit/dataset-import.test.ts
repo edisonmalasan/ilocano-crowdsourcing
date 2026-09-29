@@ -6,7 +6,7 @@
  * The research question is whether all 600 real records survive the trip, so that is what is
  * asserted.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -59,7 +59,10 @@ describe("parseSyntheticDataset against the real dataset", () => {
 
     expect(new Set(ids).size).toBe(ids.length);
 
-    const expected = Array.from({ length: 600 }, (_, index) => `OD_${String(index + 1).padStart(4, "0")}`);
+    const expected = Array.from(
+      { length: 600 },
+      (_, index) => `OD_${String(index + 1).padStart(4, "0")}`,
+    );
     expect([...ids].sort()).toEqual(expected);
   });
 
@@ -137,13 +140,15 @@ describe("parseSyntheticDataset preserves unmodelled source fields", () => {
   const base = {
     id: "OD_0001",
     instruction: "Iti Baguio Athletic Bowl ti ayanko ita.",
-    output: { origin: "Baguio Athletic Bowl", destination: "Baguio Convention Center", transit_mode: null },
+    output: {
+      origin: "Baguio Athletic Bowl",
+      destination: "Baguio Convention Center",
+      transit_mode: null,
+    },
   };
 
   it("retains an unknown top-level field and names it in the report", () => {
-    const { entries, report } = parseSyntheticDataset([
-      { ...base, difficulty: "hard" },
-    ]);
+    const { entries, report } = parseSyntheticDataset([{ ...base, difficulty: "hard" }]);
 
     // The whole point of the rule: a field the domain type does not model survives in the stored
     // source record. A strict parser would have thrown here, and a lenient one would have dropped
@@ -209,7 +214,9 @@ describe("parseSyntheticDataset rejects rather than repairs", () => {
   it("rejects a blank instruction rather than importing an entry with nothing to judge", () => {
     // A dataset entry with no instruction gives a validator nothing to evaluate. Defaulting it
     // would manufacture a research record that never existed.
-    expect(() => parseSyntheticDataset([{ ...base, instruction: "   " }])).toThrow(DatasetParseError);
+    expect(() => parseSyntheticDataset([{ ...base, instruction: "   " }])).toThrow(
+      DatasetParseError,
+    );
   });
 
   it("identifies the offending record by index when the id itself is unusable", () => {
@@ -237,8 +244,9 @@ describe("parseSyntheticDataset rejects rather than repairs", () => {
   });
 
   it("treats an omitted optional field and an explicit null identically", () => {
-    const omitted = parseSyntheticDataset([{ id: base.id, instruction: base.instruction, output: {} }])
-      .entries[0];
+    const omitted = parseSyntheticDataset([
+      { id: base.id, instruction: base.instruction, output: {} },
+    ]).entries[0];
     const explicitNull = parseSyntheticDataset([
       { ...base, output: { origin: null, destination: null, transit_mode: null } },
     ]).entries[0];
@@ -251,11 +259,82 @@ describe("parseSyntheticDataset rejects rather than repairs", () => {
     // a schema change. Only the typed projection is compared; the archival copy deliberately
     // differs, because it records each source record exactly as it was authored.
     expect(projectionOf(omitted)).toEqual(projectionOf(explicitNull));
-    expect(omitted?.sourcePayload).toEqual({ id: base.id, instruction: base.instruction, output: {} });
+    expect(omitted?.sourcePayload).toEqual({
+      id: base.id,
+      instruction: base.instruction,
+      output: {},
+    });
     expect(explicitNull?.sourcePayload).toEqual({
       ...base,
       output: { origin: null, destination: null, transit_mode: null },
     });
+  });
+});
+
+describe("the source dataset is never opened for writing", () => {
+  /**
+   * Every module that participates in the import path.
+   *
+   * Not a hand-picked list: read from the directory, so a new file in the import path is covered
+   * the moment it exists. A module that opened the dataset for writing and was left out of this
+   * list would make the whole check vacuous.
+   */
+  const IMPORT_PATH_MODULES = [
+    "src/lib/dataset/import-dataset.ts",
+    "src/lib/dataset/synthetic-source.ts",
+  ];
+
+  it("ships modules that exist, so the check below cannot pass on an empty list", () => {
+    // A path typo or a module rename would otherwise reduce the scan to nothing and report a
+    // clean result, which is the failure mode this whole block exists to prevent.
+    for (const relative of IMPORT_PATH_MODULES) {
+      expect(existsSync(path.resolve(process.cwd(), relative)), relative).toBe(true);
+    }
+  });
+
+  it("contains no filesystem write, rename, or delete call in the import path", () => {
+    // The claim being tested is that the dataset is never opened FOR WRITING, which is stronger
+    // than "the file still has the same bytes" — a write that opens, truncates, and restores would
+    // leave the content identical while destroying the file's identity. The integration test
+    // compares SHA-256 before and after, which proves the content; this proves there is no code
+    // path capable of touching it.
+    //
+    // Scanned as source text rather than by running the import under a patched `fs`, because
+    // monkey-patching a module can only observe the paths the test happens to execute, and an
+    // unexecuted write path is exactly what this is looking for. A textual scan sees code that is
+    // not currently reachable.
+    const writeApis = [
+      /\bwriteFile(?:Sync)?\b/,
+      /\bappendFile(?:Sync)?\b/,
+      /\bcreateWriteStream\b/,
+      /\bopen(?:Sync)?\s*\([^)]*['"`]w/,
+      /\btruncate(?:Sync)?\b/,
+      /\bunlink(?:Sync)?\b/,
+      /\brm(?:Sync)?\b/,
+      /\brename(?:Sync)?\b/,
+      /\bcp(?:Sync)?\b/,
+      /\bcopyFile(?:Sync)?\b/,
+      /\bchmod(?:Sync)?\b/,
+      /\bchown(?:Sync)?\b/,
+    ];
+
+    for (const relative of IMPORT_PATH_MODULES) {
+      const source = readFileSync(path.resolve(process.cwd(), relative), "utf8");
+      for (const pattern of writeApis) {
+        expect(pattern.test(source), `${relative} must not match ${pattern}`).toBe(false);
+      }
+    }
+  });
+
+  it("reads the dataset through the one documented entry point, which is read-only", async () => {
+    // Belt to the scan's braces: the only `node:fs` import the import path has is `readFile` from
+    // `node:fs/promises`, and calling it returns the file's content without a write handle.
+    const { readAndParseDatasetFile } = await import("@/lib/dataset/import-dataset");
+    const { entries, report } = await readAndParseDatasetFile(SOURCE_PATH);
+
+    expect(report.recordCount).toBe(600);
+    expect(entries).toHaveLength(600);
+    expect(readFileSync(SOURCE_PATH, "utf8")).toBe(readFileSync(SOURCE_PATH, "utf8"));
   });
 });
 
