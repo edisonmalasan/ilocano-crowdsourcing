@@ -1,11 +1,14 @@
 /**
  * Persistence seam.
  *
- * This package exports INTERFACES ONLY. No module here imports Supabase, `createClient`, or any
+ * This package exports INTERFACES ONLY. No module in it imports Supabase, `createClient`, or any
  * persistence client, and none may be imported by a client component — the seam is what makes a
  * domain service testable against an in-memory fake with no database present.
- * `src/lib/repositories/supabase/**` is added by the next change; it is intentionally absent rather
- * than stubbed, so nothing can depend on it before it exists.
+ *
+ * The implementations live one level down, in `src/lib/repositories/supabase/**`, and satisfy these
+ * same interfaces. They are deliberately NOT re-exported here: a caller that imports from this
+ * module gets interfaces it can substitute, and a caller that needs a real database composes one
+ * explicitly from `src/lib/repositories/factory.ts`. Nothing in the seam can reach a client.
  *
  * Every implementation of these interfaces is bound by four rules:
  *
