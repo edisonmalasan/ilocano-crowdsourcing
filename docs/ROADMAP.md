@@ -13,10 +13,10 @@
 | --- | --- |
 | Current roadmap phase | Phase 2 — Database and Dataset Import |
 | Current OpenSpec change | `od-dataset-schema-and-import` |
-| Lifecycle state | `proposing` — proposal, design (D1–D8), capability deltas, and tasks authored on `docs/od-dataset-schema-proposal`; `openspec validate --strict` passes |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`) |
-| Last merged PR / change | #5 — `fix: pin repository line endings so checks and guards stop depending on git config` (`53754de`) |
-| Next eligible objective | Merge the `od-dataset-schema-and-import` proposal PR, then Apply it on `feat/od-dataset-schema-and-import` |
+| Lifecycle state | `implementing` — on `feat/od-dataset-schema-and-import`. Migrations, schema verification, parser, and import verification delivered; repository implementations in progress |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`) |
+| Last merged PR / change | #6 — `docs: propose od dataset schema and import` (`f14c0bb`) |
+| Next eligible objective | Finish the Supabase repository implementations, run the full gate, then open the Apply PR for `od-dataset-schema-and-import` |
 | Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite |
 
 ### Archived Changes
@@ -25,7 +25,22 @@
 | --- | --- | --- | --- |
 | `project-foundation` | `openspec/changes/archive/2026-09-30-project-foundation/` | PR #3, `f43d722` | Synced into `openspec/specs/`: `application-foundation` (5 req), `design-system` (5), `domain-contracts` (7), `data-access-boundary` (4). Verified with a `PASS WITH WARNINGS` review; every finding repaired before merge (task group 7 in the archived `tasks.md`). |
 
-### Line endings were found to change check outcomes, not just formatting (PR #5)
+### Phase 2 verification approach (decided, not yet complete)
+
+There are no Supabase credentials, so the schema, the import, and the 600-record verification are
+proven against a **real PostgreSQL engine** (PGlite, PostgreSQL compiled to WebAssembly), which
+evaluates the same SQL for constraints, foreign keys, and RLS policies. This converts "we have no
+database, so we can check nothing" into "we can check the schema; only the hosted deployment is
+unverified".
+
+The import was deliberately split into a **pure parse** and a thin idempotent write so that the
+PGlite verification and a future hosted run execute the same parsed records. An importer that
+talked to Supabase directly would have left the whole Phase 2 deliverable unverifiable.
+
+What remains for Phase 2: applying `supabase/migrations/` to a hosted Supabase project and
+repeating the 600-record verification there. That is a deployment step, not a code step.
+
+
 
 While filing the Phase 1 archive, `pnpm run format:check` failed on all 56 formatter-owned files.
 It was pre-existing — a clean `main` checkout failed identically. The repository had no
