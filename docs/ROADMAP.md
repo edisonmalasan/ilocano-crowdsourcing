@@ -43,10 +43,9 @@ What this evidence explicitly does **not** establish:
 - PGlite proves SQL, constraints, and Row Level Security **as the PostgreSQL engine evaluates
   them**. It does not prove Supabase Auth, Storage, Realtime, PostgREST behavior, or RLS as
   enforced by the Supabase API gateway.
-- `.github/workflows/verify.yml` passed on its first observed run (36612616260, PR #3,
-  `ubuntu-latest`) with counts identical to local. It is not yet trusted as a *subset* runner: that
-  run's dataset-guard job silently lost its path filter on Linux, which is fixed but not yet
-  re-confirmed from a run log.
+- `.github/workflows/verify.yml` passed on run 36612913931 (PR #3, `ubuntu-latest`) with counts
+  identical to local, and the dataset-guard job was confirmed from that run's log to be scoped to
+  `1 file / 7 tests`. The job-selection defect found in the previous run is fixed.
 - There is **no screenshot-based or human-eye visual verification** of the design. No desktop
   browser was connected. The design was verified through rendered-HTML assertions, emitted-CSS
   inspection, and component markup tests. A human still needs to look at the landing page.
@@ -74,12 +73,12 @@ What this evidence explicitly does **not** establish:
     remaining unverified surface is Supabase-managed behavior (Auth, Storage, Realtime, the
     `auth` schema, and RLS as enforced by the Supabase API gateway) and the first real migration
     deploy.
-  - *Partially mitigated:* CI can prove SQL and RLS, and `.github/workflows/verify.yml` passed on
-    its first observed run (36612616260, PR #3, `ubuntu-latest`): 12 files / 235 unit tests and
-    2 files / 18 integration tests, identical to the local counts. That same run exposed a defect
-    in the workflow itself — the dataset-guard job's path filter was dropped on Linux, so it ran
-    the whole integration suite instead of the file it claimed to isolate. Fixed to
-    `pnpm exec vitest run --project integration <path>`.
+  - *Mitigated, with a caveat recorded:* CI can prove SQL and RLS, and `.github/workflows/verify.yml`
+    passed on run 36612913931 (PR #3, `ubuntu-latest`): 12 files / 235 unit tests and 2 files / 18
+    integration tests, identical to the local counts. That run's dataset-guard job was read back
+    from the log and confirmed scoped to `1 file / 7 tests`. An earlier run had exposed a defect in
+    the workflow itself — the guard job's path filter was dropped on Linux, so it ran the whole
+    integration suite instead of the file it claimed to isolate. Green did not mean correct.
 
 ### Planned Change Sequence
 
