@@ -12,11 +12,11 @@
 | Field | Value |
 | --- | --- |
 | Current roadmap phase | Phase 1 — Project Foundation |
-| Current OpenSpec change | _(none active)_ |
-| Lifecycle state | `proposed` — bootstrap reconciliation in progress |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`) |
-| Last merged PR / change | `chore: agents md file` (`81b3115`) |
-| Next eligible objective | OpenSpec change `project-foundation` (Phase 1) |
+| Current OpenSpec change | `project-foundation` |
+| Lifecycle state | `proposed` — proposal, design, specs, and tasks authored; strict validation passing |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`) |
+| Last merged PR / change | #1 — `docs: add project status ledger and reconcile roadmap references` (`567ab42`) |
+| Next eligible objective | Apply `project-foundation` on `feat/project-foundation` |
 | Blockers | See "Active Blockers" below |
 
 ### Active Blockers
@@ -30,6 +30,12 @@
 - **No local container/PostgreSQL runtime.** `docker`, `psql`, and the `supabase` CLI are not
   installed on this machine, so `supabase start` (local Supabase) is not available as a
   substitute.
+  - *Mitigation in progress:* the `project-foundation` change introduces a
+    `@electric-sql/pglite` (real PostgreSQL compiled to WASM) integration harness, so schema,
+    constraint, and transactional allocation logic can be applied and asserted in CI without a
+    container. The remaining unverified surface is Supabase-managed behavior (Auth, Storage,
+    Realtime, the `auth` schema, and RLS as enforced by the Supabase API gateway) and the first
+    real migration deploy.
 
 ### Planned Change Sequence
 
