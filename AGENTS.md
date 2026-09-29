@@ -4,7 +4,7 @@
 
 **Sadino Crowdsourcing Validation Platform** is a research-focused web application for crowdsourced validation of synthesized Ilocano local-navigation dataset entries for the Sadino thesis project.
 
-The project is currently greenfield. The starting research artifact is the synthesized **Origin + Destination** dataset, `baguio_od_600.json`, containing 600 Ilocano navigation instructions with stable external IDs such as `OD_0001` through `OD_0600`. `ROADMAP.md` is the program-level development plan. The source synthetic dataset is reference research material and must remain immutable during validation; human responses are stored separately.
+The project is currently greenfield. The starting research artifact is the synthesized **Origin + Destination** dataset, `data/ilocano-synthetic-data.json`, containing 600 Ilocano navigation instructions with stable external IDs such as `OD_0001` through `OD_0600`. `docs/ROADMAP.md` is the program-level development plan. The source synthetic dataset is reference research material and must remain immutable during validation; human responses are stored separately.
 
 The target architecture is a Next.js web application deployed on Vercel with Supabase PostgreSQL as the persistence layer. Validators participate anonymously, complete a self-reported Ilocano-proficiency screening, receive coverage-aware randomized batches of 10 entries, submit structured judgments/corrections/optional translations, and may continue with additional batches. Researchers use a protected admin area to monitor coverage, inspect disagreements, and export research data. The architecture must support additional dataset categories without hard-coding behavior to `OD_*` records.
 
@@ -111,6 +111,25 @@ apply_client_state(resource=999999, progress=5000)
 
 ## Setup & commands
 
+> Status: the application has not been bootstrapped yet. The values below were verified on
+> 2026-09-30 against the developer machine and describe tooling only, not the application.
+
+Verified local environment:
+
+```text
+Operating system:  Windows (PowerShell)
+Node.js:           v26.10.0
+npm:               12.1.0
+pnpm:              12.6.0
+Git:               2.55.0
+GitHub CLI (gh):   2.101.0 (authenticated)
+OpenSpec CLI:      1.13.2
+```
+
+Not available locally: `docker`, `psql`, and the `supabase` CLI. There is therefore no local
+Supabase runtime, and no Supabase project credentials are configured. Database verification
+must be performed against a real Supabase project until a local runtime exists.
+
 No repository bootstrap or executable project command has been verified in this planning context yet.
 
 Current entry point:
@@ -198,7 +217,7 @@ None yet. Add a tool/check entry here only after its commands have been executed
 - Never weaken authentication, authorization, validation, sandboxing, permission checks, or trust boundaries without explicit requirements.
 - Never delete user data, migration data, production data, or preservation material as part of ordinary feature work.
 - Do not modify CI/CD, deployment, infrastructure, security, or repository governance unless the active task requires it.
-- Do not touch `raw source datasets under `data/` (especially `data/baguio_od_600.json`) and any other explicitly designated immutable research-source files` unless the active task explicitly requires it.
+- Do not touch `raw source datasets under `data/` (especially `data/ilocano-synthetic-data.json`) and any other explicitly designated immutable research-source files` unless the active task explicitly requires it.
 
 ---
 
@@ -508,7 +527,7 @@ When deciding what the project should do, use this order:
 1. Explicit user/task requirements
 2. Approved active OpenSpec change
 3. `openspec/specs/`
-4. `ROADMAP.md`, approved product/design/data contracts, and immutable research-source datasets when applicable
+4. `docs/ROADMAP.md`, approved product/design/data contracts, and immutable research-source datasets when applicable
 5. Existing implementation and architecture
 6. Tests
 7. Repository documentation
@@ -527,7 +546,7 @@ For preservation/parity work, observed reference behavior is evidence; an accide
 Before modifying an existing capability:
 
 - Inspect its implementation.
-- Search ``src/app/`, `src/components/`, `src/lib/`, `src/schemas/`, `supabase/`, `data/`, `openspec/`, `ROADMAP.md`, and related tests` as applicable.
+- Search ``src/app/`, `src/components/`, `src/lib/`, `src/schemas/`, `supabase/`, `data/`, `openspec/`, `docs/ROADMAP.md`, and related tests` as applicable.
 - Read the relevant OpenSpec spec/change.
 - Check `openspec/changes/` for active work.
 - Identify the current request → state mutation → response/output behavior.
