@@ -1,13 +1,12 @@
-# Spec Delta
+# domain-contracts Specification
 
 ## Purpose
-
 Defines the shared, category-agnostic domain vocabulary and validation contracts for the
 platform — dataset entries, anonymous validator identity, Ilocano proficiency, the four
 validation evaluations, conditional corrections, optional translations, and batch requests —
 together with the pure integrity rules that the user interface and the server both obey.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Category-agnostic dataset entry contract
 
@@ -146,11 +145,12 @@ typed error naming the failed operation, and SHALL NOT be silently swallowed as 
 "already validated" is a meaningful outcome the service must be able to report to the validator.
 
 The data-layer guarantee for this rule — a uniqueness constraint over the pair of validator and
-dataset entry, enforced by the database independently of application code — is **not** delivered by
-this change. It requires a migration, which this change explicitly excludes (see the proposal's
-scope and the design's non-goals). It is authored and verified by `od-dataset-schema-and-import`,
-together with the `validations` table itself. The contract below is what this change owes: the
-seam that the constraint will sit behind, and the rule that its violation must not be hidden.
+dataset entry, enforced by the database independently of application code — is owned by the
+`od-dataset-schema-and-import` change, together with the `validations` table itself. The repository
+seam described above already exists and is what the constraint will sit behind; the constraint
+itself is **not yet implemented**, and the platform is not compliant with this requirement until it
+is. `ValidationsRepository.insert` documents the expectation at the seam so the work is inherited
+rather than rediscovered.
 
 #### Scenario: A duplicate insert is surfaced as a named error, not a silent success
 
