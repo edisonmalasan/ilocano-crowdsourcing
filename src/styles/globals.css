@@ -1,0 +1,300 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   SADINO — Soft Neo-Brutalist Design System
+   --------------------------------------------------------------------------
+   This `@theme` block IS the design system. Component code never contains a raw
+   hex value, a raw pixel shadow, or a raw radius: it composes utilities that
+   resolve to the tokens below. If a value is not here, it does not belong in
+   the interface.
+
+   Rationale for the resolved values — and the explicit list of design-skill
+   directives that were overridden — is documented in `docs/DESIGN-SYSTEM.md`.
+   Do not add a token without recording why there too.
+
+   The system is a synthesis, not a copy of any single reference:
+     * Structure (bold borders, hard offset shadows, visible compartmentalisation,
+       monospace metadata, strong hierarchy) comes from the brutalist layer.
+     * Restraint (warm substrate, one accent, soft corners, generous whitespace,
+       short motion) comes from the refinement layer.
+   ========================================================================== */
+
+@theme {
+  /* -- Surfaces -----------------------------------------------------------
+     A single light, warm substrate. There is deliberately no dark or
+     "terminal" substrate token: the roadmap forbids mixing light and dark
+     substrates and forbids a tactical/terminal interpretation. */
+  --color-paper: #f4efe4;
+  --color-paper-raised: #fbf8f1;
+  --color-paper-sunken: #e9e2d3;
+  --color-paper-inset: #ded5c2;
+
+  /* -- Ink ----------------------------------------------------------------
+     All four steps clear WCAG AA (>= 4.5:1) against `--color-paper`.
+     `ink-faint` is the lowest and is for secondary metadata only. */
+  --color-ink: #1a1712;
+  --color-ink-muted: #57503f;
+  --color-ink-faint: #6e6656;
+
+  /* -- Accent (restrained) ------------------------------------------------
+     One copper accent carries primary action and selection. The brass and
+     sage steps exist for hairline/tint use on dark accent surfaces. */
+  --color-accent: #9c4a12;
+  --color-accent-hover: #853d0e;
+  --color-accent-press: #6f330b;
+  --color-accent-tint: #f2e2d6;
+  --color-accent-brass: #f0bd78;
+
+  /* -- Status (genuine semantics only) ------------------------------------
+     These are for real application state (saved, error, attention). They are
+     NEVER used to colour a validation answer option, because a coloured
+     answer would bias a validator. See `--color-answer-*` below. */
+  --color-status-ok: #4a6b3d;
+  --color-status-ok-tint: #e4ecdd;
+  --color-status-alert: #a33a22;
+  --color-status-alert-tint: #f4e0da;
+  --color-status-info: #3a5f6b;
+  --color-status-info-tint: #dee9ed;
+
+  /* -- Answer neutrality (research integrity) ------------------------------
+     A dedicated token pair for validation answer options. The accent is NOT
+     reachable from this pair, so an unselected option cannot be rendered as
+     more preferred than its siblings. Enforced in code, not by convention. */
+  --color-answer-surface: #fbf8f1;
+  --color-answer-border: #1a1712;
+  --color-answer-selected-surface: #9c4a12;
+  --color-answer-selected-text: #f4efe4;
+
+  /* -- Focus -------------------------------------------------------------- */
+  --color-focus: #1a1712;
+  --color-focus-ring: #f4efe4;
+
+  /* -- Typography ---------------------------------------------------------
+     `high-end-visual-design` bans Inter/Roboto/Arial/Helvetica as cheap
+     defaults. Display is a heavy grotesque with tight tracking; body is a
+     highly legible sans; mono is reserved for small-caps metadata labels. */
+  --font-display: var(--font-archivo), "Archivo", "Helvetica Neue", sans-serif;
+  --font-body: var(--font-public-sans), "Public Sans", ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+
+  /* Fluid display sizes. Body text is never fluid-small: `--text-body` has a
+     hard floor of 1rem so readability cannot degrade on narrow viewports. */
+  --text-display: clamp(2.5rem, 1.6rem + 4.2vw, 5rem);
+  --text-display--line-height: 0.95;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 800;
+
+  --text-title: clamp(1.75rem, 1.35rem + 1.9vw, 2.75rem);
+  --text-title--line-height: 1.02;
+  --text-title--letter-spacing: -0.025em;
+  --text-title--font-weight: 800;
+
+  --text-heading: clamp(1.3rem, 1.15rem + 0.7vw, 1.75rem);
+  --text-heading--line-height: 1.12;
+  --text-heading--letter-spacing: -0.018em;
+  --text-heading--font-weight: 700;
+
+  --text-lead: 1.125rem;
+  --text-lead--line-height: 1.6;
+
+  /* Hard floor of 1rem. This is the minimum readable body size the
+     `design-system` spec requires, and it is enforced here. */
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+
+  --text-small: 0.9375rem;
+  --text-small--line-height: 1.55;
+
+  /* Monospace micro-labels. Small by design — this is metadata, not prose. */
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.2;
+  --text-label--letter-spacing: 0.14em;
+  --text-label--font-weight: 500;
+
+  /* -- Borders ------------------------------------------------------------
+     Bold and always visible. This is the core structural signal. */
+  --border-width-default: 2px;
+  --border-width-heavy: 3px;
+
+  /* -- Radii (slightly softened, never square) ----------------------------
+     `industrial-brutalist-ui` demands 0px. The roadmap requires "slightly
+     softened corners" and forbids the hard industrial interpretation, so the
+     radius is modest and non-zero. */
+  --radius-control: 10px;
+  --radius-card: 12px;
+  --radius-sheet: 18px;
+  --radius-pill: 999px;
+  --radius-xs: 4px;
+
+  /* -- Shadows (hard offset, zero blur) ----------------------------------
+     The refinement layer bans harsh dark drop shadows; the brutalist layer
+     demands hard offsets. Resolution: a solid, fully opaque, tightly offset
+     shadow. Zero blur, no glow, no diffusion. */
+  --shadow-brutal-xs: 2px 2px 0 0 var(--color-ink);
+  --shadow-brutal-sm: 3px 3px 0 0 var(--color-ink);
+  --shadow-brutal-md: 4px 4px 0 0 var(--color-ink);
+  --shadow-brutal-lg: 6px 6px 0 0 var(--color-ink);
+  --shadow-brutal-xl: 9px 9px 0 0 var(--color-ink);
+
+  /* Interactive press: the offset collapses toward the element, so the
+     control reads as physically depressed. */
+  --shadow-brutal-press: 1px 1px 0 0 var(--color-ink);
+
+  /* -- Spacing ------------------------------------------------------------
+     4px base. Section rhythm is generous, per the refinement layer, but
+     capped at 160px so a 10-item batch on a phone is not pushed off-screen. */
+  --spacing: 0.25rem;
+
+  /* -- Motion (restrained) ------------------------------------------------
+     Opacity and transform only. 120-180ms. No scroll choreography, no
+     spring, no 700ms easing, no looping animation, no timers or streaks. */
+  --ease-brutal: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-instant: 100ms;
+  --duration-fast: 140ms;
+  --duration-base: 180ms;
+
+  /* -- Breakpoint additions ---------------------------------------------- */
+  --breakpoint-xs: 25rem;
+}
+
+/* ==========================================================================
+   Base layer
+   ========================================================================== */
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    border-color: var(--color-ink);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+    /* Nothing essential may require horizontal scrolling at 320px. */
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* One focus treatment for the whole product: a thick ink ring with an
+     offset halo, so it is visible on cream, on ink, and on copper. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-control);
+  }
+
+  /* Never let a form control lose its focus ring to a reset. */
+  :where(input, select, textarea):focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  /* Remove the default number spinners; they are visual noise on a small
+     numeric field and inconsistently styled across engines. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
+  /* Visible, chunky scrollbars that match the system rather than the OS. */
+  * {
+    scrollbar-color: var(--color-ink) var(--color-paper-sunken);
+    scrollbar-width: thin;
+  }
+}
+
+/* ==========================================================================
+   Paper grain
+   --------------------------------------------------------------------------
+   A single low-opacity fixed overlay. This is the ONLY textural effect in the
+   product. Explicitly rejected: halftone, CRT scanlines, 1-bit dithering,
+   anisotropic noise, and any effect attached to a scrolling container (which
+   would force continuous GPU repaints on mobile).
+   ========================================================================== */
+
+@layer utilities {
+  .paper-grain::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Vertical rhythm. Generous but bounded so a validator never scrolls past
+     the entry they are judging. */
+  .section-y {
+    padding-block: 3rem;
+  }
+
+  @media (min-width: 48rem) {
+    .section-y {
+      padding-block: 5rem;
+    }
+  }
+
+  @media (min-width: 80rem) {
+    .section-y {
+      padding-block: 7.5rem;
+    }
+  }
+
+  /* The monospace small-caps label used for all metadata. */
+  .label-meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    line-height: var(--text-label--line-height);
+    letter-spacing: var(--text-label--letter-spacing);
+    text-transform: uppercase;
+    font-weight: var(--text-label--font-weight);
+  }
+}
+
+/* ==========================================================================
+   Reduced motion
+   --------------------------------------------------------------------------
+   Honoured globally. Non-essential transitions are suppressed rather than
+   merely shortened, so nothing that could imply pressure remains.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
