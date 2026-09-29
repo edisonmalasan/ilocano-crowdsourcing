@@ -15,9 +15,19 @@
 | Current OpenSpec change | none active. `openspec/changes/` holds no unarchived change |
 | Lifecycle state | `archived` — `od-dataset-schema-and-import` applied, independently verified, merged (PR #7, `d2eea22`), synced into `openspec/specs/`, and archived as `2026-09-30-od-dataset-schema-and-import`. Sync and Archive ran as one stage on `chore/archive-od-dataset-schema-and-import` |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`) |
-| Last merged PR / change | #8 — `Merge pull request #8 from edisonmalasan/chore/archive-od-dataset-schema-and-import` (`1ed3340`), the `od-dataset-schema-and-import` Sync + Archive stage |
+| Last merged OpenSpec stage | #8 — `Merge pull request #8 from edisonmalasan/chore/archive-od-dataset-schema-and-import` (`1ed3340`), the `od-dataset-schema-and-import` Sync + Archive stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
+| Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) — reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
 | Next eligible objective | Phase 3, `landing-and-screening`: landing, Ilocano proficiency screening, anonymous validator create/restore. Requires a new Propose stage on a `docs/landing-and-screening-proposal` branch from updated `main` |
 | Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite. Does not block Phase 3, which is UI and screening work |
+
+> **Why this block splits "OpenSpec stage" from "PR".** A block that names "the last merged PR"
+> is self-referential: the PR that corrects the number is itself a PR, and its own merge falsifies
+> the correction. PR #8 recorded #7, and the PR that fixed it (#9) then made #8 the stale value.
+> Chasing that regress produces an endless sequence of PRs whose only content is the previous PR's
+> number. So this block reports the last merged **OpenSpec stage** — a stable fact — and lists
+> documentation-only PRs separately, where appending a line is honest rather than contradictory.
+> The trade-off is that "Doc-only PRs since that stage" is not self-updating; read git history for
+> the authoritative commit list.
 
 ### Archived Changes
 
