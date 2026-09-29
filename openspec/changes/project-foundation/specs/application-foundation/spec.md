@@ -23,9 +23,17 @@ during a build.
 
 #### Scenario: Unsupported Node major version is detected
 
-- **WHEN** the toolchain runs under a Node.js major version outside the declared `engines.node`
-  range
-- **THEN** the package manager emits an engine mismatch error before any build step begins
+- **WHEN** the toolchain runs under a Node.js version outside the declared supported range
+- **THEN** the package manager refuses to install, emitting a version-check error naming the
+  required and actual versions, before any build step begins
+
+> Enforcement note. This is implemented with `devEngines.runtime` carrying `onFail: "error"`, not
+> with `engines` alone. pnpm 12 does **not** fail on an `engines` mismatch — verified empirically:
+> a project declaring `engines.node: ">=99 <100"` still installed with exit 0, with and without
+> `engine-strict=true` in `.npmrc`. `devEngines.runtime.onFail: "error"` does fail, with exit 1 and
+> the message "This project requires Node.js >=99 <100. Your current Node.js is v26.10.0". The
+> original wording of this scenario said "the package manager emits an engine mismatch error",
+> which was empirically false as written.
 
 ### Requirement: Environment configuration is validated and fails fast
 
