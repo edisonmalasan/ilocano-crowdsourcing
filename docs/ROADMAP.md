@@ -2,6 +2,69 @@
 
 # Sadino Crowdsourcing Validation Platform
 
+## Project Status
+
+> This block is a **progress ledger owned by the root orchestrator**, not a behavioral
+> specification. `AGENTS.md` and `openspec/` remain the source of truth for rules and for
+> specified behavior. Reconcile this block against Git, OpenSpec, and the repository before
+> trusting it.
+
+| Field | Value |
+| --- | --- |
+| Current roadmap phase | Phase 1 — Project Foundation |
+| Current OpenSpec change | _(none active)_ |
+| Lifecycle state | `proposed` — bootstrap reconciliation in progress |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`) |
+| Last merged PR / change | `chore: agents md file` (`81b3115`) |
+| Next eligible objective | OpenSpec change `project-foundation` (Phase 1) |
+| Blockers | See "Active Blockers" below |
+
+### Active Blockers
+
+- **No Supabase project credentials.** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and
+  `SUPABASE_SERVICE_ROLE_KEY` are absent from the environment and from the repository.
+  Schema migrations and application code can be authored and reviewed, but migrations cannot
+  be applied and database behavior cannot be verified end to end until a project exists.
+  Required to unblock Phase 2+ runtime verification: a Supabase project the team controls,
+  with migrations applied via the Supabase CLI or the hosted SQL editor.
+- **No local container/PostgreSQL runtime.** `docker`, `psql`, and the `supabase` CLI are not
+  installed on this machine, so `supabase start` (local Supabase) is not available as a
+  substitute.
+
+### Planned Change Sequence
+
+The roadmap is executed as a sequence of bounded OpenSpec changes, one architectural step
+each, in dependency order:
+
+1. `project-foundation` — Phase 1: Next.js/TypeScript/Tailwind shell, design tokens, lint,
+   test harness, Zod schemas, Supabase client boundary.
+2. `od-dataset-schema-and-import` — Phase 2: migrations for the six tables, constraints,
+   indexes, RLS, and import/verification of the 600 `OD_*` entries.
+3. `landing-and-screening` — Phase 3: landing, Ilocano proficiency screening, anonymous
+   validator create/restore.
+4. `coverage-aware-allocation` — Phase 4: server-authoritative batch allocation engine.
+5. `validation-experience` — Phase 5: per-entry validation, conditional correction, optional
+   translation, immediate persistence.
+6. `batch-continuation` — Phase 6: batch completion, continue-or-finish, interrupted-batch
+   recovery.
+7. `admin-dashboard` — Phase 7: protected researcher dashboard.
+8. `export-system` — Phase 8: research-data export pipeline.
+9. `quality-assurance` — Phase 9: cross-cutting QA/verification hardening.
+
+### Open Decisions (do not block development)
+
+These correspond to Phase 0 and require thesis-team/adviser input. The roadmap explicitly
+allows development to proceed before they are finalized; they are not implemented as
+assumptions and must be confirmed before production crowdsourcing (Phase 11):
+
+- target independent validations per entry (planning default: 3, kept configurable);
+- which proficiency levels count as *eligible* validations;
+- whether `Conversational` validators are eligible;
+- disagreement/adjudication rules;
+- whether optional translations enter the final dataset;
+- whether any demographic data is academically required;
+- whether ethics/consent language is required before participation.
+
 ## 1. Project Goal
 
 Build a lightweight crowdsourcing website for validating the synthesized Ilocano navigation dataset used by the Sadino thesis project.
