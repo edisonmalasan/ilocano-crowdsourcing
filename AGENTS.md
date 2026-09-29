@@ -111,8 +111,9 @@ apply_client_state(resource=999999, progress=5000)
 
 ## Setup & commands
 
-> Status: the application has not been bootstrapped yet. The values below were verified on
-> 2026-09-30 against the developer machine and describe tooling only, not the application.
+> Status: the application was bootstrapped by the `project-foundation` change. Every command listed
+> below was executed successfully on 2026-09-30 against the developer machine in the versions
+> recorded here. Each entry states what it proves and what it does **not** prove.
 
 Verified local environment:
 
@@ -127,37 +128,96 @@ OpenSpec CLI:      1.13.2
 ```
 
 Not available locally: `docker`, `psql`, and the `supabase` CLI. There is therefore no local
-Supabase runtime, and no Supabase project credentials are configured. Database verification
-must be performed against a real Supabase project until a local runtime exists.
-
-No repository bootstrap or executable project command has been verified in this planning context yet.
+Supabase runtime, and **no Supabase project credentials are configured**
+(`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are all absent). This is the
+open blocker recorded in `docs/ROADMAP.md` -> `## Project Status`. Database verification against
+Supabase-managed services (Auth, Storage, Realtime, and Row Level Security as enforced by the
+API gateway rather than by the database engine) cannot be performed until a real project exists.
 
 Current entry point:
 
-> Not yet verified. Add the exact development command only after it has been executed successfully in the repository.
+```text
+pnpm run dev
+```
+
+Runs `next dev`. Verified on 2026-09-30 only as a local server on port 3001; see the runtime check
+below. No public deployment has been performed.
 
 Current dependency manifest / install command:
 
-> Not yet verified. Use the repository's chosen package manager and lockfile once initialized.
+```text
+pnpm install --frozen-lockfile
+```
+
+`pnpm-workspace.yaml` pins `pnpm@12.6.0`, and `package.json` pins `packageManager` and
+`engines.node: ">=24 <27"`. Do not mix package managers or regenerate the lockfile with another
+tool.
 
 Current baseline syntax / compile check:
 
-> Not yet verified. Record the exact type-check/build command only after successful execution.
+```text
+pnpm run typecheck
+```
 
 Important:
 
-- The supported development/runtime environment is `Next.js/Node.js server runtime plus modern evergreen browsers`; exact Node.js, framework, package-manager, and OS versions are not yet verified and must be recorded after repository bootstrap.
-- Executed dependency/package consistency check: `N/A — not yet executed`.
+- The supported development/runtime environment is `Next.js/Node.js server runtime plus modern evergreen browsers`. Verified versions: Next.js `16.3.6`, React `19.2.8`, TypeScript `5.9.3`, Node.js `v26.10.0`, pnpm `12.6.0`, on Windows with PowerShell.
+- Executed dependency/package consistency check: `pnpm install --frozen-lockfile`, exit 0.
 - Run risky, state-mutating, legacy, or preservation checks in an appropriate disposable environment when required.
 - No verified automated test, lint, type-check, build, or runtime command exists unless it is explicitly listed in this section.
 - Do not invent commands in this file.
 - When new tooling is added, update this section only with commands that were actually executed successfully.
 - Document what each verification command proves and what it explicitly does **not** prove.
 - Do not convert a successful syntax/build command into a claim that behavior or tests passed.
+- `AGENTS.md` is listed in `.prettierignore` and is never formatter-owned. Prettier's Markdown
+  printer rewrites inline code spans in this file and would corrupt the backtick-quoted references.
 
 ### Verified project tools
 
-None yet. Add a tool/check entry here only after its commands have been executed successfully, with the runtime/environment, exact commands, result, evidence scope, and limitations documented.
+All entries below were executed on 2026-09-30 on Windows/PowerShell, Node.js `v26.10.0`,
+pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-latest`.
+
+#### Static checks
+
+| Command | Result | Proves | Does **not** prove |
+| --- | --- | --- | --- |
+| `pnpm run lint` | exit 0, no errors or warnings | ESLint (including the custom `sadino/no-privileged-imports` boundary rule) accepts every file, and no client component imports `server-only`, `@supabase/supabase-js`, or the service-role env module. | That the boundary rule would still catch a *new* violation in a file not yet written. The rule was separately proved to fire on a temporary violating import during the `project-foundation` change; that probe file was deleted. |
+| `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" | Every formatter-owned file matches the committed Prettier configuration. | Nothing about correctness. `.prettierignore` intentionally excludes `AGENTS.md`, `openspec/`, `docs/`, `data/`, and `.agents/`. |
+| `pnpm run typecheck` | exit 0 | `tsc --noEmit` over `src/`, `tests/`, and config files under `strict`. This is what enforces the type-level separation assertions in `tests/unit/domain-types.test.ts`, which use `@ts-expect-error` directives that fail type-check if they ever become unnecessary. | Any runtime behavior. A type-check is not a test. |
+
+#### Automated tests
+
+| Command | Result | Proves | Does **not** prove |
+| --- | --- | --- | --- |
+| `pnpm run test:unit` | exit 0 — **12 files, 235 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation, env validation, the Supabase client construction paths, the repository interface seam, the write-intake boundary, the design-token contract, and rendered-markup accessibility assertions. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env` and `write-intake` tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. |
+| `pnpm run test:integration` | exit 0 — **2 files, 18 tests passed** | A real PostgreSQL engine (PGlite/WASM) boots, applies SQL in filename order inside per-file transactions, enforces a uniqueness constraint, evaluates a Row Level Security policy referencing a stubbed `auth.uid()`, honors per-role grants, and rolls back. Separately, `data/ilocano-synthetic-data.json` is asserted unchanged by record count, ID set, and SHA-256 content hash, and the guard is proved to fail on a deliberately altered copy. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the database engine evaluates them*. It does **not** cover Supabase Auth, Storage, Realtime, PostgREST behaviour, or RLS as enforced by the Supabase API gateway, and it is not a substitute for verifying against a real project. |
+
+#### Build and runtime
+
+| Command | Result | Proves | Does **not** prove |
+| --- | --- | --- | --- |
+| `pnpm run build` | exit 0 — Next.js 16.3.6 (Turbopack), "Compiled successfully", routes `/` and `/_not-found` both prerendered static | The application compiles for production under the committed TypeScript and Tailwind configuration, and the design tokens resolve into generated utilities. | That any test passed. A successful build is not a behavioral result. No route in this change is data-backed, so nothing is exercised end to end. |
+| `pnpm run dev` (port 3001) | `GET /` returned 200 on three consecutive requests | The landing page serves in a development runtime, and its rendered HTML contains the expected single `h1`, the skip link, the document title, `robots` noindex, and `main`/`header`/`footer` landmarks. The emitted stylesheet contains every `@theme` token, including a zero-blur hard offset shadow. | Visual quality. No desktop browser was connected, so there is **no screenshot-based or human-eye visual verification** of the design. The design was verified through rendered-HTML assertions, emitted-CSS inspection, and component markup tests. A human still needs to look at the page. |
+
+#### Specification validation
+
+| Command | Result | Proves | Does **not** prove |
+| --- | --- | --- | --- |
+| `openspec validate project-foundation --strict` | exit 0, "Change 'project-foundation' is valid" | The active change's proposal, design, and capability deltas satisfy the OpenSpec schema strictly. | That the implementation matches the change. That is verified by inspecting the code and tests, not by this command. |
+
+#### Continuous integration — NOT YET VERIFIED
+
+`.github/workflows/verify.yml` exists and defines a `verify` job (install, lint, format check,
+type-check, unit tests, integration tests, build) plus an `immutable-research-source` job that runs
+the dataset guard on its own. **The workflow has never been executed.** It was checked only for YAML
+validity and for the fact that every script name it calls exists in `package.json`. Its behavior on
+`ubuntu-latest` — including whether `pnpm install --frozen-lockfile` and the PGlite integration tests
+behave identically there — is unverified. Do not describe it as passing until a run has been observed.
+
+#### Repository tooling notes
+
+- `pnpm-workspace.yaml` sets `allowBuilds: { esbuild: true, sharp: false, unrs-resolver: false }`. `esbuild` **must** stay `true` or Vitest cannot start; `sharp` and `unrs-resolver` install scripts are deliberately disabled because nothing in this project uses them.
+- `vitest.config.ts` declares two projects, `unit` and `integration`. `fileParallelism` is not a valid key inside a project config and must not be added there.
 
 ---
 

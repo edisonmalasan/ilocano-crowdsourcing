@@ -13,11 +13,46 @@
 | --- | --- |
 | Current roadmap phase | Phase 1 — Project Foundation |
 | Current OpenSpec change | `project-foundation` |
-| Lifecycle state | `proposed` — proposal, design, specs, and tasks authored; strict validation passing |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`) |
-| Last merged PR / change | #1 — `docs: add project status ledger and reconcile roadmap references` (`567ab42`) |
-| Next eligible objective | Apply `project-foundation` on `feat/project-foundation` |
+| Lifecycle state | `verifying` — Apply implementation complete on `feat/project-foundation`; full local gate green; independent verification pass in progress |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal authored, strictly validated, and merged (PR #2, `f451a01`) |
+| Last merged PR / change | #2 — `docs: propose project foundation` (`f451a01`) |
+| Next eligible objective | Merge Apply PR for `project-foundation`, then Sync and Archive it; advance the cursor to `od-dataset-schema-and-import` |
 | Blockers | See "Active Blockers" below |
+
+### Local Verification Evidence — `project-foundation` (2026-09-30)
+
+Recorded so the ledger reflects observed results rather than intent. Every command below was
+executed and exited 0 on Windows/PowerShell, Node.js `v26.10.0`, pnpm `12.6.0`.
+
+| Command | Observed result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | exit 0 |
+| `pnpm run lint` | exit 0, no errors or warnings |
+| `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
+| `pnpm run typecheck` | exit 0 |
+| `pnpm run test:unit` | exit 0 — 12 files, **235 tests passed** |
+| `pnpm run test:integration` | exit 0 — 2 files, **18 tests passed** (real PostgreSQL via PGlite/WASM) |
+| `pnpm run build` | exit 0 — Next.js 16.3.6 (Turbopack), routes `/` and `/_not-found` prerendered static |
+| `openspec validate project-foundation --strict` | exit 0, "Change 'project-foundation' is valid" |
+
+What this evidence explicitly does **not** establish:
+
+- No Supabase client has ever been constructed at runtime, and no migration has ever been
+  applied to a real project. `data/ilocano-synthetic-data.json` is byte-identical to `main`
+  (guarded by SHA-256 in `tests/integration/immutable-dataset.test.ts`).
+- PGlite proves SQL, constraints, and Row Level Security **as the PostgreSQL engine evaluates
+  them**. It does not prove Supabase Auth, Storage, Realtime, PostgREST behavior, or RLS as
+  enforced by the Supabase API gateway.
+- `.github/workflows/verify.yml` has **never been executed**. It was checked only for YAML
+  validity and for the existence of every script name it calls.
+- There is **no screenshot-based or human-eye visual verification** of the design. No desktop
+  browser was connected. The design was verified through rendered-HTML assertions, emitted-CSS
+  inspection, and component markup tests. A human still needs to look at the landing page.
+- `getServerEnv()` / `getClientEnv()` are covered only by type-check and by tests of their pure
+  `parse*(source)` functions; the `process.env`-reading wrappers are not executed by any test.
+- No repository *implementation* exists yet. `src/lib/repositories/` is interfaces only by design,
+  so no persistence semantics (the `UNIQUE (validator_id, dataset_entry_id)` constraint, RLS, or
+  distinct-validator coverage counting) are proven by anything in this change.
 
 ### Active Blockers
 
@@ -30,12 +65,15 @@
 - **No local container/PostgreSQL runtime.** `docker`, `psql`, and the `supabase` CLI are not
   installed on this machine, so `supabase start` (local Supabase) is not available as a
   substitute.
-  - *Mitigation in progress:* the `project-foundation` change introduces a
-    `@electric-sql/pglite` (real PostgreSQL compiled to WASM) integration harness, so schema,
-    constraint, and transactional allocation logic can be applied and asserted in CI without a
-    container. The remaining unverified surface is Supabase-managed behavior (Auth, Storage,
-    Realtime, the `auth` schema, and RLS as enforced by the Supabase API gateway) and the first
-    real migration deploy.
+  - *Mitigation delivered in `project-foundation`:* a `@electric-sql/pglite` (real PostgreSQL
+    compiled to WASM) integration harness now exists, so schema, constraint, and transactional
+    logic can be applied and asserted in CI without a container.
+    `pnpm run test:integration` exits 0 with 18 passing tests against a real engine. The
+    remaining unverified surface is Supabase-managed behavior (Auth, Storage, Realtime, the
+    `auth` schema, and RLS as enforced by the Supabase API gateway) and the first real migration
+    deploy.
+  - *Partially mitigated:* CI can prove SQL and RLS, but `.github/workflows/verify.yml` has not
+    yet been executed, so "asserted in CI" is currently proven only locally.
 
 ### Planned Change Sequence
 
