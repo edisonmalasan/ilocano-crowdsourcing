@@ -189,7 +189,7 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 
 | Command | Result | Proves | Does **not** prove |
 | --- | --- | --- | --- |
-| `pnpm run test:unit` | exit 0 — **12 files, 235 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation, env validation, the Supabase client construction paths, the repository interface seam, the write-intake boundary, the design-token contract, and rendered-markup accessibility assertions. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env` and `write-intake` tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. |
+| `pnpm run test:unit` | exit 0 — **12 files, 244 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation, env validation, the Supabase client construction paths, the repository interface seam, the write-intake boundary, the design-token contract, and rendered-markup accessibility assertions. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env` and `write-intake` tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. |
 | `pnpm run test:integration` | exit 0 — **2 files, 18 tests passed** | A real PostgreSQL engine (PGlite/WASM) boots, applies SQL in filename order inside per-file transactions, enforces a uniqueness constraint, evaluates a Row Level Security policy referencing a stubbed `auth.uid()`, honors per-role grants, and rolls back. Separately, `data/ilocano-synthetic-data.json` is asserted unchanged by record count, ID set, and SHA-256 content hash, and the guard is proved to fail on a deliberately altered copy. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the database engine evaluates them*. It does **not** cover Supabase Auth, Storage, Realtime, PostgREST behaviour, or RLS as enforced by the Supabase API gateway, and it is not a substitute for verifying against a real project. |
 
 #### Build and runtime
@@ -210,9 +210,14 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 `.github/workflows/verify.yml` defines a `verify` job (install, lint, format check, type-check,
 unit tests, integration tests, build) plus an `immutable-research-source` job that runs the dataset
 guard on its own. **Run 36612913931 (PR #3, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
-`12 files / 235 tests` unit and `2 files / 18 tests` integration — the same counts observed
-locally — and "Compiled successfully" for the production build. The dataset-guard job was read back
+`12 files / 235 tests` unit and `2 files / 18 tests` integration, matching the local counts of that
+commit, and "Compiled successfully" for the production build. The dataset-guard job was read back
 from that run's log and reported `1 file / 7 tests`, confirming it really is scoped to the guard.
+
+The unit count is now 244 after the post-implementation review repairs; CI re-runs on every push, so
+the number to trust is whatever the run tied to the current commit reports, not this one. What is
+still unobserved is a *failing* run — "a failing test blocks the pull request" is inferred from the
+check being required on `pull_request`, not demonstrated.
 
 An earlier run of the same workflow (36612616260) exposed a defect in the workflow itself. The
 dataset job used `pnpm run test:integration -- <path>`, and on Linux the `pnpm run` layer dropped
