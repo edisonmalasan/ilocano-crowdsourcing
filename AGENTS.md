@@ -205,16 +205,27 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 | --- | --- | --- | --- |
 | `openspec validate project-foundation --strict` | exit 0, "Change 'project-foundation' is valid" | The active change's proposal, design, and capability deltas satisfy the OpenSpec schema strictly. | That the implementation matches the change. That is verified by inspecting the code and tests, not by this command. |
 | `openspec validate od-dataset-schema-and-import --strict` | exit 0, "Change 'od-dataset-schema-and-import' is valid" | The active change's proposal, design, and capability deltas satisfy the OpenSpec schema strictly. | That the implementation matches the change. That is verified by inspecting the code and tests, not by this command. |
+| `openspec validate --specs --strict` | exit 0, "Totals: 6 passed, 0 failed (6 items)" | All six **main** capabilities in `openspec/specs/` — `application-foundation`, `data-access-boundary`, `dataset-import`, `design-system`, `domain-contracts`, `research-schema` — satisfy the OpenSpec schema strictly after the `od-dataset-schema-and-import` archive synced its deltas into them. | That the implementation matches the specs. The three per-change `openspec validate <change> --strict` rows above still apply to any *new* unarchived change. |
+
+`project-foundation` and `od-dataset-schema-and-import` are both archived
+(`openspec/changes/archive/`), so `openspec validate <change> --strict` no longer accepts their
+names. Use the archived copies when reading their deltas, and the `--specs` command above to check
+what is currently in force.
 
 #### Continuous integration — observed runs
 
 `.github/workflows/verify.yml` defines a `verify` job (install, lint, format check, type-check,
 unit tests, integration tests, build) plus an `immutable-research-source` job that runs the dataset
-guard on its own. **Run 36614647692 (PR #3, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
-`12 files / 244 tests` unit and `2 files / 18 tests` integration — matching the local counts of the
+guard on its own. **Run 36628108347 (PR #7, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
+`14 files / 312 tests` unit and `4 files / 69 tests` integration — matching the local counts of the
 same commit — and "Compiled successfully" for the production build. The dataset-guard job was read
-back from that run's log and reported `1 file / 7 tests`, confirming it really is scoped to the
-guard rather than to the whole suite.
+back from that run's log and reported `1 file / 7 tests` against the literal command
+`pnpm exec vitest run --project integration tests/integration/immutable-dataset.test.ts`, confirming
+it really is scoped to the guard rather than to the whole suite.
+
+An earlier green run of the same workflow (36614647692, PR #3) reported `12 files / 244 tests` unit
+and `2 files / 18 tests` integration on what was then the whole suite, and is superseded by the
+counts above.
 
 An earlier run of the same workflow (36612616260) exposed a defect in the workflow itself. The
 dataset job used `pnpm run test:integration -- <path>`, and on Linux the `pnpm run` layer dropped
