@@ -17,6 +17,18 @@ import { cn } from "@/lib/styles/cn";
  * token at all. A component that renders an answer option therefore cannot
  * express a preference between options, even by accident.
  *
+ * SCOPE OF THAT CLAIM, stated precisely: it holds for the unselected set, whose
+ * class string is a single frozen constant that takes no per-option input, and
+ * for `AnswerGroup`, which passes no `className` at all — so every option it
+ * renders is byte-identical. The one path that is NOT structurally protected is
+ * the exported `answerOptionClasses` itself: a caller could pass
+ * `{ selected: false, className: "bg-accent" }` and the escape hatch would append
+ * the accent to an unselected option. That is a deliberate trade — a blind merge
+ * would make it impossible to lay out a group — so the constraint is enforced by
+ * `AnswerGroup`'s call site and by test, not by the type system. Do not add a
+ * per-option `className` parameter; that would turn this from a structural
+ * guarantee into a convention.
+ *
  * Rejected by the same rule: colouring an option red/green by "correctness",
  * sorting options so the agreeable one is first, and adding a micro-animation
  * to one option that the others do not have.
