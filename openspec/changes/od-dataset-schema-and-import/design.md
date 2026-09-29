@@ -49,6 +49,29 @@ as `service_role`, the same statement succeeds.
 database. RLS is a backstop against a future mistake, not the primary control. Stated here rather
 than implied: a reviewer who believes RLS is doing the authorization work would be wrong.
 
+**Deny-all is not uniform, and the quiet case is the dangerous one.** Measured against PGlite
+rather than assumed, with RLS enabled and no policy:
+
+| Statement | Role | Observed result |
+| --- | --- | --- |
+| `select` | `anon` | **0 rows, no error** |
+| `select` | `authenticated` | 0 rows, no error |
+| `insert` | `anon` | throws `new row violates row-level security policy` |
+| `select` | `service_role` | returns the row (`bypassrls`) |
+
+So a denied read is *silent*. At the call site an empty array is indistinguishable from a
+legitimate "no such entry" — which is exactly the confusion `data-access-boundary` rule 2 exists
+to prevent ("MUST NOT return an empty result to mean the query failed"). Two consequences: the
+verification test asserts **0 rows** for a denied read and an **error** for a denied write, rather
+than expecting an error from both; and any future code that treats an empty result as a successful
+lookup is relying on the server boundary being correct, because RLS will not tell it apart.
+
+**A harness trap worth recording.** `createTestDatabase()` does **not** grant privileges;
+`applyMigrations()` does, and it does so *after* the migration files run. A test that creates its
+tables with `db.exec` instead of applying migrations therefore sees `permission denied for table`
+for **every** role, including `service_role` — which looks exactly like an RLS result and is not
+one. Any test asserting RLS behavior must reach the tables through `applyMigrations`.
+
 **Consequence for Phase 7.** When researcher authentication lands, admin-scoped `select` policies
 for `authenticated` are added in that change. This change leaves the door closed, not ajar.
 

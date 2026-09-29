@@ -147,11 +147,23 @@ This is a backstop against a future mistake, not the primary authorization contr
 validator session and no client-side persistence access, the server boundary is what authorizes
 requests, and the database refuses everything else.
 
-#### Scenario: A public credential is refused
+A refusal is not uniform across statement kinds, and the difference matters. A `select` under a
+deny-all policy returns zero rows **without raising an error**, while an `insert`, `update`, or
+`delete` is rejected **with** a Row Level Security error. A silent zero-row read is
+indistinguishable at the call site from a legitimate "no such data", which is precisely why a
+repository must never treat an empty result as proof that a query succeeded.
+
+#### Scenario: A public credential sees no research data
 
 - **WHEN** a `select` is attempted on any research table as `anon` or `authenticated`
-- **THEN** the database returns no rows and raises a Row Level Security error, because no policy
-  grants access to those roles
+- **THEN** it returns zero rows, because no policy grants those roles access
+
+#### Scenario: A public credential cannot modify research data
+
+- **WHEN** an `insert`, `update`, or `delete` is attempted on any research table as `anon` or
+  `authenticated`
+- **THEN** the database raises a Row Level Security error naming the table, so the attempt fails
+  loudly rather than appearing to succeed
 
 #### Scenario: Privileged server access still works
 

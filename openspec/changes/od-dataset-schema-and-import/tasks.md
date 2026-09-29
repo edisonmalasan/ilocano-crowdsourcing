@@ -45,9 +45,13 @@
 - [ ] 2.6 Assert a foreign key rejects an orphan `validator_id`, `dataset_entry_id`, and
   `batch_id`.
 - [ ] 2.7 Assert a stored correction leaves `dataset_entries.instruction` byte-identical.
-- [ ] 2.8 Assert the RLS posture using `asRole`: a `select` as `anon` is refused, and the same
-  statement as `service_role` succeeds. Never demonstrate a refusal using the privileged role —
-  it has `bypassrls` and would pass regardless.
+- [ ] 2.8 Assert the RLS posture using `asRole`, reaching the tables through `applyMigrations` so
+  privileges actually exist. A `select` as `anon` and as `authenticated` must return **0 rows
+  without an error**; an `insert` as `anon` must be **rejected with a Row Level Security error**.
+  Never demonstrate a refusal using the privileged role — it has `bypassrls` and would pass
+  regardless. Note that `createTestDatabase()` does not grant privileges and only
+  `applyMigrations` does, so a test that builds its tables with `db.exec` sees `permission denied`
+  for every role and mistakes a grant problem for an RLS result.
 - [ ] 2.9 Assert the indexes exist, so a migration that silently omits one fails rather than
   leaving allocation to discover the gap by timing.
 
