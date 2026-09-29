@@ -85,6 +85,13 @@ one of the four approved values; that every stored proficiency is one of the fiv
 or absent; that every stored translation language is an approved target or absent; and that a
 stored correction is either present-and-non-empty or absent.
 
+A stored response SHALL also be internally consistent, which a per-column constraint cannot
+express. The database SHALL reject a response whose correction does not match its evaluation, a
+translation whose language and text are not both present or both absent, and a translation attached
+to an evaluation that carries nothing translatable. These SHALL be enforced by constraints written
+to match the domain integrity rules exactly — neither wider, which would refuse a legitimate
+response, nor narrower, which would be dead weight that looks like a guarantee.
+
 A constraint violation SHALL be surfaced to the caller as a typed error naming the failed
 operation, and SHALL NOT be swallowed as a successful no-op.
 
@@ -118,6 +125,21 @@ operation, and SHALL NOT be swallowed as a successful no-op.
   instruction is unchanged, because the imported synthetic instruction is immutable research
   material
 
+#### Scenario: A response that no column constraint can catch is still rejected
+
+- **WHEN** a response supplies a correction where the evaluation does not take one, omits the
+  correction where the evaluation requires one, pairs a translation language with no text (or text
+  with no language), or attaches a translation to an entry the validator could not evaluate
+- **THEN** the database rejects it, because each of those combinations satisfies every per-column
+  check and is still a record the domain schema refuses
+
+#### Scenario: The consistency constraints do not refuse a legitimate response
+
+- **WHEN** a response supplies a correction for an evaluation that requires one, a language and
+  text together, and no translation at all for an entry that could not be evaluated
+- **THEN** the database accepts it, because a constraint stricter than the domain's rules would
+  destroy real research responses, which is the worse of the two failure directions
+
 ### Requirement: The coverage and review queries the platform depends on are indexed
 
 The schema SHALL provide the indexes that coverage-aware allocation and research review require:
@@ -147,11 +169,23 @@ This is a backstop against a future mistake, not the primary authorization contr
 validator session and no client-side persistence access, the server boundary is what authorizes
 requests, and the database refuses everything else.
 
-A refusal is not uniform across statement kinds, and the difference matters. A `select` under a
-deny-all policy returns zero rows **without raising an error**, while an `insert`, `update`, or
-`delete` is rejected **with** a Row Level Security error. A silent zero-row read is
-indistinguishable at the call site from a legitimate "no such data", which is precisely why a
-repository must never treat an empty result as proof that a query succeeded.
+A refusal is not uniform across statement kinds, and the difference matters. Measured against a
+real PostgreSQL engine, not assumed:
+
+| Statement | Result as `anon` / `authenticated` |
+| --- | --- |
+| `select` | zero rows, **no error** |
+| `update` | zero rows affected, **no error** |
+| `delete` | zero rows affected, **no error** |
+| `insert` | **rejected with** `new row violates row-level security policy` |
+
+Only `insert` is loud. A denied `update` or `delete` is filtered by Row Level Security exactly as a
+denied `select` is: the row is simply not visible to the statement, so the statement succeeds
+against zero rows. Nothing was modified — the data is safe — but at the call site a successful
+`update` that changed nothing is indistinguishable from one that changed something. That silent
+half is why the repository contract forbids treating an empty result or an unremarkable write as
+proof that a query did what it was asked to do, and why the server boundary, not this schema, is
+what actually authorizes a request.
 
 #### Scenario: A public credential sees no research data
 
@@ -160,10 +194,16 @@ repository must never treat an empty result as proof that a query succeeded.
 
 #### Scenario: A public credential cannot modify research data
 
-- **WHEN** an `insert`, `update`, or `delete` is attempted on any research table as `anon` or
-  `authenticated`
+- **WHEN** an `insert` is attempted on any research table as `anon` or `authenticated`
 - **THEN** the database raises a Row Level Security error naming the table, so the attempt fails
   loudly rather than appearing to succeed
+
+#### Scenario: A denied update or delete fails silently, and the schema does not pretend otherwise
+
+- **WHEN** an `update` or `delete` is attempted on any research table as `anon` or `authenticated`
+- **THEN** it completes without an error and affects zero rows, because Row Level Security filters
+  the rows the statement may see rather than refusing the statement, and the specification does not
+  claim a loudness this posture does not provide
 
 #### Scenario: Privileged server access still works
 
@@ -194,8 +234,11 @@ modelled by the current domain type.
 #### Scenario: The stored record is not silently normalized
 
 - **WHEN** an entry is imported
-- **THEN** the stored source record is byte-equivalent in content to the source record, so
-  capitalization, punctuation, and whitespace in Ilocano text are preserved exactly as authored
+- **THEN** every key, string, number, and null of the source record is stored with the value it
+  has in the source, so capitalization, punctuation, and whitespace in Ilocano text are preserved
+  exactly as authored, and the stored record is compared to the source as a value rather than as
+  bytes, because `jsonb` does not preserve key order or insignificant whitespace and a byte
+  comparison would assert a property the column type does not have
 
 #### Scenario: Typed columns and the source record agree
 

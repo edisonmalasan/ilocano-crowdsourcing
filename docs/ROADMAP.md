@@ -13,10 +13,10 @@
 | --- | --- |
 | Current roadmap phase | Phase 2 — Database and Dataset Import |
 | Current OpenSpec change | `od-dataset-schema-and-import` |
-| Lifecycle state | `implementing` — on `feat/od-dataset-schema-and-import`. Migrations, schema verification, parser, and import verification delivered; repository implementations in progress |
+| Lifecycle state | `verifying` — on `feat/od-dataset-schema-and-import`. Migrations, schema verification, parser, import verification, and the three Supabase repository implementations delivered. An independent verification pass has completed (PASS WITH FINDINGS, one CRITICAL); the CRITICAL and all seven warnings and eight notes have been repaired, and the full gate passes again. The Apply PR is the remaining step |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`) |
 | Last merged PR / change | #6 — `docs: propose od dataset schema and import` (`f14c0bb`) |
-| Next eligible objective | Finish the Supabase repository implementations, run the full gate, then open the Apply PR for `od-dataset-schema-and-import` |
+| Next eligible objective | The Apply PR for `od-dataset-schema-and-import`, then Sync + Archive, then the roadmap cursor moves to Phase 3 |
 | Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite |
 
 ### Archived Changes
@@ -25,7 +25,7 @@
 | --- | --- | --- | --- |
 | `project-foundation` | `openspec/changes/archive/2026-09-30-project-foundation/` | PR #3, `f43d722` | Synced into `openspec/specs/`: `application-foundation` (5 req), `design-system` (5), `domain-contracts` (7), `data-access-boundary` (4). Verified with a `PASS WITH WARNINGS` review; every finding repaired before merge (task group 7 in the archived `tasks.md`). |
 
-### Phase 2 verification approach (decided, not yet complete)
+### Phase 2 verification approach (executed; hosted half still outstanding)
 
 There are no Supabase credentials, so the schema, the import, and the 600-record verification are
 proven against a **real PostgreSQL engine** (PGlite, PostgreSQL compiled to WebAssembly), which
@@ -39,6 +39,16 @@ talked to Supabase directly would have left the whole Phase 2 deliverable unveri
 
 What remains for Phase 2: applying `supabase/migrations/` to a hosted Supabase project and
 repeating the 600-record verification there. That is a deployment step, not a code step.
+
+The three Supabase repositories under `src/lib/repositories/supabase/` are the other half of what
+PGlite cannot reach. They are unit-tested against a recording fake — the fake asserts the *query
+shape*, so an explicit column list, `head: true` on a count, and `maybeSingle()` over `single()`
+are all checked — and none of that is evidence about PostgREST. Specifically unverified until a
+project exists: that `.in()`, `.range()`, and `count: "exact"` behave as the code assumes, that a
+uniqueness violation actually arrives with `code === "23505"` (the code is written to the
+documented SQLSTATE, not to an observed payload), and this project's maximum rows per request, which
+two methods depend on in order to detect truncation. The repositories are deliberately not
+constructed at runtime anywhere yet.
 
 
 
@@ -128,9 +138,103 @@ group 7 in `openspec/changes/project-foundation/tasks.md`. The three that change
 
 Carried into `od-dataset-schema-and-import` as required work, not as loose ends: the
 `UNIQUE (validator_id, dataset_entry_id)` constraint with a PGlite assertion; the `supabase/`
-repository implementations; the "preserve unknown fields" rule, which is currently a documented
-contract with no implementation to assert it against; and the default `supabase/migrations/`
-applier path, which has never run end to end because that directory is still empty.
+repository implementations; the "preserve unknown fields" rule, which was a documented contract
+with no implementation to assert it against; and the default `supabase/migrations/` applier path,
+which had never run end to end because that directory was empty. All four are now delivered — see
+the evidence section below.
+
+
+### Local Verification Evidence — `od-dataset-schema-and-import` (2026-09-30)
+
+Executed on Windows/PowerShell, Node.js `v26.10.0`, pnpm `12.6.0`, on `feat/od-dataset-schema-and-import`.
+
+| Command | Observed result |
+| --- | --- |
+| `pnpm run lint` | exit 0, no errors or warnings |
+| `pnpm run format:check` | exit 0, **after** `prettier --write` on two files (see below) |
+| `pnpm run typecheck` | exit 0 |
+| `pnpm run test:unit` | exit 0 — 14 files, **312 tests passed** |
+| `pnpm run test:integration` | exit 0 — 4 files, **69 tests passed** (real PostgreSQL via PGlite/WASM) |
+| `pnpm run build` | exit 0 — Next.js 16.3.6 (Turbopack), routes `/` and `/_not-found` prerendered static |
+| `openspec validate od-dataset-schema-and-import --strict` | exit 0, "Change 'od-dataset-schema-and-import' is valid" |
+
+An independent verification pass (a separate agent with no stake in the implementation) returned
+**PASS WITH FINDINGS, one CRITICAL**. The CRITICAL was a real defect in a *specification*: the
+`research-schema` delta claimed a denied `update` or `delete` under Row Level Security "fails
+loudly". Measured against a real engine, only `insert` raises — `select`, `update`, and `delete` are
+all filtered to zero rows with no error. A throwaway probe test measured all four statement kinds
+for all three roles and confirmed the data was untouched. The spec now carries the measured table
+and a scenario that states the silent case plainly, and the migration's header comment was rewritten
+to match rather than to sound better than it is. This is also the sharpest reason the repository
+contract forbids reading an unremarkable write as success: `SupabaseValidatorsRepository
+.touchLastActive` is an `update`.
+
+The verification pass raised seven warnings and eight notes. All were repaired before this evidence
+was written, and each is recorded in `openspec/changes/od-dataset-schema-and-import/tasks.md`
+against the task it corrects, because a reviewer who cannot see why a task was annotated cannot tell
+a deliberate decision from an oversight:
+
+- Three were **claims the code did not support**: task 4.7 was ticked although nothing asserted the
+  source file is never *opened* for writing (the SHA-256 comparison proves the content, not the
+  absence of a write path — a new source scan now does, proved load-bearing by injecting a
+  `writeFile` import); task 7.8 described `countForEntry` as a count of *distinct* validators when
+  it is a plain row count made equivalent by the uniqueness constraint; and the `dataset-import`
+  spec said the stored record is "byte-equivalent in content" to the source, which `jsonb` cannot
+  promise, since it preserves neither key order nor insignificant whitespace.
+- Two were **spec-versus-implementation contradictions**: the structural tables
+  (`validation_sessions`, `validation_batches`, `batch_entries`) carried `started_at`, `ended_at`,
+  `requested_size` with a `1..50` check, `created_at`, `completed_at`, and `assigned_at` — all
+  lifecycle claims the spec forbids and design D3 explains why. All were removed and two closed-set
+  tests now pin the exact columns and assert via `pg_constraint` that these tables define no `CHECK`
+  constraint at all. And every `expectRejected` pattern ended in `|check constraint`, so the wrong
+  constraint firing would still have matched; each now names its constraint, which required probing
+  the engine to learn that every violation message names it.
+- One was **order dependence** in the import integration test: three tests only passed because of
+  the order they ran in, including the one asserting "600 inserted". Each test now resets and
+  imports for itself, verified by running the file under two different `--sequence.shuffle` seeds.
+
+`format:check` failed twice on files this change had already committed — first on four files
+(`synthetic-source.ts`, `migrations/README.md`, and both `dataset-import.test.ts` files), then on
+the two integration test files after the verification repairs. Both times the cause was committing
+without running the gate, which is the failure mode `AGENTS.md` warns about: a green build is not a
+green format check. Fixed with `prettier --write` each time; the resulting diff was inspected, and
+each touched file re-checked for a BOM, for CRLF, and for U+FFFD — the corruption signature that hit
+`AGENTS.md` and `migrations/README.md` in an earlier change.
+
+Assertions proved load-bearing by temporarily breaking the implementation, confirming the expected
+tests go red, and restoring it. `openspec/changes/od-dataset-schema-and-import/tasks.md` tasks 9.8,
+9.9, and 9.12 record exactly which tests failed in each case; the source-write scan added during
+verification was proved the same way. A test that has never failed is not known to test anything.
+
+Dataset immutability re-confirmed on this branch: `git hash-object` reports
+`acaaa05ac83c3a67f9eb1e81b4432d4b11da6263` (identical to `main`), SHA-256 is
+`39F757E61B70386B87EC1BB9410E881DF342027BF580BED9C2F9BEEB2F2E8965`, and `git diff main -- data/` is
+empty.
+
+What this evidence explicitly does **not** establish:
+
+- No Supabase client has ever been constructed at runtime and no migration has ever been applied to
+  a real project. PostgREST behaviour — including whether a uniqueness violation reports
+  `code === "23505"`, whether `.range()` and `count: "exact"` behave as the code assumes, and what
+  this project's maximum rows per request is — remains written to documentation, not to observation.
+- RLS is proved as the *PostgreSQL engine* evaluates it, through PGlite. Not as the Supabase API
+  gateway enforces it. No `authenticated` policy exists yet, by design.
+- The three cross-column consistency constraints on `validations` are proved against PGlite only,
+  and their correspondence with `applyValidationIntegrityRules` in `@/schemas/validation` is held by
+  review rather than by anything executable. They are the same rules stated twice, which is the
+  duplication that it is, and the error direction is asymmetric: a constraint that drifts narrower
+  lets an invalid row exist, one that drifts wider refuses a real research response. The vocabulary
+  *acceptance* tests added during verification read their expected values from the shipped domain
+  modules rather than retyping them, so a divergence between SQL and the domain is now caught for
+  the accepted values too — but only for the values those modules currently declare.
+- The repositories are exercised only against a recording fake. The fake asserts query *shape*; it
+  cannot report what a server did with the query.
+- `DatasetEntrySink` has no production implementation. The interface and both of its contract clauses
+  are proven against a real engine by a test-local sink, but the repository contains no
+  Supabase-backed one, so tasks 5.2 and 5.3 are a decided and proven *contract* rather than
+  shipping code. Recorded in this change's `tasks.md` under "Explicitly not done here".
+- There is still **no screenshot-based or human-eye visual verification** of the landing page, and
+  no Vercel deployment — `next start` has never been run.
 
 
 ### Active Blockers
@@ -147,10 +251,10 @@ applier path, which has never run end to end because that directory is still emp
   - *Mitigation delivered in `project-foundation`:* a `@electric-sql/pglite` (real PostgreSQL
     compiled to WASM) integration harness now exists, so schema, constraint, and transactional
     logic can be applied and asserted in CI without a container.
-    `pnpm run test:integration` exits 0 with 18 passing tests against a real engine. The
-    remaining unverified surface is Supabase-managed behavior (Auth, Storage, Realtime, the
-    `auth` schema, and RLS as enforced by the Supabase API gateway) and the first real migration
-    deploy.
+    `pnpm run test:integration` exits 0 with 63 passing tests against a real engine, applied from
+    the production `supabase/migrations/` directory. The remaining unverified surface is
+    Supabase-managed behavior (Auth, Storage, Realtime, the `auth` schema, PostgREST, and RLS as
+    enforced by the Supabase API gateway) and the first real migration deploy.
   - *Mitigated, with a caveat recorded:* CI can prove SQL and RLS, and `.github/workflows/verify.yml`
     passed on run 36614647692 (PR #3, `ubuntu-latest`): 12 files / 244 unit tests and 2 files / 18
     integration tests, matching the local counts of the same commit. That run's dataset-guard job was
