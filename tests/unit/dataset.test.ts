@@ -184,7 +184,11 @@ describe("dataset entry record", () => {
     });
 
     const responseShapedAsEntry = {
-      id: "val-1",
+      // A source-SHAPED id, deliberately. An earlier revision of this test used `id: "val-1"`,
+      // which the id regex rejects, so the assertion passed for the wrong reason: it proved the
+      // id format, not the structural disjointness the comment claims. With a well-formed id the
+      // only thing left that can reject this payload is the missing entry fields.
+      id: "OD_0001",
       validatorId: "VAL_a81d92c1",
       datasetEntryId: "OD_0001",
       batchId: "batch-1",
@@ -193,8 +197,16 @@ describe("dataset entry record", () => {
       updatedAt: "2026-09-30T00:00:00.000Z",
     };
 
-    // Absent the compile-time check, the runtime check is that an entry schema rejects a response.
-    expect(datasetEntrySchema.safeParse(responseShapedAsEntry).success).toBe(false);
+    const result = datasetEntrySchema.safeParse(responseShapedAsEntry);
+    expect(result.success).toBe(false);
+
+    // Assert the REASON, not just the outcome. `id` must not appear among the failing paths: if it
+    // does, this test has gone back to proving the id format rather than the shape separation.
+    const failingPaths = result.success ? [] : result.error.issues.map((issue) => issue.path[0]);
+    expect(failingPaths).not.toContain("id");
+    expect(failingPaths).toContain("instruction");
+    expect(failingPaths).toContain("category");
+
     expect("instruction" in entry).toBe(true);
     expect("evaluation" in entry).toBe(false);
   });
