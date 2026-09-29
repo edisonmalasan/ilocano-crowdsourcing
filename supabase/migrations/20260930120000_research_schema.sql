@@ -88,15 +88,20 @@ create table public.validators (
 -- validation_sessions
 -- ---------------------------------------------------------------------------
 -- STRUCTURAL ONLY. This table exists so the roadmap's six-table shape is real and so later phases
--- have somewhere to record participation. This change writes no row to it and defines no behavior
--- for it; the session lifecycle belongs to the phases that own screening and batch continuation.
+-- have somewhere to record participation. It carries its identity and the one foreign key that
+-- makes it mean something, and NOTHING ELSE: no timestamps, no state column, no constraint
+-- describing a lifecycle. This change writes no row to it and defines no behavior for it; the
+-- session lifecycle belongs to the phases that own screening and batch continuation.
+--
+-- A `started_at`/`last_seen_at`/`ended_at` trio was written here first and removed during review.
+-- It looked free, but each column is a claim about what a session IS — when it began, when the
+-- validator was last seen, whether it finished — and those claims belong to the change that owns
+-- the lifecycle. A column added in the wrong phase has to be lived with or undone, which is the
+-- exact cost design D3 exists to avoid. Columns are added by later `alter table` migrations.
 
 create table public.validation_sessions (
   id                text        primary key,
-  validator_id      text        not null references public.validators (id) on delete restrict,
-  started_at        timestamptz not null default now(),
-  last_seen_at      timestamptz not null default now(),
-  ended_at          timestamptz
+  validator_id      text        not null references public.validators (id) on delete restrict
 );
 
 create index validation_sessions_validator_id_idx
@@ -106,18 +111,16 @@ create index validation_sessions_validator_id_idx
 -- validation_batches
 -- ---------------------------------------------------------------------------
 -- STRUCTURAL ONLY, except that `validations.batch_id` references it. `ValidationResponse.batch_id`
--- is a required field, so this table must exist or that foreign key would be fiction. The batch
--- lifecycle itself is owned by the allocation change; the size bounds here mirror
--- BATCH_SIZE_HARD_MAX so an obviously impossible batch cannot be stored.
+-- is a required field, so this table must exist or that foreign key would be fiction.
+--
+-- `requested_size` and its `1..50` check constraint were written here first and removed during
+-- review, for the same reason as the session timestamps above: a size bound is batch-lifecycle
+-- behavior, and duplicating `BATCH_SIZE_HARD_MAX` in SQL is a second authority for a constant
+-- that Phase 4 owns. It can be re-added, with the allocation behavior it belongs to.
 
 create table public.validation_batches (
   id                text        primary key,
-  validator_id      text        not null references public.validators (id) on delete restrict,
-  requested_size    integer     not null,
-  created_at        timestamptz not null default now(),
-  completed_at      timestamptz,
-
-  constraint validation_batches_requested_size_range check (requested_size between 1 and 50)
+  validator_id      text        not null references public.validators (id) on delete restrict
 );
 
 create index validation_batches_validator_id_idx
@@ -128,13 +131,14 @@ create index validation_batches_validator_id_idx
 -- ---------------------------------------------------------------------------
 -- STRUCTURAL ONLY. The assignment record: which batch contained which entry. `PRIMARY KEY
 -- (batch_id, dataset_entry_id)` is itself a uniqueness constraint, so an entry cannot be assigned
--- to the same batch twice. Coverage-aware allocation is what decides *which* batch an entry joins;
--- that logic arrives with the allocation change.
+-- to the same batch twice — and it is a constraint the foreign keys require anyway, not invented
+-- behavior. Coverage-aware allocation is what decides *which* batch an entry joins; that logic
+-- arrives with the allocation change. `assigned_at` was written here first and removed during
+-- review, on the same grounds as the timestamps above.
 
 create table public.batch_entries (
   batch_id          text        not null references public.validation_batches (id) on delete cascade,
   dataset_entry_id  text        not null references public.dataset_entries (id) on delete restrict,
-  assigned_at       timestamptz not null default now(),
 
   primary key (batch_id, dataset_entry_id)
 );
@@ -197,6 +201,41 @@ create table public.validations (
 
   constraint validations_translation_text_not_blank check (
     translation_text is null or length(btrim(translation_text)) > 0
+  ),
+
+  -- CROSS-COLUMN CHECKS.
+  --
+  -- Every check above constrains ONE column, and a row can satisfy all of them while being a
+  -- record the domain schema rejects. The clearest example: `translation_language = 'english'`
+  -- with `translation_text = NULL` satisfies both translation checks, and is not a translation
+  -- anybody can use. Three such combinations were open, and they are closed here.
+  --
+  -- These three are written to mirror `applyValidationIntegrityRules` in `@/schemas/validation`
+  -- EXACTLY — neither wider nor narrower, because both mistakes are real. A wider check would
+  -- refuse a legitimate research response, and a narrower one would be dead weight that merely
+  -- looks like a guarantee. The mapping is:
+  --
+  --   rules 2 and 3 -> a correction is REQUIRED for `correct_unnatural`/`incorrect` and REFUSED
+  --                    for the other two evaluations, which is the same thing said once;
+  --   rule 5        -> a translation language and its text are present together or absent
+  --                    together;
+  --   rules 4 and 6 -> `cannot_evaluate` carries no translation at all, because that evaluation
+  --                    supplies no reliable content to translate.
+  --
+  -- None of these three predicates can evaluate to NULL — every column involved is either NOT NULL
+  -- or tested with `IS NULL`/`IS NOT NULL` — so none of them can pass vacuously, which is the way a
+  -- SQL `CHECK` usually leaks a row it was meant to exclude.
+  constraint validations_correction_matches_evaluation check (
+    (evaluation in ('correct_unnatural', 'incorrect')) = (corrected_instruction is not null)
+  ),
+
+  constraint validations_translation_pair check (
+    (translation_language is null) = (translation_text is null)
+  ),
+
+  constraint validations_translation_requires_evaluable_content check (
+    evaluation <> 'cannot_evaluate'
+    or (translation_language is null and translation_text is null)
   )
 );
 
@@ -222,9 +261,20 @@ create index validations_batch_id_idx
 -- public or anon credential has a legitimate reason to read research data. Application access is
 -- server-side through the privileged path, which bypasses RLS.
 --
--- A denied read is SILENT: `select` as `anon` returns zero rows with no error, while `insert` is
--- rejected with "new row violates row-level security policy". That asymmetry is the reason the
--- repository contract forbids treating an empty result as proof that a query succeeded. RLS here
+-- A refusal is NOT uniform, and the asymmetry is measured rather than assumed. With RLS enabled
+-- and no policy:
+--
+--   select   -> zero rows,          NO error
+--   update   -> zero rows affected, NO error
+--   delete   -> zero rows affected, NO error
+--   insert   -> "new row violates row-level security policy"
+--
+-- Only `insert` is loud. An update or a delete is filtered by the same policy a select is: the
+-- row is simply not visible to the statement, so the statement succeeds against nothing. Nothing
+-- is modified — the data is safe — but a successful write that changed nothing is
+-- indistinguishable at the call site from one that changed something. That is the reason the
+-- repository contract forbids treating an empty or unremarkable result as proof of success, and
+-- the reason the server boundary rather than this schema is what authorizes a request. RLS here
 -- is a backstop against a future mistake, not the primary authorization control.
 --
 -- Policies granting `authenticated` any access are added with the admin area, in the change that

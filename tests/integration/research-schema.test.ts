@@ -10,6 +10,11 @@
  * these migrations to a hosted project remains a separate, credential-blocked step.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { isCorrectionRequired } from "@/lib/domain/validation-response";
+import { EVALUATION_CHOICES, TRANSLATION_LANGUAGE_CHOICES } from "@/schemas/validation";
+import { ILOCANO_PROFICIENCY_CHOICES } from "@/schemas/validator";
+
 import { applyMigrations, readMigrations, type MigrationFile } from "./support/migrations";
 import {
   applySql,
@@ -60,7 +65,17 @@ describe("research schema migrations", () => {
     await seed(db);
   });
 
-  /** Asserts the statement is rejected, and that the reason matches. */
+  /**
+   * Asserts the statement is rejected, and that the reason names the expected constraint.
+   *
+   * `pattern` must match the constraint NAME, not merely the phrase "check constraint". The engine
+   * names the constraint in every violation message — measured, not assumed: an out-of-vocabulary
+   * proficiency reports `violates check constraint "validators_proficiency_known"`, and an orphan
+   * reports `violates foreign key constraint "validations_validator_id_fkey"` — so the name is
+   * available to every caller here. A pattern that accepted the generic phrase would pass when a
+   * DIFFERENT constraint fired, which is how a test can be green while proving nothing about the
+   * rule it names.
+   */
   async function expectRejected(sql: string, pattern: RegExp): Promise<void> {
     await expect(applySql(db, sql, "statement expected to be rejected")).rejects.toThrow(pattern);
   }
@@ -120,21 +135,89 @@ describe("research schema migrations", () => {
         `select column_name from information_schema.columns
          where table_schema = 'public' and table_name = 'validators'`,
       );
-      const names = columns.map((row) => row.column_name);
-      expect(names).toEqual(
-        expect.arrayContaining([
-          "id",
-          "ilocano_proficiency",
-          "created_at",
-          "last_active_at",
-          "total_validations",
-        ]),
-      );
-      // The anonymity invariant is enforced twice: once by the strictObject domain schema, once
-      // here. A column added later for a name or an email address would fail this test.
-      for (const forbidden of ["name", "email", "student_id", "phone", "address"]) {
-        expect(names).not.toContain(forbidden);
+      // A CLOSED set, not "contains these five and none of these five names". A deny-list has to
+      // guess the name of every identifying column someone might add; `full_name`, `ip_address`,
+      // `user_agent`, and `region` would all pass it. The closed form cannot be fooled by naming
+      // something this test never thought of, and it fails the moment anyone adds a column at
+      // all — which is the point, because a new column on this table is a decision that has to be
+      // made deliberately against the anonymity invariant rather than slipped in.
+      //
+      // The invariant is enforced three times over: here, by the `strictObject` domain schema in
+      // `@/schemas/validator`, and by the migration having nowhere to put such a value.
+      expect(columns.map((row) => row.column_name).sort()).toEqual([
+        "created_at",
+        "id",
+        "ilocano_proficiency",
+        "last_active_at",
+        "total_validations",
+      ]);
+    });
+
+    it("gives the structural tables only their identity and their foreign keys", async () => {
+      // The spec says these three "carry only the columns those foreign keys and their own identity
+      // require", and a table CAN have more columns than that while still reading as structural —
+      // `started_at` and `ended_at` both look like bookkeeping, and both are a claim about what a
+      // session IS, which belongs to the change that owns the lifecycle. So this is a CLOSED set,
+      // asserted per table, not a "contains the required columns" check that a lifecycle column
+      // would pass.
+      //
+      // `batch_entries` legitimately carries no `id`: its primary key IS the pair.
+      const expected = new Map<string, string[]>([
+        ["validation_sessions", ["id", "validator_id"]],
+        ["validation_batches", ["id", "validator_id"]],
+        ["batch_entries", ["batch_id", "dataset_entry_id"]],
+      ]);
+
+      for (const [table, columns] of expected) {
+        const rows = await query<{ column_name: string }>(
+          db,
+          `select column_name from information_schema.columns
+           where table_schema = 'public' and table_name = $1 order by column_name`,
+          [table],
+        );
+        expect(
+          rows.map((row) => row.column_name),
+          `columns of ${table}`,
+        ).toEqual(columns);
       }
+    });
+
+    it("defines no constraint that describes a lifecycle the allocation change has not built", async () => {
+      // The companion to the closed column set. A check constraint on a structural table is
+      // behavior: `validation_batches` originally carried `requested_size` with a `1..50` bound
+      // mirroring `BATCH_SIZE_HARD_MAX`, which is a second authority for a constant the allocation
+      // change owns. Foreign keys and the composite primary key are the only constraints these
+      // tables may define.
+      // `pg_constraint.contype` rather than `information_schema.table_constraints`, because the
+      // information schema view reports a `NOT NULL` column constraint as a `CHECK` — measured, not
+      // assumed: filtering that view for `CHECK` here returned six rows, one per NOT NULL column,
+      // which would make the very columns under test look like invented behavior. `pg_constraint`
+      // reports what is actually declared, and `NOT NULL` is not a row in it on this engine.
+      const rows = await query<{ table_name: string; contype: string }>(
+        db,
+        `select c.relname as table_name, con.contype
+         from pg_constraint con
+         join pg_class c on c.oid = con.conrelid
+         join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'public'
+           and c.relname in ('validation_sessions', 'validation_batches', 'batch_entries')
+         order by c.relname, con.contype`,
+      );
+
+      // Closed, per table: the foreign keys, plus the primary key each table needs anyway. Nothing
+      // else. The `requested_size between 1 and 50` bound this replaces is a `contype = 'c'` here,
+      // so adding lifecycle behavior back fails the test rather than passing behind an
+      // `arrayContaining`. `batch_entries` has two foreign keys and no `id`, because its primary
+      // key is the pair.
+      expect(rows.map((row) => `${row.table_name}:${row.contype}`)).toEqual([
+        "batch_entries:f",
+        "batch_entries:f",
+        "batch_entries:p",
+        "validation_batches:f",
+        "validation_batches:p",
+        "validation_sessions:f",
+        "validation_sessions:p",
+      ]);
     });
 
     it("never references an authentication subject", async () => {
@@ -210,7 +293,7 @@ describe("research schema migrations", () => {
       await expectRejected(
         `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
          values ('res_bad', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'looks_fine')`,
-        /validations_evaluation_known|check constraint/i,
+        /validations_evaluation_known/i,
       );
     });
 
@@ -220,14 +303,14 @@ describe("research schema migrations", () => {
       await expectRejected(
         `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
          values ('res_label', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'Correct and natural')`,
-        /validations_evaluation_known|check constraint/i,
+        /validations_evaluation_known/i,
       );
     });
 
     it("rejects an unapproved proficiency value", async () => {
       await expectRejected(
         `insert into public.validators (id, ilocano_proficiency) values ('VAL_0000cafe', 'expert')`,
-        /validators_proficiency_known|check constraint/i,
+        /validators_proficiency_known/i,
       );
     });
 
@@ -236,7 +319,7 @@ describe("research schema migrations", () => {
         `insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_language, translation_text)
          values ('res_tr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'french', 'bonjour')`,
-        /validations_translation_language_known|check constraint/i,
+        /validations_translation_language_known/i,
       );
     });
 
@@ -247,7 +330,99 @@ describe("research schema migrations", () => {
         `insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
          values ('res_blank', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'incorrect', '   ')`,
-        /validations_corrected_instruction_not_blank|check constraint/i,
+        /validations_corrected_instruction_not_blank/i,
+      );
+    });
+
+    it("accepts every approved evaluation, so the checks cannot be too strict to write", async () => {
+      // The other direction, and the one a set of rejection tests can never establish. If
+      // `not_confident` were dropped from the proficiency list, or one evaluation value were
+      // misspelled in the CHECK, every rejection test above would stay green while a real
+      // validator's answer became unwritable. The values are read from the shipped domain module
+      // rather than retyped here, so this also fails if the SQL and the domain ever disagree.
+      for (const [index, choice] of EVALUATION_CHOICES.entries()) {
+        const entryId = `OD_1${String(index).padStart(3, "0")}`;
+        const other = `VAL_00${String(index).padStart(4, "0")}`;
+        // The correction branch is the domain predicate, not a retyped list, so this row is what a
+        // real validator's submission looks like for that evaluation — which is the whole point.
+        const correction = isCorrectionRequired(choice.value) ? `, corrected_instruction` : "";
+        const correctionValue = isCorrectionRequired(choice.value)
+          ? `, 'Ti sentro ti ospital.'`
+          : "";
+        await applySql(
+          db,
+          `insert into public.validators (id) values ('${other}');
+           insert into public.dataset_entries
+             (id, category, instruction, source_payload)
+           values ('${entryId}', 'origin_destination', 'Ti sentro.', '{"id":"${entryId}"}'::jsonb);
+           insert into public.validations
+             (id, validator_id, dataset_entry_id, batch_id, evaluation${correction})
+           values ('res_${choice.value}', '${other}', '${entryId}', '${BATCH}', '${choice.value}'${correctionValue});`,
+          `approved evaluation ${choice.value}`,
+        );
+      }
+      const rows = await query<{ evaluation: string }>(
+        db,
+        "select evaluation from public.validations order by evaluation",
+      );
+      expect(rows.map((row) => row.evaluation)).toEqual(
+        [...EVALUATION_CHOICES.map((choice) => choice.value)].sort(),
+      );
+    });
+
+    it("accepts all five approved proficiency values, and absent", async () => {
+      // Same reasoning for the proficiency vocabulary. A dropped value would not fail any
+      // rejection test; it would make one of the five screening answers unrecordable.
+      // Scoped to this test's own id prefix: the table also holds the seed's two validators, and
+      // an unscoped count would be a statement about the fixture rather than about the vocabulary.
+      const prefix = "VAL_01";
+      const values = [...ILOCANO_PROFICIENCY_CHOICES.map((choice) => choice.value), null];
+      for (const [index, value] of values.entries()) {
+        await applySql(
+          db,
+          `insert into public.validators (id, ilocano_proficiency)
+           values ('${prefix}${String(index).padStart(4, "0")}', ${value === null ? "null" : `'${value}'`})`,
+          `approved proficiency ${value ?? "absent"}`,
+        );
+      }
+      const rows = await query<{ ilocano_proficiency: string | null }>(
+        db,
+        "select ilocano_proficiency from public.validators where id like $1 order by id",
+        [`${prefix}%`],
+      );
+      expect(rows).toHaveLength(values.length);
+      // A sorted set, not `toContain` per value. `toContain` would pass if two rows carried the
+      // same value and another approved value were never stored at all, so the multiset is
+      // compared directly.
+      expect(rows.map((row) => row.ilocano_proficiency).sort()).toEqual(
+        values.map((value) => value).sort(),
+      );
+    });
+
+    it("accepts both approved translation languages, so the vocabulary check is not over-tight", async () => {
+      for (const [index, choice] of TRANSLATION_LANGUAGE_CHOICES.entries()) {
+        const other = `VAL_02${String(index).padStart(4, "0")}`;
+        const entryId = `OD_2${String(index).padStart(3, "0")}`;
+        await applySql(
+          db,
+          `insert into public.validators (id) values ('${other}');
+           insert into public.dataset_entries
+             (id, category, instruction, source_payload)
+           values ('${entryId}', 'origin_destination', 'Ti sentro.', '{"id":"${entryId}"}'::jsonb);
+           insert into public.validations
+             (id, validator_id, dataset_entry_id, batch_id, evaluation,
+              translation_language, translation_text)
+           values ('res_tr_${choice.value}', '${other}', '${entryId}', '${BATCH}',
+                   'correct_natural', '${choice.value}', 'Ride the jeep.');`,
+          `approved translation language ${choice.value}`,
+        );
+      }
+      const rows = await query<{ translation_language: string }>(
+        db,
+        "select translation_language from public.validations where translation_language is not null",
+      );
+      expect(rows.map((row) => row.translation_language).sort()).toEqual(
+        TRANSLATION_LANGUAGE_CHOICES.map((choice) => choice.value).sort(),
       );
     });
 
@@ -268,12 +443,97 @@ describe("research schema migrations", () => {
     });
   });
 
+  describe("cross-column integrity", () => {
+    // Per-column checks cannot express these, so a row can satisfy every vocabulary and not-blank
+    // constraint above and still be a record the domain schema rejects. Each test here pins one
+    // such combination, in both directions: the combination the domain refuses is rejected, and
+    // the combination it allows is accepted. A test that only proved the rejection would pass
+    // against a constraint that was accidentally far too strict.
+
+    it("requires a correction for the two evaluations that demand one", async () => {
+      await expectRejected(
+        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
+         values ('res_nocorr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'incorrect')`,
+        /validations_correction_matches_evaluation/i,
+      );
+    });
+
+    it("refuses a correction on an evaluation that does not take one", async () => {
+      // The other direction. A constraint that only required corrections would allow this, and the
+      // result would be a `correct_natural` record carrying an edit nobody asked for.
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
+         values ('res_extra', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Gemahen ti jeep.')`,
+        /validations_correction_matches_evaluation/i,
+      );
+    });
+
+    it("rejects a translation language with no text, which the per-column checks allow", async () => {
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_language)
+         values ('res_halftr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'english')`,
+        /validations_translation_pair/i,
+      );
+    });
+
+    it("rejects translation text with no language", async () => {
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_text)
+         values ('res_halftr2', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Ride the jeep.')`,
+        /validations_translation_pair/i,
+      );
+    });
+
+    it("rejects a translation on an entry the validator could not evaluate", async () => {
+      // `cannot_evaluate` means the validator was not confident enough to judge the entry, so there
+      // is no reliable content to translate. The domain refuses this combination outright.
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_language, translation_text)
+         values ('res_cantr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'english', 'Ride the jeep.')`,
+        /validations_translation_requires_evaluable_content/i,
+      );
+    });
+
+    it("accepts every combination the domain allows", async () => {
+      // The other direction, and the reason the constraints are worth having: a schema that
+      // refused these would destroy real research responses, which is the worse failure.
+      await applySql(
+        db,
+        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
+         values ('res_ok1', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural'),
+                ('res_ok2', '${OTHER_VALIDATOR}', '${OTHER_ENTRY}', '${BATCH}_2', 'cannot_evaluate');
+         insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
+         values ('res_ok3', '${VALIDATOR}', '${OTHER_ENTRY}', '${BATCH}', 'incorrect', 'Gemahen ti jeep.');
+         insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation,
+            corrected_instruction, translation_language, translation_text)
+         values ('res_ok4', '${OTHER_VALIDATOR}', '${ENTRY}', '${BATCH}_2', 'correct_unnatural',
+                 'Gemahen ti jeep.', 'filipino', 'Sumakay ng jeep.');`,
+        "the accepted combinations",
+      );
+      const rows = await query<{ count: number }>(
+        db,
+        "select count(*)::int as count from public.validations",
+      );
+      expect(rows[0]?.count).toBe(4);
+    });
+  });
+
   describe("referential integrity", () => {
+    // Each pattern names the specific constraint, because a generic one would pass on the wrong
+    // failure. "rejects a validation for a dataset entry that does not exist" must not be satisfied
+    // by a foreign key on `validator_id` firing instead.
+
     it("rejects a validation for a validator that does not exist", async () => {
       await expectRejected(
         `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
          values ('res_orphan', 'VAL_deadbeef', '${ENTRY}', '${BATCH}', 'correct_natural')`,
-        /foreign key|violates/i,
+        /foreign key constraint "validations_validator_id_fkey"/i,
       );
     });
 
@@ -281,7 +541,7 @@ describe("research schema migrations", () => {
       await expectRejected(
         `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
          values ('res_orphan2', '${VALIDATOR}', 'OD_9999', '${BATCH}', 'correct_natural')`,
-        /foreign key|violates/i,
+        /foreign key constraint "validations_dataset_entry_id_fkey"/i,
       );
     });
 
@@ -289,16 +549,20 @@ describe("research schema migrations", () => {
       await expectRejected(
         `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
          values ('res_orphan3', '${VALIDATOR}', '${ENTRY}', 'batch_nope', 'correct_natural')`,
-        /foreign key|violates/i,
+        /foreign key constraint "validations_batch_id_fkey"/i,
       );
     });
 
     it("refuses to delete a validator who has responses", async () => {
-      // Deleting a validator must not take their research responses with it as a side effect.
+      // Deleting a validator must not take their research responses with it as a side effect. The
+      // constraint named here is on `validation_batches`, not on `validations`: the seed gives this
+      // validator a batch, and that reference is checked before the deeper one is reached. Both
+      // are `on delete restrict`, so the guarantee holds either way — but a pattern that accepted
+      // any foreign key would not distinguish which one fired.
       await insertValidation("res_01", VALIDATOR, ENTRY);
       await expectRejected(
         `delete from public.validators where id = '${VALIDATOR}'`,
-        /foreign key|violates/i,
+        /foreign key constraint "validation_batches_validator_id_fkey"/i,
       );
     });
 
@@ -306,7 +570,7 @@ describe("research schema migrations", () => {
       await insertValidation("res_01", VALIDATOR, ENTRY);
       await expectRejected(
         `delete from public.dataset_entries where id = '${ENTRY}'`,
-        /foreign key|violates/i,
+        /foreign key constraint "validations_dataset_entry_id_fkey"/i,
       );
     });
   });
@@ -378,16 +642,52 @@ describe("research schema migrations", () => {
       expect(rows).toEqual([]);
     });
 
-    it("rejects a write from anon with a row level security error", async () => {
-      // The loud half. The tables must be reached through applyMigrations, which applies the
-      // grants: createTestDatabase does not grant privileges, so a test that built its own
-      // tables would see "permission denied for table" for every role and mistake a grant
-      // problem for an RLS result.
+    it("rejects an insert from anon with a row level security error", async () => {
+      // The LOUD half, and the only loud one. The tables must be reached through applyMigrations,
+      // which applies the grants: createTestDatabase does not grant privileges, so a test that
+      // built its own tables would see "permission denied for table" for every role and mistake a
+      // grant problem for an RLS result.
       await expect(
         asRole(db, { role: "anon" }, async (tx) => {
           await tx.query("insert into public.validators (id) values ($1)", ["VAL_0000dead"]);
         }),
       ).rejects.toThrow(/row-level security/i);
+    });
+
+    it("fails SILENTLY on a denied update or delete, and says so rather than claiming loudness", async () => {
+      // Measured, not assumed. A deny-all policy filters the rows an update or delete may see
+      // rather than refusing the statement, so it completes against zero rows with no error. The
+      // data is untouched — which is why the asymmetry is recorded instead of a loudness the
+      // posture does not provide.
+      //
+      // This is also the sharpest reason the repository contract forbids reading an unremarkable
+      // write as success: `SupabaseValidatorsRepository.touchLastActive` is an update, and a
+      // caller holding a public credential would see it succeed while nothing changed.
+      for (const role of ["anon", "authenticated"] as const) {
+        const affected = await asRole(db, { role }, async (tx) => {
+          const updated = await tx.query(
+            "update public.validators set total_validations = 99 where id = $1",
+            [VALIDATOR],
+          );
+          const deleted = await tx.query("delete from public.validators where id = $1", [
+            OTHER_VALIDATOR,
+          ]);
+          return { updated: updated.rows.length, deleted: deleted.rows.length };
+        });
+
+        // No throw is the assertion. Had the statement been refused, `asRole` would have rejected.
+        expect(affected).toEqual({ updated: 0, deleted: 0 });
+      }
+
+      // And the data really is unchanged, so "silent" is not "unsound".
+      const rows = await query<{ id: string; total_validations: number }>(
+        db,
+        "select id, total_validations from public.validators order by id",
+      );
+      expect(rows).toEqual([
+        { id: VALIDATOR, total_validations: 0 },
+        { id: OTHER_VALIDATOR, total_validations: 0 },
+      ]);
     });
 
     it("still lets the privileged role read research data", async () => {
@@ -440,9 +740,9 @@ async function seed(database: TestDatabase): Promise<void> {
   await applySql(
     database,
     `insert into public.validators (id) values ('${VALIDATOR}'), ('${OTHER_VALIDATOR}');
-     insert into public.validation_batches (id, validator_id, requested_size)
-       values ('${BATCH}', '${VALIDATOR}', 10), ('${BATCH}_2', '${VALIDATOR}', 10),
-              ('${BATCH}_3', '${OTHER_VALIDATOR}', 10);
+     insert into public.validation_batches (id, validator_id)
+       values ('${BATCH}', '${VALIDATOR}'), ('${BATCH}_2', '${VALIDATOR}'),
+              ('${BATCH}_3', '${OTHER_VALIDATOR}');
      insert into public.dataset_entries (id, category, instruction, source_payload)
        values ('${ENTRY}', 'origin_destination', '${INSTRUCTION}', '{"id":"${ENTRY}"}'::jsonb),
               ('${OTHER_ENTRY}', 'origin_destination', 'Ibaba ti centro.', '{"id":"${OTHER_ENTRY}"}'::jsonb);`,

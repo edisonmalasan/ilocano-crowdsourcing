@@ -31,7 +31,11 @@ import {
 export const SYNTHETIC_SOURCE_KNOWN_KEYS = ["id", "instruction", "output"] as const;
 
 /** Keys of a source record's `output` object that the importer maps onto typed domain fields. */
-export const SYNTHETIC_SOURCE_OUTPUT_KNOWN_KEYS = ["origin", "destination", "transit_mode"] as const;
+export const SYNTHETIC_SOURCE_OUTPUT_KNOWN_KEYS = [
+  "origin",
+  "destination",
+  "transit_mode",
+] as const;
 
 /**
  * A parsed entry: the validated domain input plus the untouched source record.
