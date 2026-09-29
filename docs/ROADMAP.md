@@ -13,11 +13,79 @@
 | --- | --- |
 | Current roadmap phase | Phase 1 — Project Foundation |
 | Current OpenSpec change | `project-foundation` |
-| Lifecycle state | `proposed` — proposal, design, specs, and tasks authored; strict validation passing |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`) |
-| Last merged PR / change | #1 — `docs: add project status ledger and reconcile roadmap references` (`567ab42`) |
-| Next eligible objective | Apply `project-foundation` on `feat/project-foundation` |
+| Lifecycle state | `verifying` — Apply implementation complete on `feat/project-foundation`; post-implementation review complete and all findings repaired; local gate green; awaiting PR merge |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal authored, strictly validated, and merged (PR #2, `f451a01`) |
+| Last merged PR / change | #2 — `docs: propose project foundation` (`f451a01`) |
+| Next eligible objective | Merge Apply PR for `project-foundation`, then Sync and Archive it; advance the cursor to `od-dataset-schema-and-import` |
 | Blockers | See "Active Blockers" below |
+
+### Local Verification Evidence — `project-foundation` (2026-09-30)
+
+Recorded so the ledger reflects observed results rather than intent. Every command below was
+executed and exited 0 on Windows/PowerShell, Node.js `v26.10.0`, pnpm `12.6.0`.
+
+| Command | Observed result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | exit 0 |
+| `pnpm run lint` | exit 0, no errors or warnings |
+| `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
+| `pnpm run typecheck` | exit 0 |
+| `pnpm run test:unit` | exit 0 — 12 files, **244 tests passed** |
+| `pnpm run test:integration` | exit 0 — 2 files, **18 tests passed** (real PostgreSQL via PGlite/WASM) |
+| `pnpm run build` | exit 0 — Next.js 16.3.6 (Turbopack), routes `/` and `/_not-found` prerendered static |
+| `openspec validate project-foundation --strict` | exit 0, "Change 'project-foundation' is valid" |
+
+What this evidence explicitly does **not** establish:
+
+- No Supabase client has ever been constructed at runtime, and no migration has ever been
+  applied to a real project. `data/ilocano-synthetic-data.json` is byte-identical to `main`
+  (guarded by SHA-256 in `tests/integration/immutable-dataset.test.ts`).
+- PGlite proves SQL, constraints, and Row Level Security **as the PostgreSQL engine evaluates
+  them**. It does not prove Supabase Auth, Storage, Realtime, PostgREST behavior, or RLS as
+  enforced by the Supabase API gateway.
+- `.github/workflows/verify.yml` passed on run 36614647692 (PR #3, `ubuntu-latest`) with counts
+  matching local at that commit, and the dataset-guard job was confirmed from that run's log to be
+  scoped to `1 file / 7 tests`. The job-selection defect found in an earlier run is fixed. No
+  *failing* CI run has ever been observed, so "a failing test blocks the PR" is still inferred.
+- There is **no screenshot-based or human-eye visual verification** of the design. No desktop
+  browser was connected. The design was verified through rendered-HTML assertions, emitted-CSS
+  inspection, and component markup tests. A human still needs to look at the landing page.
+- `getServerEnv()` / `getClientEnv()` are covered only by type-check and by tests of their pure
+  `parse*(source)` functions; the `process.env`-reading wrappers are not executed by any test.
+- No repository *implementation* exists yet. `src/lib/repositories/` is interfaces only by design,
+  so no persistence semantics (the `UNIQUE (validator_id, dataset_entry_id)` constraint, RLS, or
+  distinct-validator coverage counting) are proven by anything in this change.
+
+### Post-Implementation Review — `project-foundation` (2026-09-30)
+
+An independent verification pass compared the implementation against all four capability specs and
+all 26 tasks. Verdict: **PASS WITH WARNINGS**, with one CRITICAL that was an artifact conflict
+rather than a code defect. All findings were repaired before merge; the repairs are itemised as task
+group 7 in `openspec/changes/project-foundation/tasks.md`. The three that changed behavior:
+
+- **The supported Node range was not enforced.** The `application-foundation` spec claimed "the
+  package manager emits an engine mismatch error", but pnpm 12 does not: a probe declaring
+  `engines.node: ">=99 <100"` installed with exit 0, with and without `engine-strict=true`. The
+  scenario was empirically false. Fixed by adding `devEngines.runtime` with `onFail: "error"`,
+  which verifiably fails (exit 1, naming both versions), and by correcting the scenario wording.
+- **Body prose rendered below the declared 1rem floor.** `--text-small` was 0.9375rem (15px) and the
+  landing page used it for whole paragraphs, while the token file's own comment claimed the floor
+  "is enforced here". The class-string tests could not catch this because the class resolved to a
+  legitimately named token. Raised to 1rem, and a test now reads `globals.css` and asserts every
+  prose role against the floor.
+- **The uniqueness-constraint requirement contradicted the change's own scope.** The
+  `domain-contracts` delta demanded a data-layer `UNIQUE (validator_id, dataset_entry_id)`
+  constraint "independently of application code", which the proposal and the design's non-goals both
+  exclude. Rather than archive with an unmet requirement, it was split: the repository-level
+  contract stays, the constraint and its PGlite proof are deferred to `od-dataset-schema-and-import`
+  and listed under `tasks.md` -> "Deferred".
+
+Carried into `od-dataset-schema-and-import` as required work, not as loose ends: the
+`UNIQUE (validator_id, dataset_entry_id)` constraint with a PGlite assertion; the `supabase/`
+repository implementations; the "preserve unknown fields" rule, which is currently a documented
+contract with no implementation to assert it against; and the default `supabase/migrations/`
+applier path, which has never run end to end because that directory is still empty.
+
 
 ### Active Blockers
 
@@ -30,12 +98,20 @@
 - **No local container/PostgreSQL runtime.** `docker`, `psql`, and the `supabase` CLI are not
   installed on this machine, so `supabase start` (local Supabase) is not available as a
   substitute.
-  - *Mitigation in progress:* the `project-foundation` change introduces a
-    `@electric-sql/pglite` (real PostgreSQL compiled to WASM) integration harness, so schema,
-    constraint, and transactional allocation logic can be applied and asserted in CI without a
-    container. The remaining unverified surface is Supabase-managed behavior (Auth, Storage,
-    Realtime, the `auth` schema, and RLS as enforced by the Supabase API gateway) and the first
-    real migration deploy.
+  - *Mitigation delivered in `project-foundation`:* a `@electric-sql/pglite` (real PostgreSQL
+    compiled to WASM) integration harness now exists, so schema, constraint, and transactional
+    logic can be applied and asserted in CI without a container.
+    `pnpm run test:integration` exits 0 with 18 passing tests against a real engine. The
+    remaining unverified surface is Supabase-managed behavior (Auth, Storage, Realtime, the
+    `auth` schema, and RLS as enforced by the Supabase API gateway) and the first real migration
+    deploy.
+  - *Mitigated, with a caveat recorded:* CI can prove SQL and RLS, and `.github/workflows/verify.yml`
+    passed on run 36614647692 (PR #3, `ubuntu-latest`): 12 files / 244 unit tests and 2 files / 18
+    integration tests, matching the local counts of the same commit. That run's dataset-guard job was
+    read back from the log and confirmed scoped to `1 file / 7 tests`. An earlier run had exposed a
+    defect in the workflow itself — the guard job's path filter was dropped on Linux, so it ran the
+    whole integration suite instead of the file it claimed to isolate. Green did not mean correct.
+    No *failing* CI run has ever been observed, so "a failing test blocks the PR" remains inferred.
 
 ### Planned Change Sequence
 

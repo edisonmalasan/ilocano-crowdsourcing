@@ -42,6 +42,24 @@ Repository reality that shapes this design:
   overriding by this design system anyway. Primitives are hand-built on the token set.
 - No deployment configuration beyond what the build needs.
 
+**Correction applied after implementation review (2026-09-30).** The first draft of the
+`domain-contracts` spec delta contained a requirement that this change *cannot* deliver: it
+demanded a data-layer uniqueness constraint over `(validator_id, dataset_entry_id)`, asserted
+"independently of application code". That contradicts the non-goal above and the proposal's
+"database migrations are out of scope", so the delta and the design were inconsistent. The
+requirement has been split rather than quietly dropped:
+
+- **Kept here:** the repository-level contract — a duplicate insert is surfaced as a typed error
+  naming the operation, never swallowed as a no-op — plus a scenario asserting that the *next*
+  change carries the constraint and proves it in the PGlite harness.
+- **Deferred to `od-dataset-schema-and-import`:** the `validations` table and its
+  `UNIQUE (validator_id, dataset_entry_id)` constraint, with a PGlite integration test that a
+  second insert is rejected by the database.
+
+Recorded rather than resolved silently, because archiving a change with an unmet requirement is
+how a research-integrity rule silently disappears. `ValidationsRepository.insert` documents the
+expectation at the seam so the next change inherits it rather than rediscovering it.
+
 ## Decisions
 
 ### D1 — Package manager: pnpm, with `packageManager` and `engines` pinned

@@ -1,0 +1,101 @@
+# Continuous verification.
+#
+# AGENTS.md requires that a change cannot merge while a verified command is failing, and that a
+# command is only ever documented as verified after it has actually been run. This workflow is
+# the enforcement: every step below is a command that has been executed successfully on the
+# developer machine, and the pull request is not green if any of them fail.
+#
+# What this does NOT prove is stated in AGENTS.md -> Verified project tools. In particular, these
+# jobs do not touch a real Supabase project: `test:integration` runs real PostgreSQL through
+# PGlite, which verifies SQL, constraints, and RLS, but not Supabase Auth/Storage/Realtime.
+
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push supersedes an in-flight run for the same ref.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: lint, types, and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Matches `engines.node` in package.json and `.nvmrc`.
+          node-version: 26
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Check formatting
+        run: pnpm run format:check
+
+      - name: Type-check
+        run: pnpm run typecheck
+
+      - name: Unit tests
+        run: pnpm run test:unit
+
+      # Runs real PostgreSQL (PGlite/WASM), so it needs no service container. It still gets a
+      # separate step so a database failure is distinguishable from a domain-logic failure.
+      - name: Integration tests
+        run: pnpm run test:integration
+
+      - name: Production build
+        run: pnpm run build
+
+  immutable-research-source:
+    name: immutable research source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # AGENTS.md lists data/ilocano-synthetic-data.json under "Boundaries — do not touch".
+      # This job fails if the file's hash differs from the recorded value, so an accidental
+      # rewrite during an import or a normalisation pass cannot merge.
+      #
+      # `pnpm exec vitest` is used rather than `pnpm run test:integration -- <path>`. The `pnpm run`
+      # form silently lost its path filter on the first CI run and executed the whole integration
+      # suite here, which defeats the point of running this check as its own job. Verified: this
+      # form selects 1 file / 7 tests on both Windows and ubuntu-latest.
+      - name: Verify the synthetic dataset is unchanged
+        run: pnpm exec vitest run --project integration tests/integration/immutable-dataset.test.ts

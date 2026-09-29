@@ -140,21 +140,36 @@ that the user interface and the server both apply:
 
 ### Requirement: Validator must not validate the same entry twice
 
-The platform SHALL guarantee at the data layer that a single anonymous validator holds at most
-one validation for a given dataset entry, expressed as a uniqueness constraint over the pair of
-validator and dataset entry.
+The platform SHALL treat "one anonymous validator holds at most one validation for a given dataset
+entry" as a repository-level contract: a second insert for the same pair SHALL be surfaced as a
+typed error naming the failed operation, and SHALL NOT be silently swallowed as a no-op, because
+"already validated" is a meaningful outcome the service must be able to report to the validator.
 
-#### Scenario: Duplicate validation is rejected by the data layer
+The data-layer guarantee for this rule — a uniqueness constraint over the pair of validator and
+dataset entry, enforced by the database independently of application code — is **not** delivered by
+this change. It requires a migration, which this change explicitly excludes (see the proposal's
+scope and the design's non-goals). It is authored and verified by `od-dataset-schema-and-import`,
+together with the `validations` table itself. The contract below is what this change owes: the
+seam that the constraint will sit behind, and the rule that its violation must not be hidden.
 
-- **WHEN** a second validation is attempted for the same validator and the same dataset entry
-- **THEN** the attempt is rejected by the uniqueness constraint, independently of application
-  code
+#### Scenario: A duplicate insert is surfaced as a named error, not a silent success
+
+- **WHEN** a second validation is submitted for the same validator and the same dataset entry
+- **THEN** the repository raises a typed error naming the insert operation, and the caller can
+  distinguish that outcome from a transport failure and from a successful first insert
 
 #### Scenario: Different validators may validate the same entry
 
 - **WHEN** two different anonymous validators each submit a validation for the same dataset
   entry
-- **THEN** both validations are accepted
+- **THEN** neither insert is rejected as a duplicate of the other
+
+#### Scenario: The at-most-once rule is not left to application code alone
+
+- **WHEN** the schema change that owns `validations` is authored
+- **THEN** it carries a uniqueness constraint over `(validator_id, dataset_entry_id)` so the rule
+  holds even if application code is bypassed, and that constraint is asserted in the PGlite
+  integration harness rather than only in application tests
 
 ### Requirement: Batch request contract
 

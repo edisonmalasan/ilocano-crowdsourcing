@@ -66,5 +66,9 @@ None — no existing capabilities are defined yet.
 - **Unaffected**: `data/ilocano-synthetic-data.json` is read-only reference material and is
   not modified. No database migration, no Supabase project, and no product behavior is part
   of this change.
-- **Environment**: new required variables `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY` are declared in `.env.example`; no secret is committed.
+- **Environment**: five required variables are declared in `.env.example`:
+  `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the browser client, and
+  `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` for the server and
+  privileged clients. The `NEXT_PUBLIC_*` pair is a separate set of names rather than a re-export
+  because those values are inlined into the client bundle at build time and the service-role key
+  must never be in that bundle; no secret is committed.

@@ -1,0 +1,11 @@
+# pnpm build-script allowlist (pnpm 10+ / 12).
+#
+# `esbuild` is required by Vitest's transform pipeline and must be allowed to run its
+# postinstall script, otherwise the Vitest binary cannot start.
+# `sharp` and `unrs-resolver` are native accelerators that Next.js/Tailwind resolve
+# automatically if present; they are not required to build, test, or lint this project,
+# so their install scripts stay disabled.
+allowBuilds:
+  esbuild: true
+  sharp: false
+  unrs-resolver: false
