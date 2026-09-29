@@ -1,0 +1,45 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+node_modules
+.pnpm-store
+
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+
+# Production
+/build
+/dist
+
+# Testing
+/coverage
+
+# Environment variables. Every `.env*` file is ignored by default; `.env.example` is the
+# only env file that is tracked, and it must never contain a real credential.
+.env*
+!.env.example
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.pem
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# OpenSpec: `.agents/skills/` is generated content owned by the OpenSpec CLI.
+# It is intentionally tracked. Generated TypeScript/JS artifacts are not.
+.next-env.d.ts

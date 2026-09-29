@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+build
+dist
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+next-env.d.ts
+.env*
+!.env.example
+openspec
+docs
+data
+# Hand-maintained repository rules and OpenSpec-generated skills are not
+# formatter-owned. Prettier's Markdown printer rewrites inline code spans in
+# AGENTS.md and rewrites generated skill content, so both are excluded.
+AGENTS.md
+.agents
