@@ -216,12 +216,13 @@ what is currently in force.
 
 `.github/workflows/verify.yml` defines a `verify` job (install, lint, format check, type-check,
 unit tests, integration tests, build) plus an `immutable-research-source` job that runs the dataset
-guard on its own. **Run 36628108347 (PR #7, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
+guard on its own. **Run 36628918700 (PR #8, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
 `14 files / 312 tests` unit and `4 files / 69 tests` integration — matching the local counts of the
-same commit — and "Compiled successfully" for the production build. The dataset-guard job was read
-back from that run's log and reported `1 file / 7 tests` against the literal command
-`pnpm exec vitest run --project integration tests/integration/immutable-dataset.test.ts`, confirming
-it really is scoped to the guard rather than to the whole suite.
+same commit — and "Compiled successfully" for the production build. Run 36628108347 (PR #7, the same
+day, the preceding commit) passed with identical counts. The dataset-guard job was read back from
+the run log and reported `1 file / 7 tests` against the literal command `pnpm exec vitest run
+--project integration tests/integration/immutable-dataset.test.ts`, confirming it really is scoped
+to the guard rather than to the whole suite.
 
 An earlier green run of the same workflow (36614647692, PR #3) reported `12 files / 244 tests` unit
 and `2 files / 18 tests` integration on what was then the whole suite, and is superseded by the

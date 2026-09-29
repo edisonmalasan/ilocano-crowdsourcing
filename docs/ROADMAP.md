@@ -14,8 +14,8 @@
 | Current roadmap phase | Phase 2 — Database and Dataset Import — **complete and archived**. The cursor has moved to Phase 3 — Landing and Screening; that change has not been started |
 | Current OpenSpec change | none active. `openspec/changes/` holds no unarchived change |
 | Lifecycle state | `archived` — `od-dataset-schema-and-import` applied, independently verified, merged (PR #7, `d2eea22`), synced into `openspec/specs/`, and archived as `2026-09-30-od-dataset-schema-and-import`. Sync and Archive ran as one stage on `chore/archive-od-dataset-schema-and-import` |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`) |
-| Last merged PR / change | #7 — `Merge pull request #7 from edisonmalasan/feat/od-dataset-schema-and-import` (`d2eea22`), the `od-dataset-schema-and-import` Apply stage |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`) |
+| Last merged PR / change | #8 — `Merge pull request #8 from edisonmalasan/chore/archive-od-dataset-schema-and-import` (`1ed3340`), the `od-dataset-schema-and-import` Sync + Archive stage |
 | Next eligible objective | Phase 3, `landing-and-screening`: landing, Ilocano proficiency screening, anonymous validator create/restore. Requires a new Propose stage on a `docs/landing-and-screening-proposal` branch from updated `main` |
 | Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite. Does not block Phase 3, which is UI and screening work |
 
@@ -24,7 +24,7 @@
 | Change | Archived | Merged as | Notes |
 | --- | --- | --- | --- |
 | `project-foundation` | `openspec/changes/archive/2026-09-30-project-foundation/` | PR #3, `f43d722` | Synced into `openspec/specs/`: `application-foundation` (5 req), `design-system` (5), `domain-contracts` (7), `data-access-boundary` (4). Verified with a `PASS WITH WARNINGS` review; every finding repaired before merge (task group 7 in the archived `tasks.md`). |
-| `od-dataset-schema-and-import` | `openspec/changes/archive/2026-09-30-od-dataset-schema-and-import/` | Apply stage merged by PR #7, `d2eea22` (merge commit; proposal was PR #6, `f14c0bb`). This Sync + Archive stage is the `chore/archive-od-dataset-schema-and-import` branch carrying the same stage's PR | Synced into `openspec/specs/`: `dataset-import` (3 req, new), `research-schema` (6 req, new), `domain-contracts` (1 requirement modified — the at-most-once rule flipped from "not yet implemented" to implemented). Verified with an independent `PASS WITH FINDINGS` review carrying one CRITICAL; the CRITICAL and all seven warnings and eight notes were repaired before the Apply merge. `openspec validate --specs --strict` reports **6 passed, 0 failed**. |
+| `od-dataset-schema-and-import` | `openspec/changes/archive/2026-09-30-od-dataset-schema-and-import/` | Apply stage merged by PR #7, `d2eea22` (merge commit; proposal was PR #6, `f14c0bb`). Sync + Archive merged by PR #8, `1ed3340` | Synced into `openspec/specs/`: `dataset-import` (3 req, new), `research-schema` (6 req, new), `domain-contracts` (1 requirement modified — the at-most-once rule flipped from "not yet implemented" to implemented). Verified with an independent `PASS WITH FINDINGS` review carrying one CRITICAL; the CRITICAL and all seven warnings and eight notes were repaired before the Apply merge. `openspec validate --specs --strict` reports **6 passed, 0 failed**. |
 
 ### Phase 2 verification approach (executed; hosted half still outstanding)
 
@@ -260,10 +260,13 @@ What this evidence explicitly does **not** establish:
     Supabase-managed behavior (Auth, Storage, Realtime, the `auth` schema, PostgREST, and RLS as
     enforced by the Supabase API gateway) and the first real migration deploy.
   - *Mitigated, with a caveat recorded:* CI can prove SQL and RLS, and `.github/workflows/verify.yml`
-    passed on run 36628108347 (PR #7, `ubuntu-latest`): 14 files / 312 unit tests and 4 files / 69
+    passed on run 36628918700 (PR #8, `ubuntu-latest`): 14 files / 312 unit tests and 4 files / 69
     integration tests, matching the local counts of the same commit, plus "Compiled successfully"
-    for the production build. That run's dataset-guard job was read back from the log and
-    confirmed scoped to `1 file / 7 tests`. An earlier run had exposed a
+    for the production build. The preceding run 36628108347 (PR #7) passed with identical counts.
+    That run's dataset-guard job was read back from the log and confirmed scoped to
+    `1 file / 7 tests` against the literal command
+    `pnpm exec vitest run --project integration tests/integration/immutable-dataset.test.ts`. An
+    earlier run had exposed a
     defect in the workflow itself — the guard job's path filter was dropped on Linux, so it ran the
     whole integration suite instead of the file it claimed to isolate. Green did not mean correct.
     No *failing* CI run has ever been observed, so "a failing test blocks the PR" remains inferred.
