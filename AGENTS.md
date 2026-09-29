@@ -205,14 +205,24 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 | --- | --- | --- | --- |
 | `openspec validate project-foundation --strict` | exit 0, "Change 'project-foundation' is valid" | The active change's proposal, design, and capability deltas satisfy the OpenSpec schema strictly. | That the implementation matches the change. That is verified by inspecting the code and tests, not by this command. |
 
-#### Continuous integration — NOT YET VERIFIED
+#### Continuous integration — first observed run
 
-`.github/workflows/verify.yml` exists and defines a `verify` job (install, lint, format check,
-type-check, unit tests, integration tests, build) plus an `immutable-research-source` job that runs
-the dataset guard on its own. **The workflow has never been executed.** It was checked only for YAML
-validity and for the fact that every script name it calls exists in `package.json`. Its behavior on
-`ubuntu-latest` — including whether `pnpm install --frozen-lockfile` and the PGlite integration tests
-behave identically there — is unverified. Do not describe it as passing until a run has been observed.
+`.github/workflows/verify.yml` defines a `verify` job (install, lint, format check, type-check,
+unit tests, integration tests, build) plus an `immutable-research-source` job that runs the dataset
+guard on its own. **Run 36612616260 (PR #3, 2026-09-29) passed on `ubuntu-latest` on the first
+attempt**: both jobs green, `12 files / 235 tests` unit and `2 files / 18 tests` integration, the
+same counts observed locally, and "Compiled successfully" for the production build.
+
+That run also caught a real defect in the workflow itself. The dataset job originally used
+`pnpm run test:integration -- tests/integration/immutable-dataset.test.ts`, and on Linux the `pnpm
+run` layer dropped the path filter, so the job silently executed the whole integration suite
+instead of the 7 tests it was meant to isolate. It is now `pnpm exec vitest run --project
+integration <path>`, which selects `1 file / 7 tests` locally and is re-checked against the run log
+before this entry is trusted. The lesson generalizes: **a CI step that claims to run a subset must
+be read back from the run log to confirm it actually did.** A green job is not proof that the job
+did what its name says.
+
+What CI still does not prove: nothing about Supabase, and nothing about visual rendering.
 
 #### Repository tooling notes
 

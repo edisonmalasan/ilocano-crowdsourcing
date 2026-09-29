@@ -92,5 +92,10 @@ jobs:
       # AGENTS.md lists data/ilocano-synthetic-data.json under "Boundaries — do not touch".
       # This job fails if the file's hash differs from the recorded value, so an accidental
       # rewrite during an import or a normalisation pass cannot merge.
+      #
+      # `pnpm exec vitest` is used rather than `pnpm run test:integration -- <path>`. The `pnpm run`
+      # form silently lost its path filter on the first CI run and executed the whole integration
+      # suite here, which defeats the point of running this check as its own job. Verified: this
+      # form selects 1 file / 7 tests on both Windows and ubuntu-latest.
       - name: Verify the synthetic dataset is unchanged
-        run: pnpm run test:integration -- tests/integration/immutable-dataset.test.ts
+        run: pnpm exec vitest run --project integration tests/integration/immutable-dataset.test.ts
