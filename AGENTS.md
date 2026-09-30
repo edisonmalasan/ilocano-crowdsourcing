@@ -6,7 +6,7 @@
 
 The project is currently greenfield. The starting research artifact is the synthesized **Origin + Destination** dataset, `data/ilocano-synthetic-data.json`, containing 600 Ilocano navigation instructions with stable external IDs such as `OD_0001` through `OD_0600`. `docs/ROADMAP.md` is the program-level development plan. The source synthetic dataset is reference research material and must remain immutable during validation; human responses are stored separately.
 
-The target architecture is a Next.js web application deployed on Vercel with Supabase PostgreSQL as the persistence layer. Validators participate anonymously, complete a self-reported Ilocano-proficiency screening, receive coverage-aware randomized batches of 10 entries, submit structured judgments/corrections/optional translations, and may continue with additional batches. Researchers use a protected admin area to monitor coverage, inspect disagreements, and export research data. The architecture must support additional dataset categories without hard-coding behavior to `OD_*` records.
+The target architecture is a Next.js web application deployed on Vercel with Supabase PostgreSQL as the persistence layer. Validators participate anonymously, complete a self-reported Ilocano-proficiency screening, receive coverage-aware randomized batches of 10 entries, submit structured judgments and corrections together with the required bilingual research translations, and may continue with additional batches. Researchers use a protected admin area to monitor coverage, inspect disagreements, and export research data. The architecture must support additional dataset categories without hard-coding behavior to `OD_*` records.
 
 The primary research data flow is:
 
@@ -20,7 +20,9 @@ The primary research data flow is:
         →
     Per-entry validation + conditional correction
         →
-    Optional translation
+    Required bilingual research translation (English + Filipino)
+        →
+    Bilingual interface (ENG/FIL) - presentation only, not a research step
         →
     Persisted validation responses
         →
@@ -80,19 +82,21 @@ apply_client_state(resource=999999, progress=5000)
 
 ## Durable product & UX constraints
 
-- The public validation experience must follow the approved sequence: **landing/introduction → Ilocano proficiency screening → anonymous validator setup → coverage-aware batch of 10 → per-entry validation → correction when required → optional translation when applicable → batch completion → continue or finish**.
+- The public validation experience must follow the approved sequence: **landing/introduction → Ilocano proficiency screening → anonymous validator setup → coverage-aware batch of 10 → per-entry validation → correction when required → required bilingual English and Filipino research translation → batch completion → continue or finish**.
 - The approved screening question is **“How comfortable are you with Ilocano?”** with the choices: `Native / first-language speaker`, `Fluent`, `Conversational`, `Basic`, and `Not confident`.
 - Treat proficiency as self-reported research metadata. Do not silently convert it into a quality score or weighting rule; eligibility rules belong to the approved methodology/OpenSpec.
 - Validators are anonymous by default. Do not collect name, email, student ID, phone number, address, or other identifying information unless an approved research requirement explicitly adds it.
 - Each batch contains up to 10 entries. Validators may stop after a completed batch or request another batch.
 - Batch assignment is coverage-aware, randomized within the eligible lowest-coverage pool, and server-authoritative.
 - A validator must never validate the same dataset entry twice. Different validators are expected to receive overlapping entries for independent validation.
-- The independent-validation target is configurable. The current planning target is **3 independent eligible validators per dataset entry**, subject to thesis-team/adviser approval.
+- The coverage target is configurable. The current planning target is **3 qualifying completed validations from 3 distinct validators per dataset entry**, subject to thesis-team/adviser approval. A *qualifying* validation is an evaluable evaluation with any required correction present, both translations non-empty, and every integrity check satisfied. `Cannot confidently evaluate`, a partial response, and any response missing either translation all count **zero**, and the raw validation-row count is never used as a proxy for coverage.
+- A validator must never validate the same dataset entry twice. `Cannot confidently evaluate` responses **do not count toward qualifying coverage**, so an entry may receive more than three responses while still not being finished.
 - Save each completed entry promptly; do not wait for all 10 items before persisting research responses.
-- Never overwrite or mutate the imported synthetic instruction when a validator submits a correction. Corrections and translations are separate response data.
+- Never overwrite or mutate the imported synthetic instruction when a validator submits a correction. Corrections and research translations are separate response data, and neither is ever written onto the dataset entry.
 - `Correct but sounds unnatural` and `Incorrect` require a corrected Ilocano version before continuing.
-- `Cannot confidently evaluate` requires no correction and skips translation.
-- Translation is optional and may be `English`, `Filipino`, or skipped.
+- `Cannot confidently evaluate` requires no correction and carries **neither** research translation.
+- **Research translations are required, bilingual, and never skipped.** For every evaluable validation (`Correct and natural`, `Correct but sounds unnatural`, `Incorrect`) the validator supplies **both** an English and a Filipino translation of the **validated** Ilocano sentence, which is the correction where one was required and the original synthetic instruction where none was. There is no skip option for an evaluable response, and the database rejects an evaluable response missing either translation or carrying a blank one. `Cannot confidently evaluate` carries neither.
+- **Never merge "research translation" with "interface localization".** They share the word and nothing else. *Research translations* are validator-authored response data about a dataset entry, stored in validation records. *Interface localization* is the ENG/FIL switcher for the public validator website: English by default, browser-local, presentation state only. Localization must never mutate a stored research value, translate the synthetic dataset, or imply that a Filipino interface indicates lower English proficiency. They are specified and implemented as separate changes.
 - Final validated records are produced only after thesis-approved review/adjudication. Do not silently resolve disagreement by majority vote unless the methodology explicitly approves that rule.
 - The architecture must support all planned dataset categories through shared abstractions; do not build category-specific assumptions into generic allocation, persistence, or admin logic.
 
