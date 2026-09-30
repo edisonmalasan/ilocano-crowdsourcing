@@ -129,7 +129,7 @@ inferred from the plan.
 | `pnpm run lint` | exit 0, no errors, no warnings |
 | `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
 | `pnpm run typecheck` | exit 0 |
-| `pnpm run test:unit` | exit 0 — 22 files, 497 tests passed |
+| `pnpm run test:unit` | exit 0 — 22 files, 498 tests passed |
 | `pnpm run test:integration` | exit 0 — 4 files, 69 tests passed |
 | `pnpm run build` | exit 0, "Compiled successfully"; `/`, `/_not-found`, `/ready`, `/start` all prerendered static |
 | `openspec validate landing-and-screening --strict` | exit 0, "Change 'landing-and-screening' is valid" |
@@ -306,10 +306,15 @@ after the post-review re-probe.
 
 ### Requirement coverage against executable evidence (task 6.5)
 
-Every `validator-onboarding` requirement and every `design-system` delta scenario is
-backed by at least one test **that was confirmed to go red when the behaviour is broken.**
-That last clause is the whole point, and it is why the post-review re-probe above exists:
-the earlier version of this table asserted coverage that a red suite had not confirmed.
+Every `validator-onboarding` requirement and every `design-system` delta scenario is backed by a test
+that was confirmed to go red when the behaviour is broken, **except the three listed immediately
+below this table**, which are recorded with the reason they are not. That exception clause is the
+whole point, and it is why the post-review re-probe above exists: the earlier version of this record
+claimed a *universal*, and a second review falsified it by finding the exceptions.
+
+A claim of the form "every X is covered" is not checkable by a later reader, because the reader
+cannot tell which items the author happened to probe. A claim that names its own exceptions is
+checkable. That is the entire difference between this sentence and the retracted one above it.
 
 | Requirement / scenario | Evidence | Confirmed red? |
 | --- | --- | --- |
@@ -317,7 +322,7 @@ the earlier version of this table asserted coverage that a red suite had not con
 | timestamps derived server-side | same file, against an injected fixed clock | yes (probe 2) |
 | screening choices in the approved order | `onboarding-routes.test.tsx` — index positions compared, not read by eye | yes |
 | **screening options no more weighted than validation options** | `onboarding-routes.test.tsx` — the **rendered `class` attribute of every `role="radio"`** is read out of the markup and compared to `answerOptionClasses({selected:false})`, plus a no-`accent` check on resting classes with hover/focus variants stripped | **yes — the reviewer's bypass now goes red** |
-| screening options gain weight only after selection | same file — `answerOptionClasses({selected:false})` and `({selected:true})` asserted distinct, `shadow-brutal-sm` versus `-md` | yes |
+| screening options gain weight only after selection | same file — **`AnswerGroup` rendered with a value set**, asserting exactly one option carries the selected class and the other four carry the unselected one. An earlier version of this row cited `answerOptionClasses({selected:false})` versus `({selected:true})`, which compares the function to itself and touches no screen; corrected to cite the rendered assertion | yes |
 | the submit control is disabled while a write is in flight | `submitControlState` is a pure function asserted directly, because `renderToStaticMarkup` can only ever render the idle state | yes |
 | options are disabled, not restyled, while pending | `onboarding-routes.test.tsx` — `AnswerGroup` rendered with `disabled`, asserting every button carries `disabled` and keeps the unselected class | yes |
 | a rejected submission surfaces the error and marks the group invalid | same file — `AnswerGroup` rendered with `error`, asserting `role="alert"`, `aria-invalid="true"`, and that `aria-describedby` actually names the error node's id | yes |
@@ -339,7 +344,16 @@ rather than in a table row that implies otherwise:
    would be better evidence than all three, and the project has no browser test runner.
    Adding one is a separate change, not something to smuggle into a screening change.
 2. **The Supabase hop is unexercised**, for want of credentials, as stated above.
-3. **A returning participant who navigates directly to `/start` does see the screening
+0. **Three scenarios have no red-confirmed test, and are structural rather than accidental.**
+   - *"No half-enrolled identity is left behind"* — true because `/start` is a Server Component
+     that performs no write on render. Proving it behaviourally needs a browser.
+   - *"Declining is possible"* — same shape: the affordance is asserted to be present and the `null`
+     decline is asserted at the decision and persistence layers, but no test presses the button.
+   - *design-system*'s *"Screening options are no more weighted than validation options"* — the
+     scenario compares the screening screen **against a validation answer screen**, and no validation
+     screen exists yet. It is Phase 4 work. The screening half is fully covered; the comparison the
+     scenario names cannot be executed until then, and the row above covers what can be.
+1. **A returning participant who navigates directly to `/start` does see the screening
    question again.** The original spec scenario forbade this and has been amended,
    because it is not achievable under D2's storage choice. What is guaranteed and tested
    is that their stored answer is never overwritten. This is a deliberate, recorded

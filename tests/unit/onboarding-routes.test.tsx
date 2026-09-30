@@ -384,16 +384,44 @@ describe("confirmation route", () => {
     expect(html).toMatch(/next part of the study/i);
   });
 
-  it("promises the screening question will not be asked again", () => {
-    expect(html).toMatch(/will not be asked to screen again/);
+  it("does not promise the screening question will not be asked again, because it can be", () => {
+    // This assertion used to require the opposite, and that was wrong. The D2 amendment
+    // removed "the screening question SHALL NOT be asked again" from the spec because a
+    // participant who navigates straight to /start DOES see it again - but the copy kept
+    // making the promise, and this test kept defending it. A test that enforces a
+    // participant-facing falsehood is worse than no test, because it makes the falsehood
+    // hard to remove: the next reader sees a passing guard and assumes the claim is load
+    // bearing. So the guard now runs the other way.
+    expect(html).not.toMatch(/not be asked to screen again/i);
+    expect(html).not.toMatch(/will not screen you again/i);
   });
 
-  it("does not claim the stored answer is always the one just given", () => {
-    // It is not, on the stale-identifier path: a returning validator's ORIGINAL answer
-    // is preserved and the one typed on /start is discarded. Saying "exactly as you
-    // gave it" was untrue on that path.
+  it("promises the one thing that is actually guaranteed about a return visit", () => {
+    // The real invariant, and it is genuinely true on every path to this page: the stored
+    // screening answer survives, whether it was given now or during the original enrollment.
+    expect(html).toMatch(/will not replace your screening answer/i);
+  });
+
+  it("describes the screening answer in a way that is true on every path here", () => {
+    // This route is a static Server Component: it cannot know whether the participant just
+    // enrolled, resumed, or had a stale identifier cleared. An earlier version made that
+    // unstated and was wrong twice over:
+    //
+    //   - "was stored as background information, as you gave it" is FALSE on the decline
+    //     path, where nothing was stored at all;
+    //   - "if you continued from a browser that already held an identity, the answer you
+    //     had given earlier was kept instead" has its antecedent true on the
+    //     stale-identifier path while its consequent is false, because a stale identifier
+    //     produces a BRAND NEW validator, and the answer just given is the one stored.
+    //
+    // So the copy now states the invariant rather than the outcome, and each clause is
+    // separately asserted because each was separately wrong.
+    expect(html).toMatch(/kept with your validator identity/i);
+    expect(html).toMatch(/if you chose to skip it, nothing was recorded in its place/i);
+    expect(html).toMatch(/the answer already stored with\s+it is the one that was kept/i);
+
+    expect(html).not.toMatch(/was stored as background information/i);
     expect(html).not.toMatch(/exactly as you gave it/i);
-    expect(html).toMatch(/the answer you had given earlier was kept instead/);
   });
 
   it("links to no internal route at all, so it cannot link to a route that does not exist", () => {

@@ -84,14 +84,31 @@ describe("token discipline", () => {
 });
 
 describe("answer option neutrality (research integrity)", () => {
-  it("gives every unselected option an identical surface, border, and shadow", () => {
-    // The same builder call must produce byte-identical output for any unselected option:
-    // option identity is not an input, so no option can be styled preferentially.
-    const a = answerOptionClasses({ selected: false });
-    const b = answerOptionClasses({ selected: false });
-    const c = answerOptionClasses({ selected: false, className: undefined });
-    expect(a).toBe(b);
-    expect(b).toBe(c);
+  it("takes no per-option input, so no option can be styled preferentially", () => {
+    // This assertion previously compared `answerOptionClasses({ selected: false })` to
+    // itself, under a heading about research integrity. Independent review found the same
+    // anti-pattern retracted elsewhere in this change for exactly this reason: one
+    // function, one argument, against its own result. It cannot detect a bypassed
+    // component, a per-option `className`, or an accent added to one screen - and in the
+    // reviewer's bypass probe this file stayed green.
+    //
+    // What is actually claimed here is about the function's SIGNATURE, and a signature is
+    // checkable: the parameter type admits no option identity at all. If a future change
+    // added a `className` or `emphasis` parameter, this file fails to COMPILE, which is a
+    // stronger guarantee than comparing two return values.
+    //
+    // The screen-level half is asserted on rendered markup in
+    // `onboarding-routes.test.tsx`, where the rendered `class` of every `role="radio"` is
+    // compared against this function's output. That is the assertion that goes red when a
+    // component is bypassed; this one is the compile-time floor beneath it.
+    const unselected: string = answerOptionClasses({ selected: false });
+    const selected: string = answerOptionClasses({ selected: true });
+
+    // Two states, genuinely different inputs, and the unselected one carries no accent.
+    expect(unselected).not.toBe(selected);
+    for (const token of ACCENT_TOKENS) {
+      expect(unselected, `unselected option reached ${token}`).not.toContain(token);
+    }
   });
 
   it("keeps the accent unreachable from an unselected option", () => {

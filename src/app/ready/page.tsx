@@ -77,9 +77,10 @@ export default function ReadyPage() {
                   03
                 </span>
                 <span>
-                  Your answer to the Ilocano question was stored as background information, as you
-                  gave it. If you continued from a browser that already held an identity, the answer
-                  you had given earlier was kept instead.
+                  Your answer to the Ilocano question is kept with your validator identity as
+                  background information. If you chose to skip it, nothing was recorded in its
+                  place. If this browser already held an identity, the answer already stored with it
+                  is the one that was kept.
                 </span>
               </li>
             </ul>
@@ -95,8 +96,9 @@ export default function ReadyPage() {
             <p className="label-meta text-ink-muted">What happens next</p>
             <p className="text-small text-ink-muted">
               Receiving sentences is the next part of the study and is not switched on yet. When it
-              is, this browser will be recognised and you will be given ten Ilocano navigation
-              sentences to check. You will not be asked to screen again.
+              is, this browser will be recognised as the same validator and you will be given ten
+              Ilocano navigation sentences to check. Coming back to this browser will not replace
+              your screening answer.
             </p>
             <p className="text-small text-ink-muted">
               Until then, nothing is required of you. Closing this tab is a complete and legitimate

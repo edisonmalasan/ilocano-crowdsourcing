@@ -48,7 +48,14 @@ describe("the screening form passes the participant's answer to the decision", (
   it("does not hand `decideResume` a literal null", () => {
     // The exact defect: `decideResume(result, null)` enrolls the participant as having
     // declined, discarding the answer they just gave.
-    expect(code(FORM_PATH)).not.toMatch(/decideResume\([^)]*,\s*null\s*\)/);
+    //
+    // The pattern allows NESTED parentheses and newlines between the call and the argument.
+    // An earlier version of this assertion used `[^)]*`, which cannot cross the `)` that
+    // closes `resumeValidatorAction(...)` - so it could never match the real call site and
+    // was dead code. It was caught by restoring the exact defect and observing that the test
+    // named after the defect stayed green while a different one went red. A dead assertion
+    // is worse than a missing one, because it appears in a coverage table as evidence.
+    expect(code(FORM_PATH)).not.toMatch(/decideResume\((?:[^()]|\([^()]*\))*?,\s*null\s*\)/);
   });
 
   it("passes the submit argument through to `decideResume`", () => {
