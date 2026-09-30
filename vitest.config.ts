@@ -68,8 +68,9 @@ export default defineConfig({
           // 10 red runs out of 12, while a single sequential run produced none — which is exactly
           // why a reproduction method of "run it again" could never find it.
           //
-          // The dominant offender was `tests/unit/locale-copy.test.ts`, which made 201,600
-          // individual `expect()` calls; that one has been fixed at the source rather than given
+          // The dominant offender was `tests/unit/locale-copy.test.ts`, which made 204,000
+          // individual `expect()` calls (2 catalogs x 85 keys x 600 entries x 2 directions); that one
+          // has been fixed at the source rather than given
           // more time. The residual is `validators-actions-wrapper.test.ts` and
           // `allocation-actions-wrapper.test.ts`, whose slow test resolves modules through Vite and
           // measured 853ms-3093ms on an idle machine. That is real work, not a hung test.

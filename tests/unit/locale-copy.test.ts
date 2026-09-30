@@ -277,9 +277,13 @@ describe("the typing of the research material that must never be localized", () 
       // ===========================================================================================
       // COLLECTED, NOT ASSERTED ONE CELL AT A TIME. This rewrite is a bug fix, not a style choice.
       // ===========================================================================================
-      // The previous version made 2 catalogs x 84 keys x 600 entries x 2 directions = **201,600
+      // The previous version made 2 catalogs x 85 keys x 600 entries x 2 directions = **204,000
       // individual `expect()` calls**, and every one of them builds an assertion object, records a
       // result, and is counted by the reporter.
+      //
+      // The 85th key is `skipToContent`, which is declared UNQUOTED, so a quoted-key regex reports 84
+      // and two independent regexes agreeing on 84 is not evidence. The count above was taken by
+      // evaluating the module and reading `Object.keys(...).length`, which is why it is 85.
       //
       // That cost was the intermittent failure recorded as an open, uncaused item in `AGENTS.md`
       // and `tasks.md`: this test failed `Test timed out in 5000ms` — Vitest's DEFAULT timeout,
