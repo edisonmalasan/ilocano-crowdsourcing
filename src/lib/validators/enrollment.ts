@@ -122,9 +122,15 @@ export async function enrollValidator(
 ): Promise<EnrollmentOutcome> {
   const timestamp = dependencies.now().toISOString();
 
+  // The service applies its own guard rather than trusting its input type, so a
+  // direct caller that is not the action boundary still cannot store an
+  // unapproved proficiency. At the action boundary this is a second parse of an
+  // already-validated value, which is cheap and keeps the guarantee here.
+  const proficiency = parseScreeningAnswer(request.ilocanoProficiency);
+
   const profile: ValidatorProfile = {
     id: createAnonymousValidatorId() as AnonymousValidatorId,
-    ilocanoProficiency: request.ilocanoProficiency,
+    ilocanoProficiency: proficiency,
     createdAt: timestamp,
     lastActiveAt: timestamp,
     totalValidations: INITIAL_TOTAL_VALIDATIONS,

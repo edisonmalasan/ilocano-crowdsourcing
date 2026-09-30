@@ -135,6 +135,32 @@ describe("enrollValidator", () => {
     expect(repo.created).toMatchObject({ ilocanoProficiency: null });
   });
 
+  it("refuses to store an unapproved proficiency, even when called directly", async () => {
+    const { repo, dependencies } = deps();
+
+    // The service applies its own guard rather than trusting its input type, so a
+    // caller that bypasses the action boundary still cannot record an answer that
+    // is not one of the five approved choices.
+    await expect(
+      enrollValidator(
+        { ilocanoProficiency: "expert" } as unknown as EnrollmentRequest,
+        dependencies,
+      ),
+    ).rejects.toThrow();
+
+    expect(repo.countOf("create")).toBe(0);
+  });
+
+  it("refuses to store a non-string proficiency rather than coercing it", async () => {
+    const { repo, dependencies } = deps();
+
+    await expect(
+      enrollValidator({ ilocanoProficiency: 1 } as unknown as EnrollmentRequest, dependencies),
+    ).rejects.toThrow();
+
+    expect(repo.countOf("create")).toBe(0);
+  });
+
   it("mints a distinct identifier per enrollment", async () => {
     const first = deps();
     const second = deps();
