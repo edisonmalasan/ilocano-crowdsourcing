@@ -8,7 +8,8 @@ import {
 import { normalizeResearchText } from "@/lib/domain/text";
 import {
   isCorrectionRequired,
-  isTranslationAllowed,
+  isTranslatableContent,
+  requiresBilingualTranslations,
   type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
 import { anonymousValidatorIdSchema } from "@/schemas/validator";
@@ -75,18 +76,27 @@ describe("isCorrectionRequired", () => {
   it("returns a definitive boolean for every approved evaluation, with no default fallthrough", () => {
     for (const evaluation of ALL_EVALUATIONS) {
       expect(typeof isCorrectionRequired(evaluation)).toBe("boolean");
-      expect(typeof isTranslationAllowed(evaluation)).toBe("boolean");
+      expect(typeof isTranslatableContent(evaluation)).toBe("boolean");
+      expect(typeof requiresBilingualTranslations(evaluation)).toBe("boolean");
     }
   });
 });
 
-describe("isTranslationAllowed", () => {
+describe("isTranslatableContent and requiresBilingualTranslations", () => {
   it("is false only for cannot_evaluate", () => {
-    expect(isTranslationAllowed("correct_natural")).toBe(true);
-    expect(isTranslationAllowed("correct_unnatural")).toBe(true);
-    expect(isTranslationAllowed("incorrect")).toBe(true);
+    expect(isTranslatableContent("correct_natural")).toBe(true);
+    expect(isTranslatableContent("correct_unnatural")).toBe(true);
+    expect(isTranslatableContent("incorrect")).toBe(true);
     // There is no reliable content to translate when the validator could not judge the entry.
-    expect(isTranslationAllowed("cannot_evaluate")).toBe(false);
+    expect(isTranslatableContent("cannot_evaluate")).toBe(false);
+  });
+
+  it("requires BOTH translations wherever content is translatable, with no partial option", () => {
+    // The supersession this change makes: the predicate is not "is one translation permitted" but
+    // "is the bilingual pair mandatory". Nothing between the two states exists.
+    for (const evaluation of ALL_EVALUATIONS) {
+      expect(requiresBilingualTranslations(evaluation)).toBe(isTranslatableContent(evaluation));
+    }
   });
 });
 

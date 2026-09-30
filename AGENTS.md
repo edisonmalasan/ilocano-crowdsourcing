@@ -348,6 +348,38 @@ What CI still does not prove: nothing about Supabase, and nothing about visual r
   `CHECK`); and a `truncate` of a single table fails when another table holds a foreign key into
   it, so use the `truncateAll` helper. A `pnpm run test:integration -- <path>` path filter is
   dropped on Linux; use `pnpm exec vitest run --project integration <path>`.
+- **Split a bilingual rule across two `CHECK` constraints, never one equivalence, and never two
+  overlapping ones.** The tempting single form is
+  `(evaluation = 'cannot_evaluate') = (english is null and filipino is null)`, and it is **wrong**: with
+  `correct_natural` and only the English translation populated, both sides are false, the equality
+  *holds*, and the half-translated row is accepted. An equivalence says two conditions agree; it
+  cannot say either is individually required. The fix is one constraint per *direction*
+  (`required_when_evaluable`, `absent_when_unevaluable`), and they must be **non-overlapping** so
+  that exactly one constraint rejects any given bad row. PostgreSQL does not promise the order
+  `CHECK` constraints are evaluated in, so with two constraints rejecting the same row the name in
+  the error message is whichever the planner reached first — and every test that matches a
+  constraint *by name* would then be asserting an accident. This was measured, not reasoned: the
+  first draft used the equivalence, and the test for "an evaluable row with no translations" failed
+  because the wrong constraint fired.
+- **`ADD CONSTRAINT ... CHECK` validates existing rows, so a schema-level guard is not the same as a
+  migration-level precondition.** `supabase/migrations/20260930160000_required_bilingual_translations.sql`
+  raises explicitly when pre-existing evaluable rows are present, and the obvious negative control —
+  delete the precondition block, watch the refusal tests go red — *fails*, because the migration
+  still refuses on the constraint. The precondition's real value is that the failure is
+  **explanatory**: it names the conflict and states the migration will not discard or fabricate data.
+  Both behaviours are measured in `tests/integration/migration-precondition.test.ts`. The lesson
+  generalises: a guard that has a second, incidental guard behind it cannot be validated by
+  "remove it and watch it break" — measure what it actually *changes*, or the control proves
+  nothing while appearing to.
+- **`tests/integration/pglite-harness.test.ts` is order-dependent and fails under
+  `--sequence.shuffle`.** Four of its eleven tests fail at a shuffled seed, because the file shares
+  one database across its tests with no `beforeEach` reset: the uniqueness, foreign-key, and RLS
+  tests all depend on rows inserted by *other tests in the same file* and on the fixture migration
+  having been applied by a test that may not have run yet. This is **pre-existing** and unrelated to
+  the translations work — confirmed by `git diff main -- tests/integration/pglite-harness.test.ts`
+  returning empty. The default (unshuffled) run passes, and the file is excluded from shuffle
+  verification. Fix it by giving each test its own database or adding a `beforeEach` reset; do not
+  "fix" it by removing the shuffle check.
 
 ---
 

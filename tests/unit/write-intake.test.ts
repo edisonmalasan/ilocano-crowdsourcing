@@ -95,9 +95,18 @@ describe("write-intake rejection", () => {
   });
 
   it("lists the offending field path, so a form can attach the message to the right control", async () => {
+    // Both translations ARE supplied, so the correction is the only defect. The payload used to be
+    // a bare `{ evaluation: "incorrect" }`, which now also misses both translations — the rejection
+    // would still have been correct, and the assertion would still have passed, but it would have
+    // been asserting three field paths against an expectation of one. A test that fails for the
+    // wrong reason is not evidence.
     const error = (() => {
       try {
-        parseWriteIntent(validationResponseInputSchema, { evaluation: "incorrect" });
+        parseWriteIntent(validationResponseInputSchema, {
+          evaluation: "incorrect",
+          englishTranslation: "Go by jeep.",
+          filipinoTranslation: "Sumakay ng jeep.",
+        });
         return null;
       } catch (caught) {
         return caught;
@@ -112,13 +121,15 @@ describe("write-intake rejection", () => {
   });
 
   it("lists every offending field, not only the first", async () => {
+    // The point of this test is that THREE fields are reported, so the payload must genuinely
+    // violate three rules: a correction on a `cannot_evaluate` response, plus both translations.
     const error = (() => {
       try {
         parseWriteIntent(validationResponseInputSchema, {
           evaluation: "cannot_evaluate",
           correctedInstruction: "Gemahen ti jeep.",
-          translationLanguage: "english",
-          translationText: "Go by jeep.",
+          englishTranslation: "Go by jeep.",
+          filipinoTranslation: "Sumakay ng jeep.",
         });
         return null;
       } catch (caught) {
@@ -128,9 +139,30 @@ describe("write-intake rejection", () => {
 
     expect((error as WriteIntentError).issues.map((issue) => issue.path).sort()).toEqual([
       "correctedInstruction",
-      "translationLanguage",
-      "translationText",
+      "englishTranslation",
+      "filipinoTranslation",
     ]);
+  });
+
+  it("attaches the bilingual issue to each translation field, not to one shared bucket", async () => {
+    // A form needs the message on the specific input the validator can fix. With two required
+    // translations and no language selector, "one of them is wrong" is not actionable — so this
+    // asserts the per-field map really has an entry under each translation key.
+    const error = (() => {
+      try {
+        parseWriteIntent(validationResponseInputSchema, { evaluation: "correct_natural" });
+        return null;
+      } catch (caught) {
+        return caught;
+      }
+    })() as WriteIntentError;
+
+    expect(Object.keys(error.fieldIssues).sort()).toEqual([
+      "englishTranslation",
+      "filipinoTranslation",
+    ]);
+    expect(error.fieldIssues.englishTranslation).toHaveLength(1);
+    expect(error.fieldIssues.filipinoTranslation).toHaveLength(1);
   });
 
   it("names the schema in the error so a log identifies which contract rejected the payload", () => {
@@ -173,8 +205,8 @@ describe("write-intake acceptance", () => {
     const raw = {
       evaluation: "incorrect",
       correctedInstruction: "Gemahen nga agpangide ti jeep.",
-      translationLanguage: "english",
-      translationText: "Go to the bank by jeep.",
+      englishTranslation: "Go to the bank by jeep.",
+      filipinoTranslation: "Pumunta sa bangko gamit ang jeep.",
     };
 
     expect(parseWriteIntent(validationResponseInputSchema, raw)).toEqual(raw);
@@ -184,31 +216,56 @@ describe("write-intake acceptance", () => {
     const parsed = parseWriteIntent(validationResponseInputSchema, {
       evaluation: "correct_unnatural",
       correctedInstruction: "  Gemahen   nga  agpangide ti jeep.  ",
+      englishTranslation: "  Go to   the bank by jeep.  ",
+      filipinoTranslation: "  Pumunta   sa bangko gamit ang jeep.  ",
     });
 
     expect(parsed.correctedInstruction).toBe("Gemahen nga agpangide ti jeep.");
+    expect(parsed.englishTranslation).toBe("Go to the bank by jeep.");
+    expect(parsed.filipinoTranslation).toBe("Pumunta sa bangko gamit ang jeep.");
   });
 
   it("strips keys the schema does not model, so an unexpected field never reaches persistence", () => {
     const parsed = parseWriteIntent(validationResponseInputSchema, {
       evaluation: "correct_natural",
+      englishTranslation: "Go to the bank by jeep.",
+      filipinoTranslation: "Pumunta sa bangko.",
       // A client trying to dictate authoritative state it does not own.
       coverageCount: 999,
       isComplete: true,
     });
 
-    expect(parsed).toEqual({ evaluation: "correct_natural" });
+    expect(parsed).toEqual({
+      evaluation: "correct_natural",
+      englishTranslation: "Go to the bank by jeep.",
+      filipinoTranslation: "Pumunta sa bangko.",
+    });
     expect("coverageCount" in parsed).toBe(false);
+  });
+
+  it("strips the superseded single-translation keys, so an old client cannot smuggle one through", () => {
+    // A client on the previous wire format sends a language discriminator and one text. Both keys
+    // are unknown to the schema and are dropped rather than honoured, and the payload is then
+    // rejected for supplying neither required translation. The alternative — accepting the old
+    // shape and storing it somewhere — is how a half-translated record would enter the research.
+    expect(() =>
+      parseWriteIntent(validationResponseInputSchema, {
+        evaluation: "correct_natural",
+        translationLanguage: "filipino",
+        translationText: "Pumunta sa bangko.",
+      }),
+    ).toThrow();
   });
 
   it("writes exactly once when the payload is valid", async () => {
     const response = await submitValidation({
       evaluation: "correct_natural",
-      translationLanguage: "filipino",
-      translationText: "Pumunta sa bangko.",
+      englishTranslation: "Go to the bank by jeep.",
+      filipinoTranslation: "Pumunta sa bangko.",
     });
 
     expect(response.evaluation).toBe("correct_natural");
-    expect(response.translationLanguage).toBe("filipino");
+    expect(response.englishTranslation).toBe("Go to the bank by jeep.");
+    expect(response.filipinoTranslation).toBe("Pumunta sa bangko.");
   });
 });

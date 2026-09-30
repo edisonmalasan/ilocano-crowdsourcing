@@ -266,6 +266,12 @@ const PROFILE: ValidatorProfile = {
   totalValidations: 3,
 };
 
+/**
+ * A `correct_natural` row carrying BOTH translations, because that is now the only shape a
+ * `correct_natural` record can legally have. `CANNOT_EVALUATE_ROW` covers the one legal shape with
+ * no translations, and it exists so the NULL-to-absent-key mapping is proved on a record that is
+ * actually readable rather than on one the domain would reject anyway.
+ */
 const VALIDATION_ROW = {
   id: "res_01",
   validator_id: "VAL_a81d92c1",
@@ -273,10 +279,19 @@ const VALIDATION_ROW = {
   batch_id: "batch_01",
   evaluation: "correct_natural",
   corrected_instruction: null,
-  translation_language: null,
-  translation_text: null,
+  english_translation: "Ride the jeep.",
+  filipino_translation: "Sumakay ng jeep.",
   created_at: TIMESTAMPTZ,
   updated_at: TIMESTAMPTZ,
+};
+
+/** The `cannot_evaluate` shape: no correction and no translations, which is legal. */
+const CANNOT_EVALUATE_ROW = {
+  ...VALIDATION_ROW,
+  id: "res_02",
+  evaluation: "cannot_evaluate",
+  english_translation: null,
+  filipino_translation: null,
 };
 
 const RESPONSE: ValidationResponse = {
@@ -285,6 +300,21 @@ const RESPONSE: ValidationResponse = {
   datasetEntryId: "OD_0001",
   batchId: "batch_01",
   evaluation: "correct_natural",
+  englishTranslation: "Ride the jeep.",
+  filipinoTranslation: "Sumakay ng jeep.",
+  createdAt: ISO_UTC,
+  updatedAt: ISO_UTC,
+};
+
+// Written out rather than spread from RESPONSE, because the point is that the translation keys are
+// ABSENT — a spread would carry them across, and `{ englishTranslation: undefined }` would not be
+// the same object shape the repository produces.
+const CANNOT_EVALUATE_RESPONSE: ValidationResponse = {
+  id: "res_02",
+  validatorId: "VAL_a81d92c1",
+  datasetEntryId: "OD_0001",
+  batchId: "batch_01",
+  evaluation: "cannot_evaluate",
   createdAt: ISO_UTC,
   updatedAt: ISO_UTC,
 };
@@ -571,33 +601,65 @@ describe("SupabaseValidatorsRepository", () => {
 describe("SupabaseValidationsRepository", () => {
   it("writes a response in snake_case, turning absent optionals into SQL NULL", async () => {
     const fake = createFakeClient();
-    fake.enqueue({ data: VALIDATION_ROW, error: null, count: null });
+    fake.enqueue({ data: CANNOT_EVALUATE_ROW, error: null, count: null });
 
-    await new SupabaseValidationsRepository(fake.client).insert(RESPONSE);
+    await new SupabaseValidationsRepository(fake.client).insert(CANNOT_EVALUATE_RESPONSE);
 
+    // The ten named columns, and not one of the removed ones. The set is asserted with `toEqual` on
+    // the whole write so a column silently added or dropped here fails.
     expect(fake.lastCall().write).toEqual({
-      id: "res_01",
+      id: "res_02",
       validator_id: "VAL_a81d92c1",
       dataset_entry_id: "OD_0001",
       batch_id: "batch_01",
-      evaluation: "correct_natural",
+      evaluation: "cannot_evaluate",
       corrected_instruction: null,
-      translation_language: null,
-      translation_text: null,
+      english_translation: null,
+      filipino_translation: null,
       created_at: ISO_UTC,
       updated_at: ISO_UTC,
     });
+    expect(Object.keys(fake.lastCall().write ?? {})).not.toContain("translation_language");
+    expect(Object.keys(fake.lastCall().write ?? {})).not.toContain("translation_text");
   });
 
-  it("writes a correction and a translation as response data, never as an update to the entry", async () => {
+  it("writes both translations as separate columns, never as one text with a language", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: {
+        ...VALIDATION_ROW,
+        evaluation: "incorrect",
+        corrected_instruction: "Gemahen ti jeep.",
+        english_translation: "Ride the jeep.",
+        filipino_translation: "Sumakay ng jeep.",
+      },
+      error: null,
+      count: null,
+    });
+
+    const stored = await new SupabaseValidationsRepository(fake.client).insert({
+      ...RESPONSE,
+      evaluation: "incorrect",
+      correctedInstruction: "Gemahen ti jeep.",
+      englishTranslation: "Ride the jeep.",
+      filipinoTranslation: "Sumakay ng jeep.",
+    });
+
+    expect(fake.lastCall().write?.english_translation).toBe("Ride the jeep.");
+    expect(fake.lastCall().write?.filipino_translation).toBe("Sumakay ng jeep.");
+    expect(stored.englishTranslation).toBe("Ride the jeep.");
+    expect(stored.filipinoTranslation).toBe("Sumakay ng jeep.");
+  });
+
+  it("writes a correction and both translations as response data, never as an update to the entry", async () => {
     const fake = createFakeClient();
     fake.enqueue({
       data: {
         ...VALIDATION_ROW,
         evaluation: "correct_unnatural",
         corrected_instruction: "Gemahen ti jeep.",
-        translation_language: "english",
-        translation_text: "Ride the jeep.",
+        english_translation: "Ride the jeep.",
+        filipino_translation: "Sumakay ng jeep.",
       },
       error: null,
       count: null,
@@ -607,14 +669,11 @@ describe("SupabaseValidationsRepository", () => {
       ...RESPONSE,
       evaluation: "correct_unnatural",
       correctedInstruction: "Gemahen ti jeep.",
-      translationLanguage: "english",
-      translationText: "Ride the jeep.",
     });
 
     expect(fake.lastCall().table).toBe("validations");
     expect(fake.lastCall().write?.corrected_instruction).toBe("Gemahen ti jeep.");
     expect(stored.correctedInstruction).toBe("Gemahen ti jeep.");
-    expect(stored.translationLanguage).toBe("english");
     // The correction travels on the response row; there is no write to `dataset_entries` at all.
     expect(fake.calls.every((call) => call.table === "validations")).toBe(true);
   });
@@ -639,15 +698,15 @@ describe("SupabaseValidationsRepository", () => {
     expect((error as { cause?: unknown }).cause).toMatchObject({ code: "23505" });
   });
 
-  it("reads a response back with its correction and translation restored", async () => {
+  it("reads a response back with its correction and both translations restored", async () => {
     const fake = createFakeClient();
     fake.enqueue({
       data: {
         ...VALIDATION_ROW,
         evaluation: "incorrect",
         corrected_instruction: "Gemahen ti jeep.",
-        translation_language: "filipino",
-        translation_text: "Sumakay ng jeep.",
+        english_translation: "Ride the jeep.",
+        filipino_translation: "Sumakay ng jeep.",
       },
       error: null,
       count: null,
@@ -659,33 +718,105 @@ describe("SupabaseValidationsRepository", () => {
       ...RESPONSE,
       evaluation: "incorrect",
       correctedInstruction: "Gemahen ti jeep.",
-      translationLanguage: "filipino",
-      translationText: "Sumakay ng jeep.",
     });
   });
 
-  it("maps a NULL column to an absent key, so a correct_natural response still satisfies its own rules", async () => {
-    // `correctedInstruction: null` would fail "a correction is not accepted for this evaluation",
-    // so every `correct_natural` record would become unreadable if NULL were mapped that way.
+  it("selects exactly the ten current columns, naming neither removed column", async () => {
+    // Asserted as a full set, so a column silently reintroduced or dropped fails here. The two
+    // removals are checked by name because they are the specific hazard of this change: a
+    // `VALIDATION_COLUMNS` entry left behind would ask PostgREST for a column that no longer
+    // exists, and that fails at the wire rather than at compile time.
     const fake = createFakeClient();
-    fake.enqueue(rows([VALIDATION_ROW], 1));
+    // A single row, not an array of one: `findById` uses `maybeSingle`, and handing it an array
+    // fails on the row-shape check before the column assertion is ever reached.
+    fake.enqueue({ data: VALIDATION_ROW, error: null, count: null });
+
+    await new SupabaseValidationsRepository(fake.client).findById("res_01");
+
+    expect(fake.lastCall().columns?.split(",").sort()).toEqual([
+      "batch_id",
+      "corrected_instruction",
+      "created_at",
+      "dataset_entry_id",
+      "english_translation",
+      "evaluation",
+      "filipino_translation",
+      "id",
+      "updated_at",
+      "validator_id",
+    ]);
+  });
+
+  it("maps a NULL translation column to an ABSENT key, so a cannot_evaluate row still loads", async () => {
+    // The load-bearing NULL-to-absent-key decision, now for the translations. Mapping NULL to
+    // `{ englishTranslation: null }` would make every legal `cannot_evaluate` record fail its own
+    // integrity rule ("a translation is not accepted when the entry cannot be confidently
+    // evaluated") on every single read, so a correct write would become unreadable data.
+    //
+    // `toEqual` alone would NOT prove this: it treats an absent key and an explicit `undefined` as
+    // equal, and `toBeNull()` would pass for either an absent key or an explicit `null`. The
+    // `in` checks are what actually distinguish the three, and they are asserted explicitly.
+    const fake = createFakeClient();
+    fake.enqueue(rows([CANNOT_EVALUATE_ROW], 1));
 
     const [found] = await new SupabaseValidationsRepository(fake.client).findByEntry("OD_0001");
 
-    expect(found).toEqual(RESPONSE);
-    expect(Object.keys(found ?? {})).not.toContain("correctedInstruction");
+    expect(found).toEqual(CANNOT_EVALUATE_RESPONSE);
+    const keys = Object.keys(found ?? {});
+    expect(keys).not.toContain("correctedInstruction");
+    expect(keys).not.toContain("englishTranslation");
+    expect(keys).not.toContain("filipinoTranslation");
+    expect("englishTranslation" in (found ?? {})).toBe(false);
+    expect("filipinoTranslation" in (found ?? {})).toBe(false);
   });
 
-  it("raises when a stored translation has a language but no text", async () => {
-    // The migration's `validations_translation_pair` check rejects this combination on the way in,
-    // so the database should never hold such a row. The domain schema rejects it on the way out,
-    // and this is the last line of defence: a row that somehow exists must fail loudly rather than
-    // load as a valid response. It is a real defence rather than dead code because the column
+  it("raises when a stored row is missing its Filipino translation", async () => {
+    // The migration's cross-column check rejects this on the way in, so the database should never
+    // hold such a row. The domain schema rejects it on the way out, and this is the last line of
+    // defence: a row that somehow exists must fail loudly rather than load as a valid response and
+    // be counted toward coverage. It is a real defence rather than dead code because the column
     // constraint and the domain rule are two independent implementations of the same rule, and
     // only one of them is exercised by a given write.
     const fake = createFakeClient();
     fake.enqueue({
-      data: { ...VALIDATION_ROW, translation_language: "english", translation_text: null },
+      data: { ...VALIDATION_ROW, filipino_translation: null },
+      error: null,
+      count: null,
+    });
+
+    const error = await catchError(
+      new SupabaseValidationsRepository(fake.client).findById("res_01"),
+    );
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validations.findById");
+  });
+
+  it("raises when a stored cannot_evaluate row carries an English translation", async () => {
+    // The mirror image, and the one that matters for coverage accounting: a `cannot_evaluate` row
+    // carrying a translation is a record the platform must never treat as qualifying, and a
+    // successful load is exactly how that would happen quietly.
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: { ...CANNOT_EVALUATE_ROW, english_translation: "Ride the jeep." },
+      error: null,
+      count: null,
+    });
+
+    const error = await catchError(
+      new SupabaseValidationsRepository(fake.client).findById("res_02"),
+    );
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validations.findById");
+  });
+
+  it("raises when a stored translation is whitespace-only", async () => {
+    // The database rejects this via `btrim`, and the domain schema rejects it because
+    // `normalizeResearchText` maps a blank to `null`. Two independent implementations again.
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: { ...VALIDATION_ROW, english_translation: "   " },
       error: null,
       count: null,
     });
