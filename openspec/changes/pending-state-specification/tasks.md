@@ -200,14 +200,59 @@ diff that is not checked is the defect this repository has already made three ti
 
 ## 6. Sync and archive
 
-- [ ] 6.1 Sync the two deltas into `openspec/specs/`. **Verify:** `openspec validate --specs --strict`
+- [x] 6.1 Sync the two deltas into `openspec/specs/`. **Verify:** `openspec validate --specs --strict`
       exits 0 and the item count rises from **9 to 9** — two ADDED requirements inside two existing
       capabilities, so the capability count must **not** change. A count that rises to 11 means a new
       capability was created, which the proposal explicitly rejects.
-- [ ] 6.2 Re-read both synced requirements in `openspec/specs/` and confirm they match the approved
+> **Evidence.** Done on `docs/pending-state-specification-spec-sync`. `openspec validate --specs
+> --strict` exits **0** with `Totals: 9 passed, 0 failed (9 items)`. The item count is **9 → 9**: two
+> ADDED requirements inside two existing capabilities, `design-system` and `validator-onboarding`, and
+> **no new capability directory exists** — checked by listing `openspec/specs/` rather than by
+> subtracting counts, since a count cannot name what it contains. Merged **verbatim**, agent-driven
+> per the sync workflow, appended at the end of each `## Requirements` section; no ordering was
+> invented, because neither spec states one. **A pre-merge measurement decided the block quote's
+> fate:** all **47** block-quote lines in the entire in-force spec set sit INSIDE `## Requirements`
+> sections, in these same three capabilities, as notes of exactly this genre ("**Amended during
+> Apply.**", "**Scoped during Apply, because the original was not executable.**"). So the delta's
+> quotes were kept — **28** and **13** lines, none lost — and had the convention been the other way,
+> tidying the quotes out would have deleted the sentence stating that one of the new scenarios
+> **must not be cited as existing coverage**, which is the sentence this ledger now depends on. **A
+> merge that improves a document's shape by discarding its caveats is not a merge.** I had drafted the
+> opposite plan before measuring it; the measurement is what settled it.
+- [x] 6.2 Re-read both synced requirements in `openspec/specs/` and confirm they match the approved
       delta bodies. **Verify:** requirement and scenario counts per capability are recorded before and
       after the sync — `design-system` 5 → 6 requirements, `validator-onboarding` 7 → 8 — and every
       other capability is unchanged.
+> **Evidence.** Recorded **before and after**, because "the counts rose correctly" is compatible with
+> a sync that also reworded a neighbouring requirement, so a baseline captured afterwards would
+> establish nothing. Every requirement block and every scenario was hashed in both states, keyed by
+> heading:
+> `design-system` **5 → 6** requirements and **13 → 20** scenarios; `validator-onboarding`
+> **7 → 8** and **24 → 29**. Totals reconcile exactly: **50 + 2 = 52** requirements,
+> **181 + 12 = 193** scenarios, the 12 being the two deltas' own scenario counts (7 and 5).
+> **The other seven spec files are byte-identical** to their pre-Sync state, and inside the two that
+> changed, **0 pre-existing requirements altered, 0 lost, 0 scenarios altered, 0 lost.**
+>
+> **The gap claims were re-run after the sync and came back CONTRADICTED — 5 of 193, and `/ready` 7
+> times — which is the expected direction.** A verifier still reporting 0 after the change that
+> exists to close the gap would be broken, so that exit code is not a regression. But "expected" is
+> not "verified", so the load-bearing question was asked instead: **does every match live inside the
+> newly added requirement?** All **5** inert-during-a-write scenarios and all **7** `/ready` mentions
+> were required to fall inside an added block, and **0 fall outside**. Had any sat in a pre-existing
+> requirement, the "0 of 181" would have described a state that never existed.
+>
+> **A defect in this verification is worth recording, because it is the exact error this change
+> exists to correct.** The differential verifier restated the gap predicate as THREE terms
+> (`INERT && IN-FLIGHT && WRITE`) when the real one is TWO (`INERT && WRITE`), whose `WRITE` term
+> *already contains* the in-flight words. The stricter question returned **4** instead of **5**,
+> dropping "Pending is distinguishable from unavailable". It was caught only because
+> `verify-spec-gap-claims.mjs` independently returned 5 and **the disagreement was treated as the
+> finding** rather than resolved by preferring one number. **Guessing a predicate from its prose is not
+> a shortcut around restating it — it is a way of inventing a different predicate while appearing to
+> check the same one.** Two further defects in the same round: a reserved word (`const in = ...`) made
+> the reconciler fail to parse, and the nested vocabulary table in the ledger was flush-left, so the
+> splice would have promoted it to a document-level table. The parse failure is why `node --check` is
+> run before any verdict from a probe is believed — `DID-NOT-PARSE` is not a count of 4.
 - [ ] 6.3 Archive the change and update the ledger. **Verify:** `openspec archive
       pending-state-specification --yes` exits 0 with `Task status: Complete`, the directory is at
       `openspec/changes/archive/2026-10-01-pending-state-specification/`, and the `Archived Changes`
