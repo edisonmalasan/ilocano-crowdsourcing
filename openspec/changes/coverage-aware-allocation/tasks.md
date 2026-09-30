@@ -131,7 +131,7 @@
       supabase/migrations/20260930160000_required_bilingual_translations.sql data/` is empty, and
       the dataset SHA-256 still matches the guard's expected digest. Verify: the immutability test
       file passes and the diff is empty.
-- [ ] 6.3 Update `AGENTS.md` and the `## Project Status` block in `docs/ROADMAP.md` to record what
+- [x] 6.3 Update `AGENTS.md` and the `## Project Status` block in `docs/ROADMAP.md` to record what
       was executed, with each claim scoped to what it does and does not prove — in particular that
       no Supabase client was ever constructed and no screen was rendered. Verify: the diff shows the
       ledger updated and nothing else outside those two files.

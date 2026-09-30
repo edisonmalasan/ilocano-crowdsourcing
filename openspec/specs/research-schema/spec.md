@@ -72,9 +72,9 @@ authentication subject.
 #### Scenario: Structural tables carry no invented behavior
 
 - **WHEN** `validation_sessions`, `validation_batches`, and `batch_entries` are created
-- **THEN** they exist so that foreign keys from `validations` are real, they carry only the
-  columns those foreign keys and their own identity require, and no behavior is defined for them
-  until the allocation change owns their lifecycle
+- **THEN** they exist so that foreign keys from `validations` are real, and `batch_entries` carries
+  a `position` recording the server-selected order of its batch, while batch status, completion
+  timestamps, and assignment timestamps remain undefined until the changes that own them add them
 
 ### Requirement: The database independently enforces research-integrity rules
 
