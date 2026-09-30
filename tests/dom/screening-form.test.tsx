@@ -224,6 +224,11 @@ describe("SF-3 — the skip control is inert while a write is in flight", () => 
     // test covering both would go red for either mutation and could not say which fired — and a red
     // that cannot be attributed may be failing for an unrelated reason. This way each is
     // attributable by name.
+    //
+    // WEAKNESS: observes the skip control's `disabled` and nothing else — not `aria-busy`, not
+    // that it is the control the participant's second click would reach, and not that the
+    // Continue control is ALSO disabled (that is SF-2's separate claim). A mutation that disabled
+    // skip but left it focusable and unannounced would pass.
   });
 });
 

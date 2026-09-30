@@ -153,11 +153,61 @@
       `SF-1 … > disables every option, so a selection cannot change mid-write`. The assertion is
       `expect(options().map(o => o.disabled)).toEqual([true, true, true, true, true])` over **all
       five** options, not `options()[0]`, so a mutation disabling only the first cannot pass.
-- [ ] 3.6 Audit every guard now present in `tests/dom/` **and** in the two existing textual files
+- [x] 3.6 Audit every guard now present in `tests/dom/` **and** in the two existing textual files
       (`screening-form-wiring.test.ts`, `onboarding-routes.test.tsx`), and record each one's weakest
       mutation as a comment, per D3. Verify the audit is complete by confirming every `it(` in
       those files is covered — assert the count of guards found equals the count of tests present,
       so a newly added vacuous guard cannot be skipped by an incomplete audit.
+
+      **DONE, with one deliberate deviation, recorded rather than slipped in.** The task asked for
+      each weakness "as a comment". The **63 weaknesses of the two textual files live in a table**
+      (`tests/unit/guard-weakness.ts`) and the **11 `tests/dom` weaknesses are inline `WEAKNESS:`
+      comments**, which is what D3 asks for and what those files already do. The deviation is in
+      the placement of the 63, and it was made for three reasons that the comment form cannot
+      offer:
+
+      1. It is **reviewable as a set.** Sixty-three scattered comments cannot be read as a set. The
+         table makes visible — which is why it matters — that the twelve markup assertions share one
+         honest limit, and that the genuinely weak family is the source-text scans.
+      2. It is **checkable, which comments are not.** `tests/unit/guard-weakness-audit.test.ts`
+         asserts every `it(` is covered, no entry names a deleted test, no entry is under 80
+         characters, and **no two entries are byte-identical**.
+      3. These files **already document their historical defect in prose**, several at length and
+         several recording the exact mutation that once left the suite green. What they lacked is the
+         **residual** limit — the mutation that still passes *today*, after those fixes. That is
+         different content rather than a restatement, and an entry that merely repeated the
+         historical defect would be exactly the decoration this repository has found six of.
+
+      **Keys are `describe path > it name`, not `it` name**, because `onboarding-routes.test.tsx`
+      contains **three** tests named `has exactly one h1` and **two** named `declares real route
+      metadata rather than a placeholder`. Keying by name would make coverage ambiguous, and an audit
+      that cannot say which test it cleared is not an audit. The parser is asserted self-consistent
+      against three independent counts rather than trusted — a stack-tracking parser that is wrong is
+      worse than none, and a non-popping version of exactly this parser already produced wrong keys
+      once during this change.
+
+      **THE AUDIT IS PROVEN NON-VACUOUS: 5/5.** `probe-audit.cjs`, control `16 passed (16)` first,
+      every mutation attributed by name, both files restored byte-identical (`c9cc9459c9ed0300`,
+      `a2672eeda681ce00`):
+
+      | Probe | Mutation | Result | Named |
+      | --- | --- | --- | --- |
+      | A1 | delete one registry entry | `1 failed \| 15 passed (16)` | `has a stated weakness for every test in it` |
+      | A2 | make two entries byte-identical | `1 failed \| 15 passed (16)` | `contains no two identical entries, so copy-paste boilerplate fails` |
+      | A3 | replace an entry with `weak` | `1 failed \| 15 passed (16)` | `states a mutation in every entry, long enough to be one` |
+      | A4 | point an entry at a deleted test | `2 failed \| 14 passed (16)` | both `has a stated weakness…` and `has no entry for a test that no longer exists` |
+      | A5 | **add a bare `it()` with no weakness** | `1 failed \| 15 passed (16)` | `has a stated weakness for every test in it` |
+
+      **A5 is the mutation this task exists to prevent**, and A2 is the one that makes the table
+      mechanism worth the deviation: a table of 63 copies of one sentence satisfies every other
+      assertion and describes nothing.
+
+      **Three defects found in the PROBE while doing this, all recorded because they nearly produced
+      a wrong verdict.** Two probes matched `mustName` against the assertion *message* rather than
+      the test name, so a correct red was scored `RED-BUT-WRONG-TEST` — the audit was working and the
+      probe was wrong. The third dropped a quote while renaming a key, breaking the TypeScript so the
+      suite reported `no tests`; **that is the `DID-NOT-PARSE` shape and the probe refused to score
+      it** rather than reading a collect failure as evidence that the staleness assertion fires.
 - [ ] 3.7 Confirm the three previously-guarded sites are **still** guarded after this change, so
       closing seven gaps did not cost three: re-run the SF-6, RV-3, and RV-4 mutations from
       `proposal.md` and confirm each stays red. A change that adds coverage while silently dropping
