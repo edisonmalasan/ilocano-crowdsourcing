@@ -220,6 +220,22 @@ green checkmark. The dataset-guard job was read back too: it ran the literal com
 vitest run --project integration tests/integration/immutable-dataset.test.ts` and reported
 `1 file / 7 tests`, naming only that one file.
 
+**Run 36686768916 (PR #12, `7647179`, 2026-09-30) passed on `ubuntu-latest`**, and is the run
+current at merge: `22 files / 514 tests` unit, `4 files / 69 tests` integration — matching the local
+counts of the same commit — "All matched files use Prettier code style!", "Compiled successfully",
+and the dataset-guard job again scoped to `1 file / 7 tests`. All six numbers were read back off the
+run log by a reader that **exits non-zero rather than printing a partial answer**, and it checked
+that the log actually mentions the expected commit before reporting anything, because a count
+belonging to a different run is worse than no count.
+
+That reader's existence is the point. Reading CI output has now failed silently five separate
+times in this project, each a distinct cause: a UTF-16LE BOM that made every regex match nothing;
+`gh run view --log` rendering ESC as the literal `^[` rather than 0x1b; per-line job-name and
+ISO-timestamp prefixes that made `^\s*Tests` match nothing; an empty capture being written into
+this ledger as a measurement; and a transcribed dash. The three silent empty matches in one read
+is the worst of them, because **an empty capture is indistinguishable from a run that reported
+nothing** — which is exactly the failure mode that once wrote a blank into the test-count row.
+
 **Reading that log back took three attempts, each of which failed silently rather than loudly,
 and the pattern is worth keeping.** The first returned an empty match because the log had been
 captured with PowerShell's `>` redirection, which writes UTF-16LE with a BOM — read as UTF-8, every
