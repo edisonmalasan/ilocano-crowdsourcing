@@ -126,6 +126,35 @@
       `proposal.md` and confirm each stays red. A change that adds coverage while silently dropping
       existing coverage would report a net gain.
 
+### OPEN ITEM — an intermittent `test:unit` failure with an unknown cause, never named
+
+**Carried here deliberately, and it blocks nothing, because nothing about it is established.**
+
+- **What was observed.** `pnpm run test:unit` reported `1 failed | 880 passed (881)` **twice**, on
+  `fe6581b`, in roughly seventeen invocations. Both times `Test Files 1 failed | 31 passed (32)` —
+  one test in one file.
+- **What was NOT established.** The failing test has **never been named.** Both attempts to read
+  it back were themselves broken — one filtered the name away, one died on a Windows
+  path-escaping bug in its own reader — and the failure has not recurred since.
+- **Reproduction attempts, all negative.** 8 consecutive single runs; 3 full rapid rounds of
+  `test:dom → test:unit → test:integration → guard → build`; 12 further single runs on the branch;
+  and **10 runs on `main` as a control**. Totals: **2 failures in ~30 branch invocations, 0 in 10
+  on main.**
+- **That comparison is NOT statistically significant.** 2/30 against 0/10 is compatible with
+  chance. It is recorded because it was measured, not because it points at this branch, and it
+  does **not** establish that the `dom` project introduced anything. Claiming otherwise from
+  these numbers would be the exact error this repository keeps recording.
+- **Causes ruled out by search, not by assumption.** `Date.now` 0 hits, `performance.now` 0,
+  `Math.random` 3 — all inside comments stating a random source has no default, `randomUUID` 0,
+  `getRandomValues` 0, `os.tmpdir`/`mkdtemp` 0, `process.env` 1 and it is inside a comment. The
+  single `setTimeout` (`locale-actions-core.test.ts:113`) sits **inside a promise the test
+  awaits**, so `released` is deterministic rather than racy. So there is no clock, no random
+  source, and no temp directory in the unit project. **A negative result is not a cause.**
+- **Status: UNRESOLVED.** Not filed as noise, and not "fixed" by a guess. If it recurs, the failing
+  name is the first thing to capture, and the reader that does it correctly is
+  `probe-spike2.cjs`'s `strip()` — the ANSI pattern **with the escape byte**, which is the whole
+  reason this could not be named before.
+
 ## 4. Make the measurement reproducible and correct the record
 
 - [ ] 4.1 Commit the re-derivation script under `tests/` with its reproduction command in the

@@ -645,6 +645,75 @@ before assuming the code is at fault.**
   returning empty. The default (unshuffled) run passes, and the file is excluded from shuffle
   verification. Fix it by giving each test its own database or adding a `beforeEach` reset; do not
   "fix" it by removing the shuffle check.
+- **A probe scoped to ONE test file reports the rest of the suite as silent, and the report is
+  indistinguishable from a finding.** A mutation probe was run as `vitest run --project unit
+  tests/unit/screening-form-wiring.test.ts` and returned three sites "unguarded". Re-run at
+  `--project unit` with no path filter, one of those three is **guarded** — by
+  `tests/unit/onboarding-routes.test.tsx:208`, a file the narrow probe never executed. The site
+  is fine; the *scope* was wrong, and the wrong scope produced a confident wrong claim. This is
+  the same defect as the CI step that claims to run a subset and reports green: **the step ran a
+  subset, and the green said nothing about the rest.** Before concluding anything from a scoped
+  run, **enumerate what actually reads the file under test** — `Select-String -Path
+  tests/unit/*.ts,tests/unit/*.tsx -Pattern '<basename>' -List` — and run at that scope, or state
+  in the report that the scope is partial. A probe may narrow scope for *speed* only if it says
+  so and the full-scope run also happens.
+- **An inherited remediation figure in the status ledger is a CLAIM, and this repository already
+  contains the record that contradicts it.** The ledger carried "21 unguarded client-shell call
+  sites, two of them critical" as the next objective through **five** merged changes. Re-deriving
+  it gave **7 unguarded of 10 probed, 4 critical** — wrong in both directions: the count was far
+  too high, *and* four critical research-integrity sites were open that the old figure never
+  described. Three parts of why it survived so long, each worth checking: the number was carried
+  and the *method* was not; its **line numbers** had all moved across four changes; and its
+  **labels no longer matched its own text** — the archive calls `screening-form.tsx:232` "the
+  PRIMARY submit", but `disabled={isPending}` occurs exactly once in the current file and belongs
+  to the `AnswerGroup`, while *both* buttons bind `disabled={submitState.disabled}`. A probe
+  anchored on the archived label therefore mutates the skip affordance and reports it as the
+  primary — a wrong experiment wearing a right one's name. **Anchor on text, assert the
+  occurrence count, and label from the code.** The archived change that produced the enumeration
+  said the right thing itself: *an enumeration in this project is a claim to be re-derived, not a
+  fact to be inherited.*
+- **The ANSI-strip-without-the-escape-byte bug has now appeared a FOURTH time, in a new form, and
+  the new form is worse.** Written as `/\[[0-9;]*[A-Za-z]/g` — no `\u001b` — the `[` matches
+  literally, every strip leaves a bare U+001B in front of the text, and any `^\s*` anchored
+  pattern matches **nothing**. Previously that made a `Tests … failed` predicate miss a genuinely
+  red run and **score it green**. This time it matched no `FAIL` line at all, so three real reds
+  were captured as **zero** names. An empty capture is the more dangerous sibling: the red was
+  real, and the harness would have let it pass unexamined while reporting nothing. Ground truth,
+  read in Node and never off a console: `\u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m …` — after a
+  correct strip the line begins ` FAIL `. **Refuse to score `named=false` as anything but NOT
+  ATTRIBUTABLE**, and keep both notations (`0x1b` for real output, the two literal characters `^[`
+  for `gh run view --log`).
+- **A probe that cannot run at all must be distinguishable from one that ran and refused — and a
+  syntax error is not distinguishable from a refusal if only the exit code is read.** A probe
+  shipped with a stray `)` in a `while` condition: it printed nothing, ran nothing, and exited
+  **1**, which is byte-for-byte the same signal a scored red would give. Four shapes, not three,
+  and the fourth is the dangerous one: `GREEN` / `RED` / `DID-NOT-RUN` / **`DID-NOT-PARSE`**. Run
+  `node --check <probe>` first and require exit 0 before trusting any verdict from it. A second
+  defect in the same probe: it printed each mutation's replacement through a multiline template
+  literal, and the `+` lines came out **empty**, so the probe could not state which mutation it
+  performed — and a probe that cannot state its mutation cannot be used to correct a claim about a
+  different one. Print the **common prefix/suffix delta** between original and mutant, plus the
+  mutant's sha256, instead of the replacement text.
+- **Your own display pipeline will eat your own output, and it looks exactly like an instrument
+  defect.** `Select-String -NotMatch '^\s*\+'` — written to strip PowerShell's `+ CategoryInfo`
+  noise — silently deleted the probe's own `+ mutation` lines from every report, making a
+  **correct** report look like it had printed nothing. Two of four "defects" investigated in one
+  round were the console, not the code. The same failure as the `git show` pipe and the `U+2026`
+  mis-render already recorded here: **judge a run by the bytes, not by what a PowerShell pipeline
+  printed.**
+- **An intermittent failure that cannot be reproduced must be recorded as unresolved, with its
+  rate, and explicitly *not* attributed to the change that happened to be open.** `test:unit`
+  reported `1 failed | 880 passed (881)` twice in ~17 invocations and then never again across 8
+  single runs, 3 full rapid rounds, 12 more single runs, and **10 runs on `main` as a control**:
+  2 in ~30 on the branch against 0 in 10. **2/30 versus 0/10 is not statistically significant**
+  and does not establish that the new `dom` project caused anything — the correct reading is "an
+  intermittent failure exists, its cause is unknown, and it is not this branch's doing as far as
+  anything measured can tell." The failure was **never named**, because both readers built to name
+  it were broken, so there is nothing to fix and no cause to propose. What *was* ruled out, by
+  search rather than assumption: `Date.now` 0, `performance.now` 0, `Math.random` 3 (all in
+  comments asserting a random source has no default), `randomUUID` 0, `getRandomValues` 0,
+  `os.tmpdir`/`mkdtemp` 0, `process.env` 1 (in a comment), and the single `setTimeout` sits inside
+  a promise its test awaits, so it is deterministic. **A negative result is not a cause.**
 
 ---
 
