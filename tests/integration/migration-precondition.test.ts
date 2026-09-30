@@ -47,6 +47,7 @@ import { closeTestDatabase, createTestDatabase, query, type TestDatabase } from 
 
 const ORIGINAL_MIGRATION = "20260930120000_research_schema.sql";
 const BILINGUAL_MIGRATION = "20260930160000_required_bilingual_translations.sql";
+const ALLOCATION_MIGRATION = "20260930190000_allocation_batch_positions.sql";
 
 /**
  * SHA-256 of `20260930120000_research_schema.sql` as committed on `main`, in BYTES.
@@ -63,6 +64,21 @@ const BILINGUAL_MIGRATION = "20260930160000_required_bilingual_translations.sql"
  */
 const EXPECTED_ORIGINAL_MIGRATION_SHA256 =
   "1b94e7f962b7974ddc134355936d843594ec809a4004c84bab3e8ac59f8a1500";
+
+/**
+ * SHA-256 of `20260930160000_required_bilingual_translations.sql` as committed on `main`, in BYTES.
+ *
+ * The second of the two immutable-by-rule migrations, and it needed this guard as much as the first
+ * did. The allocation change is a THIRD forward migration, which means there are now two prior
+ * files a new author might be tempted to "just tweak" so that a new migration applies cleanly. A
+ * hash on the first alone would let the second be rewritten unnoticed — and the second is the file
+ * that establishes the bilingual invariant the whole research record depends on.
+ *
+ * Same derivation as the constant above, same reason, same trap in the middle of a PowerShell
+ * pipeline. 13113 bytes, no CRLF.
+ */
+const EXPECTED_BILINGUAL_MIGRATION_SHA256 =
+  "b7162c9b0614cdb9bdb5678bba7b21498540ab5d2dc225e79f9206c5448642b4";
 
 /** The name the migration's raised exception is matched on. */
 const PRECONDITION_MESSAGE = /required-bilingual-translations/;
@@ -430,5 +446,100 @@ describe("the original migration is not modified", () => {
     ]) {
       expect(contents, `creates ${table}`).toContain(`create table public.${table} (`);
     }
+  });
+});
+
+describe("the bilingual migration is not modified", () => {
+  /**
+   * Why this is a table-driven loop and not a second copy of the test above.
+   *
+   * The first guard was written as one test with one constant because there WAS one immutable
+   * migration. There are now two, and a copy-pasted pair of tests is where they drift: the second
+   * would get a looser assertion, or an explanatory comment that no longer matches, or be forgotten
+   * when a third forward migration arrives. One loop means adding a migration is one line, and the
+   * comment explaining why the constant is fixed lives exactly once.
+   */
+  const IMMUTABLE_MIGRATIONS = [
+    { filename: ORIGINAL_MIGRATION, sha256: EXPECTED_ORIGINAL_MIGRATION_SHA256 },
+    { filename: BILINGUAL_MIGRATION, sha256: EXPECTED_BILINGUAL_MIGRATION_SHA256 },
+  ] as const;
+
+  it.each(IMMUTABLE_MIGRATIONS)(
+    "$filename is byte-identical to the file committed on main",
+    async ({ filename, sha256 }) => {
+      // A FIXED expected hash, because that is the only form of this assertion that can fail. See the
+      // note on `EXPECTED_ORIGINAL_MIGRATION_SHA256` for the version of this guard that derived its
+      // digest from a mutated copy of the file under test and was therefore unfalsifiable.
+      const bytes = await readFile(path.join(MIGRATIONS_DIR, filename));
+      const digest = createHash("sha256").update(bytes).digest("hex");
+
+      expect(digest, `${filename} must not be edited in place`).toBe(sha256);
+      // The file is a real migration, not a stub that happens to hash correctly. 1000 bytes is far
+      // below either file's real size and far above an empty or placeholder one.
+      expect(bytes.length).toBeGreaterThan(1000);
+    },
+  );
+
+  it("still describes the PRE-bilingual-translation schema, so a hash match is not the whole claim", async () => {
+    // The companion to the hash guard, for the second file, and the same reasoning as its
+    // counterpart above: a hash proves "this file is unchanged"; it cannot prove "this file is the
+    // right thing to be unchanged at". If the wrong file were committed under this name, or the hash
+    // constant were updated in the same commit as an unwanted edit, only this objects.
+    const contents = await readFile(path.join(MIGRATIONS_DIR, BILINGUAL_MIGRATION), "utf8");
+
+    // It is the migration that ADDS the two required translations...
+    expect(contents).toContain("add column english_translation  text");
+    expect(contents).toContain("add column filipino_translation text");
+    // ...and the one that DROPS the superseded pair.
+    expect(contents).toContain("drop column translation_language");
+    expect(contents).toContain("drop column translation_text");
+    // And it does NOT re-create the base schema, which would mean a prior file had been folded into
+    // it rather than superseded.
+    expect(contents).not.toContain("create table public.validations (");
+  });
+
+  it("applies the new migration strictly after both, never interleaved", async () => {
+    // WHY THIS IS HERE AND NOT ONLY IN `research-schema.test.ts`. That file asserts the FULL expected
+    // list, which pins the order — but only as a complete sequence, so inserting a fourth migration
+    // anywhere makes that test fail with a message about the wrong file, and the specific claim
+    // "the allocation migration runs after the bilingual one" is nowhere on its own.
+    //
+    // The consequence of getting it wrong is concrete: a `batch_entries` migration filed as
+    // `20260930140000_…` would apply before the bilingual migration and fail on a `validations`
+    // column that did not exist yet, or — worse, if it happened to succeed — leave the research
+    // record with two different column sets depending on which files a given database received.
+    const filenames = (await readMigrations()).map((migration) => migration.filename);
+    const allocationAt = filenames.indexOf(ALLOCATION_MIGRATION);
+
+    // Each prior file must exist AND come strictly earlier. `toBeLessThan` rather than
+    // `toBeLessThanOrEqual`, because a same-timestamp collision would be an arbitrary order.
+    expect(allocationAt).toBeGreaterThanOrEqual(0);
+    for (const { filename } of IMMUTABLE_MIGRATIONS) {
+      const priorAt = filenames.indexOf(filename);
+      expect(priorAt, `${filename} must exist`).toBeGreaterThanOrEqual(0);
+      expect(priorAt, `${filename} must sort before ${ALLOCATION_MIGRATION}`).toBeLessThan(
+        allocationAt,
+      );
+    }
+
+    // And the allocation migration is genuinely a FORWARD migration: it alters the table the base
+    // migration creates rather than re-creating it, and it does not restate the base schema. An
+    // author who "fixed" a problem by editing a prior file would be caught by the hashes above; an
+    // author who fixed it by folding everything into one file would be caught here.
+    //
+    // The anchors carry the STATEMENT VERB and, for the positive one, the statement's own newline —
+    // for the reason the table-name anchors elsewhere in this file use the ` (` terminator. A bare
+    // `toContain("alter table public.batch_entries")` is satisfied by a COMMENT naming that table, and
+    // a bare `toContain("create table public.batch_entries")` is satisfied by
+    // `create table public.batch_entries_renamed (`. Measured: replacing the real
+    // `add column position integer;` statement with a comment naming it left this file GREEN at
+    // `13 passed (13)`, because the bare anchor matched the comment. The whole-project run did catch
+    // the reversal in three other integration files, so this was not the only guard — but the
+    // assertion that APPEARS to be the guard was not one, which is the worse outcome: it reports
+    // coverage it is not providing. These anchors now name a statement rather than a table.
+    const contents = await readFile(path.join(MIGRATIONS_DIR, ALLOCATION_MIGRATION), "utf8");
+    expect(contents).toContain("alter table public.batch_entries\n  add column position integer;");
+    expect(contents).not.toContain("create table public.batch_entries (");
+    expect(contents).not.toContain("create table public.validations (");
   });
 });

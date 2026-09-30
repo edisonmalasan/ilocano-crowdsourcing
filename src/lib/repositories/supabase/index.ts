@@ -21,11 +21,13 @@ export type {
   TableHandleLike,
 } from "./client";
 
+export { SupabaseBatchesRepository } from "./batches";
 export { SupabaseDatasetEntriesRepository } from "./dataset-entries";
 export { SupabaseValidatorsRepository } from "./validators";
 export { SupabaseValidationsRepository } from "./validations";
 export { createSupabaseRepositories, type SupabaseRepositories } from "./factory";
 export {
+  BATCHES_OPERATIONS,
   DATASET_ENTRIES_OPERATIONS,
   VALIDATIONS_OPERATIONS,
   VALIDATORS_OPERATIONS,

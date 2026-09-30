@@ -29,5 +29,6 @@ export type { RepositoryErrorOptions, RepositoryOperation } from "./errors";
 export type { DatasetEntriesRepository } from "./dataset-entries-repository";
 export type { ValidatorsRepository } from "./validators-repository";
 export type { ValidationsRepository } from "./validations-repository";
+export type { BatchesRepository } from "./batches-repository";
 
 export type { IsoDateTimeString, ListDatasetEntriesOptions } from "./types";

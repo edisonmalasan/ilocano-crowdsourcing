@@ -3,12 +3,13 @@ import "server-only";
 import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
 
 import type { FilterHandleLike, SupabaseClientLike, TableHandleLike } from "./client";
+import { SupabaseBatchesRepository } from "./batches";
 import { SupabaseDatasetEntriesRepository } from "./dataset-entries";
 import { SupabaseValidationsRepository } from "./validations";
 import { SupabaseValidatorsRepository } from "./validators";
 
 /**
- * Constructs the three Supabase-backed repositories over the privileged client.
+ * Constructs the four Supabase-backed repositories over the privileged client.
  *
  * ============================================================================
  * WHAT IS AND IS NOT VERIFIED ABOUT THIS FILE
@@ -17,11 +18,14 @@ import { SupabaseValidatorsRepository } from "./validators";
  * NOT VERIFIED. No Supabase project and no credential exist in this environment
  * (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are all absent), so
  * `createAdminSupabaseClient()` has never been *called* by any test in this repository, and no
- * query in `dataset-entries.ts`, `validators.ts`, or `validations.ts` has ever reached PostgREST.
- * Nothing in this file has been executed against a database. Unverified specifically:
+ * query in `dataset-entries.ts`, `validators.ts`, `validations.ts`, or `batches.ts` has ever reached
+ * PostgREST. Nothing in this file has been executed against a database. Unverified specifically:
  *
  *   - PostgREST's interpretation of `.in()`, `.range()`, `.select(cols, { count: "exact" })`,
- *     `.insert().select().single()`, and `.update().eq()`.
+ *     `.insert(arrayOfRows)`, `.insert().select().single()`, and `.update().eq()`.
+ *   - whether an ARRAY insert is returned in request order or reordered by the planner, which
+ *     `SupabaseBatchesRepository.create` never assumes: it compares row COUNT and then reads the
+ *     batch back through `findById`, which asks for `order("position")`.
  *   - the shape of the error objects actually returned, including whether `code` is `23505` for
  *     the `(validator_id, dataset_entry_id)` uniqueness violation this code branches on. The
  *     mapping is written to the documented SQLSTATE and to no observed payload.
@@ -97,7 +101,7 @@ function asNarrowClient(admin: AdminSupabaseClient): SupabaseClientLike {
   return admin as unknown as SupabaseClientLike;
 }
 
-/** Builds all three repositories over one privileged client. */
+/** Builds all four repositories over one privileged client. */
 export function createSupabaseRepositories(
   admin: AdminSupabaseClient = createAdminSupabaseClient(),
 ) {
@@ -106,6 +110,7 @@ export function createSupabaseRepositories(
     datasetEntries: new SupabaseDatasetEntriesRepository(client),
     validators: new SupabaseValidatorsRepository(client),
     validations: new SupabaseValidationsRepository(client),
+    batches: new SupabaseBatchesRepository(client),
   };
 }
 

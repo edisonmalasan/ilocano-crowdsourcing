@@ -7,11 +7,13 @@ import type { ValidationResponse } from "@/schemas/validation";
 import {
   RepositoryError,
   isRepositoryError,
+  type BatchesRepository,
   type DatasetEntriesRepository,
   type RepositoryOperation,
   type ValidationsRepository,
   type ValidatorsRepository,
 } from "@/lib/repositories";
+import type { BatchRecord } from "@/schemas/batch";
 
 const ENTRY: DatasetEntry = {
   id: "OD_0001",
@@ -111,6 +113,22 @@ function createInMemoryRepositories() {
     async findByEntry(entryId) {
       return responses.filter((response) => response.datasetEntryId === entryId);
     },
+    async listForEntries(entryIds) {
+      if (entryIds.length === 0) return [];
+      // UNFILTERED, deliberately, and this is the assertion worth reading: a fake that applied the
+      // qualifying rule here would be a second implementation of it, and the comment on the
+      // interface says why that is not allowed. The fake returns what is stored.
+      return responses.filter((response) => entryIds.includes(response.datasetEntryId));
+    },
+    async listEntryIdsForValidator(validatorId) {
+      return [
+        ...new Set(
+          responses
+            .filter((response) => response.validatorId === validatorId)
+            .map((response) => response.datasetEntryId),
+        ),
+      ];
+    },
     async countForEntry(entryId) {
       // Distinct validators, not rows: coverage is defined in terms of independent validators.
       return new Set(
@@ -124,19 +142,48 @@ function createInMemoryRepositories() {
     },
   };
 
-  return { datasetEntries, validators, validations, responses, profiles, entries };
+  const batches = new Map<string, BatchRecord>();
+
+  const batchRepository: BatchesRepository = {
+    async create(batch) {
+      if (batches.has(batch.id)) {
+        throw new RepositoryError("validation_batches.insert", `batch ${batch.id} already exists`);
+      }
+      batches.set(batch.id, batch);
+      return batch;
+    },
+    async findById(id) {
+      return batches.get(id) ?? null;
+    },
+  };
+
+  return {
+    datasetEntries,
+    validators,
+    validations,
+    batches: batchRepository,
+    responses,
+    profiles,
+    entries,
+  };
 }
 
 describe("repository interfaces are satisfiable without a database", () => {
-  it("accepts an in-memory implementation of all three interfaces", () => {
+  it("accepts an in-memory implementation of all four interfaces", () => {
     // The `satisfies` annotations are the compile-time assertion: if a method signature drifts,
     // this file stops compiling rather than the failure surfacing at a call site much later.
     const repositories = createInMemoryRepositories();
 
-    const all: [DatasetEntriesRepository, ValidatorsRepository, ValidationsRepository] = [
+    const all: [
+      DatasetEntriesRepository,
+      ValidatorsRepository,
+      ValidationsRepository,
+      BatchesRepository,
+    ] = [
       repositories.datasetEntries,
       repositories.validators,
       repositories.validations,
+      repositories.batches,
     ];
 
     for (const repository of all) {
@@ -199,6 +246,7 @@ describe("failing repository", () => {
     datasetEntries: DatasetEntriesRepository;
     validators: ValidatorsRepository;
     validations: ValidationsRepository;
+    batches: BatchesRepository;
   } {
     const fail = (operation: RepositoryOperation, cause: unknown): never => {
       throw new RepositoryError(operation, `${operation} failed`, {
@@ -224,8 +272,14 @@ describe("failing repository", () => {
         insert: async () => fail("validations.insert", "down"),
         findById: async () => fail("validations.findById", "down"),
         findByEntry: async () => fail("validations.findByEntry", "down"),
+        listForEntries: async () => fail("validations.listForEntries", "down"),
+        listEntryIdsForValidator: async () => fail("validations.listEntryIdsForValidator", "down"),
         countForEntry: async () => fail("validations.countForEntry", "down"),
         countForValidator: async () => fail("validations.countForValidator", "down"),
+      },
+      batches: {
+        create: async () => fail("validation_batches.insert", "down"),
+        findById: async () => fail("validation_batches.findById", "down"),
       },
     };
   }
@@ -277,5 +331,124 @@ describe("failing repository", () => {
     await expect(validations.insert({ ...RESPONSE, id: "res_02" })).rejects.toMatchObject({
       operation: "validations.insert",
     });
+  });
+
+  it("names the operation for each batch call, so a partial write is attributable", async () => {
+    const { batches } = createFailingRepositories();
+
+    // A caller cannot tell these two apart from the result alone — both reject. The operation name
+    // is the only thing that says whether the batch row or the read-back failed, and a
+    // half-written allocation is exactly the situation where that matters.
+    await expect(
+      batches.create({ id: "batch_01", validatorId: PROFILE.id, entries: [] }),
+    ).rejects.toMatchObject({ operation: "validation_batches.insert" });
+    await expect(batches.findById("batch_01")).rejects.toMatchObject({
+      operation: "validation_batches.findById",
+    });
+  });
+
+  it("reports a coverage read as unavailable rather than as zero, so a fault never looks like an uncovered entry", async () => {
+    const { validations } = createFailingRepositories();
+
+    // Zero here would tell allocation "nobody has validated this" and the entry would be handed to
+    // another three validators. A named failure is the only answer that cannot cause that, and it
+    // is the reason `listForEntries` raises rather than returning an empty list on a transport
+    // error — the empty list is a legitimate answer to a different question.
+    await expect(validations.listForEntries(["OD_0001"])).rejects.toMatchObject({
+      operation: "validations.listForEntries",
+    });
+    await expect(validations.listEntryIdsForValidator(PROFILE.id)).rejects.toMatchObject({
+      operation: "validations.listEntryIdsForValidator",
+    });
+  });
+});
+
+/**
+ * The coverage rule has exactly one owner, and this is the file that notices if that changes.
+ *
+ * Two claims, one about what must NOT exist and one about what must STAY.
+ *
+ * The first is the interesting one. Allocation needed "how many validators have answered this
+ * entry" and "which entries has this validator answered", and the temptation was to add a coverage
+ * or allocation method to `DatasetEntriesRepository`, because the pool lives there and a count of
+ * its entries' validations feels like a property of the entries. It is not: coverage is a fact about
+ * VALIDATIONS, and putting the read on the entries repository would give the rule a second home
+ * where nothing would notice the move. So the interface is asserted closed — its method names are
+ * exactly these three — which makes a future `countValidations(...)` on it a failing test rather
+ * than a quiet second authority.
+ *
+ * The second is that `countForEntry` and `countForValidator` remain, unchanged and still honest
+ * about what they count. The admin dashboard needs "how many people have looked at this", which is
+ * a genuinely different question from "how many qualifying judgements does this have", and a
+ * `cannot_evaluate` response counts toward the first and not the second. Deleting the convenient
+ * method to remove the temptation would trade a documented risk for an undocumented gap.
+ */
+describe("coverage stays where it belongs", () => {
+  it("gives the dataset-entries interface exactly its three read methods, and no coverage method", () => {
+    const { datasetEntries } = createInMemoryRepositories();
+
+    // The concrete method names, asserted as a CLOSED set. A `contains` check would pass with a
+    // fourth method added, which is precisely the change this test exists to refuse.
+    expect(Object.keys(datasetEntries).sort()).toEqual(["findById", "listActive", "listByIds"]);
+    for (const forbidden of [
+      "countValidations",
+      "countForEntry",
+      "coverage",
+      "selectForAllocation",
+      "listForAllocation",
+    ]) {
+      expect(Object.keys(datasetEntries), forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it("counts every validator who responded, including one who could not evaluate", async () => {
+    // The honest, and useful, answer to "how many people have looked at this". It is NOT the
+    // coverage number, and the two disagree precisely when a validator said they could not judge
+    // the entry — which is the case that must not retire an entry from the pool.
+    const { validations } = createInMemoryRepositories();
+    await validations.insert(RESPONSE);
+    await validations.insert({
+      ...RESPONSE,
+      id: "res_02",
+      validatorId: "VAL_0000beef",
+      evaluation: "cannot_evaluate",
+    });
+
+    expect(await validations.countForEntry("OD_0001")).toBe(2);
+  });
+
+  it("returns stored responses unfiltered, so the qualifying rule is applied once, in the domain", async () => {
+    const { validations } = createInMemoryRepositories();
+    await validations.insert(RESPONSE);
+    await validations.insert({
+      ...RESPONSE,
+      id: "res_02",
+      validatorId: "VAL_0000beef",
+      evaluation: "cannot_evaluate",
+    });
+
+    const stored = await validations.listForEntries(["OD_0001"]);
+
+    // Both rows come back, including the one that contributes nothing to coverage. A repository
+    // that pre-filtered would return one row here and would be a second implementation of
+    // `isQualifyingValidation` — the failure `design.md` D1 exists to prevent.
+    expect(stored.map((response) => response.evaluation).sort()).toEqual([
+      "cannot_evaluate",
+      "correct_natural",
+    ]);
+  });
+
+  it("returns the ids a validator has answered, and ids only", async () => {
+    const { validations } = createInMemoryRepositories();
+    await validations.insert(RESPONSE);
+    await validations.insert({ ...RESPONSE, id: "res_02", datasetEntryId: "OD_0002" });
+
+    expect(await validations.listEntryIdsForValidator(PROFILE.id)).toEqual(["OD_0001", "OD_0002"]);
+  });
+
+  it("issues no coverage query for an empty pool, because `.in([])` is malformed rather than empty", async () => {
+    const { validations } = createInMemoryRepositories();
+
+    expect(await validations.listForEntries([])).toEqual([]);
   });
 });

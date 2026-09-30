@@ -41,6 +41,23 @@ function createCountingRepository() {
       calls.push("countForValidator");
       return stored.filter((response) => response.validatorId === validatorId).length;
     },
+    // The two allocation reads. Nothing in this file exercises them, and they are here only
+    // because `ValidationsRepository` is a CLOSED interface and `tsc` rejects an object literal
+    // that does not satisfy it. They are deliberately the same shape as the count methods above so
+    // that a future reader does not mistake them for behaviour under test: every one of them records
+    // a call name, which means if a write-intake path ever started calling them, the `calls`
+    // assertions in this file would see it.
+    async listForEntries(entryIds) {
+      calls.push("listForEntries");
+      const wanted = new Set(entryIds);
+      return stored.filter((response) => wanted.has(response.datasetEntryId));
+    },
+    async listEntryIdsForValidator(validatorId) {
+      calls.push("listEntryIdsForValidator");
+      return stored
+        .filter((response) => response.validatorId === validatorId)
+        .map((response) => response.datasetEntryId);
+    },
   };
 
   return { repository, calls, stored };

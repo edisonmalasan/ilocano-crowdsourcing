@@ -198,11 +198,31 @@ New migration adds `batch_entries.position integer`, then:
 position would be a fabrication, and this project's migrations have a settled precedent of refusing
 rather than discarding, backfilling, or assuming an empty table.
 
-**Honest note on this guard's strength.** No code in this repository writes `batch_entries`, so the
-table is empty and the precondition cannot fire today. Unlike the bilingual-translation precondition
-— which was measured to be *unremovable* in effect, because `ADD CONSTRAINT ... CHECK` validates
-existing rows anyway — this one has no second guard behind it. Deleting it will make a test go red,
-which is the property that makes it worth having and is asserted in the tasks rather than assumed.
+**What this guard is and is not worth — CORRECTED after measurement.** An earlier version of this
+section claimed that, unlike the bilingual-translation precondition, this one had "no second guard
+behind it" and that deleting it was therefore what made it worth having. **That claim was false and is
+withdrawn.** `alter column position set not null` does refuse on a non-empty table, exactly as
+`ADD CONSTRAINT ... CHECK` refuses against pre-existing rows, so transaction rollback and `set not
+null` are what make the migration *safe*. The `do` block makes the refusal *legible*, and that is the
+entire value of it.
+
+Deleting the block is nonetheless **observable**, and the two claims are independent rather than
+contradictory. Measured, with a `13 passed (13)` control in both cases:
+
+- removing the whole `do $$ … end $$;` block → `Tests 2 failed | 11 passed (13)`, both refusal tests,
+  and the two received messages are `column "position" of relation "batch_entries" contains null
+  values` and `column "position" of relation "batch_entries" already exists`;
+- removing **only** the emptiness precondition, leaving the re-application guard in place →
+  `Tests 1 failed | 12 passed (13)`, the emptiness refusal test alone.
+
+**A measurement of this guard was initially reported as falsified and was not.** The first pass here
+spliced out only the emptiness precondition, got `1 failed`, and concluded that the migration's own
+comment had misattributed its `2 failed | 11 passed` figure. It had not: the comment says "deleting
+this `do` block", the whole-block removal reproduces `2 failed` exactly, and the narrower mutation was
+simply a different experiment. The retraction is recorded in `AGENTS.md` because the failure mode —
+**a confident wrong finding produced by a mutation narrower than the one the claim describes** — is
+the same one that produced this section's original error, in the opposite direction. A probe that
+cannot state which mutation it performed cannot be used to correct a claim about a different one.
 
 `requested_size` is **not** re-added, despite the base migration inviting it. Re-adding it here would
 reintroduce exactly the second authority for `BATCH_SIZE_HARD_MAX` that a reviewer already removed it

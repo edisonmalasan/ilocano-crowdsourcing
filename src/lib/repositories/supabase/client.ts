@@ -91,7 +91,22 @@ export interface OrderOptionsLike {
  */
 export interface TableHandleLike {
   select(columns?: string, options?: SelectOptionsLike): FilterHandleLike;
-  insert(values: Record<string, unknown>): FilterHandleLike;
+  /**
+   * Writes one row, or SEVERAL rows in one request.
+   *
+   * The array form exists for exactly one caller: `batch_entries`, where a batch is a list of
+   * ordered placements and writing them one request at a time would issue up to fifty round trips
+   * for a full batch, with a partial write the caller could not distinguish from a complete one.
+   * It is `readonly Record<string, unknown>[]` rather than `Record<string, unknown>[]` because no
+   * implementation in this directory mutates the array it was handed.
+   *
+   * It is deliberately NOT widened to a variadic `...values` form. That is how the real client
+   * accepts rows, and matching it exactly would be the more faithful interface — but the object
+   * form is what every other call in this directory uses, and a signature that offers three ways to
+   * say the same thing is a signature where one of them goes untested. The name-level check below
+   * is unaffected either way, and that is the compatibility that is actually enforced here.
+   */
+  insert(values: Record<string, unknown> | readonly Record<string, unknown>[]): FilterHandleLike;
   update(values: Record<string, unknown>): FilterHandleLike;
 }
 
