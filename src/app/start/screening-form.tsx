@@ -5,6 +5,8 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AnswerGroup } from "@/components/validation/answer-option";
+import type { InterfaceLocale } from "@/lib/domain/locale";
+import { PROFICIENCY_LABEL_KEYS, translatorFor } from "@/lib/i18n/copy";
 import {
   clearStoredValidatorId,
   readStoredValidatorId,
@@ -15,14 +17,11 @@ import {
   decideEnrollment,
   decideResume,
   firstActionFor,
-  RESUMED_NOTICE,
   submitControlState,
   type TerminalDecision,
 } from "@/lib/validators/onboarding-flow";
 import {
   ILOCANO_PROFICIENCY_CHOICES,
-  ILOCANO_PROFICIENCY_QUESTION,
-  ILOCANO_PROFICIENCY_SUPPORTING_COPY,
   toIlocanoProficiency,
   type IlocanoProficiency,
 } from "@/schemas/validator";
@@ -61,14 +60,41 @@ import {
  * This is the only interactive component on the screening route. The route itself
  * is a Server Component, which keeps the privileged repository out of the client
  * module graph by construction rather than by convention.
+ *
+ * ================================ LOCALIZATION ================================
+ * This screen COLLECTS research data, so the boundary between what is a
+ * presentation string and what is a stored value is sharpest here. The two are kept
+ * apart deliberately and asymmetrically:
+ *
+ *   - `choice.value` is what gets stored. It is taken straight from
+ *     `ILOCANO_PROFICIENCY_CHOICES` and is never routed through the copy catalog, so a
+ *     participant selecting "Madaling gamitin" is recorded as `fluent` and one
+ *     selecting "Fluent" is recorded as `fluent` too.
+ *   - `choice.label` is what gets rendered, and it is looked up by value in
+ *     `PROFICIENCY_LABEL_KEYS`. Only the display text varies with `locale`.
+ *
+ * So the locale affects every word on this screen and none of the data. Nothing here
+ * derives a proficiency level, an eligibility, or a score from the language, and a
+ * participant who reads Filipino and one who reads English are asked the same question
+ * of the same five options, stored under the same values.
+ *
+ * `locale` is a required prop rather than a hook read, so the server-rendered HTML and
+ * the hydrated tree agree and a Filipino participant never sees an English flash of the
+ * question before it is replaced.
  */
-export function ScreeningForm() {
+export interface ScreeningFormProps {
+  /** The interface language the surrounding route is rendering. Never persisted. */
+  readonly locale: InterfaceLocale;
+}
+
+export function ScreeningForm({ locale }: ScreeningFormProps) {
+  const t = translatorFor(locale);
   const router = useRouter();
   const [selection, setSelection] = useState<IlocanoProficiency | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const submitState = submitControlState(isPending);
+  const submitState = submitControlState(isPending, t);
 
   /**
    * Applies a decision that ends the flow: ready, error, or notice.
@@ -85,7 +111,7 @@ export function ScreeningForm() {
         // A resume: the browser already holds this identifier, so there is nothing to
         // store. Announcing it is the point — the participant pressed what looked like
         // a start button and was not issued a new identity, which deserves saying.
-        setNotice(RESUMED_NOTICE);
+        setNotice(t("screening.resumed"));
       } else {
         // A fresh enrollment. Storing the identifier is the CLIENT's job, not the
         // action's: the server has no localStorage, and a module that reached for it
@@ -113,7 +139,7 @@ export function ScreeningForm() {
    * silently overwriting the first in storage.
    */
   async function enroll(answer: IlocanoProficiency | null): Promise<void> {
-    apply(decideEnrollment(await enrollValidatorAction({ ilocanoProficiency: answer })));
+    apply(decideEnrollment(await enrollValidatorAction({ ilocanoProficiency: answer }), t));
   }
 
   /**
@@ -166,7 +192,7 @@ export function ScreeningForm() {
       return;
     }
 
-    const decision = decideResume(await resumeValidatorAction({ storedId: stored }), answer);
+    const decision = decideResume(await resumeValidatorAction({ storedId: stored }), answer, t);
 
     if (decision.kind !== "enroll-fresh") {
       apply(decision);
@@ -197,11 +223,11 @@ export function ScreeningForm() {
       noValidate
     >
       <AnswerGroup
-        legend={ILOCANO_PROFICIENCY_QUESTION}
-        hint={ILOCANO_PROFICIENCY_SUPPORTING_COPY}
+        legend={t("screening.question")}
+        hint={t("screening.supporting")}
         options={ILOCANO_PROFICIENCY_CHOICES.map((choice) => ({
           value: choice.value,
-          label: choice.label,
+          label: t(PROFICIENCY_LABEL_KEYS[choice.value]),
         }))}
         value={selection}
         onChange={(value) => setSelection(toIlocanoProficiency(value))}
@@ -242,14 +268,11 @@ export function ScreeningForm() {
           disabled={submitState.disabled}
           aria-busy={submitState.ariaBusy}
         >
-          Skip and continue without answering
+          {t("screening.skip")}
         </Button>
       </div>
 
-      <p className="text-small text-ink-faint">
-        If this browser already holds a validator identity, continuing will resume it instead of
-        creating a second one, and the answer above will not be stored over the original.
-      </p>
+      <p className="text-small text-ink-faint">{t("screening.resumeNote")}</p>
     </form>
   );
 }

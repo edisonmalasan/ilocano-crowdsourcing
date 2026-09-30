@@ -340,13 +340,42 @@ indistinguishable from a run that reported nothing, so the harness must distingu
 
 The rebuilt harness does three things, all load-bearing. It spawns with `shell: true`, which is the
 only way `pnpm` runs here at all. It returns a **three-way** outcome — `GREEN`, `RED`, or
-`DID-NOT-RUN` — where `DID-NOT-RUN` covers a spawn error, a signal, and any exit status other than 0
-or 1, and **`DID-NOT-RUN` is refused rather than scored as red**. And it runs a **negative control**
-before every probe: the un-mutated file must be `GREEN`, or a red-after-mutation result means
-nothing. Re-run that way, all six probes confirmed with real summaries (`9 passed` -> `1 failed`,
-`17 passed` -> `1 failed`, `155 passed` -> `1 failed`), and the two hash-guard probes pass for
-different reasons on purpose: renaming an index proves the guard catches a semantic edit, and adding
-a comment line proves it measures **bytes** rather than meaning.
+`DID-NOT-RUN` — and **`DID-NOT-RUN` is refused rather than scored as red**. And it runs a **negative
+control** before every probe: the un-mutated file must be `GREEN`, or a red-after-mutation result
+means nothing. Re-run that way, all six probes confirmed with real summaries (`9 passed` -> `1
+failed`, `17 passed` -> `1 failed`, `155 passed` -> `1 failed`), and the two hash-guard probes pass
+for different reasons on purpose: renaming an index proves the guard catches a semantic edit, and
+adding a comment line proves it measures **bytes** rather than meaning.
+
+**That entry originally said `DID-NOT-RUN` covers "any exit status other than 0 or 1", and it was
+wrong in a way that only a run could reveal: `tsc --noEmit` exits `2` on a type error, not `1`.** A
+probe written to that rule classified a textbook RED — `[ELIFECYCLE] Command failed with exit code
+2` — as `DID-NOT-RUN` and printed `INCONCLUSIVE` for a probe that had in fact worked. The refusal
+was the *correct response to a broken predicate*, which is the only reason this became a finding
+rather than a false negative buried in a report. **The discriminator is not the exit code; it is
+whether the process ran at all.** `err.status === undefined` is what a spawn failure looks like
+(`ENOENT` on the `pnpm` shim without a shell, or a signal). A *defined* status means the process ran
+and returned a verdict, whatever that verdict is. There is also a **fourth shape** worth naming
+separately: a non-zero exit with **no** expected diagnostic is neither RED nor DID-NOT-RUN, it is
+"the tool failed for some other reason and this result proves nothing" — which looks identical to
+success-with-a-predicate if you only read the code. Verified by re-running with the corrected
+classifier: control GREEN at exit 0, probe RED at exit 2 with one `error TS2741` ("property is
+missing in type"), catalogue restored byte-identical at `0d237be8599e67b1`.
+
+**The console will lie to you about file content, and a clean file looks exactly like a corrupt
+one.** Reviewing a comment reading `` `Record<IlocanoProficiency, ���>` ``, the obvious reading is
+mojibake from a PowerShell write — which this repository has produced before, in an archived
+proposal. Reading the bytes in Node showed `U+2026`, a horizontal ellipsis, **perfectly valid and
+intentional**: PowerShell's console rendering had mangled a legitimate character into three
+replacement glyphs. A character-class enumeration over every codepoint above `U+007F` in the
+changed files found **no** `U+FFFD`, no `â€` sequence, no C1 control, and no CR bytes at all, and
+catalogued the seven legitimate codepoints (middle dot, em dash, right single quote, ellipsis,
+rightwards arrow, bullet, check mark) so that "clean" is a measurement rather than an absence of
+complaint. **This is the same failure as `git show HEAD:<path> | node -e …` re-encoding the blob
+through a pipe** — the measurement instrument, not the file, is what is wrong — and the two
+instances now sit in the same record deliberately. Judge a file by its bytes read in Node, never by
+what a PowerShell pipeline printed, and never "fix" an encoding artefact that exists only in the
+terminal.
 
 **A probe that cannot build its own mutation must report INCONCLUSIVE, and it will.** The first
 ordering probe tried to locate the drop statement by the shape of the comment above it, matched

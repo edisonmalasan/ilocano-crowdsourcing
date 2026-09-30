@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { linkButtonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ResumeValidator } from "@/components/onboarding/resume-validator";
+import { translatorFor } from "@/lib/i18n/copy";
+import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
 
 /**
  * Landing / introduction.
@@ -15,36 +17,62 @@ import { ResumeValidator } from "@/components/onboarding/resume-validator";
  * This route still has no database, network, or session dependency, which is what the
  * `application-foundation` spec requires of the shell. The route a visitor reaches by following the
  * link is a different question: that one writes.
+ *
+ * ============================================================================
+ * LOCALIZED, AND THE ONE THING ON THIS PAGE THAT IS NOT
+ * ============================================================================
+ * Every human-readable string below comes from the copy catalog, and nothing else does. The locale is
+ * read from the cookie on the server, so the first paint is already in the right language - there is
+ * no client round trip that could render English and then swap it.
+ *
+ * `Sadino` and `Ilocano` are deliberately NOT catalog keys. They are a project name and a language
+ * name, and the first is a proper noun the study is published under. The rest of the page's copy -
+ * including the badge that names the dataset - is localized, so the line reads
+ * "Ilocano · datos ng nabigasyon" in Filipino rather than being left in English as though only the
+ * English half of the page had been translated.
+ *
+ * The `●` and the `01`/`02`/`03` markers are decoration with `aria-hidden`, not copy: they are
+ * identical in both languages, and a catalog key that could not differ would be a key exempt from
+ * the exhaustiveness check for no benefit.
+ *
+ * The panels are built from the translator rather than declared as a module-level constant, because
+ * they are localized copy. A module-level `const PANELS = [...]` cannot be - the strings would be
+ * resolved at import time, in whichever locale happened to build the module, for every request in the
+ * process. That is not a style preference: it is a module that serves every language in its first
+ * language.
  */
 
-const PANELS = [
-  {
-    label: "The task",
-    title: "Ten sentences at a time",
-    body: "You will see a short Ilocano navigation instruction together with the place it is meant to describe. You decide whether the sentence says what it is supposed to say, and you fix it when it does not.",
-  },
-  {
-    label: "The ask",
-    title: "One question about you",
-    body: "We ask how comfortable you are with Ilocano. That is background information for the research record. It is not a score, and it does not change what you are asked to do.",
-  },
-  {
-    label: "What we keep",
-    title: "Your judgment, not your identity",
-    body: "We store the entry, your evaluation, any correction you write, and an optional translation. We do not ask for your name, your email, your student number, or your phone.",
-  },
-] as const;
+export default async function HomePage() {
+  const locale = await getInterfaceLocale();
+  const t = translatorFor(locale);
 
-export default function HomePage() {
+  const panels = [
+    {
+      label: t("landing.panel.task.label"),
+      title: t("landing.panel.task.title"),
+      body: t("landing.panel.task.body"),
+    },
+    {
+      label: t("landing.panel.ask.label"),
+      title: t("landing.panel.ask.title"),
+      body: t("landing.panel.ask.body"),
+    },
+    {
+      label: t("landing.panel.keep.label"),
+      title: t("landing.panel.keep.title"),
+      body: t("landing.panel.keep.body"),
+    },
+  ];
+
   return (
     <>
       <header className="border-ink bg-paper-raised border-b-2">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
           <p className="label-meta text-ink">
             <span className="text-accent">●</span> Sadino
-            <span className="text-ink-faint"> / validation study</span>
+            <span className="text-ink-faint"> / {t("landing.header.study")}</span>
           </p>
-          <Badge tone="neutral">Ilocano · navigation data</Badge>
+          <Badge tone="neutral">{t("landing.badge.dataset")}</Badge>
         </div>
       </header>
 
@@ -52,20 +80,16 @@ export default function HomePage() {
         {/* Hero ---------------------------------------------------------- */}
         <section className="section-y border-ink flex flex-col gap-6 border-b-2 pb-10">
           <Badge tone="accent" className="self-start">
-            Researchers wanted
+            {t("landing.badge.recruit")}
           </Badge>
 
           <h1 className="text-display max-w-3xl">
-            Check the Ilocano.
+            {t("landing.hero.title1")}
             <br />
-            Fix what&rsquo;s off.
+            {t("landing.hero.title2")}
           </h1>
 
-          <p className="text-lead text-ink-muted max-w-2xl">
-            Sadino is a thesis dataset for Ilocano local navigation. It was written by a machine.
-            You are the part of the process that makes it trustworthy: you read a sentence, judge
-            whether it says what it should, and correct it when it does not.
-          </p>
+          <p className="text-lead text-ink-muted max-w-2xl">{t("landing.hero.lead")}</p>
 
           {/*
             A real link, not a button: it navigates, so it must be an anchor. Keyboard
@@ -74,31 +98,33 @@ export default function HomePage() {
           */}
           <div className="flex flex-wrap items-center gap-3">
             <Link href="/start" className={linkButtonClasses({ size: "lg" })}>
-              Start validation
+              {t("landing.cta.start")}
             </Link>
-            <p className="text-small text-ink-faint font-semibold">
-              Two steps: one question about your Ilocano, then you begin.
-            </p>
+            <p className="text-small text-ink-faint font-semibold">{t("landing.cta.hint")}</p>
           </div>
 
           {/*
             The client island on this route. `/` still renders with no database, network, or
             session dependency — this component only reads browser-local storage, and only
             when the participant presses it.
+
+            It takes the locale as a prop rather than reading anything global, because a
+            client component cannot read server state. Passing it down keeps one owner
+            for "what language is this request in" - the server page that renders it.
           */}
           <div className="max-w-md">
-            <ResumeValidator />
+            <ResumeValidator locale={locale} />
           </div>
         </section>
 
         {/* Panels ------------------------------------------------------- */}
         <section className="section-y" aria-labelledby="what-to-expect">
           <h2 id="what-to-expect" className="text-title">
-            What to expect
+            {t("landing.expectations.heading")}
           </h2>
 
           <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
-            {PANELS.map((panel) => (
+            {panels.map((panel) => (
               <Card key={panel.label} as="article" className="flex flex-col gap-3">
                 <p className="label-meta text-accent">{panel.label}</p>
                 <h3 className="text-heading">{panel.title}</h3>
@@ -111,38 +137,29 @@ export default function HomePage() {
         {/* Notice ------------------------------------------------------- */}
         <section className="section-y pt-0" aria-labelledby="before-you-start">
           <h2 id="before-you-start" className="text-title">
-            Before you start
+            {t("common.beforeYouStart")}
           </h2>
 
           <Card tone="accent" className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-[1fr_2fr]">
-            <p className="label-meta text-accent">Please read</p>
+            <p className="label-meta text-accent">{t("landing.before.label")}</p>
             <ul className="text-small text-ink md:text-lead flex flex-col gap-3">
               <li className="flex gap-3">
                 <span aria-hidden="true" className="text-accent">
                   01
                 </span>
-                <span>
-                  Taking part is voluntary. You can stop after any batch, and nothing you have
-                  already submitted is taken back.
-                </span>
+                <span>{t("landing.before.item1")}</span>
               </li>
               <li className="flex gap-3">
                 <span aria-hidden="true" className="text-accent">
                   02
                 </span>
-                <span>
-                  You will never see the same sentence twice, and you will stop being offered
-                  sentences once enough other people have checked them.
-                </span>
+                <span>{t("landing.before.item2")}</span>
               </li>
               <li className="flex gap-3">
                 <span aria-hidden="true" className="text-accent">
                   03
                 </span>
-                <span>
-                  If a sentence is wrong, we would rather have your version of it than a
-                  conversation about it. Write it the way you would actually say it.
-                </span>
+                <span>{t("landing.before.item3")}</span>
               </li>
             </ul>
           </Card>
@@ -151,10 +168,8 @@ export default function HomePage() {
 
       <footer className="border-ink bg-paper-raised border-t-2">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 sm:px-8">
-          <p className="label-meta text-ink-faint">Sadino · Ilocano navigation research</p>
-          <p className="text-small text-ink-muted">
-            No accounts. No name, no email, no student number.
-          </p>
+          <p className="label-meta text-ink-faint">{t("common.footer.research")}</p>
+          <p className="text-small text-ink-muted">{t("landing.footer.noAccounts")}</p>
         </div>
       </footer>
     </>

@@ -45,51 +45,109 @@
 
 ## 4. Apply — the pure layer first, with no React in it
 
-- [ ] 4.1 `src/lib/domain/locale.ts`: the two approved locales, `DEFAULT_INTERFACE_LOCALE`, and
+- [x] 4.1 `src/lib/domain/locale.ts`: the two approved locales, `DEFAULT_INTERFACE_LOCALE`, and
       `resolveInterfaceLocale(unknown)` that returns the default for anything else and never throws.
-- [ ] 4.2 Test it as a pure function at the narrowest layer, including the absent, empty, and
-      tampered cases the spec names.
-- [ ] 4.3 `src/lib/i18n/copy.ts`: the English catalog defines the key set; the Filipino catalog is
-      typed `Record<keyof typeof english, string>`, so **a missing Filipino string fails
-      `pnpm run typecheck`** rather than silently rendering English. This is the load-bearing
-      mechanism in design §D3 and it must be a **type**, not a test — absence of a key is not
-      observable at runtime.
-- [ ] 4.4 A test that no Filipino rendering is empty, and that no rendering is byte-identical to its
-      English counterpart where the two are genuinely different strings. The type cannot catch a
-      copy-paste that leaves English in the Filipino catalog; recorded as a known limit of §D3 rather
-      than presented as solved.
+      `isInterfaceLocale` additionally rejects a value that merely *stringifies* to `"fil"` — an
+      object with a `toString`, a `String` wrapper, a one-element array — and the `includes` lookup is
+      on a literal tuple, so `"constructor"` and `"toString"` are rejected like any other value rather
+      than reaching `Array` prototype members.
+- [x] 4.2 Tested as a pure function at the narrowest layer, covering the absent, empty,
+      unrecognised, and tampered cases the spec names, plus the prototype-lookup cases.
+- [x] 4.3 `src/lib/i18n/copy.ts`: **84 keys**, the English catalog defining the key set and the
+      Filipino catalog annotated `Record<CopyKey, string>`. **Re-derived by probe, not accepted on
+      report**: control GREEN at exit 0, and adding one English key with no Filipino string gives
+      **exit 2 with `error TS2741`** ("property is missing in type"), with the catalogue restored
+      byte-identical.
+- [x] 4.4 Tests that no Filipino rendering is empty, that no English string is blank, and that no
+      Filipino string is byte-identical to its English counterpart — with an **allowlist whose every
+      entry must state a reason**, so a new duplicate cannot be suppressed by copying a bare
+      exception. Recorded as a known limit of §D3: the type cannot catch a copy-paste that leaves
+      English in the Filipino catalog, only a test can.
 
 ## 5. Apply — the server boundary
 
-- [ ] 5.1 Read the locale from a cookie on the server so the first paint is already correct and
-      `<html lang>` is right without a client round trip. No middleware.
-- [ ] 5.2 A Server Action to change the locale, so the write is server-authoritative like every other
+- [x] 5.1 The locale is read from a cookie on the server, so the first paint is already correct and
+      `<html lang>` is right without a client round trip. **No middleware.** Consequence, confirmed
+      by the build output: all four routes are now `ƒ (Dynamic)` rather than static, which is
+      required by this task and not a regression.
+- [x] 5.2 A Server Action changes the locale, so the write is server-authoritative like every other
       write here, with `httpOnly`, `sameSite: "lax"`, and a bounded `maxAge`.
-- [ ] 5.3 The Server Action's **core** takes injected dependencies, following the established
-      `*-actions-core.ts` pattern, and the wrapper maps a `ServerEnvError` to a typed outcome as
-      `allocation-actions-core.ts` does.
-- [ ] 5.4 Prove the locale is never written to the research database: no repository method is
-      called, and a test asserts the action touches no repository. This is a spec requirement about
-      absence, so the pin belongs where absence is observable.
+- [x] 5.3 The **core** takes injected dependencies, following `*-actions-core.ts`, and the payload
+      is re-parsed through the shared `parseWriteIntent` boundary before the cookie writer is called,
+      so a rejected request cannot write anything.
+      **DEVIATION, recorded rather than ticked as written**: this task also asked for a
+      `ServerEnvError` → `not_configured` branch, and it was **deliberately not implemented**. The
+      locale path reads no environment, so that branch could never fire; and calling `getServerEnv()`
+      to make it reachable would break the switcher in every deployment without database credentials —
+      which is this one — for a language preference. `LocaleChangeOutcome` is therefore `changed` or
+      `invalid`, with **no persistence-shaped variant at all**, because there is no research record
+      to fail to write to. The reasoning is in the core's header so the next reader does not add the
+      branch back for symmetry. Root reviewed and accepts this.
+      A second, smaller deviation: the wrapper returns `Promise<void>` rather than a typed outcome,
+      because React types `<form action>` as `(formData) => void | Promise<void>` and returning the
+      outcome is a real `TS2322` at the one call site. The tests assert the effects instead.
+- [x] 5.4 The locale is never written to the research database, proven **two ways**:
+      **(a) structurally** — `LocaleChangeDependencies` has exactly one member and it writes a cookie,
+      so "the locale is never research data" is *unrepresentable* rather than documented, pinned by a
+      `KeySetIsExactly` assertion plus a `@ts-expect-error` control so any second member fails
+      `pnpm run typecheck` whatever it is named; and **(b) by scan** — a comment-stripped source scan
+      of `src/lib/i18n/**` for repository/Supabase/env specifiers, with two meta-guards proving the
+      scan reads a real tree and extracts specifiers from imports rather than from string content.
 
 ## 6. Apply — the interface
 
-- [ ] 6.1 The `ENG | FIL` switcher in the header: keyboard-operable, consistently reachable on every
-      public page, and visually subordinate to the validation task.
-- [ ] 6.2 Localize `layout.tsx` — `lang`, the skip link, the document title and description — and
-      all four routes.
-- [ ] 6.3 Keep the value/label separation: the screening loop selects
+- [x] 6.1 The `ENG | FIL` switcher, rendered by the **root layout** so presence is a structural
+      property — a route that forgot it cannot exist, and it is the only way the not-found page gets
+      one, since that page has no header of its own. It is a plain `<form>` submitting to the Server
+      Action, with **no `"use client"` and no state**: the control that changes the language working
+      without hydration is the point, for a participant on a poor signal.
+- [x] 6.2 Localized `layout.tsx` — `lang`, the skip link, title and description — and all four
+      routes.
+- [x] 6.3 The value/label separation is kept: the screening loop selects
       `ILOCANO_PROFICIENCY_CHOICES[i].value`, never the label, and a test asserts the stored
       proficiency is `fluent` whichever locale rendered it.
-- [ ] 6.4 The Ilocano dataset instruction is rendered from storage with **no catalog lookup on its
-      path**, asserted by a test rather than by review.
-- [ ] 6.5 Keep the soft neo-brutalist direction and accessibility: real `<button>` elements, no
-      colour-only state, visible focus, and the switcher large enough to hit on a phone.
+- [x] 6.4 The Ilocano dataset instruction has **no catalog lookup on its path**, asserted by the
+      research-boundary scan rather than by review — including a test that the scan would notice a
+      module that did both, which is the control that makes the scan trustworthy.
+- [x] 6.5 Soft neo-brutalism preserved and accessibility above novelty: two real `<button>`
+      elements, **no accent surface** (the accent belongs to the page's primary action), a `min-h-11`
+      44px touch target, and active locale shown by **two** independent signals — `aria-current` and a
+      visible check mark — so state is legible in greyscale and to a colour-blind participant.
+      `aria-label` carries the accessible name of the form, so a participant hears "Interface language"
+      and then "English" or "Filipino" rather than two unexplained abbreviations.
+- [x] 6.6 **DEFECT FOUND IN ROOT REVIEW AND FIXED.** The switcher chose its accessible-name key with
+      `choice === "en" ? english : filipino`. That compiles, passed the whole suite, and would have
+      announced a **third** approved locale to a screen-reader user as *Filipino* — and a comment in
+      the same file claimed that adding a locale required no edit here, which was **false**. A
+      comment asserting a property the code does not have is worse than no comment, because a
+      reviewer reads it and relies on it.
+      Fixed with `LOCALE_NAME_KEYS: Record<InterfaceLocale, LocaleNameKey>` in `copy.ts`, the same
+      mechanism `PROFICIENCY_LABEL_KEYS` already used, so a third locale is a type-check failure
+      rather than a silent mislabel. Four tests added, including a can-fire/can-not-fire pair — and
+      the first attempt at that pair wrote `{ … } as Record<…>`, whose cast silenced the very error
+      the `@ts-expect-error` stood in for, correctly caught by `TS2578`.
 
 ## 7. Verify
 
-- [ ] 7.1 `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck`, `pnpm run test:unit`, and
-      `pnpm run build`, each reported with what it does and does not prove.
+- [x] 7.1 **Run by the root, not inherited from the implementation agent**, each with what it does and
+      does not prove:
+
+      | Command | Result | Proves | Does **not** prove |
+      | --- | --- | --- | --- |
+      | `pnpm run lint` | exit 0, no errors or warnings | ESLint accepts every file including the 12 new ones, and `sadino/no-privileged-imports` accepts the switcher — which is why it takes its Server Action as a **prop** rather than importing it. | That the rule would catch a new violation. |
+      | `pnpm run format:check` | exit 0 | Every formatter-owned file matches the committed Prettier config. | Anything about correctness. |
+      | `pnpm run typecheck` | exit 0 | `tsc --noEmit` under `strict` over `src/` and `tests/`, which is what enforces the `@ts-expect-error` pins — including the `TS2578` that fired during this review when a cast silenced the error a pin stood in for. | Any runtime behaviour. |
+      | `pnpm run test:unit` | exit 0 — **32 files / 879 tests** | The catalog pins, the resolver, the action core and wrapper, the rendered routes in both locales, the value/label separation, and the research-boundary scans. | Anything needing a database, network, or browser. `server-only` is stubbed. |
+      | `pnpm run test:integration` | exit 0 — **6 files / 100 tests** | The six research tables still hold, and the 600 imported records are still byte-identical to the source. | That this is Supabase. PGlite is PostgreSQL in WebAssembly. |
+      | dataset guard | exit 0 — **1 file / 7 tests** | `data/ilocano-synthetic-data.json` is unchanged on this branch. | — |
+      | `pnpm run build` | exit 0, "Compiled successfully" | It compiles for production, and all four routes are `ƒ (Dynamic)` because they read the cookie — **required by task 5.1**, not a regression. | That a test passed. |
+      | `git diff main -- AGENTS.md docs/ openspec/ data/ supabase/ package.json` | empty | Nothing outside the change's scope was touched. | — |
+
+      **What no command here proves**: nothing about a real Supabase project (there are still no
+      credentials, and the locale path deliberately reads no environment so the switcher keeps
+      working without them), and **nothing about visual rendering** — no browser has ever rendered
+      this site. The switcher's contrast, its 44px target in a real viewport, and the first-paint
+      behaviour of `lang` are all asserted on markup and CSS, and a human still has to look.
 - [ ] 7.2 Read the CI log back **by step name**, and compare the step list against a known-good run
       before merging. The reader must refuse rather than report a partial number — that refusal is
       the only reason the immutability-guard truncation surfaced three times.
