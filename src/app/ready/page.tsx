@@ -151,8 +151,17 @@ export default function ReadyPage() {
             So softening the copy was not sufficient on its own. The claim that they may
             finish presupposes a start, and the route has to offer one. `/start` is the
             screening question, it exists, and it is the correct destination for someone with
-            no enrollment: the resume check inside it means a participant who *did* answer
-            and simply arrived here directly is recognised rather than asked again.
+            no enrollment: the submit-time resume check inside it recognises a participant who
+            *did* answer, so their stored identity and their original screening answer are
+            restored rather than replaced.
+
+            That last sentence was originally written as "recognised rather than asked again",
+            which is FALSE and contradicts the D2 amendment this change carries: a participant
+            who navigates directly to `/start` **does** see the screening question again. What
+            the resume check guarantees is that their original answer survives and is not
+            overwritten. A returning participant sees the question, answers it, and the stored
+            answer is preserved - which is a weaker and quite different promise, and stating the
+            stronger one here would have been the same mistake this route was repaired for.
 
             Placed here, immediately after the three items it qualifies, rather than further
             down. The alternative reads badly for the participant who just answered the
@@ -183,9 +192,9 @@ export default function ReadyPage() {
             <p className="label-meta text-ink-muted">What happens next</p>
             <p className="text-small text-ink-muted">
               Receiving sentences is the next part of the study and is not switched on yet. When it
-              is, this browser will be recognised as the same validator and you will be given ten
-              Ilocano navigation sentences to check. Coming back to this browser will not replace
-              your screening answer.
+              is, a browser that already answered the question is recognised as the same validator
+              and is given ten Ilocano navigation sentences to check. Coming back to this browser
+              will not replace your screening answer.
             </p>
             <p className="text-small text-ink-muted">
               Until then, nothing is required of you. If you have already answered the Ilocano

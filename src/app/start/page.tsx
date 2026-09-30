@@ -23,7 +23,7 @@ import { ScreeningForm } from "./screening-form";
 export const metadata: Metadata = {
   title: "Screening",
   description:
-    "One question about your Ilocano comfort, then you can start checking sentences. No name, " +
+    "One question about your Ilocano comfort, and nothing about you is collected. No name, " +
     "no email, no account.",
 };
 

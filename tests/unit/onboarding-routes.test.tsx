@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import {
   ILOCANO_PROFICIENCY_CHOICES,
   ILOCANO_PROFICIENCY_QUESTION,
   ILOCANO_PROFICIENCY_SUPPORTING_COPY,
+  toIlocanoProficiency,
 } from "@/schemas/validator";
 
 /**
@@ -104,6 +105,62 @@ describe("the internal route inventory this suite relies on", () => {
   });
 });
 
+describe("the screening answer cannot be fabricated at the answer control", () => {
+  // Round six's W1, the most severe finding of six rounds, and the reason this is a
+  // *function* with tests rather than another source-text assertion.
+  //
+  // The call site was `onChange={(value) => setSelection(value as IlocanoProficiency)}`.
+  // Because `AnswerGroup.onChange` is `(value: string) => void`, that cast was unchecked, and
+  //
+  //     onChange={() => setSelection(ILOCANO_PROFICIENCY_CHOICES[1].value)}
+  //
+  // enrolled every participant as "Fluent" regardless of what they chose. Verified to pass
+  // lint, format, typecheck, all 510 unit tests, and the production build.
+  //
+  // The literal-level guards from rounds three and four cannot see it: "fluent" never appears
+  // in the file. That is round four's C1c shape arriving through a different door, and it is
+  // why this is fixed by removing the cast rather than by a seventh regex.
+  it("accepts each of the five approved proficiencies", () => {
+    for (const choice of ILOCANO_PROFICIENCY_CHOICES) {
+      expect(toIlocanoProficiency(choice.value), choice.value).toBe(choice.value);
+    }
+  });
+
+  it("rejects anything that is not one of them, rather than narrowing it", () => {
+    // The load-bearing case. A function that returned its input unchanged, or cast it, would
+    // pass every other test in this file while re-opening the hole.
+    for (const fabricated of [
+      "Fluent", // wrong case - the stored values are lowercase
+      " native", // untrimmed
+      "native ", // untrimmed
+      "spanish",
+      "",
+      "undefined",
+      "null",
+      "constructor",
+      "__proto__",
+      "toString",
+    ]) {
+      expect(toIlocanoProficiency(fabricated), JSON.stringify(fabricated)).toBeNull();
+    }
+  });
+
+  it("is what the screening form actually calls, so the cast is gone from the file", () => {
+    // One behavioural seam and one textual one. The textual half exists only to prove the
+    // old call site is not still sitting there alongside the new one - a guard that a
+    // reviewer can probe, and that fails loudly if someone reintroduces the cast.
+    const source = readFileSync(
+      join(process.cwd(), "src", "app", "start", "screening-form.tsx"),
+      "utf8",
+    );
+    expect(source).toContain("toIlocanoProficiency(value)");
+    expect(
+      source,
+      "an unchecked cast at the answer control reopens the fabrication route",
+    ).not.toMatch(/setSelection\(value\s+as\s+IlocanoProficiency\)/);
+  });
+});
+
 describe("landing route", () => {
   const html = renderToStaticMarkup(<HomePage />);
 
@@ -147,6 +204,30 @@ describe("screening route", () => {
     expect(startMetadata.description).toBeTypeOf("string");
     expect((startMetadata.description ?? "").trim().length).toBeGreaterThan(30);
     expect(startMetadata.description).not.toMatch(/todo|placeholder|nowhere|lorem/i);
+  });
+
+  it("does not promise sentences that /ready says are not switched on yet", () => {
+    // ROUND SIX W3. Two routes in one flow contradicted each other on a fact a participant
+    // can act on. `/start`'s metadata said "then you can start checking sentences"; `/ready`
+    // said "Receiving sentences is the next part of the study and is not switched on yet".
+    //
+    // The inconsistency is in the *metadata description*, which is the tab title and the
+    // search snippet, so it is copy a participant reads before arriving anywhere. It is new
+    // copy from this change: `/start` did not exist before it.
+    //
+    // Asserted here as a cross-route invariant rather than as two independent string checks,
+    // because the defect was never that either sentence was individually odd - it was that
+    // the pair disagreed. A test on each route alone would have passed.
+    const ready = renderToStaticMarkup(<ReadyPage />);
+
+    expect(ready).toMatch(/not switched on yet/i);
+    expect(
+      startMetadata.description,
+      "/start metadata promises sentences that /ready says are not switched on",
+    ).not.toMatch(/start checking sentences|check sentences|start validating/i);
+
+    // And the honest version is present: what this route is actually for.
+    expect(startMetadata.description).toMatch(/nothing about you is collected/i);
   });
 
   it("asks the approved question verbatim", () => {
@@ -446,6 +527,19 @@ describe("confirmation route", () => {
     expect(html).not.toMatch(/What just happened/);
     expect(html).not.toMatch(/You are set/);
     expect(html).not.toMatch(/Before you begin<\/h1>\s*<p[^>]*>[^<]*identity is saved/i);
+
+    // ROUND SIX W6. The one sentence round five missed, on the same page, in the same
+    // section. "When it is, this browser will be recognised as the same validator" is not true
+    // for the visitor the new card directly below addresses: someone who has not started has
+    // no validator to be recognised AS. A weaker defect than the ones round five found - a
+    // forward promise rather than an attestation of a past event - but the page's own header
+    // promises that every sentence below it is true whether or not an enrollment happened, and
+    // this one broke that promise. Asserted as an absence, because the failure mode is a
+    // sentence that reads perfectly well.
+    expect(html).not.toMatch(/this browser will be recognised as the same validator/);
+    expect(html).toMatch(
+      /a browser that already answered the question is recognised as the same validator/,
+    );
 
     // ...and the unconditionally-true forms are present instead.
     expect(html).toMatch(/is generated for you and saved to the database/i);

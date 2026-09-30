@@ -129,13 +129,19 @@ inferred from the plan.
 | `pnpm run lint` | exit 0, no errors, no warnings |
 | `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
 | `pnpm run typecheck` | exit 0 |
-| `pnpm run test:unit` | exit 0 - 22 files, 509 tests passed |
+| `pnpm run test:unit` | exit 0 - 22 files, 514 tests passed |
 | `pnpm run test:integration` | exit 0 - 4 files, 69 tests passed |
 | `pnpm run build` | exit 0, "Compiled successfully"; `/`, `/_not-found`, `/ready`, `/start` all prerendered static |
 | `openspec validate landing-and-screening --strict` | exit 0, "Change 'landing-and-screening' is valid" |
 | `openspec validate --specs --strict` | "Totals: 6 passed, 0 failed (6 items)" |
 
-> **The unit counts across the five review rounds were 445, 497, 506, 506, and 509.** The flat
+> **The unit counts across the six review rounds were 445, 497, 506, 506, 509, and 514.**
+>
+> This line was written as '...and 509' and was **wrong**: the suite was 510 at that commit. It is
+> now correct, and the correction is recorded here rather than quietly applied because a count
+> written into this ledger is a *measurement* and a wrong measurement is worse than a missing one -
+> it reads as evidence. This is the fifth time in this change that a figure recorded from a command
+> came out narrower than the command actually reported. The flat
 > stretch is the interesting part and is not an absence of findings.
 >
 > - **445 -> 497**, round one: a discarded screening answer, an assertion comparing a function to
@@ -477,11 +483,32 @@ clothes, and this change made it three times.
 
 ### The call-site enumeration, and the follow-up it assigns
 
-**This section is the reason the exception list above can be trusted more than the four
+**This section is the reason the exception list above can be trusted more than the five
 versions of it that were falsified.** Four rounds each found call sites the record had not
 named, so the fifth was scoped to produce a complete inventory rather than to probe whatever
-the last round repaired. The inventory is below. It is mechanical, and it is the whole of the
-client shell.
+the last round repaired. The inventory is below.
+
+> **It is not complete, and round six proved that.** The fifth round's scope above was an
+> *intention* that the inventory then failed to meet, not a fact it established. Round six added
+> eight further client-shell call sites, two of them more severe than any this table listed, and
+> confirmed by probe that every one of them passes lint, format, typecheck, the full unit suite
+> and the production build. The list below is now believed complete **as of round six** and is
+> expected to be re-derived again, not inherited. The retraction is recorded above rather than
+> quietly applied.
+
+> **THIS CLAIM WAS FALSIFIED BY ROUND SIX, and the falsification is part of the record rather
+> than a correction quietly applied.** Round five described the table below as "a complete
+> inventory" and "the whole of the client shell". It was not. Round six found at least eight
+> further client-shell call sites, two of them more severe than anything listed here, and
+> confirmed by probe that all of them pass lint, format, typecheck, the full unit suite and the
+> production build. The honest count is **at least 22**, listed below.
+>
+> The lesson is recorded because it is the fifth time in this change that a claim about
+> *coverage* turned out to be narrower than the claim about *behaviour*: an assertion comparing
+> a function to itself, a zero-link test that guaranteed a dead end, a "red-confirmed" row whose
+> guard enforced nothing, a coverage column that over-claimed, and now an inventory that
+> omitted its worst entry. **An enumeration in this project is a claim to be re-derived, not a
+> fact to be inherited.**
 
 The finding that matters is not the fourteen. It is *what kind* of gap they are. Rounds 3 and 4
 found guards with holes in them. These are sites with **no assertion of any kind** - neither
@@ -491,6 +518,7 @@ would pass the entire gate.
 | # | Site | Behaviour if unguarded | Severity |
 | --- | --- | --- | --- |
 | S2 | `screening-form.tsx:94` `router.push("/ready")` | a just-enrolled participant is returned to the question | low |
+| S18 | `screening-form.tsx:241` skip button `disabled` | as S21. Round five rated this `medium`; round six confirmed the *primary* button's twin is the worse case and this is the identical hazard one line away | **critical** |
 
 > **Also fixed in this round, and it was found while fixing the entry above, not by the
 > review:** softening `/ready`'s copy made every *claim* on that page true, but left the page
@@ -528,15 +556,46 @@ would pass the entire gate.
 | S9 | `screening-form.tsx:168` **payload to `resumeValidatorAction`** | `{ storedId: "" }` makes every resume `absent`, so every return visit mints a second identity | **critical** |
 | S12 | `screening-form.tsx:179` `clearStoredValidatorId()` | conditional, so a stale id survives and re-enrols the participant each visit | **critical** |
 | S14 | `screening-form.tsx:186` the `await` inside `startTransition` | `isPending` ends mid-write; the file's own comment names this hazard | **critical** |
-| S18 | `screening-form.tsx:241` skip button `disabled` | a press mid-write races a second enrollment | medium |
 | R2 | `resume-validator.tsx:61` `readStoredValidatorId()` | resume is dead; a real returning validator is told they hold no identity | **critical** |
 | R3 | `resume-validator.tsx:62` first-time-visitor branch | a first-time visitor is told the check *failed* rather than that they hold nothing | **critical** |
 | R4 | `resume-validator.tsx:74` **payload to `resumeValidatorAction`** | as S9, on the landing page | **critical** |
 | R6 | `resume-validator.tsx:77` `router.push("/ready")` | a restored validator is shown "you do not hold a saved identity" while being recognised | **critical** |
 | R7 | `resume-validator.tsx:84` `clearStoredValidatorId()` | the message claims a clear that does not happen - **fixed in this round** | fixed |
 | R9 | `resume-validator.tsx:89` `setMessage(decision.message)` | `setMessage(null)` swallows a failed resume entirely - **fixed in this round** | fixed |
+| **S20** | `screening-form.tsx:206` `onChange` **cast** | `ILOCANO_PROFICIENCY_CHOICES[1].value` fabricates **Fluent for every participant**; passes the entire gate | **critical - REPAIRED in round six** |
+| **S21** | `screening-form.tsx:232` **primary** submit `disabled` | a double-press on Continue mints two validators, the second overwriting the first | **critical, FOUND IN ROUND SIX** |
+| S22 | `screening-form.tsx:205` `value={selection}` | the control would show no selection, so what is submitted is not what is displayed | medium |
+| S23 | `screening-form.tsx:207` `disabled={isPending}` | options stay clickable mid-write | medium |
+| S24 | `resume-validator.tsx:104` `disabled={isPending}` | as S23, on the landing page | medium |
+| S25 | `screening-form.tsx:192` `event.preventDefault()` | a native form submit bypasses the Server Action entirely | medium |
+| S26 | `screening-form.tsx:87` `setNotice(RESUMED_NOTICE)` | a wrong or absent message on the resume path | low |
+| S27 | `screening-form.tsx:154` error/notice reset | a stale error survives into the next submission | low |
 
-`resume-validator.tsx` had **no substantive assertion of any kind** before this round. Two of the
+### S20, and why its repair is not another regex
+
+S20 is the most severe finding of six rounds, and the repair deliberately does **not** follow the
+pattern this change has used five times. `AnswerGroup.onChange` is `(value: string) => void`,
+because the control is generic over any option set, so the call site needed an unchecked cast:
+`setSelection(value as IlocanoProficiency)`. Round six proved that cast is a fabrication route -
+`onChange={() => setSelection(ILOCANO_PROFICIENCY_CHOICES[1].value)}` passes the entire gate, and
+the literal-level guards from rounds three and four cannot see it because `"fluent"` never
+appears in the file. That is round four's C1c shape arriving through a different door.
+
+A seventh regex would have failed the same way. So the **cast was removed**:
+`toIlocanoProficiency(value)` in `@/schemas/validator` parses the control's string against the
+same `ilocanoProficiencySchema` the options are derived from, and returns `null` for anything
+that is not one of the five approved values. It is ordinary domain code with ordinary
+behavioural tests - including `Fluent`, ` native`, `spanish`, `__proto__` and `toString` -
+rather than a text match over a call site. Fabrication now requires editing that function,
+which is probed and red.
+
+One honest note on that probe. The original fabrication mutation was expected to remain green,
+on the reasoning that no call site would be left to constrain. **It went red instead**, because
+the textual `toContain("toIlocanoProficiency(value)")` assertion catches it. The route is
+closed at the call site *and* in the function, which is stronger than intended and worth
+recording rather than restating as designed.
+
+`resume-validator.tsx` had **no substantive assertion of any kind** before round five. Two of the
 four prior reviews never opened it, and one of them was reviewing call-site wiring.
 
 **Both Server Action payload arguments are unasserted anywhere.** `firstActionFor`, `decideResume`,
@@ -551,17 +610,17 @@ assertions can only check a shape someone thought of, and the set of shapes is u
 rounds have established that empirically. The reviewer rejected continuing to add them, and that
 judgement is adopted here. Three options were considered:
 
-1. **More textual guards.** Rejected. Five rounds of demonstrating that a repaired guard is
+1. **More textual guards.** Rejected. Six rounds of demonstrating that a repaired guard is
    evidence about that site only.
 2. **Make the defects unexpressible.** **Chosen.** Extract the payload building into pure
    `enrollmentIntent(answer)` / `resumeIntent(stored)` functions, so S5 and S9 become
    typecheck-enforced rather than textually asserted - there is exactly one way to build a payload
    and it takes the participant's value. Then extract decision application over injected ports
-   (`store`, `forget`, `go`, `say`), which converts twelve of the fourteen into assertions
+   (`store`, `forget`, `go`, `say`), which converts twenty of the twenty-two into assertions
    against a recording fake: no regex, no browser, no `renderToStaticMarkup` limitation. Roughly
    sixty lines extracted.
 3. **A browser test runner.** Correct and worth having, and a change of its own. It would catch
-   all fourteen with **zero** new assertions, because each changes observable participant-visible or
+   all twenty-two with **zero** new assertions, because each changes observable participant-visible or
    persisted behaviour. Phase 4 is the first change with a genuinely multi-step client flow worth
    driving, which is where the justification for the dependency and the CI time belongs.
 
@@ -575,10 +634,19 @@ severity is what makes this merge honest rather than a fourth falsified claim of
 **The residual risk, stated plainly.** Until that change lands, any future edit to
 `screening-form.tsx` or `resume-validator.tsx` can fabricate a screening answer, split a
 participant's record across two identities, swallow a failure, or tell a participant something
-untrue - and lint, format, typecheck, 509 unit tests, 69 integration tests and the build will all
+untrue - and lint, format, typecheck, 514 unit tests, 69 integration tests and the build will all
 be green. That risk is not reduced by the guards this change now has. It is concentrated entirely
-in the fourteen sites that have none, and it should be read in those words rather than as
-"guarded".
+in the sites that have none, and it should be read in those words rather than as "guarded".
+
+**Twenty-one, not twenty-two, and the difference is the point.** S20, the fabrication route, was
+repaired in round six by removing the unchecked cast, so it is no longer one of the unguarded
+sites. That is the single most valuable thing this change does for its successor, and it is also
+the reason the count here must not simply be copied from the table above: **S21 - the primary
+submit button's missing `disabled` - is the most severe unasserted site that remains**, because a
+double press on Continue mints two validators and the second overwrites the first. It is exactly
+the record-splitting hazard the file's own comment rates `critical` at the *skip* button one line
+away, which round five listed as `medium`. Round six raised it, and a reader who takes the count
+from the wrong sentence here would be told the worst thing is fixed when it is not.
 
 ### Exceptions and gaps, named rather than absorbed
 
@@ -620,3 +688,30 @@ matters, and it is why this paragraph exists.
 probe-confirmed before this claim was restated. That is the point of recording them here even though
 they are closed: the previous version of this table named three exceptions and was still wrong, so
 the reader needs to see that the count moved for a reason and not by luck.
+
+**6. Round six found no behavioural defect, and the record was what failed.** Every round-five repair
+was independently re-probed and went red; the enrollment service, every `runResume` early return,
+the whole `write-intake` boundary, and every participant-visible error path were attacked and held.
+What failed was the claim that the call-site table was "a complete inventory". Three things are
+therefore *closed* in round six and should be read as closed, not as open exceptions:
+
+- **S20**, the screening-answer fabrication route, repaired by removing an unchecked cast. Repaired
+  *structurally* - it is a function with behavioural tests, not a text match - and probed red from
+  both directions.
+- **A participant-facing contradiction between two routes.** `/start`'s metadata said "then you can
+  start checking sentences"; `/ready` said receiving sentences "is not switched on yet". Both are
+  new copy from this change, and they disagreed about a fact a participant can act on. Asserted now
+  as a **cross-route** invariant, because a per-route test would have passed on both.
+- **One remaining unconditional-truth violation on `/ready`.** "this browser will be recognised as
+  the same validator" is false for the visitor the new card directly below addresses, who has no
+  validator to be recognised as. Round five fixed that page's claims and missed this one; the
+  page's own header promises every sentence below it holds whether or not enrollment happened, and
+  this sentence broke that promise.
+
+**7. Two record errors, both of a kind this change has produced five times.** `tasks.md` recorded
+the unit count as 509 where the suite was 510, and two adjacent rows of the same `ROADMAP.md`
+table disagreed on how many rounds had run - the identical contradiction round five's own commit
+message claims to have fixed. Both are corrected above, and both corrections are left visible. A
+count written into this ledger is a **measurement**; a wrong measurement is worse than a missing
+one, because it reads as evidence. It is now the sixth such error in this change, and the pattern
+is that **an unlabelled count is not a count, it is a coincidence of formatting**.

@@ -23,6 +23,7 @@ import {
   ILOCANO_PROFICIENCY_CHOICES,
   ILOCANO_PROFICIENCY_QUESTION,
   ILOCANO_PROFICIENCY_SUPPORTING_COPY,
+  toIlocanoProficiency,
   type IlocanoProficiency,
 } from "@/schemas/validator";
 
@@ -203,7 +204,7 @@ export function ScreeningForm() {
           label: choice.label,
         }))}
         value={selection}
-        onChange={(value) => setSelection(value as IlocanoProficiency)}
+        onChange={(value) => setSelection(toIlocanoProficiency(value))}
         disabled={isPending}
         error={error ?? undefined}
       />
