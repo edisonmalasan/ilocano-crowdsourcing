@@ -9,11 +9,15 @@ import { ScreeningForm } from "./screening-form";
 /**
  * Screening route — Phase 3, step 2 of the public sequence.
  *
- * A Server Component with no database, network, or session dependency. It holds no
+ * A Server Component with no database or network dependency. It holds no
  * interactive state; the only client island is `ScreeningForm`. That keeps the
  * privileged repository out of the client module graph by construction, and it is
  * why `application-foundation`'s "renders without a database" property still holds
  * for this route even though submitting it does need one.
+ *
+ * It DOES read the interface-locale cookie, so "no session dependency" is no longer the accurate
+ * phrasing here and this route is `ƒ (Dynamic)`. The database property the spec names is untouched:
+ * a cookie is per-browser state, not a query.
  *
  * The participation and privacy notice is rendered HERE, on the same screen as the
  * question, and ABOVE it. A notice a participant can reach without having read the

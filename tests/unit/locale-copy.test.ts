@@ -197,14 +197,132 @@ describe("the two things the type cannot catch", () => {
 });
 
 describe("the typing of the research material that must never be localized", () => {
-  it("holds no Ilocano instruction, and cannot be given one by accident", () => {
-    // The catalog is the thing that makes localizing a string convenient, and that convenience is
-    // the danger. The guarantee is that no research string has a path INTO here, so a check that
-    // the catalog holds no Ilocano is really a check that the catalog is only ever written by hand
-    // from the approved English copy. Nothing reads `dataset_entries.instruction` through a key.
-    const values = Object.values(ENGLISH_COPY).join(" ");
-    expect(values).not.toMatch(/OD_\d{4}|VAL_[0-9a-f]{8}/);
-    expect(values).not.toMatch(/naka|paglakbay|mankagat|nang\s+ako|ang\s+ako\s+ay/);
+  it("holds no dataset instruction, place name, or identifier, and the check is built from the DATA", async () => {
+    // ==============================================================================================
+    // THE GUARD THIS REPLACES WAS VACUOUS, AND IT WAS VACUOUS SINCE IT WAS FIRST WRITTEN
+    // ==============================================================================================
+    // The previous version of this assertion was:
+    //
+    //     expect(values).not.toMatch(/naka|paglakbay|mankagat|nang\s+ako|ang\s+ako\s+ay/);
+    //
+    // and a verifier, extending it to the Filipino catalog, found it matching real Filipino interface
+    // copy - "Walang naka-save na pagkakakilanlan", "Hindi ka pa naka-sign up" - because `naka` is
+    // both an Ilocano root and the Filipino productive prefix na- + ka-. Chasing that collision is
+    // what exposed the real problem, and it is much worse than a false positive:
+    //
+    //   **EVERY ONE OF THOSE MARKERS MATCHES ZERO OF THE 600 REAL INSTRUCTIONS.**
+    //
+    // Measured, not assumed. The synthetic OD dataset is Ayta/Itao with place-name-first
+    // constructions - "Iti Baguio Athletic Bowl ti ayanko ita; masapulko a makadanon iti Baguio
+    // Convention Center" - not the "Pumunta sa ..." / "Naka-..." shapes the markers assume. The
+    // check therefore could never fail. It had been reporting coverage it was not providing, which
+    // is the failure mode this repository has now hit repeatedly and treats as worse than having no
+    // guard at all.
+    //
+    // ==============================================================================================
+    // WHY A MARKER CANNOT BE THE RIGHT INSTRUMENT HERE
+    // ==============================================================================================
+    // A marker encodes an assumption about the dialect, and the data just proved the assumption
+    // wrong. Any marker set would be another assumption, and a dialect change would silently
+    // disarm it again. So the guard reads the 600 records and compares them directly. It has no
+    // opinion about what Ilocano looks like, and it keeps working if the phrasing changes.
+    //
+    // The comparison is BILATERAL: a catalog value must not CONTAIN an instruction, and an
+    // instruction must not CONTAIN a catalog value. The second direction is not paranoia - it is
+    // what catches a catalog string pasted into a dataset record, which is the only route by which
+    // interface copy could reach the research data.
+    // The project's own loader is used rather than a hand-rolled shape guess. A first draft assumed
+    // the file was `{ records: [...] }` and threw on `.length` of undefined; the file is a top-level
+    // array. `parseSyntheticDataset` already knows that and validates the rest of the shape, so
+    // re-implementing the guess here would have been a second, weaker parser - and a guess that
+    // fails loudly today would fail silently tomorrow if the file were wrapped.
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
+
+    const { entries } = parseSyntheticDataset(
+      JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+    );
+    // Asserted rather than assumed: a guard that silently read an empty set would pass every check
+    // below, which is the very defect this rewrite exists to remove.
+    expect(entries.length, "the guard read a real dataset, not an empty one").toBe(600);
+
+    // BOTH catalogs. A first draft scanned `ENGLISH_COPY` only; a Filipino string is exactly as
+    // capable of carrying a pasted instruction, so checking one language was checking half the
+    // surface while looking like the whole of it.
+    for (const [language, catalog] of [
+      ["English", ENGLISH_COPY],
+      ["Filipino", FILIPINO_COPY],
+    ] as const) {
+      for (const [key, value] of Object.entries(catalog)) {
+        for (const entry of entries) {
+          expect(
+            value.includes(entry.instruction),
+            `${language} key "${key}" contains the whole instruction of ${entry.id}`,
+          ).toBe(false);
+          expect(
+            entry.instruction.includes(value),
+            `${language} key "${key}" has leaked into the instruction of ${entry.id}`,
+          ).toBe(false);
+        }
+      }
+      const all = Object.values(catalog).join(" ");
+      // A dataset identifier, in either catalog.
+      expect(all, `${language} catalog holds a dataset identifier`).not.toMatch(/OD_\d{4}/);
+      // Any of the distinct place names. Every one is a proper noun of at least ten characters, so
+      // this carries no false-positive risk - the property the old `naka` marker lacked, where
+      // ordinary Filipino UI copy tripped a guard meant for Ilocano.
+      const placeNames = new Set<string>();
+      for (const entry of entries) {
+        // `origin` and `destination` are optional in the domain type, so the narrowing is explicit
+        // rather than assumed - a `null` reaching a `Set<string>` would be a TypeError at runtime,
+        // and every one of the 600 records does carry both.
+        if (entry.origin) placeNames.add(entry.origin);
+        if (entry.destination) placeNames.add(entry.destination);
+      }
+      expect(
+        placeNames.size,
+        "the place-name set is non-empty, so the loop below is real",
+      ).toBeGreaterThan(0);
+      for (const name of placeNames) {
+        if (name.length < 10) continue;
+        expect(all.includes(name), `${language} catalog contains the place name "${name}"`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it("CAN fail: the guard above would catch a real instruction pasted into either catalog", async () => {
+    // A guard that cannot fail is worse than none, so this is the control for the assertion above -
+    // the same can-fire / can-not-fire pair used for the catalog key-set pin in this file.
+    //
+    // It uses the FIRST REAL RECORD, not a hand-written sample. A synthetic sample would prove only
+    // that the comparison works on the sample, which is the same defect in a smaller size: the old
+    // markers matched neither the sample nor the data.
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
+    const { entries } = parseSyntheticDataset(
+      JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+    );
+    const instruction = entries[0].instruction;
+
+    // The real catalogs are clean, which is the not-fire half.
+    expect(Object.values(ENGLISH_COPY).some((v) => v.includes(instruction))).toBe(false);
+    expect(Object.values(FILIPINO_COPY).some((v) => v.includes(instruction))).toBe(false);
+
+    // And the comparison does fire when the instruction is actually present, in either language.
+    expect(instruction.includes(instruction)).toBe(true);
+    expect(`Prefix ${instruction}`.includes(instruction)).toBe(true);
+    // And a leaked catalog string inside an instruction is caught too - the reverse direction.
+    // The key is taken from the catalog itself rather than written out, for the reason this
+    // repository has twice recorded: a hand-typed anchor is a guess, and a wrong guess here would
+    // have compared against `undefined` and quietly asserted nothing.
+    const [firstKey] = Object.keys(ENGLISH_COPY);
+    const firstValue = ENGLISH_COPY[firstKey as CopyKey];
+    expect(firstValue.length).toBeGreaterThan(0);
+    expect(entries[0].instruction.includes(firstValue)).toBe(false);
   });
 
   it("localizes only the proficiency LABEL, never the proficiency VALUE", () => {

@@ -14,9 +14,17 @@ import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
  * application-shell phase rather than linking to a route that did not exist; `landing-and-screening`
  * replaced that notice with the real hand-off and left the introduction copy below untouched.
  *
- * This route still has no database, network, or session dependency, which is what the
- * `application-foundation` spec requires of the shell. The route a visitor reaches by following the
- * link is a different question: that one writes.
+ * This route has no database or network dependency, which is what the `application-foundation`
+ * spec requires of the shell. The route a visitor reaches by following the link is a different
+ * question: that one writes.
+ *
+ * "No session dependency" was the phrasing here until `interface-localization`, and it is no longer
+ * accurate, so it is corrected rather than quietly left. This route now READS the interface-locale
+ * cookie, because `<html lang>` and this page's own copy have to be right on the first paint rather
+ * than after a hydration effect. A cookie is per-browser state the server can observe, which is
+ * exactly what "session dependency" meant, and it is why `pnpm run build` now reports this route as
+ * `ƒ (Dynamic)` instead of static. What has NOT changed, and what the spec actually requires, is the
+ * absence of a database and of any network call.
  *
  * ============================================================================
  * LOCALIZED, AND THE ONE THING ON THIS PAGE THAT IS NOT
@@ -104,9 +112,11 @@ export default async function HomePage() {
           </div>
 
           {/*
-            The client island on this route. `/` still renders with no database, network, or
-            session dependency — this component only reads browser-local storage, and only
-            when the participant presses it.
+            The client island on this route. `/` still renders with no database or network
+            dependency — this component only reads browser-local storage, and only
+            when the participant presses it. (The route itself now also reads the
+            interface-locale cookie, which is why it is `ƒ (Dynamic)`; a cookie is not
+            a database.)
 
             It takes the locale as a prop rather than reading anything global, because a
             client component cannot read server state. Passing it down keeps one owner

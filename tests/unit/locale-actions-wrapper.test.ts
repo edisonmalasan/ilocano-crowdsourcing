@@ -70,8 +70,16 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock("next/cache", () => ({
-  revalidatePath: (path: string) => {
-    revalidated.push(path);
+  // BOTH arguments are recorded, joined, and that is load-bearing rather than decorative.
+  //
+  // A first draft of this stub took only `path`, so `revalidatePath("/")` and
+  // `revalidatePath("/", "layout")` were indistinguishable to the whole suite, and TypeScript could
+  // not tell them apart either — the source imports the real `revalidatePath`, and the mock's arity
+  // is invisible to it. The test below is named for the `"layout"` argument, so it was asserting
+  // less than its name claimed: it would have passed unchanged if the argument were deleted, and the
+  // `<html lang>` invariant that design §D1 chose a cookie to satisfy depends on it.
+  revalidatePath: (path: string, type?: string) => {
+    revalidated.push(`${path}:${type ?? "<omitted>"}`);
   },
 }));
 
@@ -111,9 +119,14 @@ describe("a switcher submission", () => {
     // The switcher is rendered by the root layout and submitted from a page below it. Revalidating
     // only the submitted path would leave the layout - which owns `lang` and the switcher itself -
     // serving the previous language, and the page would then declare a language it is not in.
+    //
+    // The assertion is on the JOINED form, so the `"layout"` argument is part of what is checked.
+    // With the stub above recording both arguments, deleting `"layout"` from the call site turns
+    // this into `"/:<omitted>"` and fails it. That is the control for this test's own name: a
+    // guard that cannot distinguish the two cases is not the guard its title says it is.
     await changeInterfaceLocaleAction(submitted("fil"));
 
-    expect(revalidated).toEqual(["/"]);
+    expect(revalidated).toEqual(["/:layout"]);
   });
 
   it("writes the cookie with the documented attributes, not the bare value", async () => {
@@ -234,9 +247,10 @@ describe("the stub is not standing in for the module it claims to stand in for",
     await changeInterfaceLocaleAction(submitted("fil"));
 
     // The write landed in the array only because the wrapper called the stub's `set` - there is no
-    // other route from the wrapper to that array.
+    // other route from the wrapper to that array. Both revalidate arguments are recorded by the
+    // stub, so this also confirms the wrapper reached the real stubbed `revalidatePath`.
     expect(cookieWrites).toHaveLength(1);
-    expect(revalidated).toEqual(["/"]);
+    expect(revalidated).toEqual(["/:layout"]);
   });
 
   it("wrote the same cookie name the reader reads, so the round trip closes", async () => {

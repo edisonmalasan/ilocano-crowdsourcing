@@ -351,6 +351,42 @@ describe("the screening screen, in both languages", () => {
     expect(Object.values(FILIPINO_COPY)).not.toContain("fluent");
   });
 
+  it("keeps the language control OUT of a response form, so a switch cannot submit one", async () => {
+    // Spec scenario S3, "switching the language preserves the response in progress".
+    //
+    // ============================================================================================
+    // WHAT THIS TEST DOES AND DOES NOT COVER - THE HONEST PART
+    // ============================================================================================
+    // S3 is the one scenario with no behavioural test, and the verifier is right that its failure
+    // would silently destroy a participant's research answer. What is asserted here is the part that
+    // IS observable without a browser, and it is the load-bearing structural precondition: the
+    // switcher is a SEPARATE form submitting to a different Server Action, so switching the language
+    // cannot submit, clear, or navigate the response form.
+    //
+    // What remains untested is whether React's client state inside `ScreeningForm` survives the
+    // revalidation the locale action triggers. That is satisfied by React Server Action semantics -
+    // a separate form submits, `revalidatePath` re-renders the same component tree, the tree
+    // reconciles rather than remounting, and `useState` survives - but that reasoning is an
+    // INFERENCE and is recorded as one here rather than dressed up as coverage. A browser-level
+    // check is the honest way to close it, and no browser has ever rendered this site.
+    const { ScreeningForm } = await import("@/app/start/screening-form");
+    const screening = renderToStaticMarkup(<ScreeningForm locale="fil" />);
+
+    // The response form carries no locale field at all, in either language.
+    expect(screening).not.toMatch(/name="locale"/);
+
+    // And the switcher, rendered on its own, carries nothing from the response form: its only
+    // payload is the locale. So there is no name overlap in either direction, which is the property
+    // that makes the two forms independent.
+    const { LocaleSwitcher } = await import("@/components/i18n/locale-switcher");
+    const switcher = renderToStaticMarkup(
+      <LocaleSwitcher locale="en" action={async () => undefined} />,
+    );
+    expect(switcher).toMatch(/name="locale"/);
+    expect(switcher).not.toMatch(/name="ilocanoProficiency"/);
+    expect(switcher).not.toMatch(/name="evaluation"/);
+  });
+
   it.each(ILOCANO_PROFICIENCY_CHOICES.map((choice) => choice.value))(
     "gives %s a localized label in both languages",
     (value) => {

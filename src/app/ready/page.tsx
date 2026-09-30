@@ -51,7 +51,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Rendered as a static page with no database, network, or session dependency.
+ * Rendered as a page with no database or network dependency.
+ *
+ * It is NO LONGER a static page. `interface-localization` made it read the interface-locale cookie
+ * so `<html lang>` and this page's copy are correct on the first paint, and `pnpm run build` now
+ * reports `ƒ /ready`. The earlier "static page" phrasing was left in place by that change and is
+ * corrected here: a cookie is per-browser server-observable state, which is what made the route
+ * dynamic, and no database is involved at any point.
  *
  * WHY THIS PAGE MAKES NO CLAIM ABOUT WHAT ALREADY HAPPENED
  * --------------------------------------------------------

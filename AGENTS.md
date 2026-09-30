@@ -480,8 +480,55 @@ reporting coverage it was not providing. The fix is the one already used elsewhe
 anchor on the statement's own terminator (`create table public.${table} (`) or on the verb plus its
 newline. Re-probed after the fix: the same reversal is `1 failed | 12 passed (13)`.
 
+**A marker that encodes an assumption about the DATA is a guard that has already failed, silently,
+and the only evidence is a measurement of how often the marker actually occurs.** A copy-catalog
+test asserted the catalogs held no Ilocano instruction via
+`expect(values).not.toMatch(/naka|paglakbay|mankagat|nang\s+ako|ang\s+ako\s+ay/)`. Extending it to
+the second catalog made it match **legitimate copy** — *"Walang naka-save na pagkakakilanlan"*,
+*"Hindi ka pa naka-sign up"* — because `naka` is both an Ilocano root and the Filipino productive
+prefix `na-` + `ka-`. That false positive turned out to be the least interesting part: **every one of
+those markers matches ZERO of the 600 real instructions.** The synthetic OD dataset is Ayta/Itao
+with place-name-first constructions — *"Iti Baguio Athletic Bowl ti ayanko ita; masapulko a
+makadanon iti Baguio Convention Center"* — not the `Pumunta sa …` / `Naka-…` shapes the markers
+assume. The guard could never fail, and had been reporting coverage it was not providing since the
+day it was written; the root review had called that file strong without noticing.
+
+Three things generalise past this instance.
+
+**Measure the marker before trusting the guard.** Count how many of the real records each candidate
+matches and how many catalog values it collides with, then keep only what clears both bars. The
+measurement is cheap and it is the only thing that distinguishes a guard from a decoration: of the
+candidates tried, `\biti\b` hits 531/600 with zero collisions, `ayanko` 100/600, `makadanon` 96/600,
+and a seven-marker set covers 568/600 with **zero** collisions in either language — while the
+original five cover **nothing**. Note that a marker can fail in *both* directions at once, which is
+what happened here: too broad to be trusted on Filipino text, too narrow to fire on the data.
+
+**Prefer a data-driven comparison to a marker whenever the data is readable.** The rewrite reads all
+600 records through the project's own `parseSyntheticDataset` and compares them directly —
+bilateral containment, both catalogs, plus the 40 distinct place names, every one a proper noun of
+at least ten characters and therefore free of the false-positive risk the marker had. It has no
+opinion about what Ilocano looks like, so a phrasing change cannot silently disarm it. Proved in both
+directions with the control green at `23 passed`: a real instruction pasted into the **Filipino**
+catalog gives `2 failed | 21 passed` naming `Filipino key "meta.siteTitle" contains the whole
+instruction of OD_0001`, and a real place name pasted into the **English** catalog gives
+`2 failed | 21 passed`. **Assert that the guard read a non-empty set** (`expect(entries.length).toBe(600)`),
+because a guard that silently read nothing passes every one of its own checks.
+
+**A can-fire control must use the real record, not a sample.** The companion test was built on
+`records[0]` deliberately: a hand-written sample would have reproduced the original defect in a
+smaller size, since the old markers matched neither the sample nor the data. This is the
+same lesson as *"before reporting a documented number is wrong, reproduce it with the mutation the
+document describes"* — a control drawn from a fixture tests the fixture.
+
+**And the corollary for review: a reviewer reading a guard must ask what it would take to make it
+fail.** Two separate vacuous guards have now been found by exactly that question in this
+repository — this one and the `Object.keys({ en: 1, fil: 1 })` literal built inside the test that was
+the sole evidence for a research-integrity scenario. Neither was caught by running the suite, by
+reading the diff, or by asking whether the tests passed. Both were caught by asking what would have
+to be true for the assertion to fail, which is a different question and the one worth asking.
+
 **A required check that reports `success` may have run NO tests at all, and only a reader that
-refuses will notice.** This has now happened **three times, and to both jobs**, so treat it as a
+refuses will notice.** This has now happened **four times, and to both jobs**, so treat it as a
 property of this repository's CI rather than as a one-off. Run 36726456200 (Sync for
 `coverage-aware-allocation`) reported both jobs green and `gh pr checks` said pass while the
 `lint, types, and tests` job's step list contained only *Install pnpm* and *Type-check* — **Lint,

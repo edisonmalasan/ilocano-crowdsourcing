@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import * as localeModule from "@/lib/domain/locale";
 import {
   DEFAULT_INTERFACE_LOCALE,
   INTERFACE_LOCALES,
@@ -233,14 +234,48 @@ describe("resolveInterfaceLocale", () => {
 describe("the locale is a display preference, not research data", () => {
   it("derives nothing about a validator from a locale", () => {
     // The spec scenario "a validator's proficiency is never derived from the interface language"
-    // is a claim about ABSENCE, so it is asserted as absence over every approved pairing: for
-    // each locale and each approved proficiency level, there is no function in this module whose
-    // output depends on the locale. Stated as a count because the real guarantee is structural -
-    // this module exports a locale list, a default, a guard, and a resolver, and no data function
-    // at all. A future export that took a validator would have to be added to this file and this
-    // is where a reviewer would look.
-    expect(INTERFACE_LOCALES).toHaveLength(2);
-    expect(Object.keys({ en: 1, fil: 1 })).not.toContain("proficiency");
+    // is a claim about ABSENCE, and this is the ONLY test asserting it.
+    //
+    // ============================================================================
+    // WHAT THE FIRST DRAFT OF THIS ASSERTED, AND WHY IT COULD NOT FAIL
+    // ============================================================================
+    // It read:
+    //
+    //     expect(INTERFACE_LOCALES).toHaveLength(2);
+    //     expect(Object.keys({ en: 1, fil: 1 })).not.toContain("proficiency");
+    //
+    // The second line constructs an object literal INSIDE THE TEST and inspects its keys. It is not
+    // connected to any production code, so it passes whether or not this module exports a
+    // proficiency-deriving function — the only way it could ever fail is if someone typed
+    // `proficiency` into that literal. It was the sole evidence for a research-integrity scenario,
+    // and it was decoration. An earlier draft of this file even said "asserted as absence over
+    // every approved pairing", which described an enumeration the code did not perform.
+    //
+    // ============================================================================
+    // WHAT REPLACES IT: THE MODULE'S REAL EXPORTS, ENUMERATED
+    // ============================================================================
+    // The claim is structural — this module exports a locale list, a default, a guard, and a
+    // resolver, and nothing that takes a validator or returns one. So the guard reads the module's
+    // actual runtime exports, and an EXACT set rather than a floor: a floor is defeated by a
+    // renamed or emptied export list, which is the same defect the sibling file already documents
+    // for its `readdirSync` guard.
+    //
+    // An addition is now a deliberate edit to this list. That is the point: the scenario is about
+    // something being ABSENT, and absence is not observable at runtime — so the pin belongs
+    // wherever a name which does not exist yet is visible, which is here.
+    const exports = Object.keys(localeModule).sort();
+
+    expect(exports).toEqual([
+      "DEFAULT_INTERFACE_LOCALE",
+      "INTERFACE_LOCALES",
+      "isInterfaceLocale",
+      "resolveInterfaceLocale",
+    ]);
+
+    // And the reading of that list: nothing in it is named after a validator, a proficiency, or a
+    // research value. This is the assertion that would have caught the defect above, and it is
+    // written against real exports rather than a literal.
+    expect(exports.join(" ")).not.toMatch(/proficien|validator|evaluation|research/i);
   });
 
   it("carries no Ilocano text, no place name, and no dataset identifier", () => {

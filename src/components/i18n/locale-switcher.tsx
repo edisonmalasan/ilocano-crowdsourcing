@@ -150,9 +150,27 @@ function LocaleChoice({
  * "Filipino" rather than two unexplained abbreviations.
  *
  * `INTERFACE_LOCALES` is mapped rather than the two locales written out, so the control cannot show
- * one language and omit the other: adding a third approved locale adds a third control here without
- * anyone editing this file, and a control for a language with no catalog strings would fail the
+ * one language and omit the other: **the buttons themselves** need no edit here when a third
+ * approved locale arrives, and a control for a language with no catalog strings would fail the
  * type-check in `copy.ts` before it could render.
+ *
+ * ============================================================================
+ * THE CLAIM ABOVE IS NARROWER THAN AN EARLIER VERSION OF IT, ON PURPOSE
+ * ============================================================================
+ * An earlier version of this paragraph read "adding a third approved locale adds a third control
+ * here without anyone editing this file". That was **false**, and `copy.ts` quotes the sentence by
+ * name while explaining why a comment asserting a property the code lacks is worse than no comment
+ * — so leaving a second copy of it standing here would have made the file contradict its own
+ * correction.
+ *
+ * It was false because `ABBREVIATION` above is declared in THIS file. A third locale is a `tsc`
+ * failure here (`TS2741`, property missing from `Record<InterfaceLocale, string>`), which is the
+ * right failure and not a silent one — but it is an edit, and the sentence said otherwise.
+ *
+ * The three per-locale maps the change does NOT let you forget are therefore worth naming: this
+ * file's `ABBREVIATION`, and `CATALOGS` and `LOCALE_NAME_KEYS` in `copy.ts`. Every one is an
+ * exhaustive `Record`, so a third locale stops the build at each of them rather than rendering a
+ * control that quietly shows the wrong thing.
  */
 export function LocaleSwitcher({ locale, action }: LocaleSwitcherProps) {
   const t = translatorFor(locale);
