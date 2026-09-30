@@ -78,9 +78,12 @@
 
 ## 6. Archive
 
-- [ ] 6.1 Verify the sync landed for all three requirements before moving the change, comparing each
-      delta block against its in-force counterpart.
-- [ ] 6.2 Move the change to `openspec/changes/archive/` with `git mv`, and confirm `openspec list`
-      reports no active changes.
-- [ ] 6.3 Record the merge commits and the verification evidence in the status ledger, then set the
+- [x] 6.1 Verify the sync landed for all three requirements **before** moving the change, because the
+      delta moves out of reach at the same moment the thing it describes is needed. All three blocks
+      are byte-identical to their deltas; the spec is exactly the 7/33 baseline plus this change's
+      1/10; and the ordering guarantee — the reason this change exists — now **has** a covering
+      scenario rather than prose alone.
+- [x] 6.2 Move the change to `openspec/changes/archive/` with `git mv`, all six artifacts recorded as
+      renames, and confirm `openspec list` reports no active changes.
+- [x] 6.3 Record the merge commits and the verification evidence in the status ledger, then set the
       next eligible objective.
