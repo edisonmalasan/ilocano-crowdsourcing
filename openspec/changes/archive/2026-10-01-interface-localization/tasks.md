@@ -297,5 +297,34 @@
       --strict`, which prints `Change "interface-localization" is valid` and exits 0; the
       `change …`/`spec …` forms additionally print a deprecation warning recommending verb-first
       equivalents, so **the warning is expected and is not a failure** — judge by the exit code.
-- [ ] 8.3 Archive only after verifying the sync landed, comparing each delta block against its
-      in-force counterpart byte for byte.
+- [x] 8.3 Archive only after verifying the sync landed, comparing each delta block against its
+      in-force counterpart **byte for byte**. This is deliberately stricter than 8.1's single-blob
+      check, and it is what licenses moving the change directory at all.
+
+      Both files were decomposed into **blocks** — one per requirement, one per scenario inside it —
+      and each compared independently rather than as one concatenated string. What that buys over
+      the blob comparison: a difference is **attributable to a named block** instead of surfacing as
+      a hash mismatch, and reordering becomes a first-class check, because a set comparison would
+      accept a swapped pair that a blob comparison would catch only as an unreadable byte
+      difference.
+
+      Every check passed, and each is named rather than summarised:
+
+      | Check | Result |
+      | --- | --- |
+      | Requirement blocks byte-identical, each with its own sha256 | 6 / 6 |
+      | Scenario blocks byte-identical, each with its own sha256 | 17 / 17 |
+      | Requirement headings in the **same order** in both files | OK |
+      | Scenario headings in the **same order** in both files | OK |
+      | Line count unchanged | 184 vs 184 |
+      | **Exactly two** lines differ, and they are the two intended transforms | `L1: "# Spec Delta"` → `"# interface-localization Specification"`; `L13: "## ADDED Requirements"` → `"## Requirements"` |
+      | No delta scaffolding survived (`# Spec Delta`, and any `ADDED`/`MODIFIED`/`REMOVED`/`RENAMED` block heading) | none present |
+      | No CR bytes, trailing newline present, no 3+ blank-line run | OK |
+
+      **What this does not prove, and it is the same limit as 8.1.** Both files derive from the same
+      approved delta, so this establishes that the *copy* is faithful — not that the delta matches
+      what the proposal and design intended. No script comparing a file against its own source can
+      establish the second thing; it would confirm a false fact in exactly the way the 8.1 probe
+      demonstrated. Whether the delta is right is a review question, and it was reviewed: the
+      verification pass checked the implementation against all 6 requirements and 17 scenarios before
+      the Apply merged. Archiving records that the copy landed, not that the spec was beyond question.
