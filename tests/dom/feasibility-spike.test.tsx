@@ -92,7 +92,12 @@ vi.mock("@/lib/validators/actions", () => ({
     if (h.resume) return h.resume();
     return { status: "restored", validatorId: h.storedId };
   }),
-  enrollValidatorAction: vi.fn(async () => ({ status: "created", validatorId: h.storedId })),
+  // `status: "enrolled"` is the real `EnrollActionResult` vocabulary. This mock originally returned
+  // `"created"`, which does not exist and drives `decideEnrollment` down its FAILURE branch — a
+  // wrong literal that went unnoticed precisely because no test in this file calls enroll, which is
+  // exactly the "a test that appears to cover something and does not" shape this repository has
+  // found before. Corrected while writing `tests/dom/screening-form.test.tsx`, which does.
+  enrollValidatorAction: vi.fn(async () => ({ status: "enrolled", validatorId: h.storedId })),
 }));
 
 vi.mock("@/lib/validators/browser-identity", () => ({
