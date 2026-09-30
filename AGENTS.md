@@ -359,6 +359,51 @@ What CI still does not prove: nothing about Supabase, and nothing about visual r
 
 #### Repository tooling notes
 
+**An export that closes a named spec scenario is not speculative, and the difference is
+criterion.** `countQualifyingValidations` in `src/lib/domain/validation-response.ts` has no
+production caller yet, in the same commit that removed `isTranslatableContent` for having none — an
+asymmetry worth naming rather than leaving to inference. The test is whether a *spec* requires it.
+Two `domain-contracts` scenarios in this change's ADDED block name coverage-over-a-set, and no
+function satisfies them without it; `docs/ROADMAP.md` names Phase 4 as the consumer. The removed
+export satisfied nothing and no scenario named it. "No caller" is therefore not the criterion —
+**an uncalled export that a spec scenario requires is an unfinished task, and one that nothing
+requires is dead weight.** Both errors look identical in a grep.
+
+**`--sequence.shuffle` takes a boolean here, not a seed, and the seed form is a startup error.**
+`--sequence.shuffle=4821` and `--sequence.shuffle 4821` both die with `Startup Error: TypeError:
+input.replace is not a function` inside `pathe@2.0.3` via vitest 3.2.7's CAC. The working form is
+`--sequence.shuffle --sequence.seed=N`. This matters because a shuffle verification that errors out
+looks identical to one that passed if only the exit code is read.
+
+**A "RED" probe is not self-validating, because a mutation can break the file in a way the guard
+never sees.** The verification subagent's first ordering reversal used `String.replace` with a
+*string* replacement containing `do $$`. JavaScript expands `$$` in a replacement to a literal `$`,
+so the mutated migration became `do $` — a syntax error. The probe scored RED, twice, **for a reason
+entirely unrelated to the guard it was written to test.** It was caught only because one result
+contradicted a documented claim, and both probes were then rewritten to use replacer *functions*.
+The general form: a mutation that corrupts the artefact will make almost any assertion fail, so a
+red result is only attributable after confirming the mutation broke the thing under test and nothing
+else. **Assert the mutation is well-formed before trusting what it proved.**
+
+**A measurement that is implausible is a broken measurement, not a finding.** The same round's first
+run of the constraint-overlap measurement reported that 107 of 108 rows were rejected by *every*
+constraint and 106 of 108 by both bilingual constraints. That is impossible — the bilingual pair is
+non-overlapping by construction — and the cause was one reused primary key per table, so only the
+first cell was ever really tested. Rewritten with a unique id per cell and a hard requirement that
+every failure name a `check` constraint, it produced the real **80 of 108**, and **0** cells rejected
+by both bilingual constraints. **When a number comes back that the design says is impossible, the
+harness is wrong before the design is.**
+
+**Retracting a claim inside the comment that made it defeats a naive absence check — make the check
+precise instead.** Repairing the header that asserted the falsified ordering required *quoting* that
+claim in order to retract it, so the phrase legitimately still appeared in the file and a
+`not.toContain` check reported a violation on a correctly repaired file. There are two ways out and
+both are wrong: reword the header until the phrase disappears, which hides the retraction to satisfy
+a checker, or weaken the check until it passes. The third is to assert what is actually forbidden —
+**the phrase may appear, but only as a quoted past-tense attribution**, requiring both the quotation
+mark and an `earlier version` / `claimed` / `falsified` marker on the same line. A check that
+enumerates what *is* allowed is nearly as informative as one that forbids what is not.
+
 - `pnpm-workspace.yaml` sets `allowBuilds: { esbuild: true, sharp: false, unrs-resolver: false }`. `esbuild` **must** stay `true` or Vitest cannot start; `sharp` and `unrs-resolver` install scripts are deliberately disabled because nothing in this project uses them.
 - `.gitattributes` sets `* text=auto eol=lf` (and `*.ico binary`). This is load-bearing, not cosmetic. `.editorconfig` already declared `end_of_line = lf`, but `.editorconfig` only configures editors and **git does not read it**. Before this file existed, line endings were decided by each contributor's local `core.autocrlf`, which broke two things on a machine with `core.autocrlf=true`: `pnpm run format:check` failed on all 56 formatter-owned files, and a fresh clone produced `data/ilocano-synthetic-data.json` with CRLF and SHA-256 `152ae7e8…` against the guard's expected `39f757e6…`. **The immutability guard hashes the working-tree file, so without this file it fails for autocrlf users and passes on CI.** If your local checks suddenly disagree with CI, check your line endings before suspecting the code.
 - Line endings were normalized after `.gitattributes` was added, so **an existing checkout created before that commit still has CRLF working-tree files and will keep failing `format:check` until it is re-normalized**: `git add --renormalize .` then re-checkout the affected files, or simply re-clone. A `git pull` alone will not rewrite the working tree.
@@ -406,7 +451,13 @@ What CI still does not prove: nothing about Supabase, and nothing about visual r
   When order matters, the order must be enforced *in the artefact* — here the precondition asserts
   that `translation_language` still exists and raises by name if it does not, so a drop-then-check
   file fails loudly instead of proceeding from a schema that has already lost the data. A test for
-  that is genuinely red-on-reversal, and it is the only one of the two that measures anything.
+  that is genuinely red-on-reversal. It has **three** witnesses in
+  `tests/integration/migration-precondition.test.ts` under a real reversal, not the one an earlier
+  draft of this entry implied: the ordering test, plus both of the "applies cleanly" tests, which
+  go red because the columns are gone before the precondition looks. Removing the assertion while
+  keeping the reversal still goes red on exactly one test — the ordering test — and with an
+  **unexplained** error (`column "translation_language" of relation does not exist`) arriving after
+  the data is already lost. That last measurement is the one that shows what the assertion buys.
 - **A content-hash guard must compare against a FIXED constant, never against a mutated copy of the
   file under test.** An earlier version of `tests/integration/migration-precondition.test.ts`
   computed `sha256(contents)` and then asserted `sha256(contents.replace(...)) !== digest`. That is

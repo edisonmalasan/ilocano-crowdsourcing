@@ -103,16 +103,26 @@
 - [x] 6.3 `pnpm run build` reports `Compiled successfully`.
 - [x] 6.4 `openspec validate required-bilingual-translations --strict` exits 0, and
       `openspec validate --specs --strict` reports 7 passed / 0 failed.
-- [ ] 6.5 Independent verification round, with findings classified and blocking defects repaired
+- [x] 6.5 Independent verification round, with findings classified and blocking defects repaired
       before merge.
-      **Round 1: FAIL** — 2 CRITICAL, 4 WARNING, 2 NOTE, returned by a verification subagent against
-      commit `436e7ae`. All 8 blocking findings are repaired in the follow-up commit (see
-      `design.md` for the two claims that measurement falsified, and `AGENTS.md` -> *Repository
-      tooling notes* for the four generalizable lessons). Six of the repairs are absence or
-      guard assertions and were **probe-confirmed red on reversal** by an in-memory
-      `readFileSync`/`writeFileSync` harness, with one result re-checked outside the harness after
-      the harness reported `exit=-1` with no captured summary line. Round 2 is the next step and
-      must report before this box is checked.
+      **Round 1: FAIL** against `436e7ae` — 2 CRITICAL, 4 WARNING, 2 NOTE, from a verification
+      subagent. All eight blocking findings were repaired in `ee4b9dd`; see `design.md` for the two
+      claims that measurement falsified and `AGENTS.md` -> *Repository tooling notes* for the four
+      generalizable lessons.
+      **Round 2: FAIL** against `ee4b9dd` — 1 CRITICAL, 2 WARNING, 3 NOTE. The verifier could not
+      falsify any of the four round-1 repairs and independently confirmed all of them, including
+      re-deriving the fixed SHA-256 constant from `main` and reproducing the 80-of-108 overlap
+      measurement at 0 cells rejected by both bilingual constraints. The blocking CRITICAL was
+      **not** a code defect: the file header of `tests/integration/migration-precondition.test.ts`
+      still asserted, as fact, the exact ordering claim the CRITICAL-2 repair exists to retract —
+      contradicting itself 130 lines below the comment that retracts it. Repaired, along with the two
+      WARNINGs (a stale "every assertion would still pass" sentence, corrected to the measured 5 of
+      9; and a `toContain` substring anchor defeated by any table rename, now anchored on the ` (`
+      terminator) and all three NOTEs.
+      Every guard repair in this round is **probe-confirmed red on reversal** with a GREEN negative
+      control per probe and a three-way GREEN/RED/DID-NOT-RUN outcome. Two rounds have now been
+      required, and the round-2 CRITICAL was a comment, which is the direct result of a claim
+      originally asserted in prose that no test could falsify.
 
 ## Out of scope for this change
 

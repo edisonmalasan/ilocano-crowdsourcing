@@ -7,19 +7,34 @@
  * and a `cannot_evaluate` row held no translation data, so dropping the old columns discards
  * nothing.
  *
- * Both halves of that argument are behavioural claims about SQL, and `AGENTS.md` is explicit that a
- * claim about database behaviour must be MEASURED rather than asserted. So:
+ * `AGENTS.md` is explicit that a claim about database behaviour must be MEASURED rather than
+ * asserted. What this file measures, and what it cannot:
  *
  *   - the refusal is provoked and its message matched BY NAME (task 4.7);
  *   - the drop is observed to have happened when only `cannot_evaluate` rows exist (task 4.8);
- *   - the refusal is observed to have happened BEFORE the drop, which is the ordering the whole
- *     losslessness argument rests on;
- *   - the original migration is proven byte-identical, and proven so by a check that has been shown
- *     to fail on a deliberately altered copy (task 4.9).
+ *   - after a refusal the pre-change schema and the pre-existing row are both intact;
+ *   - the original migration is proven byte-identical to the one committed on `main` (task 4.9).
  *
- * The negative control at the end is the part that matters most. Without it, every assertion here
- * would still pass if the precondition block were deleted from the migration entirely — a test that
- * cannot tell a working guard from an absent one is worse than no test.
+ * IT DOES NOT MEASURE THE ORDERING, and it must not be read as doing so. An earlier version of
+ * this header claimed the refusal was "observed to have happened BEFORE the drop". A probe
+ * falsified that: this harness applies each migration file inside one transaction, so the
+ * `raise exception` rolls the file back and any drop that already executed is undone with it. No
+ * post-failure assertion in a transactional harness can distinguish "the check ran first" from
+ * "the drop ran first", and the test that used to make the claim passed with the ordering
+ * deliberately reversed. The ordering is therefore enforced *in the SQL* — the precondition first
+ * asserts that `translation_language` still exists — and the test for that asserts the
+ * precondition's behaviour when the columns are gone. It simulates the CONDITION by applying the
+ * migration twice, which is a proxy for the hazardous state and **not** an observation of statement
+ * order; it is red on a genuine reversal, which was verified by building the reversal rather than
+ * assumed. The residual non-transactional hazard is reasoned about, not executed, and is recorded
+ * in `design.md` section 3 and `AGENTS.md`.
+ *
+ * The negative control at the end is the part that matters most, because it measures this file
+ * rather than the migration. Deleting the precondition block entirely takes 5 of these 9 tests red
+ * — the refusal-by-name test, the intact-schema test, the ordering test, the explanatory-failure
+ * control, and the preserved-row test — which is worth stating precisely, because an earlier version
+ * of this header claimed all of them would still pass. A test that cannot tell a working guard from
+ * an absent one is worse than no test.
  */
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -384,6 +399,12 @@ describe("the original migration is not modified", () => {
     // file is unchanged"; it cannot prove "this file is the right thing to be unchanged at". If the
     // wrong file were ever committed under this name, or a hash constant were updated in the same
     // commit as an unwanted edit, this is the assertion that would object.
+    //
+    // It has to OBJECT, not merely agree, and that is why the table assertions below are anchored
+    // on a terminator rather than on a bare substring. `toContain("create table public.validations")`
+    // is satisfied by `create table public.validations_renamed (`, which was measured: renaming
+    // either `validations` or `validation_sessions` left this test GREEN. Every statement in the
+    // file ends its table name with ` (` so the paren is the terminator, and a rename moves it.
     const contents = await readFile(path.join(MIGRATIONS_DIR, ORIGINAL_MIGRATION), "utf8");
 
     expect(contents).toContain("translation_language");
@@ -399,7 +420,7 @@ describe("the original migration is not modified", () => {
       "batch_entries",
       "validations",
     ]) {
-      expect(contents, `creates ${table}`).toContain(`create table public.${table}`);
+      expect(contents, `creates ${table}`).toContain(`create table public.${table} (`);
     }
   });
 });
