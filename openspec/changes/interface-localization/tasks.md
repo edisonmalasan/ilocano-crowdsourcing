@@ -230,9 +230,27 @@
       working without them), and **nothing about visual rendering** — no browser has ever rendered
       this site. The switcher's contrast, its 44px target in a real viewport, and the first-paint
       behaviour of `lang` are all asserted on markup and CSS, and a human still has to look.
-- [ ] 7.2 Read the CI log back **by step name**, and compare the step list against a known-good run
-      before merging. The reader must refuse rather than report a partial number — that refusal is
-      the only reason the immutability-guard truncation surfaced three times.
+- [x] 7.2 CI read back **by step name**, twice, and compared against a known-good run's step list
+      before merging. Two runs, both complete:
+
+      | Run | Commit | `lint, types, and tests` step list | Reader verdict |
+      | --- | --- | --- | --- |
+      | 36743059524 | `33d1cf8` | COMPLETE — all ten expected steps present | VERIFIED 32 files / **879** unit, 6 files / 100 integration, guard 1 file / 7 tests |
+      | 36749942194 | `2f66ea4` | COMPLETE — all ten expected steps present | VERIFIED 32 files / **881** unit, 6 files / 100 integration, guard 1 file / 7 tests |
+
+      The unit count moved 879 → 881 **because the review added two tests**: the vacuous S16 assertion
+      was split into an export enumeration and a name-shape check, and the catalog guard became a guard
+      plus a can-fire companion. Run 36743059524's **879** stays recorded as what that commit
+      actually reported — historical CI figures are never moved, and a discrepancy between two runs is
+      a fact about the runs rather than an error in one of them.
+
+      Read **by step name, never positionally**, and the reader **refuses** rather than reporting a
+      partial number — every summary line must be attributed or the reader reports nothing. Both runs
+      attributed all three summaries, matched the local counts exactly, and both step lists were
+      compared against run 36743059524's list before merging. This matters because a required job in
+      this repository has reported `success` having run nothing **four times, affecting both jobs**,
+      including the immutability guard — the one check that can never be skipped. `gh pr checks`
+      said `pass` on every one of those.
 - [ ] 7.3 Merge on a **merge commit** only, delete the branch after, and return to updated `main`.
 
 ## 8. Sync, then Archive
