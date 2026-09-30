@@ -600,7 +600,82 @@ reproduction method, and this section is the correction.**
       proves the step is in the file and nothing about whether it ran — which is the distinction
       the four recorded CI incidents turned on.
 
-- [ ] 4.6 **Confirm by NAME in the CI run log that the `DOM tests` step ran**, before this change
+- [x] 4.6 **Confirm by NAME in the CI run log that the `DOM tests` step ran**
+
+      **DONE, read from run `36770800439` on head `681f5a3` (PR #34).** Three separate things
+      are established, because any one alone would be satisfied by a step that did nothing
+      useful:
+
+      ```
+      1. `DOM tests` is present BY NAME, at position 9 of 11, and the observed ORDER matches
+         .github/workflows/verify.yml's own declaration:
+         Check out -> Install pnpm -> Install Node.js -> Install dependencies -> Lint ->
+         Check formatting -> Type-check -> Unit tests -> DOM tests -> Integration tests ->
+         Production build
+      2. It reported 3 files and 15 tests passed, the local measurement, and those numbers
+         DIFFER from both neighbours in the same run — Unit 33 files / 897 tests and
+         Integration 6 files / 100 tests — so it ran its own suite and not a renamed one.
+      3. The immutability guard still reports 1 file / 7 tests, from the literal scoped
+         command `pnpm exec vitest run --project integration tests/integration/immutable-
+         dataset.test.ts`, so this workflow edit did not unscope the one check that can never
+         be skipped.
+      ```
+
+      All 679 parsed log lines were scanned: no `FAIL` line and no summary line containing
+      `failed`. Both jobs appear, and every step name in the run is accounted for.
+
+      **What this does NOT establish, so it is not read as more than it is:** the log proves the
+      steps RAN, not that the tests are meaningful. `happy-dom` is a synthetic DOM and **no human
+      has ever rendered any screen.** The recorded limit of every number above is that it came
+      from a run, not from an eye.
+
+      **The reader was wrong five times before it was right, and that is the more useful half.**
+      Every failure surfaced as a REFUSAL, which is the only reason any of them was visible; each
+      would otherwise have produced a confident wrong CI report.
+
+      1. The step-name regex **guessed** `|` separators and a 2+ space gap. The real format is
+         TAB-separated, `<job>\t<step>\t<timestamp> <message>`. The guess matched **0 of 11**
+         steps and reported every expected step missing. A regex written from a plausible memory
+         of a log format is a claim; the format has to be read off the file.
+      2. The ANSI strip removed **0 of 992** sequences. **This is the FIFTH wrong form of that
+         regex in this repository, and the form is NEW.** The earlier four were all about a
+         missing ESCAPE BYTE; this one had the byte-or-caret handled correctly and got the
+         BRACKET COUNT wrong. Measured on this log: 0 real `0x1b` bytes, **992 literal `^[`
+         pairs**, no codepoints above ASCII, and a summary line reading
+         `^[[2m Test Files ^[[22m ^[[1m^[[32m33 passed^[[39m...`. That is FIVE characters before
+         the parameters, because `gh` renders ESC as the two characters `^[` and the CSI bracket
+         then follows. The pattern `^\[[0-9;]*[A-Za-z]` consumes ONE bracket, so `[0-9;]*`
+         matches EMPTY and `[A-Za-z]` is asked to match `[`, which fails — and every captured
+         count came back wrapped in escapes while still *looking* like the right number.
+      3. **The strip's self-test PASSED while doing that**, because its probe was built from the
+         single-bracket form, which never occurs in this log. A self-test built from a
+         *construction* rather than from the artefact passes while the artefact is untouched.
+         All three notations are now probes against one shared body, so the test can still fail.
+      4. Fixing (2) double-escaped its way into requiring TWO brackets on the real-0x1b form
+         too — the same bracket bug reintroduced by a nested template literal — and was caught
+         only because the corrected self-test carries an ESC probe that the previous one had no
+         reason to include. **A fix for a guard must be able to fail the guard's own probe.**
+      5. The reader's hardcoded expectation placed `DOM tests` BEFORE `Unit tests`. `verify.yml`
+         and the log both place it after (8 Unit, 9 DOM, 10 Integration). It never noticed,
+         because it compared SET MEMBERSHIP and therefore **cannot see a reordering at all** — it
+         would have reported success for a step in the wrong place. The expectation is now parsed
+         from the workflow file at run time, and ORDER is asserted separately.
+
+      Four in-place patches then each spliced a range wider than intended and deleted a block
+      whose consumer survived, so the reader died at run time with a `ReferenceError` — **after**
+      printing `order matches: true`. Half a verdict sat on screen with only the exit code to
+      distinguish it, which is a shape with no clean signal: `DID-NOT-PARSE` is loud,
+      `DID-NOT-RUN` is loud, and a wrong verdict is caught by the refusing shape, but a crash
+      after a reassuring partial report reads as a broken reader rather than a gap in one. It was
+      rewritten clean rather than patched a fifth time.
+
+      Two harness limits cost a cycle each and are the already-recorded reasons to write scratch
+      scripts to files: the `edit` tool **cannot match text containing a real `0x1b` byte**, and an
+      inline `node -e` escape mangled a regex outright.
+
+      **Merge on the log, never on the checkmark** — the property this repository has now
+      exercised four separate times, when a required job reported `success` with its test steps
+      absent from the step list entirely., before this change
       merges. Use `read-ci.mjs`, which attributes every summary line to a step name and **exits
       non-zero rather than printing a partial answer**. Do not read it off `gh pr checks`: a
       required job in this repository has four times reported `success` with its test steps absent
