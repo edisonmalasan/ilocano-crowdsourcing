@@ -212,6 +212,25 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 names. Use the archived copies when reading their deltas, and the `--specs` command above to check
 what is currently in force.
 
+**Run 36675360024 (PR #12, `e510912`, 2026-09-30) passed on `ubuntu-latest`**: both jobs green,
+`22 files / 510 tests` unit and `4 files / 69 tests` integration — matching the local counts of the
+same commit — "All matched files use Prettier code style!", and "Compiled successfully" for the
+production build. Every one of those numbers was read back out of the run log, not inferred from a
+green checkmark. The dataset-guard job was read back too: it ran the literal command `pnpm exec
+vitest run --project integration tests/integration/immutable-dataset.test.ts` and reported
+`1 file / 7 tests`, naming only that one file.
+
+**Reading that log back took three attempts, each of which failed silently rather than loudly,
+and the pattern is worth keeping.** The first returned an empty match because the log had been
+captured with PowerShell's `>` redirection, which writes UTF-16LE with a BOM — read as UTF-8, every
+regex matched nothing. The second fixed the encoding and *still* matched nothing, because
+`gh run view --log` renders ESC as the two literal characters `^[` rather than the 0x1b byte, so a
+regex anchored on a real escape byte can never match this output. The third failed because each
+log line is prefixed with the job name and an ISO timestamp, so `^\s*Tests` anchored at line start
+matched nothing. An empty capture is indistinguishable from a run that reported nothing, which is
+exactly the failure mode that once wrote a blank into this ledger; the reader now detects the BOM,
+strips both escape notations, and **exits non-zero rather than reporting a partial answer**.
+
 #### Continuous integration — observed runs
 
 `.github/workflows/verify.yml` defines a `verify` job (install, lint, format check, type-check,
