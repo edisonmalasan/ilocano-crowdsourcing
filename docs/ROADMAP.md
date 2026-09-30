@@ -295,8 +295,17 @@ been proposed yet.
 3. `landing-and-screening` — Phase 3: landing, Ilocano proficiency screening, anonymous
    validator create/restore. **Next.**
 4. `coverage-aware-allocation` — Phase 4: server-authoritative batch allocation engine.
-5. `validation-experience` — Phase 5: per-entry validation, conditional correction, optional
-   translation, immediate persistence.
+5. `required-bilingual-translations` — **new, and a prerequisite of Phases 4 and 5**: both
+   research translations required for every evaluable validation, the forward migration, and the
+   qualifying-coverage definition. Sits between Phases 3 and 4 in dependency order;
+6. `bilingual-interface-localization` — the ENG/FIL public interface, English by default,
+   browser-local, never research data. Ordered after the research-translation change because it
+   touches the same participant-facing screens and should not be built on top of copy that is about
+   to change;
+7. `thin-shell-call-sites` — the deferred client-shell call sites (21 of them, two critical) plus
+   the Phase 4 browser test runner. Carried forward from `landing-and-screening`;
+8. `validation-experience` — Phase 5: per-entry validation, conditional correction, required
+   bilingual translation, immediate persistence.
 6. `batch-continuation` — Phase 6: batch completion, continue-or-finish, interrupted-batch
    recovery.
 7. `admin-dashboard` — Phase 7: protected researcher dashboard.
@@ -330,7 +339,7 @@ assumptions and must be confirmed before production crowdsourcing (Phase 11):
   second surface" is a restatement of there being one surface, and one is sufficient. A successful
   guess also discloses the other participant's self-reported proficiency. See `design.md` D5 for
   the deferral and the three cheap schema-free options if the exposure is reduced before Phase 11;
-- whether optional translations enter the final dataset;
+- ~~whether optional translations enter the final dataset~~ — **settled by the approved requirements: both translations are required for every evaluable validation**, and the final choice among them is an adjudication-stage decision rather than a collection-stage one;
 - whether any demographic data is academically required;
 - whether ethics/consent language is required before participation.
 
@@ -470,7 +479,7 @@ Two further honesty notes, because they are the kind that get lost:
 
 Build a lightweight crowdsourcing website for validating the synthesized Ilocano navigation dataset used by the Sadino thesis project.
 
-The website will present synthetic Ilocano navigation instructions to human validators, collect structured judgments, request corrections when needed, optionally collect natural translations, and store all responses for later research analysis and final dataset construction.
+The website will present synthetic Ilocano navigation instructions to human validators, collect structured judgments, request corrections when needed, collect both an English and a Filipino translation of every evaluable validated Ilocano sentence, and store all responses for later research analysis and final dataset construction.
 
 The platform should be easy to deploy, easy to use on mobile devices, and simple enough that validators can complete repeated 10-item batches without fatigue.
 
@@ -504,6 +513,12 @@ Validators receive 10 entries per batch and may either:
 The same dataset entry may be shown to multiple different validators.
 
 The same validator should not receive the same entry more than once.
+
+### Bilingual research response
+Every **evaluable** validation carries **both** an English translation and a Filipino translation of the validated Ilocano sentence. This is research data, collected per validator, and it is required rather than optional. See section 6.7.
+
+### Bilingual interface
+The public validator interface is available in **English** and **Filipino**, with English as the default. This is interface accessibility so that a participant who is comfortable in Ilocano is not blocked by an English-only website. It is presentation only: it never changes a stored research value, never translates the synthetic Ilocano dataset, and is never recorded as research data. See section 6.10.
 
 ### Preserve raw synthetic data
 Never overwrite the original synthesized dataset.
@@ -717,11 +732,14 @@ Assignment should be **coverage-aware randomized distribution** rather than pure
 For a validator requesting a batch:
 
 1. Exclude entries already answered by that validator.
-2. Exclude entries that have already reached the configured target number of eligible independent validations.
-3. Prioritize entries with the lowest validation count.
-4. Randomize entries within the lowest-count candidate pool.
-5. Return up to 10 entries.
-6. Reserve or assign those entries to the active batch.
+2. For each candidate, count its **qualifying completed validations** (section 9). This is **not** the raw validation count.
+3. Exclude entries whose qualifying count has reached the configured target.
+4. Prioritize entries with the lowest **qualifying** count.
+5. Randomize entries within the lowest-qualifying-count candidate pool.
+6. Return up to 10 entries.
+7. Reserve or assign those entries to the active batch.
+
+A `cannot_evaluate` response raises the qualifying count by **zero**. Neither does a partial response, nor a legacy row that predates the bilingual requirement and is missing either translation. Three raw responses of which only two carry both translations is **not** coverage: the entry stays in the pool and is offered to another validator.
 
 Different validators are allowed and expected to receive the same dataset entry.
 
@@ -738,10 +756,22 @@ UNIQUE (validator_id, dataset_entry_id)
 Use a configurable target, initially:
 
 ```text
-3 independent validators per entry
+3 QUALIFYING completed validations from 3 distinct validators per entry
 ```
 
 This value must be configurable because the final number should be approved by the thesis team/adviser.
+
+Worked example for `OD_0123`, target 3:
+
+```text
+Validator A   evaluation + correction where required + English + Filipino   -> qualifying
+Validator B   evaluation + correction where required + English + Filipino   -> qualifying
+Validator C   evaluation + correction where required + English + Filipino   -> qualifying
+
+3 / 3 qualifying  ->  coverage complete  ->  remove from normal allocation
+```
+
+A fourth validator is **not** collected merely because their free-text corrections or translations disagree with the first three. Disagreement after collection is flagged for researcher review and adjudication instead.
 
 ---
 
@@ -754,7 +784,8 @@ For each assigned entry, display:
 - intended destination;
 - category if useful;
 - batch progress;
-- four evaluation choices.
+- four evaluation choices;
+- **when the evaluation is evaluable**, required fields for an English translation and a Filipino translation of the validated Ilocano sentence (section 6.7).
 
 Question:
 
@@ -774,9 +805,11 @@ The frontend model may creatively decide how to arrange these elements, provided
 ## 6.6 Conditional Correction
 
 ### If `Correct and natural`
-No correction is required.
+No correction is required, and **a correction is not accepted** for this evaluation.
 
-Proceed to the optional translation step.
+The original synthetic Ilocano instruction is the validated Ilocano sentence for this response.
+
+Proceed to the **required** bilingual translation step.
 
 ### If `Correct but sounds unnatural`
 Require:
@@ -785,6 +818,8 @@ Require:
 
 The validator must enter a corrected/rephrased Ilocano sentence before continuing.
 
+Both translations must correspond to the **corrected** Ilocano sentence, not to the original unnatural wording.
+
 ### If `Incorrect`
 Require:
 
@@ -792,32 +827,53 @@ Require:
 
 The validator must enter a corrected Ilocano sentence before continuing.
 
-### If `Cannot confidently evaluate`
-Do not require a correction.
+Both translations must correspond to the **corrected** Ilocano sentence.
 
-Skip translation and proceed to the next dataset entry.
+### If `Cannot confidently evaluate`
+No correction, **no English translation, and no Filipino translation**. The response is still persisted where appropriate for the research record.
+
+It does **not** count toward qualifying coverage and does not move the entry closer to completion.
+
+Proceed to the next dataset entry.
 
 ---
 
-## 6.7 Optional Translation
+## 6.7 Required Bilingual Research Translation
 
-Translation is optional.
+For every **evaluable** validation, the validator supplies **both** translations of the validated Ilocano sentence:
 
-Only show the translation step after the validator has completed the Ilocano validation path.
+> **English translation**
 
-Ask:
+> **Filipino translation**
 
-> **Would you like to provide a natural translation?**
+Both are required. There is no "Skip translation" choice for an evaluable response, and a response that omits either one is incomplete.
 
-Choices:
+Only show the translation step after the validator has completed the Ilocano evaluation and any required correction. This ordering matters: the translations are of the **validated** sentence, which is the correction where one was required, and the original synthetic instruction where it was not.
 
-- English
-- Filipino
-- Skip translation
+| Evaluation | Correction | English | Filipino |
+| --- | --- | --- | --- |
+| Correct and natural | not accepted | required | required |
+| Correct but sounds unnatural | required | required | required |
+| Incorrect | required | required | required |
+| Cannot confidently evaluate | none | absent | absent |
 
-If English or Filipino is selected, show a text field for the translation.
+The conceptual flow for an evaluable entry:
 
-Translation should not replace the Ilocano validation. It is supplementary data.
+```text
+Ilocano sentence
+    ->
+Evaluation
+    ->
+Correction if required
+    ->
+English translation of the validated Ilocano
+    ->
+Filipino translation of the validated Ilocano
+    ->
+Submit completed response
+```
+
+These translations are **research response data**. They belong to the validator's response, they are attributed to that validator, and they never overwrite the synthetic dataset. Three validators' translations are **not** collapsed into one string during collection; choosing the final validated Ilocano, English, and Filipino is the later, thesis-approved adjudication step (section 11).
 
 ---
 
@@ -861,6 +917,45 @@ Total contributions: 30
 If the validator continues, request a new coverage-aware batch.
 
 If the validator finishes, retain all submitted responses.
+
+---
+
+## 6.10 Interface Localization (separate from research translation)
+
+> **This section is not about dataset translation.** The ENG/FIL switcher below and the required
+> research translations in 6.7 are two unrelated features that happen to share a word. Research
+> translations are validator-authored data about a dataset entry. Interface localization is
+> browser-local presentation state. They must never be described with the same term.
+
+| | Research translation | Interface localization |
+| --- | --- | --- |
+| What | English + Filipino rendering of a validated Ilocano sentence | English or Filipino rendering of the website's own interface copy |
+| Who writes it | the validator, as research data | the project, as approved copy |
+| Where it lives | validation research data | a browser-local preference |
+| Required | yes, for every evaluable validation | no; English is the default and switching is always optional |
+
+The public validator interface supports **ENG** and **FIL**, with an obvious language switcher such as `ENG | FIL`. The visual placement of the control is left to the design, provided it is consistently accessible and easy to discover without dominating the validation task.
+
+Localization covers user-facing interface text: landing copy, navigation labels, buttons, screening instructions, participation and privacy notices, the validation question, the four evaluation choice labels, correction instructions, the English and Filipino translation-field instructions, progress, error messages, empty states, batch-completion copy, and the continue and finish controls.
+
+Localization must **not** touch:
+
+- the synthetic Ilocano dataset instruction;
+- a validator's corrected Ilocano text;
+- a validator's English or Filipino translation text;
+- place names;
+- dataset identifiers;
+- machine-readable evaluation values;
+- research records.
+
+The stored value stays `correct_natural` whether the interface shows its English label or its Filipino label. **Localization changes presentation only and never changes the meaning or the stored research value of an answer.**
+
+**Persistence and state.** English is the default for a new browser or session. If a validator switches to Filipino, the preference is remembered locally and preserved across navigation and later visits where practical. Switching language must **not** erase or reset the current screening answer, the current validation selection, any correction text, either translation text, or batch progress. It is presentation state and is not automatically treated as research data.
+
+Do **not** infer that a Filipino interface indicates lower English proficiency, or draw any similar research conclusion from the locale. Do **not** persist the interface locale to the research database unless a future approved methodology explicitly requires it.
+
+The interface currently hardcodes `lang="en"` in `src/app/layout.tsx`; there is no locale infrastructure at all. This is greenfield.
+
 
 ---
 
@@ -989,11 +1084,18 @@ batch_id
 dataset_entry_id
 evaluation
 corrected_instruction
-translation_language
-translation_text
+english_translation
+filipino_translation
 created_at
 updated_at
 ```
+
+> **Superseded representation.** The earlier single pair `translation_language` +
+> `translation_text` cannot express the approved requirement, because one response must carry
+> **both** translations. It is replaced by the two explicit columns above rather than extended,
+> because a nullable language discriminator on a now-required pair of values is a representation
+> that permits states the research forbids. A **forward migration** is required; migration history
+> is not rewritten.
 
 Allowed `evaluation` values:
 
@@ -1004,17 +1106,35 @@ incorrect
 cannot_evaluate
 ```
 
-Example:
+Examples, each of which is a legal row and each of whose neighbours is not:
 
 ```json
+// evaluable, natural, both translations present - qualifying
 {
-  "validator_id": "VAL_a81d92c1",
-  "entry_id": "OD_0123",
-  "evaluation": "correct_but_unnatural"
+  "evaluation": "correct_natural",
+  "corrected_instruction": null,
+  "english_translation": "Go left at the intersection, then continue straight.",
+  "filipino_translation": "Pumunta sa kaliwa sa intersection, pagkatapos ay magpatuloy nang tuwing."
+}
+
+// evaluable, correction supplied, both translations describe the CORRECTED sentence
+{
+  "evaluation": "correct_unnatural",
+  "corrected_instruction": "Pumunta sa kaliwa pagkatapos ay magpatuloy.",
+  "english_translation": "Turn left, then continue.",
+  "filipino_translation": "Pumunta sa kaliwa, pagkatapos ay magpatuloy."
+}
+
+// cannot_evaluate: no correction, no translations
+{
+  "evaluation": "cannot_evaluate",
+  "corrected_instruction": null,
+  "english_translation": null,
+  "filipino_translation": null
 }
 ```
 
-Expanded internal database representation may include correction and translation fields.
+The database rejects: an evaluable row missing English, an evaluable row with blank English, an evaluable row missing Filipino, an evaluable row with blank Filipino, a `cannot_evaluate` row carrying either or both translations, a `correct_unnatural` or `incorrect` row without its correction, and a `correct_natural` row carrying a correction.
 
 ---
 
@@ -1038,16 +1158,22 @@ A validation must reference an existing dataset entry.
 `cannot_evaluate` must not require correction.
 
 ### Rule 6
-Translation is optional.
+Every **evaluable** validation requires an **English** translation and a **Filipino** translation of the validated Ilocano sentence. Both are non-empty. There is no skip option for an evaluable response.
 
 ### Rule 7
-Translation language can only be:
+Both translations describe the **validated** Ilocano sentence: the correction where one was required, and the original synthetic instruction where none was. A translation of the pre-correction wording alongside a correction is not a valid response.
 
-```text
-english
-filipino
-null
-```
+### Rule 11
+`cannot_evaluate` must carry **no** English translation and **no** Filipino translation.
+
+### Rule 12
+A `correct_natural` response must not carry a correction; the original synthetic instruction is the validated Ilocano sentence for that response.
+
+### Rule 13
+Corrections and translations are response data. They belong to the validator's response and never overwrite the synthetic dataset.
+
+### Rule 14
+Only a **qualifying completed validation** counts toward coverage: an evaluable evaluation, any required correction present, both translations non-empty, all integrity checks satisfied, and a distinct anonymous validator. A `cannot_evaluate`, a partial response, and a legacy or incomplete response missing either translation all count **zero**.
 
 ### Rule 8
 Do not alter the original synthetic instruction when a validator submits a correction.
@@ -1058,6 +1184,8 @@ Store each validator's correction separately.
 ### Rule 10
 Completion counts must be based on unique independent validators, not raw duplicate submissions.
 
+This is necessary but **not sufficient**: see Rule 14. Counting distinct validators over all rows would still let a `cannot_evaluate` or an incomplete response advance an entry, which the approved requirements forbid.
+
 ---
 
 # 9. Validation Coverage Logic
@@ -1065,30 +1193,46 @@ Completion counts must be based on unique independent validators, not raw duplic
 For each dataset entry, the system should be able to determine:
 
 ```text
-total validations
-eligible validations
+total validations                    (diagnostic only; NOT the coverage number)
+qualifying completed validations     (the coverage number)
 correct-natural count
 correct-unnatural count
 incorrect count
-cannot-evaluate count
+cannot-evaluate count               (tracked, never counts toward coverage)
+incomplete bilingual responses      (tracked, never counts toward coverage)
 ```
+
+**A QUALIFYING COMPLETED VALIDATION requires all of:**
+
+- the evaluation is `correct_natural`, `correct_unnatural`, or `incorrect`;
+- any required Ilocano correction is present;
+- the English translation is non-empty;
+- the Filipino translation is non-empty;
+- every domain, server, and database integrity check succeeds;
+- it belongs to a **distinct** anonymous validator.
+
+`cannot_evaluate` does not count. A partial response does not count. A legacy or incomplete response missing either required translation does not count. The raw validation count must not be used as a proxy for any of this, because three raw responses of which only two carry both translations is **not** coverage.
 
 The site should distinguish between:
 
 ### Pending
-The entry has not yet received the required number of eligible independent validations.
+The entry has not yet received the configured number of **qualifying** completed validations from distinct validators. It remains eligible for allocation.
 
 ### Coverage complete
-The entry has reached the configured target number of eligible independent validations.
+The entry has reached the configured target of qualifying completed validations from 3 distinct validators. Normal allocation **stops**. A fourth validator is not collected merely because free-text corrections or translations disagree.
 
 ### Requires research review
-The entry has sufficient validations but contains meaningful disagreement or competing corrections.
+The entry has sufficient qualifying validations but contains meaningful disagreement or competing corrections. This is flagged for researcher review and adjudication; it does not trigger further collection during the crowdsourcing phase.
 
 Do not automatically create the final validated Ilocano sentence solely through majority voting unless the thesis methodology explicitly approves that rule.
 
 ---
 
 # 10. Researcher / Admin Dashboard
+
+> Researchers must be able to inspect, per validator and per entry: the evaluation, the Ilocano correction where applicable, the **English** translation, the **Filipino** translation, and **whether that response qualifies toward coverage** (section 9). Exports preserve the two translations as separate fields. Three validators' translations are never collapsed into one string during collection; choosing the final validated Ilocano, English, and Filipino belongs to the later, thesis-approved adjudication stage (section 11).
+
+> The admin area must not present an interface-language preference as a research attribute, and must not treat a Filipino interface as evidence about a validator's English proficiency.
 
 Create a protected admin area for the thesis team.
 
@@ -1336,7 +1480,7 @@ Before production crowdsourcing begins, confirm with the thesis team/adviser:
 - which Ilocano proficiency levels count toward the target;
 - whether `Conversational` validators are considered eligible;
 - disagreement/adjudication rules;
-- whether optional translations will be used in the final dataset;
+- ~~whether optional translations will be used in the final dataset~~ — **settled by the approved requirements: both are collected, and adjudication chooses among them**;
 - whether any demographic information is academically required;
 - whether ethics/consent language is required before participation.
 
@@ -1414,19 +1558,29 @@ User can start as an anonymous validator
 
 Tasks:
 
-- implement coverage-aware assignment;
+- implement coverage-aware assignment driven by **qualifying** coverage (section 9), not raw validation count;
 - exclude previously answered entries;
-- prioritize lowest validation count;
-- randomize candidate selection;
+- for each candidate, count qualifying completed validations from distinct validators;
+- treat a `cannot_evaluate` response as **zero** toward the qualifying count;
+- treat a partial or legacy-incomplete response, one missing either required translation, as **zero**;
+- prioritize lowest **qualifying** count;
+- randomize candidate selection within the lowest-qualifying-count pool;
 - create 10-entry batch;
 - reserve batch entries;
 - prevent duplicate validator-entry assignments;
-- make target validation count configurable.
+- stop normal allocation once the qualifying count reaches the target;
+- **do not** collect a fourth validator merely because corrections or translations disagree; flag it instead;
+- make the qualifying-coverage target configurable, initially 3.
+
+> **Dependency.** This phase requires the required-bilingual-translations change, because the
+> qualifying definition depends on both translations being present. Building it against the
+> superseded optional-translation model would produce allocation logic that counts responses the
+> approved methodology says do not count.
 
 Deliverable:
 
 ```text
-A validator receives a valid randomized 10-entry batch
+A validator receives a valid randomized 10-entry batch, chosen by qualifying coverage
 ```
 
 ---
@@ -1440,15 +1594,38 @@ Tasks:
 - show progress;
 - implement four evaluation choices;
 - implement conditional correction;
-- implement optional translation;
+- implement **required bilingual translation**: English and Filipino, both required for every evaluable response;
+- make the translations describe the **validated** Ilocano sentence, not the pre-correction wording;
+- provide **no** skip-translation option for an evaluable response;
+- carry neither translation on a `cannot_evaluate` response;
 - save each completed response immediately;
 - support safe navigation between entries in the active batch;
 - prevent invalid submissions.
 
+Per evaluable entry the flow is:
+
+```text
+Ilocano sentence
+    ->
+Evaluation
+    ->
+Correction if required
+    ->
+English translation
+    ->
+Filipino translation
+    ->
+Submit completed response
+```
+
+> **Dependency.** Requires the required-bilingual-translations change. The composition and
+> layout stay under the approved soft neo-brutalist direction, but there is no longer a layout in
+> which "Skip translation" is one of the options.
+
 Deliverable:
 
 ```text
-Complete end-to-end human validation flow
+Complete end-to-end human validation flow with both research translations
 ```
 
 ---
@@ -1482,9 +1659,12 @@ Tasks:
 - implement entry-level review;
 - show validator proficiency metadata;
 - show submitted corrections;
-- show translations;
+- show the **English and Filipino** translations per validator and per entry, side by side and **not** merged;
+- show whether each response **qualifies toward coverage**, and why not when it does not;
+- keep coverage displays computed from qualifying counts;
 - flag disagreement/review cases;
-- add useful filters and search.
+- add useful filters and search;
+- never present the interface locale as a research attribute.
 
 Deliverable:
 
@@ -1498,8 +1678,9 @@ Research team can monitor validation progress and inspect responses
 
 Tasks:
 
-- export raw validations;
-- export validation summaries;
+- export raw validations with `english_translation` and `filipino_translation` as **separate fields**, preserving each validator's own text;
+- export validation summaries, reporting qualifying and non-qualifying counts distinctly;
+- never collapse three validators' translations into one string during export;
 - export category-specific data;
 - add JSON export;
 - add CSV export where useful;
@@ -1515,6 +1696,8 @@ Research-ready dataset exports
 ---
 
 ## Phase 9 — Quality Assurance
+
+> Added to the QA scope by the required-bilingual-translations change: the schema must be verified to **reject** an evaluable response missing English, an evaluable response with blank English, an evaluable response missing Filipino, an evaluable response with blank Filipino, a `cannot_evaluate` response carrying English, carrying Filipino, or carrying both, a correction-required evaluation without its correction, and a prohibited correction on `correct_natural`. It must be verified to **accept** `correct_natural` with both translations, `correct_unnatural` with a correction and both translations, `incorrect` with a correction and both translations, and `cannot_evaluate` with no correction and no translations. Each rejection is matched against the **named** constraint, because a generic "check constraint" pattern passes when the wrong constraint fires.
 
 Test:
 
@@ -1533,8 +1716,11 @@ Test:
 ### Validation
 - conditional fields work correctly;
 - correction is required for unnatural/incorrect;
-- translation remains optional;
-- cannot-evaluate skips correction/translation;
+- both English and Filipino translations are required for every evaluable response;
+- both translations describe the validated Ilocano sentence, not the pre-correction wording;
+- the schema rejects an evaluable response missing either translation or carrying a blank one;
+- cannot-evaluate carries neither translation and does not count toward qualifying coverage;
+- an incomplete bilingual response does not count toward qualifying coverage;
 - progress is saved after each item.
 
 ### UX
@@ -1636,7 +1822,8 @@ The first usable MVP should include only:
 - 10 entries per batch;
 - four evaluation choices;
 - conditional correction;
-- optional translation;
+- **required bilingual research translation** (English and Filipino, both required for every evaluable response);
+- **bilingual public interface** (ENG/FIL, English default, browser-local);
 - immediate response persistence;
 - contribution count;
 - continue or finish;
@@ -1681,7 +1868,7 @@ This crowdsourcing website is **not**:
 - a map interface;
 - a transport recommendation engine;
 - a social network;
-- a translation service;
+- a general-purpose translation service (it collects research translations as validator response data; it is not a translation product);
 - an AI correction service;
 - a replacement for human validation.
 
@@ -1697,8 +1884,11 @@ The platform is successful when:
 - validators can complete a 10-item batch comfortably on mobile;
 - the same person is not shown the same entry twice;
 - entries are distributed fairly across validators;
-- each record can reach the configured independent-validation target;
-- corrections and translations are stored without altering source data;
+- each record can reach the configured target of **qualifying** validations from distinct validators, where a `cannot_evaluate` or an incomplete bilingual response does not count;
+- every evaluable response carries both an English and a Filipino translation of the validated Ilocano sentence;
+- corrections and translations are stored as the validator's response data, without altering source data;
+- a validator who prefers the Filipino interface can complete the whole task, and switching language never disturbs their in-progress answers;
+- the stored research value of an answer is identical whichever interface language displayed it;
 - researcher progress is visible;
 - raw data can be exported;
 - the system supports later adjudication;
@@ -1716,7 +1906,9 @@ For visual implementation:
 
 For product behavior:
 
-> Do not creatively reinterpret the validation protocol. Screening, batch allocation, evaluation choices, correction conditions, translation behavior, persistence rules, and batch continuation must follow this roadmap unless the specification is explicitly changed.
+> Do not creatively reinterpret the validation protocol. Screening, batch allocation, evaluation choices, correction conditions, translation behavior, persistence rules, interface localization, and batch continuation must follow this roadmap unless the specification is explicitly changed.
+>
+> "Follow this roadmap" means the sections as currently written, not any earlier revision of them. Sections 6.4, 6.7, 6.10, 7.6, 8, 9, and 17 were rewritten when bilingual research translations and interface localization were approved, and the **optional** single-translation model they replaced is superseded. An agent that finds an older statement about an optional translation anywhere in this file is reading a superseded line, not an alternative reading of the current requirement.
 
 This separation is intentional:
 
