@@ -140,11 +140,29 @@ or any research response.
 - **THEN** their profile, including their screening answer and any progress, is obtained from the
   server rather than from browser-local storage
 
-### Requirement: A returning validator is restored without re-screening
+### Requirement: A returning validator is restored without their screening answer being overwritten
 
 A visitor who presents a previously stored identifier SHALL be restored as the same anonymous
-validator when the server confirms that identifier exists. The screening question SHALL NOT be
-asked again, and an existing screening answer SHALL NOT be overwritten.
+validator when the server confirms that identifier exists. An existing screening answer SHALL NOT
+be overwritten, and the platform SHALL NOT persist a screening answer supplied alongside a
+successful resume.
+
+> **Amended during Apply.** This requirement originally read "The screening question SHALL NOT be
+> asked again", and its first scenario repeated that the question "is not presented again". Both
+> were **not achievable**, and the design record explains why at D2: the identifier lives in
+> `localStorage` (D2), so the server cannot know who they are at render time. The client *can*
+> read it — `useSyncExternalStore` does so cleanly, and an earlier version of this note
+> wrongly said otherwise — but a stored identifier is not a recognised one, so resolving
+> before the server answers would enroll a participant whose identifier has expired with no
+> screening answer at all. See design.md D2 for the check that falsified the original
+> justification. A participant who navigates directly to `/start` therefore does see the
+> question.
+>
+> What replaces it is the property that actually protects the research data and is actually
+> testable: a second screening answer is never *stored*. The resume path performs no write, so the
+> original self-reported answer survives untouched, and an answer typed on `/start` by an
+> already-enrolled participant is discarded rather than persisted over the first one. The original
+> wording was correct as an aspiration and wrong as a specification; this is the accurate contract.
 
 A stored identifier the server does not recognise SHALL NOT be treated as an error and SHALL NOT be
 reused. The platform SHALL discard it and mint a new identity, because a validator must never be
@@ -153,18 +171,40 @@ handed an identifier that belongs to nobody.
 #### Scenario: An existing validator is restored
 
 - **WHEN** a returning visitor presents a stored identifier that the server confirms exists
-- **THEN** the same anonymous validator is resumed, and the screening question is not presented
-  again
+- **THEN** the same anonymous validator is resumed, and no new validator record is created
 
 #### Scenario: The original screening answer is preserved
 
 - **WHEN** an existing validator is restored whose profile already carries a screening answer
 - **THEN** that answer is unchanged by the restore
 
+#### Scenario: An answer given alongside a successful resume is not stored
+
+- **WHEN** a visitor selects a screening answer and submits, and the server confirms their stored
+  identifier exists
+- **THEN** the newly selected answer is discarded, and the stored answer from the original
+  enrollment is left in place
+
 #### Scenario: An unrecognised identifier is replaced, not reused
 
 - **WHEN** a stored identifier is not found on the server
 - **THEN** it is discarded and a new anonymous validator is created instead
+
+#### Scenario: An answer given before an unrecognised identifier is discovered is kept
+
+- **WHEN** a visitor selects a screening answer and submits, and the server reports that their
+  stored identifier names nobody
+- **THEN** the new identity is created carrying **the answer just selected**, and the discarded
+  identifier is not reused
+
+> This scenario was added during Apply in response to a real defect, not a speculative one. The
+> first implementation routed the stale-identifier fallback through a decision that hardcoded
+> `answer: null`, so a participant who selected "Fluent" and whose stored identifier had expired
+> was enrolled as having **declined**. Their research datum was silently replaced by a different
+> one. The code carried a documented `answer` field on that branch whose comment explained it
+> existed so callers would not have to re-derive the rule — while the only producer of the field
+> hardcoded `null`. A field that is always `null` reads as though something is using it, which is
+> what let the defect survive a full green suite.
 
 ### Requirement: The participation and privacy notice is shown before enrollment
 

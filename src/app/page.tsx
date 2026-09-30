@@ -1,18 +1,20 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { linkButtonClasses } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ResumeValidator } from "@/components/onboarding/resume-validator";
 
 /**
- * Landing / introduction — application shell version.
+ * Landing / introduction.
  *
- * Scope note: ROADMAP Phase 3 owns the full public flow (screening, anonymous validator setup,
- * and the live entry point into `/start`). This change is Phase 1, so the page renders the
- * approved introduction copy and the shell's structural patterns, and the start action is
- * honestly inert rather than linking to a route that does not exist yet. Phase 3 replaces the
- * notice with the real screening hand-off; it does not rewrite the copy below.
+ * The start action hands off to `/start`, the screening route. It was deliberately inert in the
+ * application-shell phase rather than linking to a route that did not exist; `landing-and-screening`
+ * replaced that notice with the real hand-off and left the introduction copy below untouched.
  *
- * This route has no database, network, or session dependency, which is what the
- * `application-foundation` spec requires of the shell.
+ * This route still has no database, network, or session dependency, which is what the
+ * `application-foundation` spec requires of the shell. The route a visitor reaches by following the
+ * link is a different question: that one writes.
  */
 
 const PANELS = [
@@ -65,17 +67,27 @@ export default function HomePage() {
             whether it says what it should, and correct it when it does not.
           </p>
 
+          {/*
+            A real link, not a button: it navigates, so it must be an anchor. Keyboard
+            and screen-reader users get link semantics and middle-click / open-in-new-tab
+            for free, which a button styled as a link would silently take away.
+          */}
           <div className="flex flex-wrap items-center gap-3">
-            {/*
-              Inert in this phase. Announced as disabled rather than silently dead, and it does
-              not pretend to be a working link to a route that does not exist yet.
-            */}
-            <Button size="lg" disabled title="Opens once screening ships">
+            <Link href="/start" className={linkButtonClasses({ size: "lg" })}>
               Start validation
-            </Button>
+            </Link>
             <p className="text-small text-ink-faint font-semibold">
-              Not open yet — we are still building the question and answer screens.
+              Two steps: one question about your Ilocano, then you begin.
             </p>
+          </div>
+
+          {/*
+            The client island on this route. `/` still renders with no database, network, or
+            session dependency — this component only reads browser-local storage, and only
+            when the participant presses it.
+          */}
+          <div className="max-w-md">
+            <ResumeValidator />
           </div>
         </section>
 

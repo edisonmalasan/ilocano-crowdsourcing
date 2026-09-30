@@ -44,6 +44,39 @@ export const ilocanoProficiencySchema = z.enum(
 export type IlocanoProficiency = z.infer<typeof ilocanoProficiencySchema>;
 
 /**
+ * Narrows an arbitrary string from the answer control to a proficiency, or `null`.
+ *
+ * WHY THIS EXISTS. `AnswerGroup.onChange` is typed `(value: string) => void`, because the
+ * control is generic over any option set. That made the screening call site an **unchecked
+ * cast**:
+ *
+ *     onChange={(value) => setSelection(value as IlocanoProficiency)}
+ *
+ * Round six proved that cast is a research-data fabrication route. `onChange={() =>
+ * setSelection(ILOCANO_PROFICIENCY_CHOICES[1].value)}` - selecting "Fluent" for every
+ * participant regardless of what they chose - passes lint, format, typecheck, the full unit
+ * suite, and the production build. The literal-level guards added in rounds three and four
+ * cannot see it, because `"fluent"` never appears: the value arrives by property access.
+ *
+ * So this is not guarded with another regex, which would be the seventh shape-shaped
+ * assertion this change has had to add and would fail the same way. The cast is **removed**.
+ * A value that is not one of the five approved proficiencies is now a type error at the
+ * assignment, so fabrication requires editing this function rather than editing a call site,
+ * and this function is ordinary domain code with ordinary behavioural tests.
+ *
+ * Returning `null` rather than throwing: a control reporting a value that is not in its own
+ * option list is a defect worth surviving rather than crashing a participant's session over,
+ * and `null` is the honest state - nothing has been selected.
+ */
+export function toIlocanoProficiency(value: string): IlocanoProficiency | null {
+  const parsed = ilocanoProficiencySchema.safeParse(value);
+  // `parsed.data` is already `IlocanoProficiency` by Zod's own inference. Deliberately NOT
+  // `(value as IlocanoProficiency)`: a cast here would reintroduce exactly the hole this
+  // function exists to close, one level up.
+  return parsed.success ? parsed.data : null;
+}
+
+/**
  * Anonymous validator identifier: `VAL_` plus exactly eight lowercase hex characters
  * (32 bits of entropy; see `@/lib/domain/anonymous-validator-id`).
  */

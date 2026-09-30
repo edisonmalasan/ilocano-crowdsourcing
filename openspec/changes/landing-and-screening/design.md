@@ -79,9 +79,61 @@ that cost buys a strictly smaller server-side footprint.
 
 **Consequence, and it is the important part.** Because the server cannot read the identifier, the
 landing page cannot know on first paint whether this is a returning visitor. Resume is therefore
-explicit: a "Resume" affordance on the landing page, enabled only after the client finds a
-well-formed stored value. A visitor with a stored identity is never silently resumed, which also
-means a shared device does not hand one person another's session without a visible action.
+explicit: a "Continue as that validator" control on the landing page, rendered unconditionally, which
+reads the stored value only when the participant presses it. A visitor with a stored identity is
+never silently resumed, which also means a shared device does not hand one person another's session
+without a visible action.
+
+> **Amended during Apply.** This paragraph originally said the affordance was "enabled only after the
+> client finds a well-formed stored value". That was the design as proposed and it was not what got
+> built, because it needs a post-hydration `setState` — `localStorage` does not exist during server
+> built, because it needs a post-hydration `setState`: `localStorage` does not exist during server
+> rendering, and storage can tell this component an identifier is *stored* while only the server
+> can say whether it is *recognised*, so a control that appeared or vanished before the server
+> answered would be guessing. (This paragraph originally gave a different reason — that the cascading
+> render is "the pattern the React lint rules exist to reject" — which review tested and found
+> **half false**: `useSyncExternalStore` lints and typechecks clean on React 19.2.8. That correction
+> and its evidence are in the block immediately below.)
+> The control is rendered always and reveals what it found only after the participant asks. The cost is
+> that a first-time visitor can press a button that turns out to have nothing to resume; the benefit
+> is that the affordance is present for the person who needs it, with no effect, no hydration
+> mismatch, and no control whose existence depends on which machine the code ran. The argument for the
+> change is in the component header of `src/components/onboarding/resume-validator.tsx`.
+
+**What this costs, stated plainly because the spec scenario had to change because of it.** A returning
+participant who navigates directly to `/start` **does see the screening question again.** What *is*
+guaranteed is that their selection is never stored over their original answer: the resume path
+contains no `create` call, so the stored self-reported screening answer survives untouched. The
+original spec scenario demanded the question "is not presented again"; it has been amended to require
+what is actually true and actually testable — that the original answer is preserved and never
+overwritten. See the spec delta for that amendment.
+
+> **The stated reason for this amendment was wrong, and was corrected after being checked.**
+> The first version justified it thus: *"the client cannot know without an effect, which cascades a
+> render and is the pattern the React lint rules exist to reject."* Independent review tested that
+> claim on React 19.2.8 and **half of it is false**:
+>
+> - `useEffect(() => setState(localStorage.getItem(…)))` → `react-hooks/set-state-in-effect` **does**
+>   error. That part was right.
+> - `useSyncExternalStore(subscribe, () => localStorage.getItem(…), () => null)` → **lints clean and
+>   typechecks clean**, exit 0 on both. `useSyncExternalStore` is React's supported, hydration-safe API
+>   for exactly this read, and the record never considered it.
+>
+> A requirement may only be amended when the original was genuinely unsatisfiable, so citing a
+> refuted blocker is not good enough. The reason that actually holds is a data-integrity one:
+> **`useSyncExternalStore` can tell the client that a value is *stored*, not that the server
+> *recognises* it.** Suppressing the question optimistically would therefore mean a participant whose
+> stored identifier has expired presses Continue, is told nothing, and is enrolled with **no
+> screening answer at all** — or must be interrupted mid-flow with the question *after* a round trip,
+> which is worse for the participant than being asked up front and, critically, means the question's
+> absence would depend on a value the server has not yet vouched for.
+>
+> Two further reasons, lower weight but real: a static prerendered route would ship the question in
+> its HTML and swap it after hydration, a visible flash for exactly the returning validators the
+> change is meant to serve; and the suppression would reintroduce the post-response state change that
+> D2's submit-time check exists to avoid. The build has **no browser and no way to evaluate a
+> hydration flash**, so shipping an unseeable UX change to satisfy a wording preference would be the
+> worse trade. Recorded so the next reader can disagree with a decision rather than re-derive it.
 
 ### D3 — The server verifies existence; the client is never trusted about it
 
@@ -127,9 +179,34 @@ this as an open question for the thesis team rather than resolving it unilateral
 answer depends on the participation model (a link-shared pilot versus a public deployment) and on
 whether an enumeration rate limit is in scope.
 
-**Interim mitigation, cheap and within scope:** the resume action is the only surface that accepts a
-client-supplied identifier, and it answers a yes/no question with no distinguishing error. It does
-not make guessing materially cheaper, but it means there is no second surface to attack.
+> **Amended during Apply after independent review disagreed with this paragraph.** It originally
+> claimed an interim mitigation: *"the resume action is the only surface that accepts a
+> client-supplied identifier, and it answers a yes/no question with no distinguishing error … it
+> means there is no second surface to attack."* That was wrong in a way worth recording, because
+> the next reader would otherwise inherit a false sense of safety. **The resume action is the
+> enumeration oracle.** It is unauthenticated, unmetered, has no rate limit, and returns a clean
+> boolean over 2^32. "There is no second surface" is a restatement of there being one surface, and
+> one surface is sufficient. A determined party issues ~4.3 billion unauthenticated Server Action
+> calls.
+>
+> The review also pointed out that a *successful* guess is worse than "continue as another
+> participant". Because `ValidatorProfile` carries `ilocanoProficiency`, guessing one identifier
+> discloses another participant's self-reported screening answer — a second, smaller leak that the
+> original text did not mention at all.
+>
+> **The deferral stands.** Widening the format belongs in its own change with thesis input, and
+> adding a rate limiter belongs to a later phase. What was wrong was the description of the
+> mitigation, not the decision. Three cheaper, schema-free options are available if the thesis team
+> wants the exposure reduced before Phase 11:
+>
+> 1. Rate-limit or throttle `resumeValidatorAction`. Enumeration resistance is a security property
+>    of the surface *this* change introduced, not a Phase 9 nicety.
+> 2. Make a failed resume indistinguishable from a successful one to an unauthenticated caller. The
+>    `not_configured` / `absent` / `invalid` / `persistence` split is good UX for a real participant
+>    and a free environment-state oracle for an attacker, though it does not accelerate 2^32
+>    enumeration, so it ranks below option 1.
+> 3. Do nothing until the participation model is decided, which is the current state and is an
+>    honest answer rather than an oversight.
 
 ### D6 — Screening reuses `AnswerGroup` verbatim
 
@@ -181,8 +258,13 @@ useless in production, and it would erase the distinction that matters most here
   silently — the not-configured state is a deliverable precisely because it is the honest behavior
   here. Nothing in the test suite pretends to have reached PostgREST.
 - **[D5 identifier entropy]** → Recorded as an open question, with the reasoning above, rather than
-  changed inside an unrelated change. Interim: exactly one surface accepts a client-supplied
-  identifier, and it returns a boolean-shaped answer.
+  changed inside an unrelated change. **No interim mitigation is in place.** An earlier draft of this
+  bullet claimed "exactly one surface accepts a client-supplied identifier, and it returns a
+  boolean-shaped answer" as a mitigation; that claim was false and is retracted at D5, because the
+  single surface *is* the enumeration oracle — unauthenticated, unmetered, no rate limit, a clean
+  boolean over 2^32. A successful guess also discloses the other participant's self-reported
+  proficiency. The deferral is a decision about *sequencing*, not a claim that the exposure is
+  mitigated.
 - **`localStorage` can be cleared, blocked, or unavailable (private browsing, disabled storage)** →
   A visitor whose storage is unavailable is not blocked: enrollment still completes and the
   confirmation screen appears; only the resume convenience is lost. The failure is swallowed
@@ -220,6 +302,10 @@ These are deferrable: none of them changes the specs above, the approach, or the
 2. **Whether a declining visitor should be identifiable as having declined.** This change records
    `null` and nothing else. If the study later needs to distinguish "declined" from "enrolled before
    screening existed", that is a new research question, not a bug fix.
-3. **Whether the screening question should ever be re-asked** to measure change over time. D1 and the
-   spec currently forbid it; a longitudinal study would need an explicit, separately consented
-   mechanism.
+3. **Whether the screening question should ever be re-asked** to measure change over time. D1 collects
+   the answer once at enrollment and the resume path never writes, so nothing re-asks today and the
+   stored answer cannot be overwritten. The spec therefore forbids *overwriting*, not re-asking: a
+   participant who navigates to `/start` again **is** asked again, and simply has their earlier answer
+   restored rather than replaced. A longitudinal study that deliberately re-asks to measure change over
+   time would need an explicit, separately consented mechanism, because the current flow would already
+   have shown the question and discarded the second answer.

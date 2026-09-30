@@ -189,7 +189,7 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 
 | Command | Result | Proves | Does **not** prove |
 | --- | --- | --- | --- |
-| `pnpm run test:unit` | exit 0 — **14 files, 312 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation, env validation, the Supabase client construction paths, the repository interface seam, the dataset source parser against the real 600-record file, a source-text scan proving the import path contains no filesystem write/rename/delete call, the row-to-domain and error-mapping logic of the three Supabase repositories, the write-intake boundary, the design-token contract, and rendered-markup accessibility assertions. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env` and `write-intake` tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. `repositories-supabase.test.ts` stubs the `server-only` marker, so it proves the translation and error-mapping logic against a recording fake and nothing at all about PostgREST, the wire protocol, or whether `.in()`/`.range()`/`count: "exact"` behave as assumed. The filesystem scan is a **textual** scan of a named module list, not a sandboxed runtime trace, so it cannot see a write performed by a dependency or by a module absent from that list. |
+| `pnpm run test:unit` | exit 0 — **22 files, 514 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation and browser-local storage, env validation, the Supabase client construction paths, the repository interface seam, the dataset source parser against the real 600-record file, a source-text scan proving the import path contains no filesystem write/rename/delete call, the row-to-domain and error-mapping logic of the three Supabase repositories, the write-intake boundary, the design-token contract, rendered-markup accessibility assertions, the onboarding **pure** decision functions, the Server Action **core** against injected fakes, the Server Action **wrapper** driven with the environment module throwing, rendered-markup assertions on the three public routes including the neutrality of every screening option's **rendered** class, and source-text assertions on the screening form's write wiring - specifically that the minted identifier is persisted, that a restored validator returns instead of falling through to enrolling, that the resume path contains no repository write, that the skip control records a decline rather than a fabricated proficiency level, and that a rejected submission forwards its error to the field. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env`, `write-intake`, and the route tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. `repositories-supabase.test.ts` stubs the `server-only` marker, so it proves the translation and error-mapping logic against a recording fake and nothing at all about PostgREST, the wire protocol, or whether `.in()`/`.range()`/`count: "exact"` behave as assumed. The filesystem scan and `screening-form-wiring.test.ts` are **textual** scans of named files: they prove a string is or is not present, not that the code behaves as the string suggests, and a cosmetic rename will fail them. Nothing here clicked a button, ran an effect, or started a transition — `renderToStaticMarkup` cannot — so the submit-time resume check, the `localStorage` write, and navigation to `/ready` are proven by pure functions and source assertions, never by an executed flow. |
 | `pnpm run test:integration` | exit 0 — **4 files, 69 tests passed** | A real PostgreSQL engine (PGlite/WASM) boots, applies SQL in filename order inside per-file transactions, and rolls back. Applied from the production `supabase/migrations/` directory, it proves the six research tables with closed column sets, the named `UNIQUE (validator_id, dataset_entry_id)` constraint, the vocabulary checks in **both** directions (each approved value accepted, each unapproved one rejected, and each rejection matched against the named constraint), the not-blank and cross-column consistency checks, the foreign keys and their `on delete` behavior, the indexes, and the measured deny-all RLS posture (a `select`, `update`, or `delete` as `anon`/`authenticated` returns or affects zero rows **without an error**; an `insert` is rejected with an RLS error; `service_role` still reads). It also proves that all 600 parsed records import idempotently into that schema with each stored instruction byte-identical to the source, that the stored `source_payload` matches the source record as a value, and that `data/ilocano-synthetic-data.json` is unchanged by the whole run by record count, ID set, and SHA-256, with the guard proved to fail on a deliberately altered copy. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the database engine evaluates them*. It does **not** cover Supabase Auth, Storage, Realtime, PostgREST behaviour, or RLS as enforced by the Supabase API gateway, and it is not a substitute for verifying against a real project. Each integration test file manages its own state: the import tests reset and import per test, verified by running the file under two different `--sequence.shuffle` seeds, so no result depends on test order — but each still shares one database per file, not one per test. |
 
 #### Build and runtime
@@ -212,18 +212,79 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 names. Use the archived copies when reading their deltas, and the `--specs` command above to check
 what is currently in force.
 
+**Run 36675360024 (PR #12, `e510912`, 2026-09-30) passed on `ubuntu-latest`**: both jobs green,
+`22 files / 510 tests` unit and `4 files / 69 tests` integration — matching the local counts of the
+same commit — "All matched files use Prettier code style!", and "Compiled successfully" for the
+production build. Every one of those numbers was read back out of the run log, not inferred from a
+green checkmark. The dataset-guard job was read back too: it ran the literal command `pnpm exec
+vitest run --project integration tests/integration/immutable-dataset.test.ts` and reported
+`1 file / 7 tests`, naming only that one file.
+
+**Run 36686768916 (PR #12, `7647179`, 2026-09-30) passed on `ubuntu-latest`**: `22 files / 514
+tests` unit, `4 files / 69 tests` integration, "All matched files use Prettier code style!",
+"Compiled successfully", and the dataset-guard job scoped to `1 file / 7 tests`. The unit count is
+**514 and not 510** even though the run before it read 510, because `7647179` is the sixth-round
+repair commit and carries the four tests added by it. That distinction was not obvious and was
+settled by tooling rather than by inference — see the reader below.
+
+**Run 36687010926 (PR #12, `e0f93d2`, 2026-09-30) passed on `ubuntu-latest`** and is the run
+current at the merge of this change: the same six figures, `22 files / 514 tests` unit and `4 files
+/ 69 tests` integration with the guard job at `1 file / 7 tests`, read back off the log by a reader
+that **exits non-zero rather than printing a partial answer**.
+
+That reader has itself been wrong three times, and each failure is documented in its own header
+because a reader that silently mislabels a number is worse than no reader. It first read vitest's
+summaries **positionally**, assuming the order unit, integration, guard; nothing orders the jobs,
+and on `36687010926` the guard job printed first, so the reader refused rather than mislabelling
+the numbers. It then assumed multiple spaces between the job, step, and timestamp fields when
+`gh run view --log` separates them with **tabs**, and it looked for `Test Files` and `Tests` on one
+line when vitest prints them on **separate** lines. Each of those three would have produced a
+confident wrong number, and only the first was caught, because the second and third reported
+"nothing found" rather than something plausible.
+
+The rule this establishes, and the reason the reader attributes counts by **step name** and only
+then checks the numbers: matching on the expected numbers and declaring success would be circular.
+The step name is the independent evidence; the number is what is checked against it. Every summary
+line in the log must be accounted for, or the reader refuses — something it did not understand is
+exactly the condition under which it must not report.
+
+Reading CI output has failed silently here in five further ways, all still guarded: a UTF-16LE
+BOM that makes every regex match nothing; `gh run view --log` rendering ESC as the literal `^[`
+rather than 0x1b; per-line job and ISO-timestamp prefixes that make `^\s*Tests` match nothing; an
+empty capture being written into this ledger as a measurement; and a transcribed dash. The three
+silent empty matches in one read are the worst of them, because **an empty capture is
+indistinguishable from a run that reported nothing** — which is exactly the failure mode that once
+wrote a blank into the test-count row.
+
+**Reading that log back took three attempts, each of which failed silently rather than loudly,
+and the pattern is worth keeping.** The first returned an empty match because the log had been
+captured with PowerShell's `>` redirection, which writes UTF-16LE with a BOM — read as UTF-8, every
+regex matched nothing. The second fixed the encoding and *still* matched nothing, because
+`gh run view --log` renders ESC as the two literal characters `^[` rather than the 0x1b byte, so a
+regex anchored on a real escape byte can never match this output. The third failed because each
+log line is prefixed with the job name and an ISO timestamp, so `^\s*Tests` anchored at line start
+matched nothing. An empty capture is indistinguishable from a run that reported nothing, which is
+exactly the failure mode that once wrote a blank into this ledger; the reader now detects the BOM,
+strips both escape notations, and **exits non-zero rather than reporting a partial answer**.
+
 #### Continuous integration — observed runs
 
 `.github/workflows/verify.yml` defines a `verify` job (install, lint, format check, type-check,
 unit tests, integration tests, build) plus an `immutable-research-source` job that runs the dataset
-guard on its own. **Run 36628918700 (PR #8, 2026-09-29) passed on `ubuntu-latest`**: both jobs green,
-`14 files / 312 tests` unit and `4 files / 69 tests` integration — matching the local counts of the
-same commit — and "Compiled successfully" for the production build. Run 36628108347 (PR #7, the same
-day, the preceding commit) passed with identical counts. The dataset-guard job was read back from
-the run log and reported `1 file / 7 tests` against the literal command `pnpm exec vitest run
---project integration tests/integration/immutable-dataset.test.ts`, confirming it really is scoped
-to the guard rather than to the whole suite.
+guard on its own. **Run 36662964607 (PR #12, `feat/landing-and-screening`, 2026-09-30) passed on
+`ubuntu-latest`**: both jobs green, `20 files / 445 tests` unit and `4 files / 69 tests` integration
+— matching the local counts of the same commit — "All matched files use Prettier code style!", and
+"Compiled successfully" for the production build. **Every one of those numbers was read back out of
+the run log**, not inferred from a green checkmark, because the earlier defect below is precisely a
+job that was green and not doing what its name said. The dataset-guard job was read back too: it ran
+the literal command `pnpm exec vitest run --project integration
+tests/integration/immutable-dataset.test.ts` and reported `1 file / 7 tests`, naming only that one
+file. That run predates the independent review; the post-review counts on the merged branch differ
+and are re-verified by the run for the final PR.
 
+**Run 36628918700 (PR #8, 2026-09-29) passed** with `14 files / 312 tests` unit and
+`4 files / 69 tests` integration, and the same read-back confirming the guard job was genuinely
+scoped. Run 36628108347 (PR #7, the same day, the preceding commit) passed with identical counts.
 An earlier green run of the same workflow (36614647692, PR #3) reported `12 files / 244 tests` unit
 and `2 files / 18 tests` integration on what was then the whole suite, and is superseded by the
 counts above.
@@ -239,6 +300,26 @@ Two lessons, both worth keeping: **a CI step that claims to run a subset must be
 run log to confirm it actually did**, and **a green job is not proof that the workflow can go red.**
 No failing run has ever been observed, so "a failing test blocks the pull request" is still inferred
 from the check being required on `pull_request` rather than demonstrated.
+
+The same two lessons have a local twin, and the `landing-and-screening` review made it concrete.
+**A probe harness that reports "no failures" is indistinguishable from a probe harness that cannot
+detect failures.** Three separate harness defects produced false evidence there, and the third is
+the one to remember: an ANSI-stripping regex written as `/\[[0-9;]*m/` without the escape character
+left a literal `\x1b` in front of every `[2m`, so the `^\s*Tests … failed` pattern never matched and
+**every probe was scored green, including probes that were genuinely red.** It was caught only
+because one probe was re-checked by hand outside the harness and went red while the harness claimed
+it did not. Two more: `git checkout --` silently does nothing for an untracked file, so restored
+state leaked between probes; and a suite that fails to *collect* reports "no tests", which must be
+scored as a distinct outcome rather than folded into "did not go red". **Always confirm at least one
+harness result independently.**
+
+And a harness must not be trusted with the working tree. The `landing-and-screening` verifier ran
+its probes in a throwaway copy under `%TEMP%`; all 13 direct dependency junctions in the *real*
+`node_modules` ended up pointing into that copy, and deleting the copy left them dangling —
+`pnpm run typecheck` then failed with `Cannot find module node_modules/typescript/bin/tsc`, which
+reads exactly like a code problem and is not one. **`pnpm install --frozen-lockfile` repairs it, and
+`git status` plus a dataset hash confirm the source tree was untouched.** A `readFile`/`writeFile`
+probe harness with an in-memory restore never touches a junction and cannot cause this.
 
 What CI still does not prove: nothing about Supabase, and nothing about visual rendering.
 

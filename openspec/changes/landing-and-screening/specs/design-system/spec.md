@@ -31,6 +31,19 @@ approved any rule about which levels matter.
 
 #### Scenario: Screening options are no more weighted than validation options
 
-- **WHEN** the screening screen and a validation answer screen are compared
-- **THEN** both present their unselected options with an identical treatment, so a proficiency
-  level is never given more visual weight than a validation judgment and vice versa
+- **WHEN** the screening screen's unselected options are compared against `AnswerOption`'s shared
+  unselected treatment
+- **THEN** every unselected option presents an identical treatment, so a proficiency level is
+  never given more visual weight than another
+
+> **Scoped during Apply, because the original was not executable.** This scenario previously
+> compared "the screening screen and a validation answer screen". No validation answer screen
+> exists until Phase 4, so half the comparison could not be run at all, and the change's
+> verification record had to carry it as a standing exception — which is a live obligation
+> dressed as a requirement. A requirement that cannot be executed is not evidence of anything.
+>
+> The screening half was never in doubt and is fully covered: `onboarding-routes.test.tsx` reads
+> the **rendered** `class` attribute of every `role="radio"` and compares it to this shared
+> constant, and that assertion goes red when `AnswerGroup` is bypassed. What remains for Phase 4
+> is a single cross-screen comparison once a second screen exists. That is follow-on work, and
+> it is deliberately not promised here.

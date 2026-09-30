@@ -11,14 +11,14 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase | Phase 2 — Database and Dataset Import — **complete and archived**. The cursor has moved to Phase 3 — Landing and Screening; that change has not been started |
-| Current OpenSpec change | none active. `openspec/changes/` holds no unarchived change |
-| Lifecycle state | `archived` — `od-dataset-schema-and-import` applied, independently verified, merged (PR #7, `d2eea22`), synced into `openspec/specs/`, and archived as `2026-09-30-od-dataset-schema-and-import`. Sync and Archive ran as one stage on `chore/archive-od-dataset-schema-and-import` |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`) |
-| Last merged OpenSpec stage | #8 — `Merge pull request #8 from edisonmalasan/chore/archive-od-dataset-schema-and-import` (`1ed3340`), the `od-dataset-schema-and-import` Sync + Archive stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
-| Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) — reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
-| Next eligible objective | Phase 3, `landing-and-screening`: landing, Ilocano proficiency screening, anonymous validator create/restore. Requires a new Propose stage on a `docs/landing-and-screening-proposal` branch from updated `main` |
-| Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite. Does not block Phase 3, which is UI and screening work |
+| Current roadmap phase | Phase 3 — Landing and Screening — **verifying**. The Propose stage is merged (PR #11, `d111a9d`); the Apply stage is complete on `feat/landing-and-screening` and has been through six rounds of independent verification and repair, five of which returned FAIL and the sixth of which found no behavioural defect. Sync and Archive have not run |
+| Current OpenSpec change | `landing-and-screening`, unarchived in `openspec/changes/`. All 4 planning artifacts complete; `openspec validate landing-and-screening --strict` exits 0 |
+| Lifecycle state | `verifying` — **five independent verification rounds have run and all five returned FAIL.** Round 1 raised 2 CRITICAL + 9 WARNING; round 2 confirmed every round-1 repair load-bearing (all 8 of that reviewer's proofs go red) and raised 2 CRITICAL + 7 WARNING of its own; round 3 confirmed every round-2 repair load-bearing (20 further probes red) and raised 1 CRITICAL + 4 WARNING, the CRITICAL being that **four call sites of fully-tested functions were unguarded**; round 4 independently re-ran all five round-3 probes and got RED on every one, then found **three more unguarded call sites, each adjacent to one round 3 had just repaired** — a fabricated screening answer reachable through `selection ?? "fluent"`, an error forwarded but never populated, and a storage write made conditional. All are repaired and probe-confirmed. Round 5 was scoped deliberately differently, to enumerate call sites rather than probe the ones round 4 had just repaired, and returned **2 CRITICAL + 4 WARNING**: `/ready` was a static prerender attesting to a database write that never happened for anyone who reached it by typing the URL, and it was also a dead end - no way to begin, while telling the visitor they could finish. `resume-validator.tsx` claimed a storage clear that nothing performed, and **14 client-shell call sites had no assertion of any kind**, including both Server Action payload arguments: everything those two values call is tested, and the values themselves are not. Round 5 again concluded the shipped logic was correct. Both behavioural defects are fixed, the 14 are enumerated in `tasks.md` with severity and assigned to a named follow-up, and 13 probes plus a negative control go red. Round 5 is repaired and probe-confirmed. **Round 6 then ran** and returned **PASS on the code, FAIL on the record**: no behavioural defect was found, and every round-5 repair was independently re-probed red. It found instead that the round-5 enumeration claimed to be 'a complete inventory ... the whole of the client shell' and was not: eight further client-shell call sites exist, two of them more severe than anything listed, one of which **fabricates a screening answer** and another of which **splits a participant's record across two identities** on a double press - both verified to pass lint, format, typecheck, the whole unit suite and the production build. The most severe, the fabrication route, is **repaired in this change by removing an unchecked cast**, not by adding a seventh regex, and the enumeration is now 22 rows. Two participant-facing copy contradictions (`/start` metadata promising sentences that `/ready` says are not switched on; one remaining unconditional-truth violation on `/ready`) are repaired, and the false premise in a justification comment is corrected in place. **This block and `tasks.md` contained a count and a round count that were both wrong; both are fixed, and the count error is the fifth in this change.** Not archived. Full gate green: lint 0, format 0, typecheck 0, 22 files / 510 unit tests, 4 files / 69 integration tests, build "Compiled successfully" |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`) |
+| Last merged OpenSpec stage | #11 — `Merge pull request #11 from edisonmalasan/docs/landing-and-screening-proposal` (`d111a9d`), the `landing-and-screening` Propose stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
+| Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) and #10 (`35cee22`, merged `3518514`) — both reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
+| Next eligible objective | Re-verify the `landing-and-screening` Apply stage after the review repairs, then PR, merge commit, then Sync + Archive. Phase 4 (`coverage-aware-allocation`) becomes eligible only once this change is archived |
+| Blockers | **No Supabase project credentials** — all three of `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are absent, so `getServerEnv()` throws `ServerEnvError` on every real request and no Supabase client has ever been constructed. See "Active Blockers" below. **Plus one new open decision needing thesis-team input: the anonymous identifier carries 32 bits of entropy** (see "Open Decisions") |
 
 > **Why this block splits "OpenSpec stage" from "PR".** A block that names "the last merged PR"
 > is self-referential: the PR that corrects the number is itself a PR, and its own merge falsifies
@@ -313,9 +313,158 @@ assumptions and must be confirmed before production crowdsourcing (Phase 11):
 - which proficiency levels count as *eligible* validations;
 - whether `Conversational` validators are eligible;
 - disagreement/adjudication rules;
+- **anonymous-identifier entropy** (raised by Phase 3, needs a decision before Phase 11).
+  The identifier is `VAL_` plus four random bytes, so 32 bits. `createAnonymousValidatorId` and
+  the `validators` primary key both pin the 8-hex-character format, so widening it is a
+  migration against an already-archived spec rather than a field to change quietly. 2^32 is
+  brute-forceable by a determined party against a reachable enrollment surface. The identifier
+  is not a credential — it grants no access beyond resuming an anonymous session — but a
+  successful guess would let someone continue as another participant and contaminate that
+  participant's research record. The right answer depends on the participation model (a
+  link-shared pilot versus a public deployment) and on whether an enumeration rate limit is in
+  scope, neither of which this repository can decide. **There is no interim mitigation.** An earlier
+  version of this entry claimed one - "resume is the only surface that accepts a client-supplied
+  identifier, and it answers a yes/no question with no distinguishing error" - and the Phase 3
+  design record retracts that claim verbatim as false. The resume action **is** the enumeration
+  oracle: unauthenticated, unmetered, no rate limit, a clean boolean over 2^32. "There is no
+  second surface" is a restatement of there being one surface, and one is sufficient. A successful
+  guess also discloses the other participant's self-reported proficiency. See `design.md` D5 for
+  the deferral and the three cheap schema-free options if the exposure is reduced before Phase 11;
 - whether optional translations enter the final dataset;
 - whether any demographic data is academically required;
 - whether ethics/consent language is required before participation.
+
+### Local Verification Evidence — `landing-and-screening` (2026-09-30, Apply stage)
+
+Recorded from the commands actually run on Windows/PowerShell, Node.js `v26.10.0`, pnpm `12.6.0`.
+**This change is still in Apply. It has not been independently verified and is not archived.**
+
+| Command | Observed result |
+| --- | --- |
+| `pnpm run lint` | exit 0, no errors, no warnings |
+| `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
+| `pnpm run typecheck` | exit 0 |
+| `pnpm run test:unit` | exit 0 — 22 files, **514 tests passed** (up from 14 files / 312) |
+| `pnpm run test:integration` | exit 0 — 4 files, **69 tests passed** (unchanged; this change adds no migration) |
+| `pnpm run build` | exit 0, "Compiled successfully"; `/`, `/_not-found`, `/ready`, `/start` all prerendered static |
+| `openspec validate landing-and-screening --strict` | exit 0, "Change 'landing-and-screening' is valid" |
+| `openspec validate --specs --strict` | "Totals: 6 passed, 0 failed (6 items)" — the six main specs are untouched by an unarchived change |
+
+What this evidence explicitly does **not** establish:
+
+- **No Supabase client has ever been constructed.** All three of `SUPABASE_URL`,
+  `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are absent, so `getServerEnv()` throws
+  `ServerEnvError` on every real request. The enrollment and resume logic is proven against an
+  in-memory fake with exact-value assertions; the hop from the repository to PostgREST is
+  unexercised, exactly as in Phase 2. The action logic was deliberately split into
+  `onboarding-actions-core.ts` (pure, injected dependencies) and a `"use server"` wrapper precisely
+  so that no test needs a database, and so that no test can be mistaken for one that reached one.
+- **No browser ever rendered any of this.** `renderToStaticMarkup` produces the HTML a server
+  render would. It does not run effects, does not fire click handlers, and does not execute the
+  Server Action round trip. The submit-time resume check, the `localStorage` write, and the
+  navigation to `/ready` are proven by pure decision functions and unit tests on
+  `browser-identity`, not by anything that clicked a button.
+- **A successful build is not a behavioural result.** It proves four routes compile. The
+  behavioural evidence is the unit suite and the probe runs below. The figure those probes ran
+  against has moved across four review rounds, and each probe is recorded against the suite size
+  at the time it was run rather than against the current one.
+- **WCAG contrast is inferred from token values, not measured.** There is still no human visual
+  review of any screen, and `next start` has still never been run.
+
+#### Load-bearing proof
+
+15 deliberate single-line breaks of this change's guarantees, each reverted immediately.
+**14 turned the suite red in the expected file.** The one that did not is recorded rather than
+hidden: removing the Server Action's identifier check changes no behaviour, because
+`isAnonymousValidatorIdFormat` inside the service rejects the same values from the same
+`ANONYMOUS_VALIDATOR_ID_PATTERN`. So the check is a duplicate, not a boundary. It was kept and
+relabelled in `onboarding-actions-core.ts` as what it actually is — a narrowing parse from
+`unknown` to the branded type, with no cast — and a new test
+(`tests/unit/validators-identifier-format.test.ts`, 4 valid and 17 near-miss inputs) now pins
+that the two format checks agree, so a future second pattern definition cannot make them diverge
+silently.
+
+Two defects in the probe harness itself were found and fixed, both of which had briefly produced
+false evidence. Worth recording because both are easy to repeat:
+
+1. The first harness restored files with `git checkout --`, which does nothing for an untracked
+   file. Three breaks leaked into later probes and inflated the failure counts. Replaced with
+   in-memory content restore.
+2. The first harness scored a suite that failed to **collect** as "did not go red". A probe
+   referencing an unimported component threw at collection time, Vitest reported "no tests", and
+   the probe was recorded as a pass. The harness now reports collection failure as its own
+   outcome, because *no tests* is not *passed*.
+
+A residue check confirmed all nine probed files were byte-identical afterwards.
+
+#### Phase 3 architecture decisions worth reviewing
+
+- **Screening is answered before the identifier exists** and rides in the single `create` write.
+  Creating first and recording proficiency second would need a repository method that does not
+  exist, cost two writes, and leave a participant holding an identity with no screening answer if
+  they abandoned the flow. This is why the change adds **no migration and no new
+  `ValidatorsRepository` method**: the nullable `ilocano_proficiency` column already models the
+  state, and this ordering makes it reachable only by *declining*, never by *abandoning*.
+- **`localStorage`, not an httpOnly cookie.** A cookie would let the server render "welcome
+  back" with no round trip, but it would transmit the identifier on every request to the origin
+  — a worse fit for a project whose headline property is anonymity. The cost is that resume is
+  an explicit client action, which also means a shared device never silently hands one person
+  another's session.
+- **Resume is checked at submit time, not revealed on load.** This was originally justified
+  as lint compliance — a load-time reveal needs a post-hydration `setState`, "the pattern the
+  React lint rules rightly reject". Review checked it and half the claim is false:
+  `useSyncExternalStore` lints and typechecks clean, so the reason is not compliance. The
+  reason that holds is that storage can say an identifier is *stored* while only the server
+  can say it is *recognised*; resolving first would enroll a stale-id participant with no
+  screening answer. The submit-time check is also a plain synchronous read and closes a real
+  hole: a participant who already holds an
+  identity and submits the screening form must not be issued a second one, because that would
+  split one person's research record in two with nothing in the stored data able to tell.
+
+#### Phase 3 independent verification: what it found, and what it cost
+
+Verification ran adversarially against the spec and returned **FAIL**, with 2 CRITICAL and 9
+WARNING findings. All were repaired before merge. Two are worth recording here rather than only in
+the change's `tasks.md`, because both are about the *evidence* rather than the code, and both are
+the kind of thing that repeats.
+
+**A collected screening answer was being silently discarded.** The stale-identifier fallback in
+`onboarding-flow.ts` returned a hardcoded `answer: null`, and the component forwarded it into the
+enrollment. A participant who selected "Fluent" and whose stored identifier had expired was
+enrolled as having **declined** — a research datum silently replaced by a different one. The unit
+tests were all green, because they were green about the decision function and silent about the call
+site. The bug survived a comment that explained the `answer` field existed "so a caller reaching it
+with a different answer must not have to re-derive the rule", while the only producer of the field
+hardcoded `null`. A field that is always `null` reads as though something is using it. Fixed by
+threading the answer through as an explicit parameter, with a regression test over all five
+approved values.
+
+**The neutrality claim had no executable evidence, and the record claimed it did.** The test
+asserting "screening options are no more weighted than validation options" compared
+`answerOptionClasses({selected:false})` to itself. The reviewer proved it empty by replacing the
+screening form's `AnswerGroup` with a bespoke group that accented one *unselected* option, and by
+deleting the pending state and all error rendering: **the entire 445-test suite stayed green.** The
+replaced assertion now reads the *rendered* `class` attribute of every `role="radio"` and compares
+it to the shared constant, and the reviewer's exact bypass now goes red.
+
+**The general lesson, because it is the transferable part.** A probe table reporting a high red
+ratio invites the reader to assume the remaining behaviours are guarded. Three were not, and no
+table can tell you which three. A task file that ends "no requirement is left without executable
+evidence" is making a claim about the *whole* suite from evidence about *part* of it, and the
+`landing-and-screening` record did exactly that and has retracted it.
+
+Two further honesty notes, because they are the kind that get lost:
+
+- **The review damaged the working tree.** It ran probes in a throwaway `%TEMP%` copy, and all 13
+  dependency junctions in the real `node_modules` ended up pointing into it. Deleting the copy left
+  them dangling, and `pnpm run typecheck` failed with `Cannot find module
+  node_modules/typescript/bin/tsc` — a failure that reads exactly like a code problem and was not
+  one. Repaired with `pnpm install --frozen-lockfile`; `git status` and the dataset hash confirmed
+  the source tree was untouched.
+- **One of my own probe harnesses reported real failures as passes**, because its ANSI-stripping
+  regex omitted the escape character so the `Tests … failed` pattern never matched. It was caught
+  only by re-checking one probe by hand. A harness that reports "no failures" is
+  indistinguishable from one that cannot detect failures.
 
 ## 1. Project Goal
 
