@@ -1,4 +1,5 @@
 import type { AnonymousValidatorId, IlocanoProficiency } from "@/schemas/validator";
+import type { CopyKey, Translate } from "@/lib/i18n/copy";
 
 import type { EnrollActionResult, ResumeActionResult } from "./onboarding-actions-core";
 
@@ -72,8 +73,26 @@ export function firstActionFor(stored: AnonymousValidatorId | null): "resume" | 
   return stored === null ? "enroll" : "resume";
 }
 
-/** Copy shown when a stored identity is resumed rather than a new one issued. */
-export const RESUMED_NOTICE = "Continuing as the validator this browser already held.";
+/**
+ * ================================================================================================
+ * WHY EVERY DECISION TAKES A `Translate` AND NONE OF THEM KEEPS ITS OWN COPY
+ * ================================================================================================
+ * These functions used to hold the participant-facing strings themselves. They no longer do, and
+ * the reason is that a module-level English constant is a locale decided at import time: a
+ * participant who had chosen Filipino would have been shown the English failure message, on a
+ * screen whose every other string was in their language, for no visible reason.
+ *
+ * `t` is a REQUIRED parameter with no default, and that is deliberate. A defaulted translator would
+ * mean a call site that forgot to pass one compiles and silently renders English, which is exactly
+ * the failure this change exists to remove - and it would be invisible in review, because
+ * `messageForFailure(reason, subject, t)` still looks correct. Making it required turns "forgot to
+ * localize this screen" into a compile error at every call site.
+ *
+ * What does NOT move into the catalog is anything derived from the locale. The wording differs by
+ * SUBJECT and by REASON, because the English it replaces did, and that is a research-integrity
+ * property rather than a localization one: see `messageForFailure` below. Nothing here branches on
+ * a language, and a Filipino participant is told exactly what an English participant is told.
+ */
 
 /**
  * Maps an enrollment result.
@@ -88,12 +107,12 @@ export const RESUMED_NOTICE = "Continuing as the validator this browser already 
  * Declaring the narrower type means a caller cannot pass an `enroll-fresh` here and
  * have it silently fall through both branches.
  */
-export function decideEnrollment(result: EnrollActionResult): TerminalDecision {
+export function decideEnrollment(result: EnrollActionResult, t: Translate): TerminalDecision {
   if (result.status === "enrolled") {
     return { kind: "ready", validatorId: result.validatorId };
   }
 
-  return { kind: "error", message: messageForFailure(result.reason, "enrollment") };
+  return { kind: "error", message: messageForFailure(result.reason, "enrollment", t) };
 }
 
 /**
@@ -113,6 +132,7 @@ export function decideEnrollment(result: EnrollActionResult): TerminalDecision {
 export function decideResume(
   result: ResumeActionResult,
   answer: IlocanoProficiency | null,
+  t: Translate,
 ): OnboardingDecision {
   if (result.status === "restored") {
     // `validatorId: null` because the browser already holds this value.
@@ -123,7 +143,7 @@ export function decideResume(
     return { kind: "enroll-fresh", answer };
   }
 
-  return { kind: "error", message: messageForFailure(result.reason, "resume") };
+  return { kind: "error", message: messageForFailure(result.reason, "resume", t) };
 }
 
 /**
@@ -143,7 +163,38 @@ export type TerminalDecision =
 export type OnboardingSubject = "enrollment" | "resume";
 
 /**
- * Plain-language failure copy.
+ * The catalog key for one (reason, subject) failure.
+ *
+ * `CopyKey` rather than a built template string, and the reason is worth stating because a template
+ * literal would have compiled: `` `screening.failure.${reason}.${suffix}` `` is typed `string`, and a
+ * `string` handed to a `Translate` is a compile error - so the first version would have been
+ * caught. What the table additionally buys is the reverse direction: a new approved failure reason
+ * added to `EnrollActionResult` and to the catalogs cannot be typed into this record without a
+ * compile error here, so a reason can never be handled by falling through to the generic message
+ * because someone forgot to add a key.
+ *
+ * `Record<FailureReason, …>` is a small exhaustiveness pin of exactly the kind the module header
+ * on `@/lib/i18n/copy` describes: the key set is derived, never maintained by hand.
+ */
+type FailureReason = "not_configured" | "invalid" | "persistence";
+
+const FAILURE_KEYS: Record<FailureReason, Record<OnboardingSubject, CopyKey>> = {
+  not_configured: {
+    enrollment: "screening.failure.notConfigured.enroll",
+    resume: "screening.failure.notConfigured.resume",
+  },
+  invalid: {
+    enrollment: "screening.failure.invalid.enroll",
+    resume: "screening.failure.invalid.resume",
+  },
+  persistence: {
+    enrollment: "screening.failure.persistence.enroll",
+    resume: "screening.failure.persistence.resume",
+  },
+};
+
+/**
+ * Plain-language failure copy, in the participant's chosen language.
  *
  * Every message names no credential, no environment variable, no host, no table, and no
  * stack frame, and every one of them says NOTHING WAS SAVED. That last part is not
@@ -155,26 +206,18 @@ export type OnboardingSubject = "enrollment" | "resume";
  * enrollment `invalid` message tells the participant to pick one of the screening
  * options; the resume path has no options to pick, so reusing that string there would
  * tell someone to choose a proficiency level in response to a rejected resume.
+ *
+ * The subject parameter is preserved exactly as it was, and the reason it survives
+ * localization is that it is a research-integrity distinction, not a wording one: the
+ * same Filipino participant is told the same thing on both paths, because the two paths
+ * ask them to do different things.
  */
 export function messageForFailure(
-  reason: "not_configured" | "invalid" | "persistence",
+  reason: FailureReason,
   subject: OnboardingSubject,
+  t: Translate,
 ): string {
-  if (reason === "not_configured") {
-    return subject === "enrollment"
-      ? "The study is not open right now. Nothing was saved, and you have not been signed up."
-      : "The study is not open right now, so the saved identity could not be checked. Nothing was changed.";
-  }
-
-  if (reason === "invalid") {
-    return subject === "enrollment"
-      ? "We could not accept that answer, and nothing was saved. Please pick one of the options, or continue without answering."
-      : "The saved identity could not be checked, and nothing was changed. You can try again in a moment.";
-  }
-
-  return subject === "enrollment"
-    ? "We could not finish signing you up. Nothing was saved. You can try again in a moment."
-    : "The saved identity could not be checked just now, and nothing was changed. You can try again in a moment.";
+  return t(FAILURE_KEYS[reason][subject]);
 }
 
 /**
@@ -194,10 +237,10 @@ export interface SubmitControlState {
   readonly label: string;
 }
 
-export function submitControlState(isPending: boolean): SubmitControlState {
+export function submitControlState(isPending: boolean, t: Translate): SubmitControlState {
   return {
     disabled: isPending,
     ariaBusy: isPending ? true : undefined,
-    label: isPending ? "Saving…" : "Continue",
+    label: isPending ? t("screening.submitting") : t("screening.submit"),
   };
 }

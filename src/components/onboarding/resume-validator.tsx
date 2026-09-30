@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import type { InterfaceLocale } from "@/lib/domain/locale";
+import { translatorFor } from "@/lib/i18n/copy";
 import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/browser-identity";
 import { resumeValidatorAction } from "@/lib/validators/actions";
 import { decideResume } from "@/lib/validators/onboarding-flow";
@@ -40,17 +42,29 @@ import { decideResume } from "@/lib/validators/onboarding-flow";
  * and it exists because a returning participant has no other way to be recognised.
  * It returns no profile fields, renders no identifier, and never displays what
  * proficiency the stored validator reported.
+ *
+ * ================================ LOCALIZATION ================================
+ * `locale` is a REQUIRED prop, and it is required rather than read from a hook for a
+ * reason beyond consistency with the routes: this is a client component, so anything
+ * it read from a context provider would have to be serialized through the RSC payload
+ * and would work only after hydration. Taking the locale as a prop keeps the value
+ * identical in the server-rendered HTML and in the hydrated tree, so a participant
+ * who chose Filipino never sees an English flash of these two paragraphs.
+ *
+ * It is presentation only. Nothing on this screen is derived from it, nothing is sent
+ * with it, and the identifier this island reads is byte-for-byte the same string in
+ * both languages. The catalog holds a localized LABEL for each outcome; it holds no
+ * proficiency level, and it never could, because the server that recognises an
+ * identifier deliberately does not return one.
  */
 
-/** Plain-language copy. Names no technical detail and no stored value. */
-const MESSAGES = {
-  noneHeld:
-    "This browser does not hold a saved identity. Choose Start validation to begin — it takes one question.",
-  unknown:
-    "That saved identity is no longer recognised, so it has been cleared. Choose Start validation to begin again as a new anonymous validator.",
-} as const;
+export interface ResumeValidatorProps {
+  /** The interface language the surrounding route is rendering. Never persisted. */
+  readonly locale: InterfaceLocale;
+}
 
-export function ResumeValidator() {
+export function ResumeValidator({ locale }: ResumeValidatorProps) {
+  const t = translatorFor(locale);
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -60,7 +74,7 @@ export function ResumeValidator() {
 
     const stored = readStoredValidatorId();
     if (stored === null) {
-      setMessage(MESSAGES.noneHeld);
+      setMessage(t("resume.noneHeld"));
       return;
     }
 
@@ -71,7 +85,7 @@ export function ResumeValidator() {
       // `null` is the correct answer argument, because this route collects no screening
       // answer to carry forward. The participant is pointed at the screening page, which
       // will ask properly.
-      const decision = decideResume(await resumeValidatorAction({ storedId: stored }), null);
+      const decision = decideResume(await resumeValidatorAction({ storedId: stored }), null, t);
 
       if (decision.kind === "ready") {
         router.push("/ready");
@@ -82,7 +96,7 @@ export function ResumeValidator() {
         // The stored identifier names nobody. Forgetting it is the only correct outcome:
         // reusing it would hand this participant someone else's identity.
         clearStoredValidatorId();
-        setMessage(MESSAGES.unknown);
+        setMessage(t("resume.unknown"));
         return;
       }
 
@@ -92,11 +106,8 @@ export function ResumeValidator() {
 
   return (
     <div className="border-ink bg-paper-inset rounded-control shadow-brutal-sm flex flex-col items-start gap-3 border-2 p-5">
-      <p className="label-meta text-ink-muted">Already started?</p>
-      <p className="text-small text-ink-muted">
-        If you have taken part on this browser before, you can carry on as the same anonymous
-        validator.
-      </p>
+      <p className="label-meta text-ink-muted">{t("resume.title")}</p>
+      <p className="text-small text-ink-muted">{t("resume.body")}</p>
       <Button
         type="button"
         variant="secondary"
@@ -104,7 +115,7 @@ export function ResumeValidator() {
         disabled={isPending}
         aria-busy={isPending || undefined}
       >
-        {isPending ? "Checking…" : "Continue as that validator"}
+        {isPending ? t("resume.checking") : t("resume.continue")}
       </Button>
       {message ? (
         <p className="text-small text-ink-muted" role="status">

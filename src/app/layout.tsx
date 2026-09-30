@@ -3,6 +3,11 @@ import { Archivo, JetBrains_Mono, Public_Sans } from "next/font/google";
 
 import "@/styles/globals.css";
 
+import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
+import { translatorFor } from "@/lib/i18n/copy";
+import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
+import { changeInterfaceLocaleAction } from "@/lib/i18n/actions";
+
 /**
  * Typography is loaded through `next/font` so the build self-hosts the files. Three faces, each
  * with one job, matching the design-system role assignment in `globals.css`:
@@ -37,19 +42,37 @@ const jetbrainsMono = JetBrains_Mono({
   fallback: ["ui-monospace", "Menlo", "monospace"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "Sadino — validate Ilocano navigation data",
-    template: "%s · Sadino",
-  },
-  description:
-    "Help check Ilocano navigation instructions for the Sadino research project. Ten short " +
-    "sentences at a time. No name, no email, no account.",
-  applicationName: "Sadino",
-  // This is a research data-collection tool. It must not be indexed or archived by accident
-  // while the protocol is still being pilot-validated.
-  robots: { index: false, follow: false },
-};
+/**
+ * The document title and description, in the request's locale.
+ *
+ * A FUNCTION rather than a static `metadata` export, and that is forced by the feature rather than
+ * chosen: the title is interface copy, so a static export would be English for a participant who
+ * had chosen Filipino, and the tab title and the search snippet are the first thing a participant
+ * reads. `getInterfaceLocale` reads the cookie on the server, so the first response already carries
+ * the right title with no client round trip.
+ *
+ * The static `metadata` export is GONE rather than kept alongside this, because a field declared in
+ * both places is ambiguous and Next.js resolves the conflict silently. `viewport` stays static below:
+ * `themeColor` must be a literal string for Next.js to accept it, and `tests/unit/design-system.test.ts`
+ * asserts it equals the `--color-paper` token.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = translatorFor(await getInterfaceLocale());
+
+  return {
+    title: {
+      default: t("meta.siteTitle"),
+      // The separator and the product name are the SAME in both languages, so they are literals
+      // rather than two more catalog keys that could not differ.
+      template: "%s · Sadino",
+    },
+    description: t("meta.siteDescription"),
+    applicationName: "Sadino",
+    // This is a research data-collection tool. It must not be indexed or archived by accident
+    // while the protocol is still being pilot-validated.
+    robots: { index: false, follow: false },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -60,23 +83,91 @@ export const viewport: Viewport = {
   colorScheme: "light",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+/**
+ * The root layout: resolves the interface locale ONCE and provides it to everything below.
+ *
+ * ============================================================================
+ * WHY THIS READS A COOKIE, AND WHY THAT IS THE WHOLE POINT OF THE SWITCHER
+ * ============================================================================
+ * `localStorage` was the other option and it gives up exactly the thing that matters most here: the
+ * server would have to render English and a client effect would swap it after hydration, so a
+ * Filipino-preferring participant would watch the interface change language under them on every
+ * navigation. Reading the cookie on the server means the first paint - including `<html lang>`, so
+ * a screen reader pronounces Filipino with Filipino phonetics - is already correct.
+ *
+ * The cost is that every route becomes dynamic rather than statically prerendered, which is not a
+ * cost at all for a page whose language depends on a per-browser preference: it could not have been
+ * static in the first place.
+ *
+ * ============================================================================
+ * WHY THE SWITCHER IS HERE AND NOT IN EACH PAGE
+ * ============================================================================
+ * The spec requires a language control on every public page. Rendering it here makes that structural
+ * rather than a convention four pages have to remember - and it is the only way the not-found page
+ * gets one, since that page deliberately has no header. The bar sits above each page's own header,
+ * so its position is identical everywhere and a participant has seen it in the same place on every
+ * page they have visited.
+ *
+ * It is a `<div>` and not a second `<header>`, deliberately: each page already renders a `<header>`
+ * of its own, and nesting those inside another banner landmark would make the landmark structure
+ * ambiguous for assistive technology.
+ *
+ * ============================================================================
+ * WHY EACH PAGE READS THE COOKIE ITSELF, AND WHY THERE IS NO LOCALE CONTEXT
+ * ============================================================================
+ * An earlier version provided the locale through a React context and read it in each page with
+ * `use`, on the theory that a synchronous page could not await `cookies()`. THE BUILD REJECTED IT:
+ * `createContext` is a Client Components API, and a module in the Server Component graph that
+ * imports it fails to compile with
+ *
+ *   You're importing a module that depends on `createContext` into a React Server Component module.
+ *
+ * So the pages are `async` Server Components that await `getInterfaceLocale()` themselves. Nothing is
+ * lost by this and one thing is gained: the read is visibly a read. Each page names the source of
+ * its language at the top of its own body, where a reviewer can see it, instead of inheriting an
+ * invisible provider four levels up.
+ *
+ * The cost is that `renderToStaticMarkup` cannot render a page component directly, because it
+ * cannot await one. The route tests therefore `await` the component and render the element it
+ * returns. That is a mechanical change to the test helper and preserves every assertion.
+ *
+ * `cookies()` in this Next.js version is request-scoped and de-duplicated, so the layout and the
+ * page each calling it is one read of the request's cookie jar, not two.
+ */
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getInterfaceLocale();
+  const t = translatorFor(locale);
+
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${archivo.variable} ${publicSans.variable} ${jetbrainsMono.variable}`}
     >
       <body className="paper-grain min-h-[100dvh] antialiased">
         {/*
           Skip link: first focusable element on every page, so a keyboard or screen-reader user
-          can bypass the header straight to the main content.
+          can bypass the header straight to the main content. It stays ABOVE the language bar for
+          exactly that reason - the bar added a second focusable control to the top of every page,
+          and a skip link that is no longer first is a skip link that a keyboard user tabs past.
         */}
         <a
           href="#main"
           className="label-meta focus:rounded-control focus:border-ink focus:bg-paper-raised focus:shadow-brutal-sm sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:border-2 focus:px-4 focus:py-3"
         >
-          Skip to content
+          {t("skipToContent")}
         </a>
+
+        {/*
+          The language bar. `bg-paper-raised` and the 2px bottom border continue the pages' own
+          headers, so the two read as one piece of chrome rather than as two competing bars, and a
+          page that has no header of its own - the not-found page - still has some.
+        */}
+        <div className="border-ink bg-paper-raised border-b-2">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-end px-5 py-2 sm:px-8">
+            <LocaleSwitcher locale={locale} action={changeInterfaceLocaleAction} />
+          </div>
+        </div>
+
         <div className="relative z-0">{children}</div>
       </body>
     </html>

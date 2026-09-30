@@ -45,6 +45,63 @@ function code(file: string): string {
     .replace(/\/\/.*$/gm, " ");
 }
 
+/**
+ * The top-level arguments of the FIRST call to `name(...)` in `source`, or `null` if there is none.
+ *
+ * ============================== WHY THIS EXISTS ==============================
+ * These two assertions used to be regular expressions over the call site, and both of them broke
+ * the moment `decideResume` gained a third parameter - the translator. Neither regex was wrong
+ * about the rule; each was coupled to the call having exactly as many arguments as it had when it
+ * was written, which is a cosmetic coupling, and a cosmetic coupling in a guard is the thing this
+ * file's own header warns about: a check that fails for the wrong reason is a check people learn
+ * to "fix" by deleting.
+ *
+ * Splitting on top-level commas states the rule directly - "the SECOND argument is `answer`" -
+ * and keeps stating it when the signature changes for an unrelated reason. That is strictly
+ * stronger than the regex it replaces: the regex could not have told an `answer` in first position
+ * from one in second, and this can.
+ *
+ * KNOWN LIMIT, stated because a silent one would be worse: the depth counter treats `{`, `[` and
+ * `(` uniformly and does not understand template literals or regex literals, so an unbalanced
+ * bracket inside a backtick string would truncate the argument list. None of the calls inspected
+ * here contain one, and a truncated list fails the assertions below loudly rather than passing
+ * them, so the failure mode is a red test and not a false green.
+ */
+function callArguments(source: string, name: string): string[] | null {
+  const start = source.indexOf(`${name}(`);
+  if (start === -1) {
+    return null;
+  }
+
+  const args: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (let index = start + name.length + 1; index < source.length; index += 1) {
+    const character = source[index];
+
+    if ("([{".includes(character)) {
+      depth += 1;
+    } else if (")]}".includes(character)) {
+      if (depth === 0) {
+        args.push(current.trim());
+        return args;
+      }
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += character;
+  }
+
+  // Unbalanced brackets: the call never closed. Returning the arguments found so far would let a
+  // truncated read masquerade as a complete one, so this is reported as "not found" instead.
+  return null;
+}
+
 describe("the screening form passes the participant's answer to the decision", () => {
   it("does not hand `decideResume` a literal null", () => {
     // The exact defect: `decideResume(result, null)` enrolls the participant as having
@@ -60,10 +117,13 @@ describe("the screening form passes the participant's answer to the decision", (
   });
 
   it("passes the submit argument through to `decideResume`", () => {
-    const source = code(FORM_PATH);
+    // The SECOND argument must be the answer in scope, not a literal of any kind. Stated by
+    // position rather than by pattern, so it keeps holding when the signature gains an
+    // unrelated parameter - which is exactly what broke the regex this replaced.
+    const args = callArguments(code(FORM_PATH), "decideResume");
 
-    // The second argument must be the answer in scope, not a literal of any kind.
-    expect(source).toMatch(/decideResume\([\s\S]*?,\s*answer\s*\)/);
+    expect(args, "no `decideResume` call found in the screening form").not.toBeNull();
+    expect(args?.[1]).toBe("answer");
   });
 
   it("enrolls with the same answer on the stale-identifier fallback", () => {
@@ -349,9 +409,12 @@ describe("the resume component's promises are backed by its calls", () => {
     ).toBe("clearStoredValidatorId();");
 
     // The message that makes the claim is set on the very next statement, so the claim
-    // and the call cannot drift apart silently.
+    // and the call cannot drift apart silently. The message is a catalog key read through
+    // the translator now rather than a named constant, which is a STRONGER version of this
+    // guard than the constant was: a literal string here could not be checked against the
+    // catalog, and a fabricated proficiency level in particular would be invisible.
     const clearAt = source.indexOf("clearStoredValidatorId();");
-    const messageAt = source.indexOf("setMessage(MESSAGES.unknown);");
+    const messageAt = source.indexOf('setMessage(t("resume.unknown"));');
     expect(clearAt).toBeGreaterThan(-1);
     expect(messageAt).toBeGreaterThan(clearAt);
     expect(messageAt - clearAt).toBeLessThan(120);
@@ -387,7 +450,11 @@ describe("the resume component never enrolls", () => {
 
   it("passes null as the answer, because that route collects none", () => {
     // Explicit, and asserted: `null` here is correct (no question was asked), unlike the
-    // screening form where `null` would be a discarded answer.
-    expect(code(RESUME_COMPONENT_PATH)).toMatch(/decideResume\([\s\S]*?,\s*null\s*\)/);
+    // screening form where `null` would be a discarded answer. Stated by argument position for
+    // the same reason as the screening form's counterpart above.
+    const args = callArguments(code(RESUME_COMPONENT_PATH), "decideResume");
+
+    expect(args, "no `decideResume` call found in the resume component").not.toBeNull();
+    expect(args?.[1]).toBe("null");
   });
 });

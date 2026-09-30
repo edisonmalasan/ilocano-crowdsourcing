@@ -340,13 +340,42 @@ indistinguishable from a run that reported nothing, so the harness must distingu
 
 The rebuilt harness does three things, all load-bearing. It spawns with `shell: true`, which is the
 only way `pnpm` runs here at all. It returns a **three-way** outcome — `GREEN`, `RED`, or
-`DID-NOT-RUN` — where `DID-NOT-RUN` covers a spawn error, a signal, and any exit status other than 0
-or 1, and **`DID-NOT-RUN` is refused rather than scored as red**. And it runs a **negative control**
-before every probe: the un-mutated file must be `GREEN`, or a red-after-mutation result means
-nothing. Re-run that way, all six probes confirmed with real summaries (`9 passed` -> `1 failed`,
-`17 passed` -> `1 failed`, `155 passed` -> `1 failed`), and the two hash-guard probes pass for
-different reasons on purpose: renaming an index proves the guard catches a semantic edit, and adding
-a comment line proves it measures **bytes** rather than meaning.
+`DID-NOT-RUN` — and **`DID-NOT-RUN` is refused rather than scored as red**. And it runs a **negative
+control** before every probe: the un-mutated file must be `GREEN`, or a red-after-mutation result
+means nothing. Re-run that way, all six probes confirmed with real summaries (`9 passed` -> `1
+failed`, `17 passed` -> `1 failed`, `155 passed` -> `1 failed`), and the two hash-guard probes pass
+for different reasons on purpose: renaming an index proves the guard catches a semantic edit, and
+adding a comment line proves it measures **bytes** rather than meaning.
+
+**That entry originally said `DID-NOT-RUN` covers "any exit status other than 0 or 1", and it was
+wrong in a way that only a run could reveal: `tsc --noEmit` exits `2` on a type error, not `1`.** A
+probe written to that rule classified a textbook RED — `[ELIFECYCLE] Command failed with exit code
+2` — as `DID-NOT-RUN` and printed `INCONCLUSIVE` for a probe that had in fact worked. The refusal
+was the *correct response to a broken predicate*, which is the only reason this became a finding
+rather than a false negative buried in a report. **The discriminator is not the exit code; it is
+whether the process ran at all.** `err.status === undefined` is what a spawn failure looks like
+(`ENOENT` on the `pnpm` shim without a shell, or a signal). A *defined* status means the process ran
+and returned a verdict, whatever that verdict is. There is also a **fourth shape** worth naming
+separately: a non-zero exit with **no** expected diagnostic is neither RED nor DID-NOT-RUN, it is
+"the tool failed for some other reason and this result proves nothing" — which looks identical to
+success-with-a-predicate if you only read the code. Verified by re-running with the corrected
+classifier: control GREEN at exit 0, probe RED at exit 2 with one `error TS2741` ("property is
+missing in type"), catalogue restored byte-identical at `0d237be8599e67b1`.
+
+**The console will lie to you about file content, and a clean file looks exactly like a corrupt
+one.** Reviewing a comment reading `` `Record<IlocanoProficiency, ���>` ``, the obvious reading is
+mojibake from a PowerShell write — which this repository has produced before, in an archived
+proposal. Reading the bytes in Node showed `U+2026`, a horizontal ellipsis, **perfectly valid and
+intentional**: PowerShell's console rendering had mangled a legitimate character into three
+replacement glyphs. A character-class enumeration over every codepoint above `U+007F` in the
+changed files found **no** `U+FFFD`, no `â€` sequence, no C1 control, and no CR bytes at all, and
+catalogued the seven legitimate codepoints (middle dot, em dash, right single quote, ellipsis,
+rightwards arrow, bullet, check mark) so that "clean" is a measurement rather than an absence of
+complaint. **This is the same failure as `git show HEAD:<path> | node -e …` re-encoding the blob
+through a pipe** — the measurement instrument, not the file, is what is wrong — and the two
+instances now sit in the same record deliberately. Judge a file by its bytes read in Node, never by
+what a PowerShell pipeline printed, and never "fix" an encoding artefact that exists only in the
+terminal.
 
 **A probe that cannot build its own mutation must report INCONCLUSIVE, and it will.** The first
 ordering probe tried to locate the drop statement by the shape of the comment above it, matched
@@ -451,8 +480,55 @@ reporting coverage it was not providing. The fix is the one already used elsewhe
 anchor on the statement's own terminator (`create table public.${table} (`) or on the verb plus its
 newline. Re-probed after the fix: the same reversal is `1 failed | 12 passed (13)`.
 
+**A marker that encodes an assumption about the DATA is a guard that has already failed, silently,
+and the only evidence is a measurement of how often the marker actually occurs.** A copy-catalog
+test asserted the catalogs held no Ilocano instruction via
+`expect(values).not.toMatch(/naka|paglakbay|mankagat|nang\s+ako|ang\s+ako\s+ay/)`. Extending it to
+the second catalog made it match **legitimate copy** — *"Walang naka-save na pagkakakilanlan"*,
+*"Hindi ka pa naka-sign up"* — because `naka` is both an Ilocano root and the Filipino productive
+prefix `na-` + `ka-`. That false positive turned out to be the least interesting part: **every one of
+those markers matches ZERO of the 600 real instructions.** The synthetic OD dataset is Ayta/Itao
+with place-name-first constructions — *"Iti Baguio Athletic Bowl ti ayanko ita; masapulko a
+makadanon iti Baguio Convention Center"* — not the `Pumunta sa …` / `Naka-…` shapes the markers
+assume. The guard could never fail, and had been reporting coverage it was not providing since the
+day it was written; the root review had called that file strong without noticing.
+
+Three things generalise past this instance.
+
+**Measure the marker before trusting the guard.** Count how many of the real records each candidate
+matches and how many catalog values it collides with, then keep only what clears both bars. The
+measurement is cheap and it is the only thing that distinguishes a guard from a decoration: of the
+candidates tried, `\biti\b` hits 531/600 with zero collisions, `ayanko` 100/600, `makadanon` 96/600,
+and a seven-marker set covers 568/600 with **zero** collisions in either language — while the
+original five cover **nothing**. Note that a marker can fail in *both* directions at once, which is
+what happened here: too broad to be trusted on Filipino text, too narrow to fire on the data.
+
+**Prefer a data-driven comparison to a marker whenever the data is readable.** The rewrite reads all
+600 records through the project's own `parseSyntheticDataset` and compares them directly —
+bilateral containment, both catalogs, plus the 40 distinct place names, every one a proper noun of
+at least ten characters and therefore free of the false-positive risk the marker had. It has no
+opinion about what Ilocano looks like, so a phrasing change cannot silently disarm it. Proved in both
+directions with the control green at `23 passed`: a real instruction pasted into the **Filipino**
+catalog gives `2 failed | 21 passed` naming `Filipino key "meta.siteTitle" contains the whole
+instruction of OD_0001`, and a real place name pasted into the **English** catalog gives
+`2 failed | 21 passed`. **Assert that the guard read a non-empty set** (`expect(entries.length).toBe(600)`),
+because a guard that silently read nothing passes every one of its own checks.
+
+**A can-fire control must use the real record, not a sample.** The companion test was built on
+`records[0]` deliberately: a hand-written sample would have reproduced the original defect in a
+smaller size, since the old markers matched neither the sample nor the data. This is the
+same lesson as *"before reporting a documented number is wrong, reproduce it with the mutation the
+document describes"* — a control drawn from a fixture tests the fixture.
+
+**And the corollary for review: a reviewer reading a guard must ask what it would take to make it
+fail.** Two separate vacuous guards have now been found by exactly that question in this
+repository — this one and the `Object.keys({ en: 1, fil: 1 })` literal built inside the test that was
+the sole evidence for a research-integrity scenario. Neither was caught by running the suite, by
+reading the diff, or by asking whether the tests passed. Both were caught by asking what would have
+to be true for the assertion to fail, which is a different question and the one worth asking.
+
 **A required check that reports `success` may have run NO tests at all, and only a reader that
-refuses will notice.** This has now happened **three times, and to both jobs**, so treat it as a
+refuses will notice.** This has now happened **four times, and to both jobs**, so treat it as a
 property of this repository's CI rather than as a one-off. Run 36726456200 (Sync for
 `coverage-aware-allocation`) reported both jobs green and `gh pr checks` said pass while the
 `lint, types, and tests` job's step list contained only *Install pnpm* and *Type-check* — **Lint,

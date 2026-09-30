@@ -3,6 +3,8 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { translatorFor } from "@/lib/i18n/copy";
+import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
 
 /**
  * Enrollment confirmation — Phase 3, step 3 of the public sequence.
@@ -22,15 +24,40 @@ import { Card } from "@/components/ui/card";
  * it turned a dangling-link test into a guarantee of a dead end. `/start` does exist, so
  * linking to it costs nothing and gives a visitor who reached this route directly the one
  * thing they were missing: a way to answer the question that creates an identity.
+ *
+ * ============================================================================
+ * THE PAGE IS LOCALIZED, AND EVERY SENTENCE ON IT IS STILL UNCONDITIONALLY TRUE
+ * ============================================================================
+ * The reasoning below about not attesting to an enrollment that may not have happened is
+ * unchanged by localization, and the properties it protects are properties of the FILIPINO text
+ * just as much as the English. The Filipino rendering makes the same three claims and hedges in the
+ * same places: `generateMetadata` exists because the document title is interface copy, and the page
+ * body reads the same cookie, so the two can never describe the page in different languages.
+ *
+ * One thing is deliberately NOT localized here, and it is the most important thing on the page: the
+ * locale is not evidence of anything. No sentence in either language says or implies that a
+ * Filipino interface means anything about a participant, and nothing on this page is derived from
+ * the locale. A test asserts the page still renders no proficiency value and no identifier.
  */
-export const metadata: Metadata = {
-  title: "Before you begin",
-  description:
-    "What happens when you start validating, and what is kept. Sentences arrive in the next phase.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = translatorFor(await getInterfaceLocale());
+
+  return {
+    // The page title and the page's own `h1` are the same approved string, so they share one
+    // catalog key rather than two that could drift apart.
+    title: t("ready.title"),
+    description: t("ready.meta.description"),
+  };
+}
 
 /**
- * Rendered as a static page with no database, network, or session dependency.
+ * Rendered as a page with no database or network dependency.
+ *
+ * It is NO LONGER a static page. `interface-localization` made it read the interface-locale cookie
+ * so `<html lang>` and this page's copy are correct on the first paint, and `pnpm run build` now
+ * reports `ƒ /ready`. The earlier "static page" phrasing was left in place by that change and is
+ * corrected here: a cookie is per-browser server-observable state, which is what made the route
+ * dynamic, and no database is involved at any point.
  *
  * WHY THIS PAGE MAKES NO CLAIM ABOUT WHAT ALREADY HAPPENED
  * --------------------------------------------------------
@@ -73,60 +100,49 @@ export const metadata: Metadata = {
  * "kept with your validator identity", and "not derived from anything about you" are the
  * ethics-relevant parts of this page, and every one of them is unconditionally true.
  */
-export default function ReadyPage() {
+export default async function ReadyPage() {
+  const locale = await getInterfaceLocale();
+  const t = translatorFor(locale);
+
   return (
     <>
       <header className="border-ink bg-paper-raised border-b-2">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
           <p className="label-meta text-ink">
             <span className="text-accent">●</span> Sadino
-            <span className="text-ink-faint"> / step 3 of 3</span>
+            <span className="text-ink-faint"> / {t("ready.header.step")}</span>
           </p>
-          <Badge tone="neutral">How this works</Badge>
+          <Badge tone="neutral">{t("ready.badge")}</Badge>
         </div>
       </header>
 
       <main id="main" className="mx-auto w-full max-w-3xl px-5 sm:px-8">
         <section className="section-y flex flex-col gap-6">
           <div>
-            <h1 className="text-title">Before you begin</h1>
-            <p className="text-lead text-ink-muted mt-3 max-w-2xl">
-              Nothing identifying was collected, and there is no account to manage. Here is what
-              happens when you start.
-            </p>
+            <h1 className="text-title">{t("ready.title")}</h1>
+            <p className="text-lead text-ink-muted mt-3 max-w-2xl">{t("ready.lead")}</p>
           </div>
 
           <Card tone="raised" className="flex flex-col gap-4 p-6">
-            <p className="label-meta text-accent">What happens when you start</p>
+            <p className="label-meta text-accent">{t("ready.starting.label")}</p>
             <ul className="text-small text-ink flex flex-col gap-3">
               <li className="flex gap-3">
                 <span aria-hidden="true" className="text-accent">
                   01
                 </span>
-                <span>
-                  A random code is generated for you and saved to the database. It is not derived
-                  from anything about you.
-                </span>
+                <span>{t("ready.starting.item1")}</span>
               </li>
               <li className="flex gap-3">
                 <span aria-hidden="true" className="text-accent">
                   02
                 </span>
-                <span>
-                  A copy of that code is kept in this browser only, so you can be recognised when
-                  you come back.
-                </span>
+                <span>{t("ready.starting.item2")}</span>
               </li>
               <li className="flex gap-3">
                 <span aria-hidden="true" className="text-accent">
                   03
                 </span>
-                <span>
-                  The answer you give to the Ilocano question is kept with your validator identity
-                  as background information. If you chose to skip it, nothing was recorded in its
-                  place. If this browser already held an identity, the answer already stored with it
-                  is the one that was kept.
-                </span>
+                <span>{t("ready.starting.item3")}</span>
               </li>
             </ul>
           </Card>
@@ -174,50 +190,33 @@ export default function ReadyPage() {
             achieving it as a side effect of having no links at all.
           */}
           <Card tone="raised" className="flex flex-col gap-4 p-6">
-            <p className="label-meta text-accent">If you have not started yet</p>
-            <p className="text-small text-ink-muted">
-              Reaching this page does not mean you answered the Ilocano question. That question is
-              what creates your validator identity, and there is no way to create one from this
-              page.
-            </p>
+            <p className="label-meta text-accent">{t("ready.notStarted.label")}</p>
+            <p className="text-small text-ink-muted">{t("ready.notStarted.body")}</p>
             <Link
               href="/start"
               className="border-ink bg-accent text-paper border-accent-press hover:bg-accent-press rounded-pill text-label inline-flex w-fit items-center gap-2 border-2 px-5 py-3"
             >
-              Go to the Ilocano question
+              {t("ready.notStarted.cta")}
             </Link>
           </Card>
 
           <Card tone="inset" className="flex flex-col gap-3 p-6">
-            <p className="label-meta text-ink-muted">What happens next</p>
-            <p className="text-small text-ink-muted">
-              Receiving sentences is the next part of the study and is not switched on yet. When it
-              is, a browser that already answered the question is recognised as the same validator
-              and is given ten Ilocano navigation sentences to check. Coming back to this browser
-              will not replace your screening answer.
-            </p>
-            <p className="text-small text-ink-muted">
-              Until then, nothing is required of you. If you have already answered the Ilocano
-              question in this browser, closing this tab is a complete and legitimate way to finish.
-            </p>
+            <p className="label-meta text-ink-muted">{t("ready.next.label")}</p>
+            <p className="text-small text-ink-muted">{t("ready.next.body1")}</p>
+            <p className="text-small text-ink-muted">{t("ready.next.body2")}</p>
           </Card>
 
           <Card tone="inset" className="flex flex-col gap-3 p-6">
-            <p className="label-meta text-ink-muted">If you want to stop</p>
-            <p className="text-small text-ink-muted">
-              Clearing this browser&apos;s site data removes the code that links you to your
-              validator identity. Because the code is the only link, that is permanent: you would
-              begin again as a new anonymous validator, and your earlier answers would remain in the
-              research record under the old identity.
-            </p>
+            <p className="label-meta text-ink-muted">{t("ready.stop.label")}</p>
+            <p className="text-small text-ink-muted">{t("ready.stop.body")}</p>
           </Card>
         </section>
       </main>
 
       <footer className="border-ink bg-paper-raised border-t-2">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 sm:px-8">
-          <p className="label-meta text-ink-faint">Sadino · Ilocano navigation research</p>
-          <p className="text-small text-ink-muted">No accounts. Nothing identifying.</p>
+          <p className="label-meta text-ink-faint">{t("common.footer.research")}</p>
+          <p className="text-small text-ink-muted">{t("common.footer.noAccounts")}</p>
         </div>
       </footer>
     </>

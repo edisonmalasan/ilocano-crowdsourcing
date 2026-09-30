@@ -9,6 +9,7 @@ import { cardClasses } from "@/components/ui/card";
 import { controlClasses } from "@/components/ui/field";
 import { BatchProgress, segmentClasses, segmentState } from "@/components/ui/progress";
 import { answerOptionClasses } from "@/components/validation/answer-option";
+import { localeChoiceClasses } from "@/components/i18n/locale-switcher";
 
 /**
  * Token-contract tests.
@@ -53,6 +54,11 @@ describe("token discipline", () => {
     ["answer selected", () => answerOptionClasses({ selected: true })],
     ["answer unselected", () => answerOptionClasses({ selected: false })],
     ["segment complete", () => segmentClasses("complete")],
+    // Added by the interface-localization change. Both states, because the ACTIVE state is the one
+    // that differs and an addition covering only the default would not have exercised it - the same
+    // reason `answer selected` and `answer unselected` are both listed.
+    ["locale choice active", () => localeChoiceClasses(true)],
+    ["locale choice inactive", () => localeChoiceClasses(false)],
   ];
 
   it.each(builders)("%s uses tokens and no raw literals", (_label, build) => {
@@ -65,6 +71,10 @@ describe("token discipline", () => {
     expect(buttonClasses()).toContain("border-2");
     expect(cardClasses()).toContain("border-2");
     expect(answerOptionClasses({ selected: false })).toContain("border-2");
+    // The language controls are the one interactive surface added since, and the neo-brutalist
+    // direction is a hard border on every tactile control - a switcher that opted out would look
+    // like a different product from the button beside it.
+    expect(localeChoiceClasses(false)).toContain("border-2");
   });
 
   it("uses zero-blur hard offset shadows rather than diffuse glows", () => {

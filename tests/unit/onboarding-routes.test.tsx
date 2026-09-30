@@ -1,12 +1,14 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
-import ReadyPage, { metadata as readyMetadata } from "@/app/ready/page";
-import StartPage, { metadata as startMetadata } from "@/app/start/page";
+import ReadyPage, { generateMetadata as readyGenerateMetadata } from "@/app/ready/page";
+import StartPage, { generateMetadata as startGenerateMetadata } from "@/app/start/page";
 import { AnswerGroup, answerOptionClasses } from "@/components/validation/answer-option";
+import type { InterfaceLocale } from "@/lib/domain/locale";
+import { translatorFor } from "@/lib/i18n/copy";
 import { submitControlState } from "@/lib/validators/onboarding-flow";
 import {
   ILOCANO_PROFICIENCY_CHOICES,
@@ -41,7 +43,27 @@ import {
  *   - what the controls do while a write runs -> `submitControlState`, a pure function
  *   - what the control renders in those states -> `AnswerGroup`, rendered with the
  *     props passed in, which is the real component doing the real rendering
+ *
+ * ============================================================================
+ * WHY THESE PAGES ARE RENDERED THROUGH `renderRoute`, AND WHAT THE STUB PROVES
+ * ============================================================================
+ * The page components are `async`: each one awaits `getInterfaceLocale()`, because `cookies()` is
+ * asynchronous. `renderToStaticMarkup` cannot await a component, so `renderRoute` awaits the
+ * component and renders the element it resolves to. That is a mechanical adapter, and it is the
+ * honest way to keep these assertions about real markup.
+ *
+ * The `next/headers` stub holds NO locale, which is exactly the state a first-time participant is
+ * in, so the copy these tests assert is the English that `resolveInterfaceLocale` falls back to -
+ * not a value the test chose. That is the point: the fallback path is the one a participant with no
+ * cookie is served, and it is the one a stubbed cookie could easily have faked. The Filipino
+ * renderings are asserted in `locale-routes.test.tsx` against a stub that DOES hold `"fil"`, so
+ * neither file can be right by accident.
+ *
+ * `generateMetadata` is `async` for the same reason, so the metadata assertions await it.
  */
+
+/** The English translator, for the pure-function assertions in this file. */
+const EN = translatorFor("en");
 
 /**
  * `server-only` throws when a client component's import graph reaches it. The screening
@@ -61,10 +83,40 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-/** The screening form, imported lazily so the mocks above are in place first. */
-async function renderScreeningForm(): Promise<string> {
+/**
+ * `next/headers` is mocked because both routes now resolve their document title from the locale
+ * cookie, and `cookies()` throws outside a request scope.
+ *
+ * The stub holds NO locale, which is exactly the state a first-time participant is in, so the
+ * metadata these tests assert is the English default produced by `resolveInterfaceLocale` rather
+ * than a value the test chose. That is the point: the fallback path is the one that matters when a
+ * participant has no cookie, and it is the one a stubbed cookie could easily have faked.
+ */
+vi.mock("next/headers", () => ({
+  cookies: () => Promise.resolve(new Map()),
+}));
+
+/**
+ * The screening form, imported lazily so the mocks above are in place first.
+ *
+ * `locale` is passed explicitly because the form takes it as a required prop rather than reading
+ * a context: a client island cannot read the server's context, and a prop is what keeps the
+ * server-rendered HTML and the hydrated tree agreeing on the language.
+ */
+async function renderScreeningForm(locale: InterfaceLocale = "en"): Promise<string> {
   const { ScreeningForm } = await import("@/app/start/screening-form");
-  return renderToStaticMarkup(<ScreeningForm />);
+  return renderToStaticMarkup(<ScreeningForm locale={locale} />);
+}
+
+/**
+ * Renders a route page component, which is `async` because it reads the locale cookie.
+ *
+ * `renderToStaticMarkup` takes an element and cannot await a component, so the await happens here.
+ * Doing it in one place rather than at each call site means the four render sites below cannot drift
+ * into handling a Promise differently from one another.
+ */
+async function renderRoute(Page: () => Promise<React.ReactElement>): Promise<string> {
+  return renderToStaticMarkup(await Page());
 }
 
 /**
@@ -162,7 +214,10 @@ describe("the screening answer cannot be fabricated at the answer control", () =
 });
 
 describe("landing route", () => {
-  const html = renderToStaticMarkup(<HomePage />);
+  let html = "";
+  beforeAll(async () => {
+    html = await renderRoute(HomePage);
+  });
 
   it("hands off to the screening route with a real link", () => {
     expect(html).toContain('href="/start"');
@@ -188,17 +243,27 @@ describe("landing route", () => {
 });
 
 describe("screening route", () => {
-  const html = renderToStaticMarkup(<StartPage />);
+  let html = "";
+  beforeAll(async () => {
+    html = await renderRoute(StartPage);
+  });
 
   it("has exactly one h1 and a distinct page title", () => {
     expect((html.match(/<h1/g) ?? []).length).toBe(1);
   });
 
-  it("declares real route metadata rather than a placeholder", () => {
+  it("declares real route metadata rather than a placeholder", async () => {
     // Low severity, but it was untested and the failure is silent: replacing a required
     // page title with "Nowhere" passes every behavioural assertion in this file, because
     // `renderToStaticMarkup` does not emit the metadata object at all. Asserted against
     // the imported metadata rather than the HTML, since that is the only place it exists.
+    //
+    // `generateMetadata` rather than a static `metadata` export, because the title is interface
+    // copy: a static export is English for every participant forever, which is the failure this
+    // change exists to remove. It is therefore a function, and the assertion awaits it - which
+    // also proves it does not throw when no cookie is present.
+    const startMetadata = await startGenerateMetadata();
+
     expect(startMetadata.title).toBe("Screening");
     expect(startMetadata.title).not.toMatch(/todo|placeholder|nowhere|untitled/i);
     expect(startMetadata.description).toBeTypeOf("string");
@@ -206,7 +271,7 @@ describe("screening route", () => {
     expect(startMetadata.description).not.toMatch(/todo|placeholder|nowhere|lorem/i);
   });
 
-  it("does not promise sentences that /ready says are not switched on yet", () => {
+  it("does not promise sentences that /ready says are not switched on yet", async () => {
     // ROUND SIX W3. Two routes in one flow contradicted each other on a fact a participant
     // can act on. `/start`'s metadata said "then you can start checking sentences"; `/ready`
     // said "Receiving sentences is the next part of the study and is not switched on yet".
@@ -218,7 +283,8 @@ describe("screening route", () => {
     // Asserted here as a cross-route invariant rather than as two independent string checks,
     // because the defect was never that either sentence was individually odd - it was that
     // the pair disagreed. A test on each route alone would have passed.
-    const ready = renderToStaticMarkup(<ReadyPage />);
+    const ready = await renderRoute(ReadyPage);
+    const startMetadata = await startGenerateMetadata();
 
     expect(ready).toMatch(/not switched on yet/i);
     expect(
@@ -379,7 +445,7 @@ describe("the submit control while a Server Action is in flight", () => {
   it("disables and marks the control busy while pending", () => {
     // `renderToStaticMarkup` can only ever see the idle state, so the pending
     // behaviour is asserted where it is actually decided.
-    expect(submitControlState(true)).toEqual({
+    expect(submitControlState(true, EN)).toEqual({
       disabled: true,
       ariaBusy: true,
       label: "Saving…",
@@ -387,7 +453,7 @@ describe("the submit control while a Server Action is in flight", () => {
   });
 
   it("leaves the control enabled and ready when idle", () => {
-    expect(submitControlState(false)).toEqual({
+    expect(submitControlState(false, EN)).toEqual({
       disabled: false,
       ariaBusy: undefined,
       label: "Continue",
@@ -397,11 +463,11 @@ describe("the submit control while a Server Action is in flight", () => {
   it("never reports the control as idle while a write is in flight", () => {
     // The property, stated directly: a control that is clickable mid-write is how one
     // participant ends up with two identities.
-    expect(submitControlState(true).disabled).toBe(true);
+    expect(submitControlState(true, EN).disabled).toBe(true);
   });
 
   it("omits aria-busy entirely when idle, rather than setting it false", () => {
-    const html = renderToStaticMarkup(<div aria-busy={submitControlState(false).ariaBusy} />);
+    const html = renderToStaticMarkup(<div aria-busy={submitControlState(false, EN).ariaBusy} />);
     expect(html).not.toMatch(/aria-busy/);
   });
 });
@@ -487,16 +553,25 @@ describe("the answer control in a pending or errored state", () => {
 });
 
 describe("confirmation route", () => {
-  const html = renderToStaticMarkup(<ReadyPage />);
+  let html = "";
+  beforeAll(async () => {
+    html = await renderRoute(ReadyPage);
+  });
 
   it("has exactly one h1", () => {
     expect((html.match(/<h1/g) ?? []).length).toBe(1);
   });
 
-  it("declares real route metadata rather than a placeholder", () => {
+  it("declares real route metadata rather than a placeholder", async () => {
     // Untested until third-round review: replacing this title with a placeholder passed
     // every behavioural assertion here, because `renderToStaticMarkup` never emits the
     // metadata object. Asserted against the import, which is the only place it exists.
+    //
+    // The title doubles as the `h1`, so it is one catalog key rather than two that could drift -
+    // which is why this assertion and the `h1` assertion above are asserting the same approved
+    // string from two directions.
+    const readyMetadata = await readyGenerateMetadata();
+
     expect(readyMetadata.title).toBe("Before you begin");
     expect(readyMetadata.title).not.toMatch(/todo|placeholder|nowhere|untitled/i);
     expect(readyMetadata.description).toBeTypeOf("string");
