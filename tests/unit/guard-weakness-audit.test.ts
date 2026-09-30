@@ -77,7 +77,7 @@ function parseTests(file: string): { readonly tests: ParsedTest[]; readonly rawC
   // Second pass for bodies, now that every boundary is known. Done as a separate pass on purpose:
   // interleaving it with the stack walk would mean re-deriving boundaries twice, and the two
   // passes cannot disagree because they read the same array.
-  const withBodies = tests.map((test, position) => {
+  const withBodies = tests.map((test) => {
     const start = test.line; // 1-based line of the `it(`
     let end = lines.length;
     for (const other of tests) {

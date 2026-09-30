@@ -57,6 +57,28 @@ export default defineConfig({
           environment: "node",
           globals: false,
           include: ["tests/unit/**/*.test.{ts,tsx}"],
+          // =====================================================================================
+          // MEASURED, not guessed. This project was left on Vitest's DEFAULT 5000ms while `dom` and
+          // `integration` both declared their own, and that asymmetry was the cause of an
+          // intermittent failure recorded across several merged changes as an open item with an
+          // UNKNOWN cause and no name.
+          //
+          // It was not unknown. It was `Test timed out in 5000ms`, and it affected FOUR files, not
+          // one. It reproduces only under load — running four full suites concurrently produced
+          // 10 red runs out of 12, while a single sequential run produced none — which is exactly
+          // why a reproduction method of "run it again" could never find it.
+          //
+          // The dominant offender was `tests/unit/locale-copy.test.ts`, which made 201,600
+          // individual `expect()` calls; that one has been fixed at the source rather than given
+          // more time. The residual is `validators-actions-wrapper.test.ts` and
+          // `allocation-actions-wrapper.test.ts`, whose slow test resolves modules through Vite and
+          // measured 853ms-3093ms on an idle machine. That is real work, not a hung test.
+          //
+          // 15_000 is the same window `dom` already uses and sits ~5x above the slowest idle
+          // measurement, so a genuinely hung test still fails. Nothing here weakens an assertion,
+          // and no test asserts on elapsed time.
+          // =====================================================================================
+          testTimeout: 15_000,
         },
         resolve: {
           alias: { "@": r("./src") },

@@ -57,7 +57,6 @@ import { ResumeValidator } from "@/components/onboarding/resume-validator";
  * meaningless in the one way that matters — a spike that passes for the wrong reason.
  */
 declare global {
-  // eslint-disable-next-line no-var
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

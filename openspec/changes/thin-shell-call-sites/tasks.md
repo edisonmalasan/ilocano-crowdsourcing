@@ -238,42 +238,107 @@
       the seven measured gaps. It is recorded in 3.6 as the highest-value follow-up rather than
       quietly left as an implicit gap.
 
-### OPEN ITEM — an intermittent `test:unit` failure with an unknown cause, never named
+### RESOLVED — the intermittent `test:unit` failure was a 5000 ms default timeout, in four files
 
-**Carried here deliberately, and it blocks nothing, because nothing about it is established.**
+**It was never an unknown cause. It was never unnamed. Both were artefacts of a broken
+reproduction method, and this section is the correction.**
 
-- **What was observed.** `pnpm run test:unit` reported `1 failed | 880 passed (881)` **twice**, on
-  `fe6581b`, in roughly seventeen invocations. Both times `Test Files 1 failed | 31 passed (32)` —
-  one test in one file.
-- **What was NOT established.** The failing test has **never been named.** Both attempts to read
-  it back were themselves broken — one filtered the name away, one died on a Windows
-  path-escaping bug in its own reader — and the failure has not recurred since.
-- **Reproduction attempts, all negative.** 8 consecutive single runs; 3 full rapid rounds of
-  `test:dom → test:unit → test:integration → guard → build`; 12 further single runs on the branch;
-  and **10 runs on `main` as a control**. Totals: **2 failures in ~30 branch invocations, 0 in 10
-  on main.**
-- **That comparison is NOT statistically significant.** 2/30 against 0/10 is compatible with
-  chance. It is recorded because it was measured, not because it points at this branch, and it
-  does **not** establish that the `dom` project introduced anything. Claiming otherwise from
-  these numbers would be the exact error this repository keeps recording.
-- **Causes ruled out by search, not by assumption.** `Date.now` 0 hits, `performance.now` 0,
-  `Math.random` 3 — all inside comments stating a random source has no default, `randomUUID` 0,
-  `getRandomValues` 0, `os.tmpdir`/`mkdtemp` 0, `process.env` 1 and it is inside a comment. The
-  single `setTimeout` (`locale-actions-core.test.ts:113`) sits **inside a promise the test
-  awaits**, so `released` is deterministic rather than racy. So there is no clock, no random
-  source, and no temp directory in the unit project. **A negative result is not a cause.**
-- **Status: UNRESOLVED.** Not filed as noise, and not "fixed" by a guess. If it recurs, the failing
-  name is the first thing to capture, and the reader that does it correctly is
-  `probe-spike2.cjs`'s `strip()` — the ANSI pattern **with the escape byte**, which is the whole
-  reason this could not be named before.
+- **The cause.** `Test timed out in 5000ms` — Vitest's **default** `testTimeout`, not a limit
+  anybody chose in this repository. `vitest.config.ts` declared `testTimeout` for `dom` (15 000)
+  and `integration` (60 000) and left `unit` on the library default, while `unit` contains tests
+  that do real work.
+- **It affected FOUR files, not one.** `tests/unit/locale-copy.test.ts` (the dominant one, observed
+  at 5929-6755 ms), `tests/unit/validators-actions-wrapper.test.ts`, and
+  `tests/unit/allocation-actions-wrapper.test.ts` (853-3093 ms idle, resolving modules through
+  Vite).
+- **Why it could never be reproduced, which is the actual lesson.** It is **load-dependent**. One
+  sequential run produced it **never**; 4 concurrent full suites produced it in **10 runs of 12**.
+  Every earlier attempt ran suites one at a time, so it was not a flake that resisted reproduction —
+  it was a flake whose *reproduction required the condition it was caused by*, and 30 sequential
+  attempts were 30 attempts with the cause removed.
+- **Measured fix, on the instrument that found it.** Four concurrent full unit suites, three rounds
+  of four:
+
+  | Stage | Red runs of 12 |
+  | --- | --- |
+  | before | **10** |
+  | after fixing the source (below) | 1 |
+  | after also declaring `unit`'s `testTimeout` | **0** |
+
+- **Fixed at the source first, and only then given time.** `locale-copy.test.ts` made **201,600**
+  individual `expect()` calls — 2 catalogs x 84 keys x 600 entries x 2 directions. It now collects
+  violations and asserts once per catalog, which is orders of magnitude faster **and reports
+  strictly more**: the old form stopped at the first offending cell, and the rewritten form named
+  all 29 violations in one failure. Raising the timeout alone would have hidden a 201,600-call
+  expect storm rather than fixing it.
+- **Proved the rewritten guard still fires, in both directions, on real records.** `P1` pastes
+  `OD_0001`'s instruction into the **Filipino** catalog, `P2` pastes the real place name
+  `"Baguio Athletic Bowl"` into the **English** one. Both `2 failed | 21 passed (23)`, both naming
+  the correct language. Catalog restored byte-identical (`f255be323994b0ca`). A hand-written sample
+  would have been the wrong control — the old markers matched neither a sample nor the data.
+- **Two defects in that probe, both caught by its own refusals.** `P2`'s first run returned
+  `DID-NOT-PARSE` because a `RegExp.exec` index taken from `src.slice(a, b)` is **relative to the
+  slice**, so the splice landed at line 5 of `copy.ts` and produced `"meta.siteTitle": "…",ort type
+  { … }`. The refusal is the only reason a corrupted mutant was never scored as evidence. Separately,
+  `indexOf("FILIPINO_COPY")` matched an earlier *mention* rather than the declaration at line 322, so
+  a probe labelled "Filipino" edited the English catalog — and the guard, firing correctly, named
+  the wrong language. The split now anchors on `^export const FILIPINO_COPY` and asserts both
+  declaration offsets are in order.
+- **The `2/30 branch vs 0/10 main` comparison above is superseded and was never evidence.** It was
+  recorded as not statistically significant, which was right; the correct conclusion is stronger
+  than that. It was measuring nothing, because both arms removed the cause. **A negative result from
+  a reproduction method that cannot produce the condition is not a negative result.**
+- **Status: FIXED AND MEASURED.** Residual risk, stated rather than hidden: `integration` runs PGlite
+  with a 60 000 ms timeout and has never flaked, so it was left alone — not because it is proven
+  safe, but because nothing was measured about it.
 
 ## 4. Make the measurement reproducible and correct the record
 
-- [ ] 4.1 Commit the re-derivation script under `tests/` with its reproduction command in the
+- [x] 4.1 Commit the re-derivation script under `tests/` with its reproduction command in the
       header, per D4. Verify it runs read-only against the unmodified tree, reports its negative
       control green **first**, and restores both files byte-identical afterwards — re-verify by
       checking `git status --porcelain` is empty and the two file hashes still read
       `b3ab4956bd2d889e` and `723f6b30a2b7cf33`.
+
+      **DONE, as `tests/tools/rederive-shell-worklist.mjs` — and it is not a copy of the scratch
+      version.** Copying it would have committed four defects this repository has already recorded
+      by name:
+
+      - **It measured `--project unit` only**, which is now the *historical* question. The guards
+        added for these sites live in the separate `dom` project, so a `unit`-only run reports
+        "7 unguarded of 10" **indefinitely and correctly** — it would have kept reporting the
+        pre-repair ledger figure after the repair. It now runs **both** scopes and a site counts as
+        guarded if **any** scope catches it.
+      - **Its ANSI strip was missing the escape byte** — the fourth occurrence of that exact defect,
+        committed into the repository this time. Fixed, and both notations handled.
+      - **It scored `RED` as `GUARDED` even with zero captured failing names.** An empty capture
+        is indistinguishable from a run that reported nothing, which is the failure mode AGENTS.md
+        records four times. A red with no names is now `INCONCLUSIVE`, never a guard.
+      - **It had no `DID-NOT-PARSE` detection**, so a mutant that broke TypeScript reported
+        `no tests` and scored as guarded.
+
+      It is also `.mjs` with ESM imports rather than `.cjs` with `require()`, because
+      `@typescript-eslint/no-require-imports` is an error in this repository. Conforming to the lint
+      rules was preferred over disabling them, and fixing the two other lint problems it surfaced
+      restored the project's documented **zero errors and zero warnings**.
+
+      **Run against the unmodified tree, reporting the position honestly:**
+
+      ```
+      node --check tests/tools/rederive-shell-worklist.mjs      exit 0
+      node    tests/tools/rederive-shell-worklist.mjs           exit 0
+        control --project unit: 897 passed (897)     <- control FIRST, at EVERY scope
+        control --project dom:   15 passed (15)
+        ...10 probes x 2 scopes...
+        0 unguarded, 10 guarded, 0 inconclusive, of 10 probed
+        RESTORE: b3ab4956bd2d889e and 723f6b30a2b7cf33, both byte-identical
+      ```
+
+      `git status --porcelain` shows only the untracked `tests/tools/`, confirming it wrote nothing
+      else back. **`SF-7` and `RV-3` are now guarded twice**, at both layers; and the run
+      independently re-confirmed the one gap this audit surfaced — **`RV-4` is caught at
+      `--project unit` while `--project dom` is green** (`15 passed (15)`), which is the textual
+      scan standing alone exactly as recorded in 3.6.
 - [ ] 4.2 Record both lessons from design decision D6 in `AGENTS.md`: the one-test-file probe scope
       error that wrongly reported S20 unguarded, and the inherited-label-mismatches-its-own-text
       error that would have mutated the skip button while calling it the primary submit. Verify by
