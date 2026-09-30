@@ -253,9 +253,52 @@ diff that is not checked is the defect this repository has already made three ti
 > the reconciler fail to parse, and the nested vocabulary table in the ledger was flush-left, so the
 > splice would have promoted it to a document-level table. The parse failure is why `node --check` is
 > run before any verdict from a probe is believed — `DID-NOT-PARSE` is not a count of 4.
-- [ ] 6.3 Archive the change and update the ledger. **Verify:** `openspec archive
+- [x] 6.3 Archive the change and update the ledger. **Verify:** `openspec archive
       pending-state-specification --yes` exits 0 with `Task status: Complete`, the directory is at
       `openspec/changes/archive/2026-10-01-pending-state-specification/`, and the `Archived Changes`
       table lists **9** changes — **manually, with the absence of an automated guard stated**, since
       `grep -r ROADMAP tests/` returns no matches and that absence must not be papered over with a
       sentence that sounds like one.
+> **Evidence.** The `Archived Changes` table gains its **ninth** row. Building an automated
+> ledger-consistency guard is **deliberately not done here**: it introduces a test class this project
+> has never had, and a change must not be broadened because a related opportunity turned up. Recorded
+> as a known gap, for a change that wants it.
+>
+> **The guard's absence was re-derived, and doing so nearly produced a false correction — which is
+> worth recording because the ledger was right and I was the instrument.** The ledger states that
+> `grep -r ROADMAP tests/` returns no matches. I re-ran the check and got **four** files, so I was one
+> step from filing a correction saying the ledger's cited evidence is false. It is not: PowerShell's
+> `Select-String` is **case-insensitive by default**, and those four files are the English word
+> "roadmap" in prose comments. The cited `grep` is **case-sensitive** and returns **0** — confirmed
+> with `-CaseSensitive`, and confirmed the harder way by searching all **107** files in `tests/`,
+> `src/`, `.github/` and `supabase/` for `ROADMAP.md`, for the archive table's header, for the
+> ledger's section heading, and for any read of a `docs/` path: **0 each**. The claim holds, so the
+> ledger is **unchanged**. This is the recorded `git show | node -e` and `U+2026` lesson arriving a
+> third time in a fourth command: **judge a run by the bytes, not by what a PowerShell pipeline
+> printed.** The measurement also self-tests in three halves — a control token that must match, an
+> absent token that must not, and a check that what the reporter **prints** agrees with what it
+> **computes**, which is the only component in this round that had never been measured. That last
+> check earned itself: a `+` binding tighter than `>` made both self-tests print `false` while the
+> script exited 0, and the first version of the fix compared a count to a boolean and so cried wolf
+> on correct input. **A self-test that is always red is as useless as one that is always green.**
+>
+> **A second stale figure was found in the very table being edited, and repaired rather than added
+> beside.** The `thin-shell-call-sites` row's *Merged as* cell still read **"Archive in flight in this
+> PR, so no archive merge commit is named"** — written when that stage had not yet merged. It merged as
+> PR #35, `80a8dba`, taken from `git log --merges` rather than memory. A known-stale enumeration inside
+> a file you are editing is the defect, not a historical record, and this stage's whole subject is
+> figures that read as current after they stopped being true.
+>
+> **The `openspec archive` exit code and destination path are NOT claimed here, on purpose.** This
+> file is frozen into `openspec/changes/archive/` at the moment the command runs, so an evidence
+> block written before it cannot state a result measured after it without the archived copy asserting
+> something unmeasured — the same class of error as a count read off after the change it measures. Those
+> two facts are verified immediately after the command and recorded in `docs/ROADMAP.md`, which is
+> live rather than frozen and can therefore hold them honestly.
+>
+> **One risk was guarded before running it.** `openspec archive` is documented as archiving a change
+> *and updating the main specs*, and the two deltas are **already** synced. A re-application would
+> duplicate both requirements silently, and the total would read a plausible 54 rather than an
+> obviously wrong one. So the **post-Sync** state was frozen first (9 capabilities, 52 requirements,
+> 193 scenarios, per-block hashes) and the spec files are re-hashed **after** the command; a
+> re-application is then a difference with a byte count rather than a suspicion.
