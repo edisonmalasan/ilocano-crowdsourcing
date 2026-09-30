@@ -6,9 +6,10 @@ import {
   isAnonymousValidatorIdFormat,
 } from "@/lib/domain/anonymous-validator-id";
 import { normalizeResearchText } from "@/lib/domain/text";
+import * as domainModule from "@/lib/domain/validation-response";
 import {
   isCorrectionRequired,
-  isTranslationAllowed,
+  requiresBilingualTranslations,
   type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
 import { anonymousValidatorIdSchema } from "@/schemas/validator";
@@ -75,18 +76,50 @@ describe("isCorrectionRequired", () => {
   it("returns a definitive boolean for every approved evaluation, with no default fallthrough", () => {
     for (const evaluation of ALL_EVALUATIONS) {
       expect(typeof isCorrectionRequired(evaluation)).toBe("boolean");
-      expect(typeof isTranslationAllowed(evaluation)).toBe("boolean");
+      expect(typeof requiresBilingualTranslations(evaluation)).toBe("boolean");
     }
   });
 });
 
-describe("isTranslationAllowed", () => {
+describe("requiresBilingualTranslations", () => {
   it("is false only for cannot_evaluate", () => {
-    expect(isTranslationAllowed("correct_natural")).toBe(true);
-    expect(isTranslationAllowed("correct_unnatural")).toBe(true);
-    expect(isTranslationAllowed("incorrect")).toBe(true);
-    // There is no reliable content to translate when the validator could not judge the entry.
-    expect(isTranslationAllowed("cannot_evaluate")).toBe(false);
+    expect(requiresBilingualTranslations("correct_natural")).toBe(true);
+    expect(requiresBilingualTranslations("correct_unnatural")).toBe(true);
+    expect(requiresBilingualTranslations("incorrect")).toBe(true);
+    // There is no reliable content to translate when the validator could not judge the entry, and
+    // requiring it would store an unverified rendering of an unverified judgement.
+    expect(requiresBilingualTranslations("cannot_evaluate")).toBe(false);
+  });
+
+  it("is a total function of the four approved evaluations, with no fifth state", () => {
+    // Written from the spec's list rather than from the implementation, so a value added to
+    // `EVALUATION_CHOICES` without a decision here fails instead of falling through.
+    const expected: Record<string, boolean> = {
+      correct_natural: true,
+      correct_unnatural: true,
+      incorrect: true,
+      cannot_evaluate: false,
+    };
+
+    expect(Object.keys(expected).sort()).toEqual([...ALL_EVALUATIONS].sort());
+    for (const evaluation of ALL_EVALUATIONS) {
+      expect(requiresBilingualTranslations(evaluation)).toBe(expected[evaluation]);
+    }
+  });
+
+  it("is the ONLY translation predicate the domain module exports, with no permitted variant", () => {
+    // A NEGATIVE assertion, probe-confirmed: re-adding an `isTranslatableContent` export that
+    // returns the same value turns this red, and removing `requiresBilingualTranslations` turns it
+    // red the other way. Under this methodology a translation is never merely permitted, so an
+    // "is one allowed?" predicate would have no state in which it returned true — an export that
+    // exists only to be called wrongly.
+    const asRecord = domainModule as unknown as Record<string, unknown>;
+    const translationPredicates = Object.keys(domainModule)
+      .filter((name) => /translat/i.test(name))
+      .sort();
+
+    expect(translationPredicates).toEqual(["requiresBilingualTranslations"]);
+    expect(asRecord.isTranslatableContent).toBeUndefined();
   });
 });
 

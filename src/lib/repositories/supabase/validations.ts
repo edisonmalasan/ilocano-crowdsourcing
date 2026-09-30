@@ -31,8 +31,8 @@ interface ValidationRow {
   batch_id: unknown;
   evaluation: unknown;
   corrected_instruction: unknown;
-  translation_language: unknown;
-  translation_text: unknown;
+  english_translation: unknown;
+  filipino_translation: unknown;
   created_at: unknown;
   updated_at: unknown;
 }
@@ -45,8 +45,8 @@ const VALIDATION_COLUMNS = [
   "batch_id",
   "evaluation",
   "corrected_instruction",
-  "translation_language",
-  "translation_text",
+  "english_translation",
+  "filipino_translation",
   "created_at",
   "updated_at",
 ] as const satisfies readonly (keyof ValidationRow)[];
@@ -57,7 +57,7 @@ const COUNT_COLUMN = "validator_id";
 /**
  * Row ⇄ domain translation, and the NULL ⇄ absent decision.
  *
- * `corrected_instruction`, `translation_language`, and `translation_text` are nullable columns
+ * `corrected_instruction`, `english_translation`, and `filipino_translation` are nullable columns
  * whose domain counterparts are OPTIONAL fields, so the mapping has to decide what a SQL `NULL`
  * means. It means "this validator supplied nothing", which the domain expresses as an ABSENT KEY,
  * not as an explicit `null`:
@@ -66,14 +66,24 @@ const COUNT_COLUMN = "validator_id";
  *     `correctedInstruction`. Mapping it to `correctedInstruction: null` instead would make every
  *     `correct_natural` response fail its own integrity rule ("a correction is not accepted for
  *     this evaluation") the moment it is read back.
- *   - A required correction that is absent in the database therefore also fails to translate,
- *     which is correct: `correct_unnatural` with no correction is not a record the research can
- *     use, and it should be loud rather than quietly loadable.
+ *   - The same applies to both translations on a `cannot_evaluate` row, and there the stakes are
+ *     higher: mapping `NULL` to `{ englishTranslation: null }` would make a perfectly legal
+ *     `cannot_evaluate` record fail its own integrity rule ("a translation is not accepted when the
+ *     entry cannot be confidently evaluated") on every read. The column can only express absence,
+ *     so absence must map to absence.
+ *   - A required correction or translation that is absent in the database therefore also fails to
+ *     translate, which is correct: `correct_unnatural` with no correction is not a record the
+ *     research can use, and it should be loud rather than quietly loadable.
  *
  * This is the one asymmetry in the pair of directions, and it is deliberate: the column can only
  * express absence, so the domain's richer distinction between "absent" and "present but empty"
  * cannot be reconstructed from a `correct_unnatural` row. The domain's `normalizeResearchText`
  * keeps that distinction on the way IN, where the validator's actual input is still available.
+ *
+ * The absence-key decision is asserted in `repositories-supabase.test.ts` by a read that expects the
+ * key to be ABSENT rather than `null`, and the assertion distinguishes the two with `in`. A test
+ * written as `toBeNull()` would pass for both, so it would prove nothing about the decision this
+ * mapping exists to make.
  */
 function toDomain(
   row: Record<string, unknown>,
@@ -92,11 +102,11 @@ function toDomain(
   if (row.corrected_instruction !== null && row.corrected_instruction !== undefined) {
     candidate.correctedInstruction = row.corrected_instruction;
   }
-  if (row.translation_language !== null && row.translation_language !== undefined) {
-    candidate.translationLanguage = row.translation_language;
+  if (row.english_translation !== null && row.english_translation !== undefined) {
+    candidate.englishTranslation = row.english_translation;
   }
-  if (row.translation_text !== null && row.translation_text !== undefined) {
-    candidate.translationText = row.translation_text;
+  if (row.filipino_translation !== null && row.filipino_translation !== undefined) {
+    candidate.filipinoTranslation = row.filipino_translation;
   }
   return parseDomainValue(validationResponseSchema, candidate, operation, context);
 }
@@ -117,8 +127,8 @@ function toRow(response: ValidationResponse): Record<string, unknown> {
     batch_id: response.batchId,
     evaluation: response.evaluation,
     corrected_instruction: response.correctedInstruction ?? null,
-    translation_language: response.translationLanguage ?? null,
-    translation_text: response.translationText ?? null,
+    english_translation: response.englishTranslation ?? null,
+    filipino_translation: response.filipinoTranslation ?? null,
     created_at: response.createdAt,
     updated_at: response.updatedAt,
   };

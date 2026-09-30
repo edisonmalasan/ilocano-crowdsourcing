@@ -3,7 +3,8 @@ import { z } from "zod";
 import { normalizeResearchText } from "@/lib/domain/text";
 import {
   isCorrectionRequired,
-  isTranslationAllowed,
+  requiresBilingualTranslations,
+  type QualifyingResponseShape,
   type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
 
@@ -14,14 +15,20 @@ import { anonymousValidatorIdSchema } from "./validator";
  * Validation response contract — the integrity rules of the research.
  *
  * RESEARCH INTEGRITY, stated once and enforced once:
- * a correction and a translation are *separate response data*, attributed to one validator and
- * one dataset entry. They MUST NEVER be written back over the imported synthetic instruction in
- * `dataset_entries`. The imported instruction is immutable reference material; what a validator
- * believes it should have said is recorded beside it, not in place of it. That is why the
- * correction lives on the response and not on the entry, and why the two types have disjoint
+ * a correction and the two research translations are *separate response data*, attributed to one
+ * validator and one dataset entry. They MUST NEVER be written back over the imported synthetic
+ * instruction in `dataset_entries`. The imported instruction is immutable reference material; what
+ * a validator believes it should have said is recorded beside it, not in place of it. That is why
+ * the correction lives on the response and not on the entry, and why the two types have disjoint
  * fields.
  *
- * All seven approved rules are encoded in ONE `superRefine` over ONE field shape
+ * Both research translations are REQUIRED for every evaluable evaluation. There is no language
+ * discriminator any more: the languages are named by the fields that hold them, so a request naming
+ * an unsupported language is structurally unrepresentable rather than rejected at runtime. That is
+ * a change of kind, not of degree — a discriminator extends to more languages, a required pair
+ * cannot, and the reason is recorded in the change's `design.md`.
+ *
+ * All approved rules are encoded in ONE `superRefine` over ONE field shape
  * (`validationResponseInputFields`), and both the request-facing schema and the stored-record
  * schema are built from that same shape. A rule therefore cannot be enforced on the client and
  * skipped on the server, and cannot drift between them. There is no second implementation of
@@ -62,22 +69,30 @@ export const evaluationSchema = z.enum(
 export type Evaluation = z.infer<typeof evaluationSchema>;
 
 /**
- * The only two translation targets the research offers. "Skip translation" is the absence of a
- * translation, not a third language.
+ * The two research translation targets, as *labels for the validation screen* rather than as a
+ * value vocabulary.
+ *
+ * There is deliberately no `TRANSLATION_LANGUAGE_CHOICES` vocabulary and no
+ * `translationLanguageSchema` here any more. They served a representation where a response named
+ * one language and supplied one text, which cannot express "both are required". Naming them now
+ * would invite reintroducing a discriminator on two required fields, which is precisely the
+ * representation this change exists to remove.
+ *
+ * What survives is only what the UI needs to label two fixed text inputs. The values are not a
+ * vocabulary, so nothing can select a language, and adding a third target language is a change to
+ * this array *and* to the schema fields *and* to the database columns together — not a one-line
+ * addition here.
  */
-export const TRANSLATION_LANGUAGE_CHOICES = [
-  { value: "english", label: "English" },
-  { value: "filipino", label: "Filipino" },
-] as const satisfies ReadonlyArray<{ value: string; label: string; description?: string }>;
-
-export const translationLanguageSchema = z.enum(
-  TRANSLATION_LANGUAGE_CHOICES.map((choice) => choice.value) as [
-    (typeof TRANSLATION_LANGUAGE_CHOICES)[number]["value"],
-    ...(typeof TRANSLATION_LANGUAGE_CHOICES)[number]["value"][],
-  ],
-);
-
-export type TranslationLanguage = z.infer<typeof translationLanguageSchema>;
+export const TRANSLATION_FIELD_LABELS = {
+  english: {
+    label: "English translation",
+    description: "Translate the validated Ilocano sentence into English.",
+  },
+  filipino: {
+    label: "Filipino translation",
+    description: "Isalin ang validated na pangungusap sa Filipino.",
+  },
+} as const satisfies Record<string, { label: string; description: string }>;
 
 /**
  * A text field that normalizes to `null` when the validator left it blank.
@@ -97,8 +112,8 @@ const normalizedResearchTextFieldSchema = z
 const validationResponseInputFields = {
   evaluation: evaluationSchema,
   correctedInstruction: normalizedResearchTextFieldSchema.optional(),
-  translationLanguage: translationLanguageSchema.optional(),
-  translationText: normalizedResearchTextFieldSchema.optional(),
+  englishTranslation: normalizedResearchTextFieldSchema.optional(),
+  filipinoTranslation: normalizedResearchTextFieldSchema.optional(),
 };
 
 /** The post-transform shape the integrity rules reason about, inferred from the shared fields. */
@@ -124,36 +139,42 @@ export const validationResponseIdSchema = z.string().trim().min(1, "id must not 
 export const validationBatchIdSchema = z.string().trim().min(1, "batchId must not be empty");
 
 /**
- * The seven rules. Every issue is field-scoped so a form control can attach the message to the
+ * The integrity rules. Every issue is field-scoped so a form control can attach the message to the
  * input the validator can actually fix.
  *
- * Rule map (see `domain-contracts` spec):
+ * Rule map (see the `domain-contracts` capability):
  *  1. evaluation is one of four            -> `evaluationSchema` (the enum itself)
  *  2. correction required for `correct_unnatural` / `incorrect`
  *  3. `correct_natural` carries no correction
  *  4. `cannot_evaluate` carries no correction and no translation
- *  5. a translation has an approved language and non-empty text
- *  6. translation allowed only for evaluations other than `cannot_evaluate` (same condition as
- *     rule 4's second half; see `isTranslationAllowed`)
+ *  5. evaluable => both translations present and non-blank
+ *  6. no translation-language discriminator -> structural, the field does not exist
  *  7. anything else is rejected            -> the enum, again
+ *
+ * Rule 5 is written as two independent field-scoped checks rather than one combined check, and the
+ * reason is that a single combined check would produce ONE error message for a response missing
+ * BOTH translations. A validator who has filled in neither field would be told only about the first,
+ * fix it, submit, and be told about the second — two round trips for one omission. Two field-scoped
+ * issues also let a form highlight both inputs at once.
+ *
+ * There is deliberately no separate "must not be empty" message. `normalizeResearchText` already
+ * collapses a blank string to `null` before these rules see it, so `absent` and `blank` are the same
+ * state by the time they are judged, and a whitespace-only translation is reported as *required* —
+ * the same wording the correction rule uses for the same defect. A distinct "empty" message would
+ * describe a distinction the pipeline has already thrown away, and it would tell a validator who
+ * never typed anything that they had typed something wrong.
  */
 function applyValidationIntegrityRules(
   value: ValidationResponseInputValues,
   ctx: AddIssueCapableContext,
 ): void {
-  const { evaluation, correctedInstruction, translationLanguage, translationText } = value;
+  const { evaluation, correctedInstruction, englishTranslation, filipinoTranslation } = value;
   const hasCorrectionField = correctedInstruction !== undefined;
-  const hasTranslationLanguageField = translationLanguage !== undefined;
-  const hasTranslationTextField = translationText !== undefined;
+  const hasEnglishField = englishTranslation !== undefined;
+  const hasFilipinoField = filipinoTranslation !== undefined;
 
   if (isCorrectionRequired(evaluation)) {
-    if (!hasCorrectionField) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["correctedInstruction"],
-        message: "A corrected Ilocano version is required for this evaluation.",
-      });
-    } else if (correctedInstruction === null) {
+    if (!hasCorrectionField || correctedInstruction === null) {
       ctx.addIssue({
         code: "custom",
         path: ["correctedInstruction"],
@@ -168,49 +189,32 @@ function applyValidationIntegrityRules(
     });
   }
 
-  if (!isTranslationAllowed(evaluation)) {
-    if (hasTranslationLanguageField) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["translationLanguage"],
-        message:
-          "A translation is not accepted when the entry cannot be confidently evaluated, because " +
-          "that evaluation supplies no reliable content to translate.",
-      });
+  if (!requiresBilingualTranslations(evaluation)) {
+    const notAccepted =
+      "A translation is not accepted when the entry cannot be confidently evaluated, because " +
+      "that evaluation supplies no reliable content to translate.";
+    if (hasEnglishField) {
+      ctx.addIssue({ code: "custom", path: ["englishTranslation"], message: notAccepted });
     }
-    if (hasTranslationTextField) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["translationText"],
-        message:
-          "A translation is not accepted when the entry cannot be confidently evaluated, because " +
-          "that evaluation supplies no reliable content to translate.",
-      });
+    if (hasFilipinoField) {
+      ctx.addIssue({ code: "custom", path: ["filipinoTranslation"], message: notAccepted });
     }
 
     return;
   }
 
-  if (hasTranslationLanguageField && !hasTranslationTextField) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["translationText"],
-      message: "Translation text is required when a translation language is selected.",
-    });
-  } else if (hasTranslationTextField && translationText === null) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["translationText"],
-      message: "Translation text must not be empty.",
-    });
-  }
-
-  if (hasTranslationTextField && !hasTranslationLanguageField) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["translationLanguage"],
-      message: "A translation language is required when translation text is supplied.",
-    });
+  for (const [field, hasField, supplied] of [
+    ["englishTranslation", hasEnglishField, englishTranslation],
+    ["filipinoTranslation", hasFilipinoField, filipinoTranslation],
+  ] as const) {
+    const label = field === "englishTranslation" ? "An English" : "A Filipino";
+    if (!hasField || supplied === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: [field],
+        message: `${label} translation is required for this evaluation. Both translations are required.`,
+      });
+    }
   }
 }
 
@@ -272,4 +276,27 @@ export type EvaluationVocabularyIsInSync = [ValidationEvaluation] extends [Evalu
   ? [Evaluation] extends [ValidationEvaluation]
     ? true
     : never
+  : never;
+
+/**
+ * Compile-time guard: the domain's coverage shape must be a subset of the schema's response fields.
+ *
+ * `isQualifyingValidation` lives in the dependency-free domain module and therefore cannot import
+ * `ValidationResponseInput`. It declares the fields it reads structurally instead, which is what
+ * makes it callable from a component, a Server Action, and a plain test without dragging Zod along.
+ *
+ * The cost of that freedom is that the two declarations can drift: a schema field could be renamed
+ * and `isQualifyingValidation` would keep reading a property that no longer exists — at runtime, as
+ * `undefined`, silently making every response fail to qualify. That is a coverage bug that produces
+ * no error anywhere; entries would simply never leave the allocation pool.
+ *
+ * So this guard fails the build if the domain shape names a field the schema does not have. It
+ * checks the *read* direction, which is the dangerous one. The reverse — a schema field the
+ * coverage shape ignores — is deliberately not an error: an `id` or `createdAt` is legitimately
+ * irrelevant to whether one response qualifies.
+ */
+export type QualifyingShapeIsInSync = [
+  Exclude<keyof QualifyingResponseShape, keyof ValidationResponseInput>,
+] extends [never]
+  ? true
   : never;

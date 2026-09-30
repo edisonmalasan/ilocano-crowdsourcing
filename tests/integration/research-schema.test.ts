@@ -11,8 +11,11 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { isCorrectionRequired } from "@/lib/domain/validation-response";
-import { EVALUATION_CHOICES, TRANSLATION_LANGUAGE_CHOICES } from "@/schemas/validation";
+import {
+  isCorrectionRequired,
+  requiresBilingualTranslations,
+} from "@/lib/domain/validation-response";
+import { EVALUATION_CHOICES } from "@/schemas/validation";
 import { ILOCANO_PROFICIENCY_CHOICES } from "@/schemas/validator";
 
 import { applyMigrations, readMigrations, type MigrationFile } from "./support/migrations";
@@ -37,7 +40,23 @@ const EXPECTED_TABLES = [
   "validators",
 ];
 
-const EXPECTED_MIGRATION = "20260930120000_research_schema.sql";
+const EXPECTED_MIGRATIONS = [
+  "20260930120000_research_schema.sql",
+  "20260930160000_required_bilingual_translations.sql",
+] as const;
+
+/**
+ * The two required research translations, as a `columns`/`values` fragment.
+ *
+ * Used by every test whose row is meant to be ACCEPTED on a `correct_natural` evaluation. Since
+ * translations are now required, an evaluable insert without this fragment is a rejection, not a
+ * valid write — and several tests here are about something other than translations, so their rows
+ * must not fail for an unrelated reason.
+ */
+const BOTH_TRANSLATIONS = {
+  columns: ", english_translation, filipino_translation",
+  values: ", 'Ride the jeep.', 'Sumakay ng jeep.'",
+} as const;
 
 const VALIDATOR = "VAL_0000beef";
 const OTHER_VALIDATOR = "VAL_0000feed";
@@ -80,12 +99,19 @@ describe("research schema migrations", () => {
     await expect(applySql(db, sql, "statement expected to be rejected")).rejects.toThrow(pattern);
   }
 
-  /** Inserts a validation, which most tests need but none should inherit from the seed. */
+  /**
+   * Inserts a validation, which most tests need but none should inherit from the seed.
+   *
+   * `correct_natural` with BOTH translations, because that is the only legal shape for an evaluable
+   * row. Several tests below are about uniqueness, foreign keys, or RLS, and their rows must not
+   * trip the bilingual constraint on the way in — the failure they assert has to be the one they name.
+   */
   async function insertValidation(id: string, validatorId: string, entryId: string): Promise<void> {
     await applySql(
       db,
-      `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-       values ('${id}', '${validatorId}', '${entryId}', '${BATCH}', 'correct_natural')`,
+      `insert into public.validations
+         (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+       values ('${id}', '${validatorId}', '${entryId}', '${BATCH}', 'correct_natural'${BOTH_TRANSLATIONS.values})`,
       `validation ${id}`,
     );
   }
@@ -96,14 +122,17 @@ describe("research schema migrations", () => {
       // missing or empty directory and still succeeds, so a count check would pass on a broken
       // path or a typo'd glob and report a green test for the wrong reason.
       const migrations = await readMigrations();
-      expect(migrations.map((m: MigrationFile) => m.filename)).toEqual([EXPECTED_MIGRATION]);
+      expect(migrations.map((m: MigrationFile) => m.filename)).toEqual([...EXPECTED_MIGRATIONS]);
     });
 
-    it("applies exactly the expected migration", async () => {
+    it("applies exactly the expected migrations, in filename order", async () => {
+      // The ORDER is asserted, not just the set. The bilingual migration's precondition must run
+      // before its column drop, and `applyMigrations` is what establishes filename ordering — so
+      // the ordering claim is only meaningful if it is read off the applier's actual output.
       const fresh = await createTestDatabase();
       try {
         const { applied } = await applyMigrations(fresh);
-        expect(applied).toEqual([EXPECTED_MIGRATION]);
+        expect(applied).toEqual([...EXPECTED_MIGRATIONS]);
       } finally {
         await closeTestDatabase(fresh);
       }
@@ -246,9 +275,14 @@ describe("research schema migrations", () => {
   describe("the at-most-once constraint", () => {
     it("rejects a second validation for the same validator and entry", async () => {
       await insertValidation("res_01", VALIDATOR, ENTRY);
+      // Carries both translations, because otherwise the bilingual constraint would fire first and
+      // the named uniqueness constraint would never be reached. The pattern allows the generic
+      // "duplicate key" phrase too, since a unique violation is reported as `23505` with that
+      // wording, but the test is about uniqueness and must not pass on the wrong failure.
       await expectRejected(
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_02', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural')`,
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_02', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural'${BOTH_TRANSLATIONS.values})`,
         /validations_validator_entry_unique|duplicate key/i,
       );
     });
@@ -289,10 +323,17 @@ describe("research schema migrations", () => {
   });
 
   describe("vocabulary checks", () => {
+    // Rows here are about the evaluation and proficiency VOCABULARIES, not about translations, so
+    // each one supplies `BOTH_TRANSLATIONS` to satisfy the bilingual constraint. Without it the
+    // insert would be rejected by `validations_bilingual_pair_required_when_evaluable` and the
+    // pattern below would fail for a reason unrelated to the rule it names — which is precisely
+    // how a test can be green while proving nothing.
+
     it("rejects an evaluation outside the four approved values", async () => {
       await expectRejected(
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_bad', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'looks_fine')`,
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_bad', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'looks_fine'${BOTH_TRANSLATIONS.values})`,
         /validations_evaluation_known/i,
       );
     });
@@ -301,8 +342,9 @@ describe("research schema migrations", () => {
       // A guard against the exact mistake of writing the check against `Correct and natural`,
       // which would make the column unwritable for every real validator.
       await expectRejected(
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_label', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'Correct and natural')`,
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_label', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'Correct and natural'${BOTH_TRANSLATIONS.values})`,
         /validations_evaluation_known/i,
       );
     });
@@ -314,50 +356,78 @@ describe("research schema migrations", () => {
       );
     });
 
-    it("rejects an unapproved translation language", async () => {
-      await expectRejected(
-        `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_language, translation_text)
-         values ('res_tr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'french', 'bonjour')`,
-        /validations_translation_language_known/i,
-      );
-    });
-
     it("rejects a blank correction, so absent and empty stay distinguishable", async () => {
       // `''` would make "the validator supplied a correction" indistinguishable from "the
       // validator left it blank" — the exact ambiguity normalizeResearchText returns null to avoid.
       await expectRejected(
         `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
-         values ('res_blank', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'incorrect', '   ')`,
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction${BOTH_TRANSLATIONS.columns})
+         values ('res_blank', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'incorrect', '   '${BOTH_TRANSLATIONS.values})`,
         /validations_corrected_instruction_not_blank/i,
       );
     });
 
+    it("rejects a blank translation, so absent and empty stay distinguishable", async () => {
+      // The same defect class as the blank correction, on each of the two new columns. A bare
+      // `is not null` check would accept `'   '`, which carries no translation at all while
+      // satisfying a not-null test — the reason these constraints use `btrim`.
+      for (const column of ["english_translation", "filipino_translation"]) {
+        const other =
+          column === "english_translation" ? "filipino_translation" : "english_translation";
+        const constraint =
+          column === "english_translation"
+            ? "validations_english_translation_not_blank"
+            : "validations_filipino_translation_not_blank";
+        await expectRejected(
+          `insert into public.validations
+             (id, validator_id, dataset_entry_id, batch_id, evaluation, ${column}, ${other})
+           values ('res_bt', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', '   ', 'Ride the jeep.')`,
+          new RegExp(constraint, "i"),
+        );
+      }
+    });
+
     it("accepts every approved evaluation, so the checks cannot be too strict to write", async () => {
       // The other direction, and the one a set of rejection tests can never establish. If
-      // `not_confident` were dropped from the proficiency list, or one evaluation value were
-      // misspelled in the CHECK, every rejection test above would stay green while a real
-      // validator's answer became unwritable. The values are read from the shipped domain module
-      // rather than retyped here, so this also fails if the SQL and the domain ever disagree.
+      // `cannot_evaluate` were dropped, or one evaluation value were misspelled in the CHECK, every
+      // rejection test above would stay green while a real validator's answer became unwritable.
+      // The values are read from the shipped domain module rather than retyped here, so this also
+      // fails if the SQL and the domain ever disagree.
+      //
+      // Each row is built from the DOMAIN PREDICATES, not from a retyped table, so it is what a
+      // real validator's submission looks like for that evaluation: the correction only where
+      // `isCorrectionRequired`, and both translations only where `requiresBilingualTranslations`. That is
+      // why this test is also the strongest cross-check that the two agree.
       for (const [index, choice] of EVALUATION_CHOICES.entries()) {
         const entryId = `OD_1${String(index).padStart(3, "0")}`;
         const other = `VAL_00${String(index).padStart(4, "0")}`;
-        // The correction branch is the domain predicate, not a retyped list, so this row is what a
-        // real validator's submission looks like for that evaluation — which is the whole point.
-        const correction = isCorrectionRequired(choice.value) ? `, corrected_instruction` : "";
-        const correctionValue = isCorrectionRequired(choice.value)
-          ? `, 'Ti sentro ti ospital.'`
-          : "";
+        const correction = isCorrectionRequired(choice.value);
+        const translated = requiresBilingualTranslations(choice.value);
+        const columns = [
+          "id",
+          "validator_id",
+          "dataset_entry_id",
+          "batch_id",
+          "evaluation",
+          ...(correction ? ["corrected_instruction"] : []),
+          ...(translated ? ["english_translation", "filipino_translation"] : []),
+        ].join(", ");
+        const values = [
+          `'res_${choice.value}'`,
+          `'${other}'`,
+          `'${entryId}'`,
+          `'${BATCH}'`,
+          `'${choice.value}'`,
+          ...(correction ? ["'Ti sentro ti ospital.'"] : []),
+          ...(translated ? ["'Ride the jeep.'", "'Sumakay ng jeep.'"] : []),
+        ].join(", ");
         await applySql(
           db,
           `insert into public.validators (id) values ('${other}');
            insert into public.dataset_entries
              (id, category, instruction, source_payload)
            values ('${entryId}', 'origin_destination', 'Ti sentro.', '{"id":"${entryId}"}'::jsonb);
-           insert into public.validations
-             (id, validator_id, dataset_entry_id, batch_id, evaluation${correction})
-           values ('res_${choice.value}', '${other}', '${entryId}', '${BATCH}', '${choice.value}'${correctionValue});`,
+           insert into public.validations (${columns}) values (${values});`,
           `approved evaluation ${choice.value}`,
         );
       }
@@ -399,36 +469,64 @@ describe("research schema migrations", () => {
       );
     });
 
-    it("accepts both approved translation languages, so the vocabulary check is not over-tight", async () => {
-      for (const [index, choice] of TRANSLATION_LANGUAGE_CHOICES.entries()) {
-        const other = `VAL_02${String(index).padStart(4, "0")}`;
-        const entryId = `OD_2${String(index).padStart(3, "0")}`;
-        await applySql(
-          db,
-          `insert into public.validators (id) values ('${other}');
-           insert into public.dataset_entries
-             (id, category, instruction, source_payload)
-           values ('${entryId}', 'origin_destination', 'Ti sentro.', '{"id":"${entryId}"}'::jsonb);
-           insert into public.validations
-             (id, validator_id, dataset_entry_id, batch_id, evaluation,
-              translation_language, translation_text)
-           values ('res_tr_${choice.value}', '${other}', '${entryId}', '${BATCH}',
-                   'correct_natural', '${choice.value}', 'Ride the jeep.');`,
-          `approved translation language ${choice.value}`,
-        );
-      }
-      const rows = await query<{ translation_language: string }>(
+    it("names both required translation columns, and no language column at all", async () => {
+      // A CLOSED column set for `validations`, because the removal of the language discriminator is
+      // the structural claim this change makes: the languages are named by the columns that hold
+      // them, so a request naming a language is unrepresentable rather than rejected at runtime.
+      //
+      // Proved by reading `pg_catalog` rather than by inserting into a column that should not exist,
+      // because the absence of a column is not an error to catch — a wrong column name simply fails
+      // with "column does not exist", which is a statement about the query, not about the schema.
+      const columns = await query<{ column_name: string }>(
         db,
-        "select translation_language from public.validations where translation_language is not null",
+        `select column_name from information_schema.columns
+         where table_schema = 'public' and table_name = 'validations' order by column_name`,
       );
-      expect(rows.map((row) => row.translation_language).sort()).toEqual(
-        TRANSLATION_LANGUAGE_CHOICES.map((choice) => choice.value).sort(),
+
+      expect(columns.map((row) => row.column_name)).toEqual([
+        "batch_id",
+        "corrected_instruction",
+        "created_at",
+        "dataset_entry_id",
+        "english_translation",
+        "evaluation",
+        "filipino_translation",
+        "id",
+        "updated_at",
+        "validator_id",
+      ]);
+    });
+
+    it("accepts both required translations, so the not-blank checks are not over-tight", async () => {
+      // The direction a rejection test can never establish. If a `btrim` check were written
+      // around a `lower()` or a length bound, real translations could become unwritable while
+      // every rejection test stayed green.
+      //
+      // Self-contained: it writes its own row rather than reading one another test inserted, so it
+      // cannot pass or fail depending on test order. That dependence was a real defect once — an
+      // earlier version read `res_ok1`, which only exists after a different test has run.
+      await applySql(
+        db,
+        `insert into public.validators (id) values ('VAL_0000b001');
+         insert into public.validation_batches (id, validator_id) values ('batch_b1', 'VAL_0000b001');
+         insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_both', 'VAL_0000b001', '${OTHER_ENTRY}', 'batch_b1', 'correct_natural'${BOTH_TRANSLATIONS.values});`,
+        "a complete bilingual response",
       );
+      const rows = await query<{ english_translation: string; filipino_translation: string }>(
+        db,
+        `select english_translation, filipino_translation from public.validations where id = $1`,
+        ["res_both"],
+      );
+      expect(rows[0]?.english_translation).toBe("Ride the jeep.");
+      expect(rows[0]?.filipino_translation).toBe("Sumakay ng jeep.");
     });
 
     it("accepts absent optional fields", async () => {
-      // A validator may exist before screening, and `cannot_evaluate` carries no correction and
-      // no translation. Both are legitimate, so neither may be blocked by a not-null constraint.
+      // A validator may exist before screening, and `cannot_evaluate` carries no correction and no
+      // translations. Both are legitimate, so neither may be blocked by a not-null constraint. This
+      // is the one evaluable-looking row that has NULL translations, and it must be legal.
       await applySql(
         db,
         `insert into public.validators (id, ilocano_proficiency) values ('VAL_0000cafe', null)`,
@@ -440,6 +538,16 @@ describe("research schema migrations", () => {
          values ('res_05', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate')`,
         "cannot_evaluate with no correction and no translation",
       );
+      const stored = await query<{
+        english_translation: string | null;
+        filipino_translation: string | null;
+      }>(
+        db,
+        "select english_translation, filipino_translation from public.validations where id = $1",
+        ["res_05"],
+      );
+      expect(stored[0]?.english_translation).toBeNull();
+      expect(stored[0]?.filipino_translation).toBeNull();
     });
   });
 
@@ -449,11 +557,17 @@ describe("research schema migrations", () => {
     // such combination, in both directions: the combination the domain refuses is rejected, and
     // the combination it allows is accepted. A test that only proved the rejection would pass
     // against a constraint that was accidentally far too strict.
+    //
+    // Every rejection below matches the constraint BY NAME. A generic `check constraint` pattern
+    // would pass when a different constraint fired, which is how a green test can prove nothing —
+    // and with two constraints now covering the bilingual rule, a generic pattern would very likely
+    // pass for the wrong reason.
 
     it("requires a correction for the two evaluations that demand one", async () => {
       await expectRejected(
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_nocorr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'incorrect')`,
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_nocorr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'incorrect'${BOTH_TRANSLATIONS.values})`,
         /validations_correction_matches_evaluation/i,
       );
     });
@@ -463,27 +577,48 @@ describe("research schema migrations", () => {
       // result would be a `correct_natural` record carrying an edit nobody asked for.
       await expectRejected(
         `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
-         values ('res_extra', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Gemahen ti jeep.')`,
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction${BOTH_TRANSLATIONS.columns})
+         values ('res_extra', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Gemahen ti jeep.'${BOTH_TRANSLATIONS.values})`,
         /validations_correction_matches_evaluation/i,
       );
     });
 
-    it("rejects a translation language with no text, which the per-column checks allow", async () => {
+    // The four bilingual quadrants. Each is the one the new cross-column constraint exists to
+    // reject, and each is matched to the NAMED constraint that rejects it.
+
+    it("rejects an evaluable validation with NO translations, which the not-blank checks allow", async () => {
+      // The requirement this whole change exists to enforce. Both not-blank checks pass vacuously
+      // on NULL, so without the cross-column constraint an evaluable row with no translation at all
+      // would be storable — and would be counted toward coverage by any row-counting bug.
+      //
+      // Named constraint, and the name is load-bearing: the two bilingual constraints are
+      // deliberately non-overlapping so that exactly one of them rejects any given bad row.
+      // PostgreSQL does not guarantee the order CHECK constraints are evaluated in, so overlapping
+      // constraints would make this assertion an accident of the planner. That is not hypothetical
+      // — the first draft of the migration used a single equivalence constraint, and this test
+      // failed because the other one fired.
       await expectRejected(
-        `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_language)
-         values ('res_halftr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'english')`,
-        /validations_translation_pair/i,
+        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
+         values ('res_notr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural')`,
+        /validations_bilingual_pair_required_when_evaluable/i,
       );
     });
 
-    it("rejects translation text with no language", async () => {
+    it("rejects an evaluable validation with only the English translation", async () => {
       await expectRejected(
         `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_text)
-         values ('res_halftr2', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Ride the jeep.')`,
-        /validations_translation_pair/i,
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation)
+         values ('res_enonly', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Ride the jeep.')`,
+        /validations_bilingual_pair_required_when_evaluable/i,
+      );
+    });
+
+    it("rejects an evaluable validation with only the Filipino translation", async () => {
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, filipino_translation)
+         values ('res_filonly', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Sumakay ng jeep.')`,
+        /validations_bilingual_pair_required_when_evaluable/i,
       );
     });
 
@@ -492,28 +627,69 @@ describe("research schema migrations", () => {
       // is no reliable content to translate. The domain refuses this combination outright.
       await expectRejected(
         `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, translation_language, translation_text)
-         values ('res_cantr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'english', 'Ride the jeep.')`,
-        /validations_translation_requires_evaluable_content/i,
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation, filipino_translation)
+         values ('res_cantr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate',
+                 'Ride the jeep.', 'Sumakay ng jeep.')`,
+        /validations_bilingual_pair_absent_when_unevaluable/i,
+      );
+    });
+
+    it("rejects an English-only translation on a cannot_evaluate response", async () => {
+      // The other half of the pair below, and the row the `domain-contracts` delta calls out by name
+      // ("A response missing one translation does not qualify"). Asserting only the Filipino-only
+      // direction would leave the English-only one untested, and the two are symmetric by
+      // construction rather than by observation — the constraint's predicate tests them alike, but
+      // "alike in the source" is not evidence that a typo in one column name is caught.
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation)
+         values ('res_cantr1', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'Ride the jeep.')`,
+        /validations_bilingual_pair_absent_when_unevaluable/i,
+      );
+    });
+
+    it("rejects a Filipino-only translation on a cannot_evaluate response", async () => {
+      // The half-translated `cannot_evaluate` row, which is the case a single
+      // "both must be null" test would miss.
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, filipino_translation)
+         values ('res_cantr2', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'Sumakay ng jeep.')`,
+        /validations_bilingual_pair_absent_when_unevaluable/i,
+      );
+    });
+
+    it("rejects a correction on a cannot_evaluate response, independently of translations", async () => {
+      // Asserted with both translations absent, so the correction constraint is what fires. If the
+      // bilingual constraint were removed entirely this test would still pass — that is the point:
+      // the two rules are independent, and a change to one must not be masked by the other.
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
+         values ('res_cancorr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'Gemahen ti jeep.')`,
+        /validations_correction_matches_evaluation/i,
       );
     });
 
     it("accepts every combination the domain allows", async () => {
       // The other direction, and the reason the constraints are worth having: a schema that
-      // refused these would destroy real research responses, which is the worse failure.
+      // refused these would destroy real research responses, which is the worse failure. All four
+      // accepted shapes, one row each.
       await applySql(
         db,
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_ok1', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural'),
-                ('res_ok2', '${OTHER_VALIDATOR}', '${OTHER_ENTRY}', '${BATCH}_2', 'cannot_evaluate');
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_ok1', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural'${BOTH_TRANSLATIONS.values});
+         insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
+         values ('res_ok2', '${OTHER_VALIDATOR}', '${OTHER_ENTRY}', '${BATCH}_2', 'cannot_evaluate');
          insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
-         values ('res_ok3', '${VALIDATOR}', '${OTHER_ENTRY}', '${BATCH}', 'incorrect', 'Gemahen ti jeep.');
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction${BOTH_TRANSLATIONS.columns})
+         values ('res_ok3', '${VALIDATOR}', '${OTHER_ENTRY}', '${BATCH}', 'incorrect',
+                 'Gemahen ti jeep.'${BOTH_TRANSLATIONS.values});
          insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation,
-            corrected_instruction, translation_language, translation_text)
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction${BOTH_TRANSLATIONS.columns})
          values ('res_ok4', '${OTHER_VALIDATOR}', '${ENTRY}', '${BATCH}_2', 'correct_unnatural',
-                 'Gemahen ti jeep.', 'filipino', 'Sumakay ng jeep.');`,
+                 'Gemahen ti jeep.'${BOTH_TRANSLATIONS.values});`,
         "the accepted combinations",
       );
       const rows = await query<{ count: number }>(
@@ -531,24 +707,27 @@ describe("research schema migrations", () => {
 
     it("rejects a validation for a validator that does not exist", async () => {
       await expectRejected(
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_orphan', 'VAL_deadbeef', '${ENTRY}', '${BATCH}', 'correct_natural')`,
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_orphan', 'VAL_deadbeef', '${ENTRY}', '${BATCH}', 'correct_natural'${BOTH_TRANSLATIONS.values})`,
         /foreign key constraint "validations_validator_id_fkey"/i,
       );
     });
 
     it("rejects a validation for a dataset entry that does not exist", async () => {
       await expectRejected(
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_orphan2', '${VALIDATOR}', 'OD_9999', '${BATCH}', 'correct_natural')`,
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_orphan2', '${VALIDATOR}', 'OD_9999', '${BATCH}', 'correct_natural'${BOTH_TRANSLATIONS.values})`,
         /foreign key constraint "validations_dataset_entry_id_fkey"/i,
       );
     });
 
     it("rejects a validation for a batch that does not exist", async () => {
       await expectRejected(
-        `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
-         values ('res_orphan3', '${VALIDATOR}', '${ENTRY}', 'batch_nope', 'correct_natural')`,
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
+         values ('res_orphan3', '${VALIDATOR}', '${ENTRY}', 'batch_nope', 'correct_natural'${BOTH_TRANSLATIONS.values})`,
         /foreign key constraint "validations_batch_id_fkey"/i,
       );
     });
@@ -581,8 +760,8 @@ describe("research schema migrations", () => {
       await applySql(
         db,
         `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
-         values ('res_corr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_unnatural', '${corrected}')`,
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction${BOTH_TRANSLATIONS.columns})
+         values ('res_corr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_unnatural', '${corrected}'${BOTH_TRANSLATIONS.values})`,
         "validation with a correction",
       );
 
@@ -595,21 +774,36 @@ describe("research schema migrations", () => {
       expect(rows[0]?.instruction).not.toBe(corrected);
     });
 
-    it("stores the correction on the validation, not on the entry", async () => {
+    it("stores the correction and both translations on the validation, not on the entry", async () => {
       const corrected = "Iti Baguio Athletic Bowl ti ayanko ita, napay a duman.";
       await applySql(
         db,
         `insert into public.validations
-           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction)
-         values ('res_corr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_unnatural', '${corrected}')`,
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction${BOTH_TRANSLATIONS.columns})
+         values ('res_corr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_unnatural', '${corrected}'${BOTH_TRANSLATIONS.values})`,
         "validation with a correction",
       );
-      const rows = await query<{ corrected_instruction: string }>(
+      const rows = await query<{
+        corrected_instruction: string;
+        english_translation: string;
+        filipino_translation: string;
+      }>(
         db,
-        "select corrected_instruction from public.validations where id = $1",
+        "select corrected_instruction, english_translation, filipino_translation from public.validations where id = $1",
         ["res_corr"],
       );
       expect(rows[0]?.corrected_instruction).toBe(corrected);
+      expect(rows[0]?.english_translation).toBe("Ride the jeep.");
+      expect(rows[0]?.filipino_translation).toBe("Sumakay ng jeep.");
+
+      // And the immutable source is still untouched after storing all three pieces of response data.
+      const entries = await query<{ instruction: string; source_payload: Record<string, unknown> }>(
+        db,
+        "select instruction, source_payload from public.dataset_entries where id = $1",
+        [ENTRY],
+      );
+      expect(entries[0]?.instruction).toBe(INSTRUCTION);
+      expect(entries[0]?.source_payload).toEqual({ id: ENTRY });
     });
 
     it("keeps the source payload intact alongside the typed columns", async () => {
