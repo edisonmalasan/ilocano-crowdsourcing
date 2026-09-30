@@ -404,6 +404,17 @@ a checker, or weaken the check until it passes. The third is to assert what is a
 mark and an `earlier version` / `claimed` / `falsified` marker on the same line. A check that
 enumerates what *is* allowed is nearly as informative as one that forbids what is not.
 
+**A GREEN predicate that asks for a string the reporter never prints fails every control, and that
+looks like "the repo is broken" rather than "my predicate is wrong."** A verification round scored
+all five of its negative controls RED against a baseline of `Tests 9 passed (9)`, because the
+predicate required the literal `0 failed` — which vitest does not print on a passing run. The
+correct predicate is **"the Tests line contains no `failed`, and zero test names are reported as
+failed"**, not "the Tests line says zero failed". The same round's `-t` filters matched nothing
+because a quoted filter name passed through `cmd /d /s /c` is not quoted when it reaches the child,
+so every control reported `9 skipped` — a shape indistinguishable from "no tests matched" and, again,
+from a pass if only the exit code is read. **A control that reports a shape you did not expect is
+evidence about your harness, not about the code under test.**
+
 - `pnpm-workspace.yaml` sets `allowBuilds: { esbuild: true, sharp: false, unrs-resolver: false }`. `esbuild` **must** stay `true` or Vitest cannot start; `sharp` and `unrs-resolver` install scripts are deliberately disabled because nothing in this project uses them.
 - `.gitattributes` sets `* text=auto eol=lf` (and `*.ico binary`). This is load-bearing, not cosmetic. `.editorconfig` already declared `end_of_line = lf`, but `.editorconfig` only configures editors and **git does not read it**. Before this file existed, line endings were decided by each contributor's local `core.autocrlf`, which broke two things on a machine with `core.autocrlf=true`: `pnpm run format:check` failed on all 56 formatter-owned files, and a fresh clone produced `data/ilocano-synthetic-data.json` with CRLF and SHA-256 `152ae7e8…` against the guard's expected `39f757e6…`. **The immutability guard hashes the working-tree file, so without this file it fails for autocrlf users and passes on CI.** If your local checks suddenly disagree with CI, check your line endings before suspecting the code.
 - Line endings were normalized after `.gitattributes` was added, so **an existing checkout created before that commit still has CRLF working-tree files and will keep failing `format:check` until it is re-normalized**: `git add --renormalize .` then re-checkout the affected files, or simply re-clone. A `git pull` alone will not rewrite the working tree.

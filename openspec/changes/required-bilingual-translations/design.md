@@ -122,8 +122,19 @@ can distinguish "the check ran first" from "the drop ran first".
 So the ordering is now enforced *in the artefact* rather than argued in a comment. The precondition
 first asserts that `translation_language` still exists and raises by name if it does not, so a
 drop-then-check file fails loudly instead of quietly proceeding from a schema that has already lost
-the columns holding the data. That assertion is genuinely red-on-reversal, and it is the only one of
-the file's tests that measures the ordering rather than the outcome.
+the columns holding the data. That assertion is genuinely red-on-reversal.
+
+**It is not "the only test that measures the ordering", and no test here measures the ordering.**
+Measured under a real reversal: three of the file's nine tests go red — the ordering test and both
+of the "applies cleanly" tests — because the columns are gone before the precondition looks. An
+earlier draft of this section claimed the ordering test was the only one that measures the ordering
+rather than the outcome, which is the same retracted proposition the test file's header now
+forbids, and it was wrong twice over: nothing observes statement order, and exclusivity was measured
+false. What the ordering test asserts is the precondition's behaviour when the columns are already
+absent — the hazardous *condition*, reached by applying the migration twice, not the order in which
+statements ran. Remove the assertion while keeping the reversal and exactly one test still goes red,
+with an unexplained `column "translation_language" of relation "validations" does not exist` arriving
+after the data is already gone; that is what the assertion buys.
 
 The residual hazard is narrow and is recorded rather than hidden: a runner that applies this file
 outside a transaction and reaches the drop before the precondition would lose the columns. No such

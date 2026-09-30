@@ -404,7 +404,15 @@ describe("the original migration is not modified", () => {
     // on a terminator rather than on a bare substring. `toContain("create table public.validations")`
     // is satisfied by `create table public.validations_renamed (`, which was measured: renaming
     // either `validations` or `validation_sessions` left this test GREEN. Every statement in the
-    // file ends its table name with ` (` so the paren is the terminator, and a rename moves it.
+    // file ends its table name with ` (` so the paren is the terminator, and a bare rename moves it.
+    //
+    // THE LIMIT OF THIS ANCHOR, stated because an earlier version of this comment overstated it:
+    // the assertion is `toContain` over file TEXT and cannot distinguish a statement from a comment.
+    // Renaming the table while leaving a decoy copy of the anchor string in a comment keeps this
+    // test GREEN — measured. So the paren catches the realistic failure (a bare rename) and the
+    // guard remains textual, satisfied by the string appearing anywhere in the file. The hash
+    // constant is what catches the decoy case, and closing that properly would mean parsing SQL,
+    // which is a worse trade than the failure it would prevent.
     const contents = await readFile(path.join(MIGRATIONS_DIR, ORIGINAL_MIGRATION), "utf8");
 
     expect(contents).toContain("translation_language");

@@ -123,6 +123,15 @@
       control per probe and a three-way GREEN/RED/DID-NOT-RUN outcome. Two rounds have now been
       required, and the round-2 CRITICAL was a comment, which is the direct result of a claim
       originally asserted in prose that no test could falsify.
+      **Round 3 (targeted at round 2's five dispositions only): PASS-WITH-FINDINGS.** Every number
+      the verifier attacked reproduced exactly on first measurement — 5-of-9, 3-of-9, 1-of-9, both
+      table-anchor cases, all three shuffle forms, 596/83, and the `main` hash. Its one substantive
+      finding was that the retracted ordering proposition had **survived in `design.md`**, the very
+      file the repaired header points readers to, so the header pointed at a retraction of the
+      retraction; repaired, along with an overstated comment about the new anchor's strength and a
+      typo this change introduced in `docs/ROADMAP.md`. Three rounds were required because each found
+      prose the previous round did not touch, and in every round the finding was in **prose rather
+      than in behaviour** — this change's numbers and tests survived falsification every time.
 
 ## Out of scope for this change
 
