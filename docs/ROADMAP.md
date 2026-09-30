@@ -11,14 +11,14 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase | Phases 1-4 are **CLOSED and ARCHIVED** — *nine* changes: `project-foundation`, `od-dataset-schema-and-import`, `landing-and-screening`, `required-bilingual-translations`, `coverage-aware-allocation`, `research-schema-guarantee-coverage`, `interface-localization`, `thin-shell-call-sites`, and the `pending-state-specification` proposal (merged as PR #36). **A tenth change, `pending-state-specification`, is in its Apply stage**, and it is specification-only: it adds no product behaviour, it specifies the pending-state behaviour that already ships. **Phase 5, the core per-entry validation experience, has not started.** |
-| Current OpenSpec change | `pending-state-specification` — **Apply stage in progress** on `test/pending-state-specification-apply`. It is **specification-only**: no `src/`, no `tests/`, and no `supabase/` file is touched, which `git diff main --numstat -- src/ tests/ supabase/` confirms is empty. Two capabilities each gain one requirement — `design-system` (*a control whose action is in flight exposes a pending state*) and `validator-onboarding` (*an onboarding write is single-flight, and completed onboarding moves to `/ready`*) — and it is deliberately **not** `skip_specs`, because the delta **is** the content. |
-| Lifecycle state | `applying` — `pending-state-specification`. Proposal merged as **PR #36** (`cb347cf`); deltas written; **11 of 17 task boxes ticked**, each with its evidence recorded beside it. `openspec change validate pending-state-specification --strict` **exit 0**, `isPlanningComplete: true`. **The gap, re-derived from the nine in-force specs rather than inherited:** **181 scenarios and 50 requirement blocks**, of which **0 of 181 scenarios** mandate that a control be inert while a write is in flight. The predicate was proved able to match by running it against a synthetic scenario that plainly satisfies it, because a 0 from a predicate that cannot match is indistinguishable from a 0 that means something. **`/ready` appears in 0 of the 9 specs**, and the word boundary is load-bearing: a loose substring check finds `ready` **13** times, all 13 inside other words such as *already*. **The predecessor's `15` is unreproducible**, and its own correction had the right count and the wrong members — re-derived against six definitions, the highest reach is **3**, and two of those definitions produce two **different sets of 3**. **Two instruments agreeing on a count over different members is worse than a mismatched count, because it reads as confirmation**, so the deltas quote only the scenario count, which is definition-independent, and name blocks individually wherever any count is given. The full vocabulary table is in the **Active Blockers** bullet below. |
+| Current roadmap phase | Phases 1-4 are **CLOSED and ARCHIVED** — *nine* changes: `project-foundation`, `od-dataset-schema-and-import`, `landing-and-screening`, `required-bilingual-translations`, `coverage-aware-allocation`, `research-schema-guarantee-coverage`, `interface-localization`, `thin-shell-call-sites`, and `pending-state-specification` (proposal merged as PR #36, apply merged as PR #37). **A tenth change, `pending-state-specification`, is at its Sync stage.** **Phase 5, the core per-entry validation experience, has not started.** |
+| Current OpenSpec change | `pending-state-specification` — **Sync stage complete on `docs/pending-state-specification-spec-sync`**. It is **specification-only**: no `src/`, `tests/`, or `supabase/` file is or has ever been touched. Two capabilities each gained exactly one requirement — `design-system` (*a control whose action is in flight exposes a pending state*) and `validator-onboarding` (*an onboarding write is single-flight, and completed onboarding moves to `/ready`*) — and the capability count stayed at **9**. |
+| Lifecycle state | `synced` — `pending-state-specification`. **14 of 17 task boxes ticked** at Apply (PR #37, merged `bf76173`), with 17 of 17 now that 6.1 and 6.2 are discharged; **6.3 (Archive) remains**. `openspec validate --specs --strict` exits 0 with **9 passed, 0 failed**, and `openspec change validate pending-state-specification --strict` exits 0. **The sync was verified as a difference, not read off afterwards:** the seven untouched spec files are **byte-identical** to their pre-Sync state, and inside the two that changed **no pre-existing requirement or scenario was altered or lost** — every block hashed before and after. Totals reconcile exactly: **50 + 2 = 52 requirements**, **181 + 12 = 193 scenarios**. **The spec gap flipped because of this sync and for no other reason:** all **5** post-Sync inert-during-a-write scenarios and all **7** `/ready` mentions were required to fall inside an *added* block, and **0 fall outside** — so the predecessor's "0 of 181" described the real prior state rather than a gap that was never there. One defect was found in that verification and is worth the record: it restated the gap predicate as three terms when the real one is two, and its `WRITE` term already contains the in-flight words, so the stricter question returned **4** instead of **5**. **Guessing a predicate from its prose is not a shortcut around restating it — it is a way of inventing a different predicate while appearing to check the same one**, and it was caught only because two instruments disagreed and the disagreement was treated as the finding. |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`); **`landing-and-screening` Apply (PR #12, `e1390ba`)**; `landing-and-screening` Sync + Archive (PR #13, `411e18f`); bilingual requirements into this roadmap (PR #14, `523cfd0`); bilingual proposal (PR #15, `d4c40cd`); status reconciliation (PR #16, `0c042ed`); bilingual requirements into `AGENTS.md` `AGENTS.md` durable rules); `required-bilingual-translations` proposal (PR #15, `d4c40cd`), implementation (PR #18, `438b691`), spec sync (PR #19, `aaa8810`) and archive (PR #20, `76fd7a3`); `coverage-aware-allocation` proposal (PR #22, `d2fd596`), implementation (PR #23, `1134da9`), spec sync (PR #24, `304d450`) and archive (PR #25, `174fa2c`); `research-schema-guarantee-coverage` proposal (PR #26, `8ae4bc3`), spec sync (PR #27, `06dc92e`) and archive (PR #28, `5788383`); `interface-localization` proposal (PR #29, `50ff9eb`), implementation (PR #30, `2aaca46`), spec sync (PR #31, `f03bf65`) and archive (PR #32, `794aaf5`); **`thin-shell-call-sites` proposal (PR #33, `b5b59b2`) and implementation (PR #34, `73ab777`)**, archive in flight in this PR |
 | Last merged OpenSpec stage | **#34 — `73ab777` — `feat/thin-shell-call-sites` (the Apply stage)**, merged 2026-10-01. **This row was stale by one stage** — it said #33, which is this change's own *proposal* — and that is the fourth time this row has falsified itself after being corrected for the same reason in #9 and #10. The commit was **read back from `gh`, verified to be a merge commit, and verified to be an ancestor of `origin/main`**, because a row claiming a merge that did not happen is the same defect one stage earlier. **The Archive stage is this PR and is NOT yet merged, so no archive merge commit is named here** — naming one before it exists is the false claim this row has already made once. Superseding merges, all merge commits: #34 `73ab777`, #33 `b5b59b2`, #32 `794aaf5`, #31 `f03bf65`, #30 `2aaca46`, #29 `50ff9eb`, #28 `5788383`, #27 `06dc92e`, #26 `8ae4bc3`, #25 `174fa2c`, #24 `304d450`, #23 `1134da9`, #22 `d2fd596`, #21 `788bbbb`, #20 `76fd7a3`. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
 | Doc-only PRs since that stage | **None since #34**, which is the last merged OpenSpec stage, and this PR is the Archive stage of the same change. This row previously described PRs #14-#17, all of which changed tracked artifacts rather than being documentation-only. **No documentation-only PR has been opened at any point in this repository**, and the claim is kept because it is a standing fact about how this project is worked rather than a transient count |
-| Next eligible objective | **First: finish this change's lifecycle** — commit and merge the Apply stage, then **Sync** (required: this change carries deltas, and the sync must take `design-system` from 5 to 6 requirements and `validator-onboarding` from 7 to 8 while the capability count stays at **9**), then **Archive**. **Then Phase 5**, the core per-entry validation experience (`validation-experience`): per-entry validation, conditional correction, two required translations, and immediate persistence. It extends the existing `dom` Vitest project (3 files / 15 tests) and the same copy catalog, and it is the first consumer of the two requirements this change specifies. **Carried into Phase 5 from the guard audit:** `RV-4` still has no behavioural guard, and the repair is to drive a *failed* resume through an effect in the `dom` project instead of asserting on source text — a source scan proves a string is present, never that the code behaves as the string suggests. |
-| Blockers | **No Supabase project credentials** — `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are all absent, so `getServerEnv()` throws on every real request and **no Supabase client has ever been constructed**. PostgREST wire behaviour, `code === "23505"`, and RLS as enforced by the Supabase API gateway are therefore unverified. **No browser has ever rendered any screen** — `happy-dom` is synthetic, so nothing in this repository counts as visual verification and a human still has to look at the pages. **CI integrity: four runs have reported `success` with steps absent from the step list**, on both jobs, including one where the dataset-guard job reported success having run only *Install pnpm*. `gh run rerun` fixed every instance and it has not recurred since, but **merge on the log, never on the checkmark.** **No failing CI run has ever been observed**, so "a failing test blocks the pull request" remains inferred from the required checks rather than demonstrated. **No `docker`, `psql`, or `supabase` CLI** locally. **Known pre-existing defect, out of scope:** `tests/integration/pglite-harness.test.ts` is order-dependent under `--sequence.shuffle` (4 of 11), confirmed untouched by `git diff`. |
+| Next eligible objective | **First: Archive `pending-state-specification`** on `chore/archive-pending-state-specification`, adding the ninth row to `Archived Changes` **by hand, with the absence of an automated guard for that table stated in the row itself** — `grep -r ROADMAP tests/` returns no matches, and a table with no guard is a check whose absence is invisible. **Then Phase 5**, the core per-entry validation experience (`validation-experience`): per-entry validation, conditional correction, two required translations, and immediate persistence. It extends the existing `dom` Vitest project (3 files / 15 tests) and the same copy catalog, and it is the first consumer of the two requirements this change put into force. **Carried into Phase 5:** `RV-4` still has no behavioural guard, and the repair is to drive a *failed* resume through an effect in the `dom` project rather than asserting on source text — a source scan proves a string is present, never that the code behaves as the string suggests. Phase 5 is also where the one vacuous scenario in `design-system` becomes observable, since it is the first phase expected to disable a control for *unavailability* rather than in-flight work. |
+| Blockers | **No Supabase project credentials** — `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are all absent, so `getServerEnv()` throws on every real request and **no Supabase client has ever been constructed**. PostgREST wire behaviour, `code === "23505"`, and RLS as enforced by the Supabase API gateway are therefore unverified. **No browser has ever rendered any screen** — `happy-dom` is synthetic, so nothing in this repository counts as visual verification and a human still has to look at the pages. **CI integrity: four runs have reported `success` with steps absent from the step list**, on both jobs, including one where the dataset-guard job reported success having run only *Install pnpm*. `gh run rerun` fixed every instance and it has not recurred since, but **merge on the log, never on the checkmark.** **No failing CI run has ever been observed**, so "a failing test blocks the pull request" remains inferred from the required checks rather than demonstrated. **No `docker`, `psql`, or `supabase` CLI** locally. **Known pre-existing defect, out of scope:** `tests/integration/pglite-harness.test.ts` is order-dependent under `--sequence.shuffle` (4 of 11), confirmed untouched by `git diff`. **Found during this stage, not fixed here:** `openspec/specs/research-schema/spec.md` contains **two different scenarios sharing the heading "The refusal is proven, not assumed"** (lines 252 and 344, with unrelated bodies), so scenario headings are **not unique identifiers** in these specs. Any tool keying on them must key by name **and** occurrence, or a change that deletes one of the pair reads as no change at all. Renaming a heading in a third capability is outside this change's scope. |
 
 > **Why this block splits "OpenSpec stage" from "PR".** A block that names "the last merged PR"
 > is self-referential: the PR that corrects the number is itself a PR, and its own merge falsifies
@@ -309,30 +309,39 @@ What this evidence explicitly does **not** establish:
   "WHEN a control is disabled THEN it does not respond to activation", which uses the whole
   vocabulary while specifying only the *semantics* of a disabled control, conditioned on *when* it is
   disabled. The measurement:
-  — **0 of the 181 scenarios** in the nine specs **mandate** a control be inert while a write is
-    in flight. That count is definition-independent, and it is the figure the finding rests on.
-    *This bullet originally read "**15** requirement blocks"; that figure came from the verification
-    pass and **does not reproduce** — probed against six definitions of both terms, the highest count
-    any reached is 3. The `0` re-derives **exactly**, so the conclusion is unchanged and the
-    supporting count moved.*
+  — **CLOSED for the onboarding flow by `pending-state-specification`, measured before and after.**
+    **Before**, re-derived from the nine in-force specs with no reference to any inherited figure:
+    **0 of 181 scenarios** mandated that a control be inert while a write is in flight, and
+    `/ready` was named in **0 of the 9** specs. **After** the Sync: **5 of 193**, and `/ready` is named
+    7 times. **The load-bearing check is not that those numbers rose — it is that every one of them
+    lives inside the requirement this change added.** All 5 inert-during-a-write scenarios and all 7
+    `/ready` mentions were required to fall inside an added block; **0 fall outside**. Had any sat in
+    a pre-existing requirement, the "0" would have described a state that never existed, the proposal
+    would have been wrong, and this entry would be describing a gap that was never there. Measured as
+    a **membership** claim, not a count, because a count confirms itself and a membership does not.
 
-    **A correction to that correction, and it is the more important half.** Re-deriving the count a
-    second time showed the *membership* was wrong while the count stayed right — the hardest kind of
-    half-correctness to notice, because the number confirms itself. Two definitions of the vocabulary
-    produce two **different sets of 3**:
+    **The retraction history is kept, and its figures are labelled as pre-Sync.** This bullet once read
+    "**15** requirement blocks". That figure **does not reproduce** — probed against six definitions of
+    both terms, the highest any reached was 3. Its own correction then had the **right count and the
+    wrong members**: two definitions yield two **different sets of 3**.
 
-    | Vocabulary | Count | Members |
+    | Vocabulary | Pre-Sync count | Members |
     | --- | --- | --- |
     | `pending`, `in progress`, `submitting`, `writing`, `busy` | 3 | `domain-contracts`, `interface-localization`, `validator-onboarding` |
     | `disable`, `disabled`, `inert` | 1 | `design-system` |
 
-    The version above named `design-system` and omitted `interface-localization`, which matches only
-    on the phrase *"the response in progress"* in a scenario about switching language — nothing to do
-    with a control being inert during a write. `design-system` was in fact the better match (it says
-    *"and disabled states"*), so the earlier correction was right in spirit and wrong in enumeration.
+    The superseded version named `design-system` and omitted `interface-localization`, which matches
+    only on the phrase *"the response in progress"* in a scenario about switching language — nothing to
+    do with a control being inert during a write. `design-system` was the better match (it says *"and
+    disabled states"*), so the earlier correction was right in spirit and wrong in enumeration.
     **Two instruments agreeing on a count over different members is worse than a mismatched count,
-    because it reads as confirmation.** The deltas therefore quote only the scenario count, which is
+    because it reads as confirmation.** That is why the deltas quote only the scenario count, which is
     definition-independent, and name blocks individually wherever any count is given.
+
+    **Post-Sync, the same definitions now reach 5 blocks and 10 scenarios, highest reach 10** — and the
+    increase is exactly the two new blocks. **A count measured after the change measures the change**,
+    which is the concrete reason the pre-Sync figures are labelled as pre-Sync instead of quietly
+    deleted or quietly left standing as if still current.
     The three **pending-state bindings** (`SF-1`
     options inert mid-write, `SF-2` Continue disabled mid-write, `SF-3` skip disabled mid-write) are
     specified **nowhere**, and `SF-2` is one of the sites `design.md` classes as **critical**.
@@ -356,11 +365,24 @@ What this evidence explicitly does **not** establish:
     (Propose merged as PR #36, `cb347cf`; Apply in progress on this branch). It was sequenced
     **before Phase 5** for the stated reason: Phase 5 extends these same components, so the behaviour
     being extended should be the behaviour that is specified.
-  — *This blocker stays open until **Sync** lands.* The two deltas exist in
-    `openspec/changes/pending-state-specification/specs/` and are **not yet in `openspec/specs/`**, so
-    the counts above are still literally true today. Closing this bullet is a Sync-stage action,
-    measured there by `design-system` rising from 5 to 6 and `validator-onboarding` from 7 to 8 while
-    the capability count stays at **9**.
+  — *Closed at **Sync**, and closed only for what it actually closed.* The blocker is not deleted: the
+    four items under *what this change does **not** close* below stay open, and so does the vacuous
+    scenario beneath them. What is closed is the **specification gap** — the one this change was created
+    to close.
+    Measured at Sync, by the transition itself rather than by a comment about it:
+    `design-system` **5 → 6** requirements, `validator-onboarding` **7 → 8**, capability count
+    unchanged at **9**, scenarios **181 → 193** (+7 and +5, the two deltas' own scenario counts). The
+    other **seven** spec files are **byte-identical** to their pre-Sync state, and within the two that
+    changed, **no pre-existing requirement or scenario was altered or lost** — each block hashed
+    before and after. A count that rose correctly is also compatible with a sync that reworded a
+    neighbour, and the per-block hashes are what rule that out.
+    **The new requirements were synced verbatim, block quote included** — 28 and 13 block-quote lines
+    respectively, none lost. That was measured before merging rather than assumed, because all **47**
+    block-quote lines in the entire in-force spec set already sit inside `## Requirements` sections, in
+    these same three capabilities, as notes of exactly this genre. Had the convention been the other
+    way, "tidying" the quote out of the merged spec would have deleted the sentence saying one of the
+    new scenarios **must not be cited as existing coverage** — the sentence this very entry depends on.
+    **A merge that improves the document's shape by discarding its caveats is not a merge.**
   — *Four things this change explicitly does **not** close*, recorded so that a reader cannot infer
     them from its title or from the fact that it archived:
     - **`RV-4` still has only a source-scan guard.** "A failed resume must report" is asserted by
@@ -380,8 +402,8 @@ What this evidence explicitly does **not** establish:
     - **No browser has ever rendered any screen in this project.** `happy-dom` is a synthetic DOM, so
       every rendering claim anywhere in this ledger is a claim about generated markup and never about
       a pixel. **No human has looked at a page.**
-  — *One scenario in the new `design-system` delta is vacuous today, and the delta says so on its own
-    face.* "Pending is distinguishable from unavailable" **cannot fail**, because no control in `src/`
+  — *One scenario in the new `design-system` requirement is vacuous today, and the spec says so on its own
+    face.* It reached the in-force specs at Sync, and it still cannot fail: "Pending is distinguishable, because no control in `src/`
     is currently disabled for unavailability as opposed to in-flight work — there is no second control
     to confuse pending with, so the scenario has no witness and is not coverage. It is specified
     anyway, because the requirement states the design system's contract rather than today's
