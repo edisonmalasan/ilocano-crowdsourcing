@@ -838,9 +838,19 @@ reproduction method, and this section is the correction.**
       specifying only the *semantics* of a disabled control, conditioned on *when* it is disabled.
 
       ```
-      15  requirement blocks mention the pending-state vocabulary
-      0   scenarios MANDATE a control be disabled while a write is in flight
-      0   hits for the route /ready across all nine specs
+      0    of 181 scenarios MANDATE a control be disabled while a write is in flight
+      3    requirement blocks mention the vocabulary, none of them about a disabled control
+            (accessible interactive states; dataset not mutated; landing/screening/enrollment)
+      0    files name the route /ready across all nine specs
+      9 specs, 50 requirement blocks, 181 scenarios in force at measurement time
+
+      **The `15 requirement blocks` figure this block originally recorded does NOT reproduce.**
+      Re-derived here against six plausible definitions of both terms, the highest count any reached
+      was 3. The `0` re-derives EXACTLY, which is what the finding rests on, so the conclusion stands
+      and the supporting count moved. Recorded rather than dropped, because this is the first
+      recorded instance in this repository of the verification pass itself introducing a figure that
+      the next reader had to re-derive — the lesson that an enumeration is a claim to be re-derived
+      rather than a fact to be inherited, applied to a number written minutes earlier.
       ```
 
       So the claim held for **`SF-4`** and **`RV-1`**, was **partial** for `SF-5`/`RV-2` (onward

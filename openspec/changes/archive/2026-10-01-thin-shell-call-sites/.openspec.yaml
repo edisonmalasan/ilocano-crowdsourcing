@@ -1,0 +1,57 @@
+schema: spec-driven
+created: 2026-10-01
+# No spec delta, and deliberately so.
+#
+# Nothing about the product's behaviour changes here: every one of the seven call sites this
+# change repairs ALREADY behaves correctly, and this change adds the tests that pin them.
+#
+# A note on what those sites are pinned AGAINST, because an earlier draft of this comment got it
+# wrong and an independent verification pass is what caught it.
+# An earlier draft claimed all seven are "ALREADY specified by `validator-onboarding` (7 requirements
+# / 24 scenarios)". Those two numbers are TRUE - re-measured just now, `validator-onboarding` holds
+# exactly 7 requirements and 24 scenarios - but the CONCLUSION drawn from them was false. Counting a
+# spec because it has requirements, or because it uses the right words, is not the same as it
+# mandating the behaviour.
+#
+# Re-derived by enumerating the requirement blocks of all NINE in-force specs rather than by
+# grepping for vocabulary, because `design-system` contains "WHEN a control is disabled THEN it
+# does not respond to activation" - which uses the whole pending-state vocabulary while specifying
+# only the SEMANTICS of a disabled control, conditioned on WHEN it is disabled:
+#
+#   SF-4, RV-1   specified  - "Screening precedes identity creation", "An existing validator is
+#                             restored"
+#   SF-5, RV-2   PARTIAL    - onward movement is implied by the Req-1 sequence, but NO spec names
+#                             the route: "/ready" appears in 0 of the nine specs
+#   SF-1, SF-2, SF-3   NOT        - no requirement in any of the nine specs mandates the
+#                                    options, Continue, or skip control being disabled while a
+#                                    write is in flight. SF-2 is classed CRITICAL in design.md.
+#
+# Decisive measurement, and the part that survives scrutiny: **0 of the 181 scenarios in the nine
+# specs mandate a control being disabled while a write is in flight.** Exactly 3 requirement
+# blocks mention the vocabulary at all, and every one is about something else:
+#
+#   design-system        accessible interactive states      (3 scenarios, 0 mid-write words)
+#   domain-contracts     the dataset is not mutated        (1 scenario,  says 'submitting')
+#   validator-onboarding landing, screening, enrollment    (3 scenarios, says 'submitting')
+#
+# So the claim held for two sites, was overstated for two more, and was simply wrong for three.
+#
+# THE FLAG IS UNAFFECTED, and the correction is to this rationale rather than to `skip_specs`.
+# The flag is correct on OpenSpec's own criterion, which is that no spec-level behaviour changed,
+# and `git diff main --numstat -- src/` is 0 lines. What was wrong was the supporting claim.
+#
+# The gap itself is PRE-EXISTING - existing product behaviour carrying no requirement, not new
+# behaviour introduced here - so it is recorded rather than closed here, in `proposal.md`,
+# `tasks.md` 5.3, and `docs/ROADMAP.md`'s Active Blockers. Closing it means a change that
+# SPECIFIES behaviour which already exists, and it is worth doing before Phase 5 extends these
+# same components.
+#
+# `openspec instructions specs` is explicit on this point - a change with no spec-level behaviour
+# change "must set `skip_specs: true`" and must not "invent a requirement just to satisfy
+# validation". Adding a requirement of the shape "a test must exist for X" would be exactly that:
+# a requirement invented to fill a validator, not one derived from an observed behaviour.
+#
+# The durable, generalisable lesson from this investigation is a *verification* lesson, and this
+# repository already has the right home for those: `AGENTS.md`. It is not spec-governed, and it
+# records the six prior vacuous-guard findings in the same terms. See task 4.2.
+skip_specs: true
