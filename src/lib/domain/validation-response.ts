@@ -40,39 +40,31 @@ export function isCorrectionRequired(evaluation: ValidationEvaluation): boolean 
 }
 
 /**
- * True for every evaluation that supplies translatable content, which is every evaluation except
- * `cannot_evaluate`.
+ * True when the evaluation requires an English translation *and* a Filipino translation of the
+ * validated Ilocano sentence: every evaluation except `cannot_evaluate`.
  *
  * A "cannot confidently evaluate" response supplies no reliable content, so requiring a translation
  * of it would force the validator to translate something they just said they could not judge. The
  * saved text would be an unverified rendering of an unverified judgement, which is worse than no
  * translation at all.
  *
- * For the three evaluations this returns true for, both translations are REQUIRED, not optional.
- * There is no "skip" and there is no choice of language: see `requiresBilingualTranslations`.
- */
-export function isTranslatableContent(evaluation: ValidationEvaluation): boolean {
-  return evaluation !== "cannot_evaluate";
-}
-
-/**
- * True when the evaluation requires an English translation *and* a Filipino translation of the
- * validated Ilocano sentence.
+ * For the three evaluations this returns true for, both translations are REQUIRED. There is no
+ * "skip" and there is no choice of language.
  *
- * This is the same predicate as {@link isTranslatableContent}, and it exists separately because the
- * two questions read very differently at the call sites. `isTranslatableContent` answers "is there
- * anything here worth translating?", which is what a form asks when deciding whether to render the
- * translation fields at all. `requiresBilingualTranslations` answers "may the validator continue
- * without this?", which is what a submit-time check asks. They are kept as two names over one
- * implementation so neither call site can quietly adopt the weaker reading — a caller that wanted
- * "is a translation permitted?" would be able to use the wrong one, and nothing would say so.
+ * ONE FUNCTION, NOT TWO. An earlier draft exported this alongside `isTranslatableContent` — "is there
+ * anything here worth translating?" for the form, "must I collect both?" for submit — as two names
+ * over one implementation on the reasoning that a caller might want the weaker reading. There is no
+ * weaker reading to want: under this methodology a translation is never merely permitted, so the
+ * second name had no caller outside its own tests. Two identical exports where one is unused is a
+ * speculative abstraction, and `AGENTS.md` prohibits those.
  *
- * They will diverge when the methodology allows a third target language, at which point
- * "permitted" and "required" stop being the same question. That is the moment to split the logic,
- * and it is recorded here so the split is a decision rather than an accident.
+ * The names will genuinely diverge if the methodology ever adds a third target language, at which
+ * point "which fields should the form render" and "which must be non-empty" stop being the same
+ * question. That change should introduce the split deliberately, with a caller attached, rather than
+ * this file carrying a placeholder in advance.
  */
 export function requiresBilingualTranslations(evaluation: ValidationEvaluation): boolean {
-  return isTranslatableContent(evaluation);
+  return evaluation !== "cannot_evaluate";
 }
 
 /**
@@ -131,11 +123,52 @@ function isPresent(value: string | null | undefined): boolean {
  *     would duplicate the schema and let the two disagree.
  */
 export function isQualifyingValidation(response: QualifyingResponseShape): boolean {
-  if (!isTranslatableContent(response.evaluation)) {
+  if (!requiresBilingualTranslations(response.evaluation)) {
     return false;
   }
   if (isCorrectionRequired(response.evaluation) && !isPresent(response.correctedInstruction)) {
     return false;
   }
   return isPresent(response.englishTranslation) && isPresent(response.filipinoTranslation);
+}
+
+/**
+ * A stored response together with the validator it belongs to, which coverage needs and
+ * {@link isQualifyingValidation} deliberately does not look at.
+ */
+export interface CoverageResponseShape extends QualifyingResponseShape {
+  readonly validatorId: string;
+}
+
+/**
+ * How many qualifying completed validations a set of stored responses represents, counting each
+ * distinct anonymous validator once.
+ *
+ * This is the whole of coverage, in one function, and it is the second half of the rule that
+ * {@link isQualifyingValidation} cannot express. That predicate answers a question about ONE
+ * response; coverage is a question about a SET, and a set has two properties a single response does
+ * not. Both are why a raw `count(*)` is not a proxy for coverage:
+ *
+ *   1. **Not every response qualifies.** A `cannot_evaluate` response, a partial response, and a
+ *      legacy row missing a translation all count zero. Three stored rows of which only two carry
+ *      a complete bilingual pair is TWO, and the entry stays in the allocation pool.
+ *   2. **A validator counts once.** The methodology retires an entry at the configured number of
+ *      qualifying validations from DISTINCT validators, so two responses from the same person are
+ *      one validator's opinion, not two. The database makes this structurally impossible for one
+ *      entry via `UNIQUE (validator_id, dataset_entry_id)`, and this function does not rely on
+ *      that: it deduplicates explicitly, because a consumer that assembled its list some other way
+ *      would otherwise silently get a different answer from the same rule.
+ *
+ * The duplicate branch is unreachable through the repository and is tested anyway. An unreachable
+ * branch that is never exercised is an untested branch, and a research metric's failure mode is
+ * being quietly wrong rather than being loudly broken.
+ */
+export function countQualifyingValidations(responses: readonly CoverageResponseShape[]): number {
+  const validators = new Set<string>();
+
+  for (const response of responses) {
+    if (isQualifyingValidation(response)) validators.add(response.validatorId);
+  }
+
+  return validators.size;
 }

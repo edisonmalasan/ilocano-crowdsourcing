@@ -70,7 +70,15 @@ one, so it belongs to the thesis team:
 argument rather than a stylistic choice. If the precondition passes, every pre-existing row is
 `cannot_evaluate`, and such a row held no translation data at all — so dropping
 `translation_language` and `translation_text` discards nothing. Dropping first and checking second
-would be lossy without anyone noticing.
+would be lossy.
+
+The ordering is also enforced _in the SQL_, not merely asserted here: the precondition first checks
+that `translation_language` still exists and raises by name if it does not, so a file that dropped
+first fails loudly instead of proceeding from a schema that has already lost the columns holding the
+data. That matters because the ordering is **not** verifiable from the outside — the harness applies
+each migration file inside a transaction, so a `raise exception` rolls the file back and an earlier
+drop is undone with it. A test asserting "the columns are still there after the refusal" therefore
+passes either way. See `design.md` section 3 in the `required-bilingual-translations` change.
 
 **Two independent guards, not one.** It is worth knowing that the migration would refuse even
 without the precondition: `ADD CONSTRAINT ... CHECK` validates existing rows. The precondition is

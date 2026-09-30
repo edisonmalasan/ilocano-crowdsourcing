@@ -68,22 +68,51 @@
 
 ## 5. Documentation
 
-- [ ] 5.1 `AGENTS.md`: update only the affected durable product rules. Do not touch Git, OpenSpec,
+- [x] 5.1 `AGENTS.md`: update only the affected durable product rules. Do not touch Git, OpenSpec,
       testing, security, orchestration, design, or boundaries sections.
-- [ ] 5.2 `docs/ROADMAP.md`: confirm the phases, MVP scope, and definition of success match what
+      **No change was required.** PR #17 already reconciled the approved requirements into the
+      durable product rules, and this change implements what they say rather than changing them:
+      "Research translations are required, bilingual, and never skipped" and the coverage-target
+      paragraph already describe the required bilingual pair and the qualifying-coverage
+      definition. The AGENTS.md edits this change *does* make are in **Repository tooling notes**,
+      which is a lessons section rather than a durable product rule, and they were required by the
+      task 6.5 verification round rather than by this task. No prohibited section was touched.
+- [x] 5.2 `docs/ROADMAP.md`: confirm the phases, MVP scope, and definition of success match what
       this change implements rather than what the proposal intended.
-- [ ] 5.3 Record the migration precondition as an operational note: what it refuses, why, and what
+      **Confirmed, no change needed.** The bilingual requirements were reconciled into the roadmap
+      in PR #14, and section 17 (MVP Scope) and section 20 (Definition of Success) already describe
+      the required bilingual pair and the qualifying-coverage target. Only the `## Project Status`
+      ledger was updated, which is the root orchestrator's status record rather than a phase
+      definition.
+- [x] 5.3 Record the migration precondition as an operational note: what it refuses, why, and what
       an operator should do if it fires.
+      Done in `supabase/migrations/README.md` under "Operational note: the bilingual migration
+      refuses rather than repairs", including the three-way resolution the thesis team owns and
+      the reason the refusal is lossless when it passes.
 
 ## 6. Verification stage
 
-- [ ] 6.1 `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck` exit 0.
-- [ ] 6.2 `pnpm run test:unit` and `pnpm run test:integration` exit 0, with counts read off the
-      command output and recorded.
-- [ ] 6.3 `pnpm run build` reports `Compiled successfully`.
-- [ ] 6.4 `openspec validate required-bilingual-translations --strict` exits 0.
+- [x] 6.1 `pnpm run lint`, `pnpm run format:check`, `pnpm run typecheck` exit 0.
+- [x] 6.2 `pnpm run test:unit` and `pnpm run test:integration` exit 0, with counts read off the
+      command output and recorded: **22 files / 596 tests** unit and **5 files / 83 tests**
+      integration, both read off the reporter's own summary lines and not inferred from an exit
+      code. Also re-run: the dataset guard at **1 file / 7 tests** under the literal command from
+      `.github/workflows/verify.yml`, and `research-schema.test.ts` + `migration-precondition.test.ts`
+      together at **2 files / 56 tests** under two different `--sequence.shuffle` seeds so no result
+      depends on test order.
+- [x] 6.3 `pnpm run build` reports `Compiled successfully`.
+- [x] 6.4 `openspec validate required-bilingual-translations --strict` exits 0, and
+      `openspec validate --specs --strict` reports 7 passed / 0 failed.
 - [ ] 6.5 Independent verification round, with findings classified and blocking defects repaired
       before merge.
+      **Round 1: FAIL** — 2 CRITICAL, 4 WARNING, 2 NOTE, returned by a verification subagent against
+      commit `436e7ae`. All 8 blocking findings are repaired in the follow-up commit (see
+      `design.md` for the two claims that measurement falsified, and `AGENTS.md` -> *Repository
+      tooling notes* for the four generalizable lessons). Six of the repairs are absence or
+      guard assertions and were **probe-confirmed red on reversal** by an in-memory
+      `readFileSync`/`writeFileSync` harness, with one result re-checked outside the harness after
+      the harness reported `exit=-1` with no captured summary line. Round 2 is the next step and
+      must report before this box is checked.
 
 ## Out of scope for this change
 
@@ -100,6 +129,11 @@
   representation this change exists to remove, and `design.md` records why a child table is the
   right shape *if* a third language is ever required. Do not reintroduce the discriminator.
 - Task 2.2 and task 2.6 have an ordering dependency. The check must precede the drop, or the drop
-  becomes lossy without anyone noticing.
+  becomes lossy without anyone noticing. **Correct, but this note previously implied the ordering
+  was verifiable by the tests and it is not**: the PGlite harness applies each file in a
+  transaction, so rollback erases the evidence of the drop and an "after the refusal the columns are
+  still there" assertion passes with the ordering reversed. The order is therefore enforced *in the
+  artefact* by the precondition's own `translation_language`-still-exists assertion, which is
+  red-on-reversal. See `design.md` section 3.
 - Task 4.6 is not pedantry. A generic `check constraint` matcher passes when the wrong constraint
   fires, which produces a green test that proves nothing.

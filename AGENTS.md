@@ -193,8 +193,8 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 
 | Command | Result | Proves | Does **not** prove |
 | --- | --- | --- | --- |
-| `pnpm run test:unit` | exit 0 — **22 files, 514 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation and browser-local storage, env validation, the Supabase client construction paths, the repository interface seam, the dataset source parser against the real 600-record file, a source-text scan proving the import path contains no filesystem write/rename/delete call, the row-to-domain and error-mapping logic of the three Supabase repositories, the write-intake boundary, the design-token contract, rendered-markup accessibility assertions, the onboarding **pure** decision functions, the Server Action **core** against injected fakes, the Server Action **wrapper** driven with the environment module throwing, rendered-markup assertions on the three public routes including the neutrality of every screening option's **rendered** class, and source-text assertions on the screening form's write wiring - specifically that the minted identifier is persisted, that a restored validator returns instead of falling through to enrolling, that the resume path contains no repository write, that the skip control records a decline rather than a fabricated proficiency level, and that a rejected submission forwards its error to the field. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env`, `write-intake`, and the route tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. `repositories-supabase.test.ts` stubs the `server-only` marker, so it proves the translation and error-mapping logic against a recording fake and nothing at all about PostgREST, the wire protocol, or whether `.in()`/`.range()`/`count: "exact"` behave as assumed. The filesystem scan and `screening-form-wiring.test.ts` are **textual** scans of named files: they prove a string is or is not present, not that the code behaves as the string suggests, and a cosmetic rename will fail them. Nothing here clicked a button, ran an effect, or started a transition — `renderToStaticMarkup` cannot — so the submit-time resume check, the `localStorage` write, and navigation to `/ready` are proven by pure functions and source assertions, never by an executed flow. |
-| `pnpm run test:integration` | exit 0 — **4 files, 69 tests passed** | A real PostgreSQL engine (PGlite/WASM) boots, applies SQL in filename order inside per-file transactions, and rolls back. Applied from the production `supabase/migrations/` directory, it proves the six research tables with closed column sets, the named `UNIQUE (validator_id, dataset_entry_id)` constraint, the vocabulary checks in **both** directions (each approved value accepted, each unapproved one rejected, and each rejection matched against the named constraint), the not-blank and cross-column consistency checks, the foreign keys and their `on delete` behavior, the indexes, and the measured deny-all RLS posture (a `select`, `update`, or `delete` as `anon`/`authenticated` returns or affects zero rows **without an error**; an `insert` is rejected with an RLS error; `service_role` still reads). It also proves that all 600 parsed records import idempotently into that schema with each stored instruction byte-identical to the source, that the stored `source_payload` matches the source record as a value, and that `data/ilocano-synthetic-data.json` is unchanged by the whole run by record count, ID set, and SHA-256, with the guard proved to fail on a deliberately altered copy. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the database engine evaluates them*. It does **not** cover Supabase Auth, Storage, Realtime, PostgREST behaviour, or RLS as enforced by the Supabase API gateway, and it is not a substitute for verifying against a real project. Each integration test file manages its own state: the import tests reset and import per test, verified by running the file under two different `--sequence.shuffle` seeds, so no result depends on test order — but each still shares one database per file, not one per test. |
+| `pnpm run test:unit` | exit 0 — **22 files, 596 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation and browser-local storage, env validation, the Supabase client construction paths, the repository interface seam, the dataset source parser against the real 600-record file, a source-text scan proving the import path contains no filesystem write/rename/delete call, the row-to-domain and error-mapping logic of the three Supabase repositories, the write-intake boundary, the design-token contract, rendered-markup accessibility assertions, the onboarding **pure** decision functions, the Server Action **core** against injected fakes, the Server Action **wrapper** driven with the environment module throwing, rendered-markup assertions on the three public routes including the neutrality of every screening option's **rendered** class, and source-text assertions on the screening form's write wiring - specifically that the minted identifier is persisted, that a restored validator returns instead of falling through to enrolling, that the resume path contains no repository write, that the skip control records a decline rather than a fabricated proficiency level, and that a rejected submission forwards its error to the field. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env`, `write-intake`, and the route tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. `repositories-supabase.test.ts` stubs the `server-only` marker, so it proves the translation and error-mapping logic against a recording fake and nothing at all about PostgREST, the wire protocol, or whether `.in()`/`.range()`/`count: "exact"` behave as assumed. The filesystem scan and `screening-form-wiring.test.ts` are **textual** scans of named files: they prove a string is or is not present, not that the code behaves as the string suggests, and a cosmetic rename will fail them. Nothing here clicked a button, ran an effect, or started a transition — `renderToStaticMarkup` cannot — so the submit-time resume check, the `localStorage` write, and navigation to `/ready` are proven by pure functions and source assertions, never by an executed flow. |
+| `pnpm run test:integration` | exit 0 — **5 files, 83 tests passed** | A real PostgreSQL engine (PGlite/WASM) boots, applies SQL in filename order inside per-file transactions, and rolls back. Applied from the production `supabase/migrations/` directory, it proves the six research tables with closed column sets, the named `UNIQUE (validator_id, dataset_entry_id)` constraint, the vocabulary checks in **both** directions (each approved value accepted, each unapproved one rejected, and each rejection matched against the named constraint), the not-blank and cross-column consistency checks, the foreign keys and their `on delete` behavior, the indexes, and the measured deny-all RLS posture (a `select`, `update`, or `delete` as `anon`/`authenticated` returns or affects zero rows **without an error**; an `insert` is rejected with an RLS error; `service_role` still reads). It also proves that all 600 parsed records import idempotently into that schema with each stored instruction byte-identical to the source, that the stored `source_payload` matches the source record as a value, and that `data/ilocano-synthetic-data.json` is unchanged by the whole run by record count, ID set, and SHA-256, with the guard proved to fail on a deliberately altered copy. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the database engine evaluates them*. It does **not** cover Supabase Auth, Storage, Realtime, PostgREST behaviour, or RLS as enforced by the Supabase API gateway, and it is not a substitute for verifying against a real project. Each integration test file manages its own state: the import tests reset and import per test, verified by running the file under two different `--sequence.shuffle` seeds, so no result depends on test order — but each still shares one database per file, not one per test. |
 
 #### Build and runtime
 
@@ -325,6 +325,36 @@ reads exactly like a code problem and is not one. **`pnpm install --frozen-lockf
 `git status` plus a dataset hash confirm the source tree was untouched.** A `readFile`/`writeFile`
 probe harness with an in-memory restore never touches a junction and cannot cause this.
 
+**A probe harness that cannot spawn its own command will score every probe green, and the failure
+mode is identical to a working one.** This is the fourth occurrence of the defect recorded above and
+the first in this project's own repair work, so it is worth stating exactly what happened. Six
+absence probes were run to confirm that the guards added to
+`tests/integration/migration-precondition.test.ts` and `tests/unit/domain-helpers.test.ts` go red on
+reversal. All six reported `exit=-1` and `CONFIRMED`. **None of them ran.** On Windows,
+`execFileSync('pnpm', ...)` without a shell cannot spawn the `pnpm` shim and fails with `ENOENT`, so
+`error.status` is `undefined`, and the harness scored "the command never ran" as "the test went red".
+The tell was in the output the harness did print: every probe reported `<no summary line>`, because a
+command that never started produces no vitest summary to capture. That is the same signature as the
+three silent empty matches recorded above, and the lesson is the same one: **an empty capture is
+indistinguishable from a run that reported nothing, so the harness must distinguish the two.**
+
+The rebuilt harness does three things, all load-bearing. It spawns with `shell: true`, which is the
+only way `pnpm` runs here at all. It returns a **three-way** outcome — `GREEN`, `RED`, or
+`DID-NOT-RUN` — where `DID-NOT-RUN` covers a spawn error, a signal, and any exit status other than 0
+or 1, and **`DID-NOT-RUN` is refused rather than scored as red**. And it runs a **negative control**
+before every probe: the un-mutated file must be `GREEN`, or a red-after-mutation result means
+nothing. Re-run that way, all six probes confirmed with real summaries (`9 passed` -> `1 failed`,
+`17 passed` -> `1 failed`, `155 passed` -> `1 failed`), and the two hash-guard probes pass for
+different reasons on purpose: renaming an index proves the guard catches a semantic edit, and adding
+a comment line proves it measures **bytes** rather than meaning.
+
+**A probe that cannot build its own mutation must report INCONCLUSIVE, and it will.** The first
+ordering probe tried to locate the drop statement by the shape of the comment above it, matched
+nothing, and correctly reported `INCONCLUSIVE` rather than reporting a pass — the outcome to insist
+on when a probe cannot do its job. Rewritten to locate the drop by its own two-line statement, it
+built a real reversal (drop moved from offset 12130 to 4691, ahead of the precondition at 5333) and
+the suite went red on the ordering guard by name.
+
 What CI still does not prove: nothing about Supabase, and nothing about visual rendering.
 
 #### Repository tooling notes
@@ -354,13 +384,39 @@ What CI still does not prove: nothing about Supabase, and nothing about visual r
   `correct_natural` and only the English translation populated, both sides are false, the equality
   *holds*, and the half-translated row is accepted. An equivalence says two conditions agree; it
   cannot say either is individually required. The fix is one constraint per *direction*
-  (`required_when_evaluable`, `absent_when_unevaluable`), and they must be **non-overlapping** so
-  that exactly one constraint rejects any given bad row. PostgreSQL does not promise the order
+  (`required_when_evaluable`, `absent_when_unevaluable`), and those two must be **non-overlapping**
+  so that at most one *of them* rejects a given bad row. PostgreSQL does not promise the order
   `CHECK` constraints are evaluated in, so with two constraints rejecting the same row the name in
   the error message is whichever the planner reached first — and every test that matches a
   constraint *by name* would then be asserting an accident. This was measured, not reasoned: the
   first draft used the equivalence, and the test for "an evaluable row with no translations" failed
-  because the wrong constraint fired.
+  because the wrong constraint fired. **Scope the claim to those two constraints**: 80 of the 108
+  `(evaluation x correction x english x filipino)` cells are in fact rejected by more than one
+  constraint, because the per-column `not_blank` checks and the correction constraint overlap them
+  freely. Nothing depends on those being unique, and every name-matched rejection test was checked
+  against the overlap list and sits on a cell where exactly one constraint fires. An earlier draft
+  of this entry claimed uniqueness across *all* constraints, which is false.
+- **A test that asserts "no data was lost" inside a transaction cannot detect statement order.** The
+  PGlite harness applies each migration file inside one transaction, so a `raise exception` rolls
+  the whole file back and a `drop column` that had already executed is undone with it. A test
+  asserting "the superseded columns are still there after the refusal" therefore passes with the
+  drop moved *above* the precondition — confirmed by probe, not by reasoning. The lesson generalises
+  past SQL: **inside a transaction, rollback erases the evidence of everything before the failure**,
+  so no post-failure assertion can distinguish "the check ran first" from "the drop ran first".
+  When order matters, the order must be enforced *in the artefact* — here the precondition asserts
+  that `translation_language` still exists and raises by name if it does not, so a drop-then-check
+  file fails loudly instead of proceeding from a schema that has already lost the data. A test for
+  that is genuinely red-on-reversal, and it is the only one of the two that measures anything.
+- **A content-hash guard must compare against a FIXED constant, never against a mutated copy of the
+  file under test.** An earlier version of `tests/integration/migration-precondition.test.ts`
+  computed `sha256(contents)` and then asserted `sha256(contents.replace(...)) !== digest`. That is
+  satisfied by construction for *any* file content; it proved only that SHA-256 is not the identity
+  function. A probe confirmed it: renaming an index inside `20260930120000_research_schema.sql` left
+  all 7 tests green. Derive the expected digest from the base branch with
+  `git cat-file -p main:<path> | node -e "..."` and paste it in as a constant, exactly as
+  `immutable-dataset.test.ts` already does for the dataset blob. **A PowerShell pipeline in the
+  middle re-encodes the bytes** — the same blob produced three different hashes through `git show >`
+  (UTF-16LE with a BOM) versus `git cat-file`. Do the hashing in Node with no shell in the path.
 - **`ADD CONSTRAINT ... CHECK` validates existing rows, so a schema-level guard is not the same as a
   migration-level precondition.** `supabase/migrations/20260930160000_required_bilingual_translations.sql`
   raises explicitly when pre-existing evaluable rows are present, and the obvious negative control —

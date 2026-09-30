@@ -108,12 +108,33 @@ specific ways:
 row is `cannot_evaluate`, and a `cannot_evaluate` row under the old schema is permitted to carry no
 translation. Such a row therefore holds **no translation data at all**, so dropping
 `translation_language` and `translation_text` discards nothing. The drop is not merely tolerable
-after the check; it is information-preserving *because of* the check. That ordering — check, then
-drop — is load-bearing and must not be reversed.
+after the check; it is information-preserving *because of* the check.
+
+**The ordering is correct, but not for the reason originally claimed here, and that matters.** An
+earlier draft of this section said check-then-drop "is load-bearing and must not be reversed", on the
+reasoning that a reversal would be lossy "without anyone noticing". A probe falsified that: the
+PGlite harness applies each migration file inside a transaction, so the `raise exception` rolls the
+file back and a drop that had already executed is undone with it. **A test asserting "the columns
+are still there after the refusal" passes with the ordering reversed**, because rollback erases the
+evidence of everything that ran before the failure. Inside a transaction, no post-failure assertion
+can distinguish "the check ran first" from "the drop ran first".
+
+So the ordering is now enforced *in the artefact* rather than argued in a comment. The precondition
+first asserts that `translation_language` still exists and raises by name if it does not, so a
+drop-then-check file fails loudly instead of quietly proceeding from a schema that has already lost
+the columns holding the data. That assertion is genuinely red-on-reversal, and it is the only one of
+the file's tests that measures the ordering rather than the outcome.
+
+The residual hazard is narrow and is recorded rather than hidden: a runner that applies this file
+outside a transaction and reaches the drop before the precondition would lose the columns. No such
+runner is configured in this repository — not the PGlite harness, not `supabase db push`.
 
 **It is testable.** The precondition is a behaviour, so it gets a test: seed a violating row, run
 the migration set, assert it fails, and assert the named reason. A migration that cannot be shown
-to refuse is a migration whose safety argument is untested.
+to refuse is a migration whose safety argument is untested. Note that the *obvious* negative control
+for that test does not work: `ADD CONSTRAINT ... CHECK` validates existing rows, so the migration
+refuses even with the precondition deleted. The control therefore asserts the difference the
+precondition actually makes — an explanatory failure rather than a bare constraint violation.
 
 ### 4. The qualifying-validation predicate lives in one pure function
 
@@ -135,6 +156,33 @@ the domain, which is attractive, but it is a second implementation in a second l
 database engine, and PGlite is not Supabase, so the evidence for it would be weaker than the
 evidence for the function. The function is the single source; the database enforces the *invariants*
 of a response, and the *meaning* of coverage is a domain concern.
+
+**A second function, because the spec has two scenarios a single response cannot satisfy.** Coverage
+is a question about a *set*, and a set has two properties one response does not: not every response
+qualifies, and a validator counts once. `isQualifyingValidation` answers only the per-response half
+and deliberately does not try to guess the rest — distinctness belongs to the set, and the integrity
+checks are already guaranteed by the column constraints. So
+`countQualifyingValidations(responses): number` is built directly on the predicate and adds only the
+distinct-validator count:
+
+```ts
+export function countQualifyingValidations(responses: readonly CoverageResponseShape[]): number
+```
+
+It is not a second definition of the same rule; it is the set-level half of the one rule, and the
+per-response predicate remains the only place that decides what "qualifying" means. Both spec
+scenarios it covers are testable now, and neither needs the Phase 4 allocator to exist first. The
+duplicate-validator branch is unreachable through the repository, because `UNIQUE (validator_id,
+dataset_entry_id)` makes one response per validator per entry structurally impossible, and it is
+exercised in a test anyway — a branch that cannot be reached is a branch that is never run.
+
+**Considered: collapsing `requiresBilingualTranslations` into `isTranslatableContent`.** Done, in the
+other direction. Both existed as two names over one implementation, on the theory that a caller
+might want the "is a translation permitted?" reading. There is no such reading under this
+methodology — a translation is never merely permitted — so the second name had no caller outside
+its own tests, and `AGENTS.md` prohibits speculative abstractions. The names will genuinely diverge
+if a third target language is ever approved, and that change should introduce the split with a real
+caller attached rather than this change carrying a placeholder in advance.
 
 ### 5. Both Server Action payloads and the row mapping change together
 

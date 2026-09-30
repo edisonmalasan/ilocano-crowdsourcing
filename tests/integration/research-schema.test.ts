@@ -11,7 +11,10 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { isCorrectionRequired, isTranslatableContent } from "@/lib/domain/validation-response";
+import {
+  isCorrectionRequired,
+  requiresBilingualTranslations,
+} from "@/lib/domain/validation-response";
 import { EVALUATION_CHOICES } from "@/schemas/validation";
 import { ILOCANO_PROFICIENCY_CHOICES } from "@/schemas/validator";
 
@@ -393,13 +396,13 @@ describe("research schema migrations", () => {
       //
       // Each row is built from the DOMAIN PREDICATES, not from a retyped table, so it is what a
       // real validator's submission looks like for that evaluation: the correction only where
-      // `isCorrectionRequired`, and both translations only where `isTranslatableContent`. That is
+      // `isCorrectionRequired`, and both translations only where `requiresBilingualTranslations`. That is
       // why this test is also the strongest cross-check that the two agree.
       for (const [index, choice] of EVALUATION_CHOICES.entries()) {
         const entryId = `OD_1${String(index).padStart(3, "0")}`;
         const other = `VAL_00${String(index).padStart(4, "0")}`;
         const correction = isCorrectionRequired(choice.value);
-        const translated = isTranslatableContent(choice.value);
+        const translated = requiresBilingualTranslations(choice.value);
         const columns = [
           "id",
           "validator_id",
@@ -627,6 +630,20 @@ describe("research schema migrations", () => {
            (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation, filipino_translation)
          values ('res_cantr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate',
                  'Ride the jeep.', 'Sumakay ng jeep.')`,
+        /validations_bilingual_pair_absent_when_unevaluable/i,
+      );
+    });
+
+    it("rejects an English-only translation on a cannot_evaluate response", async () => {
+      // The other half of the pair below, and the row the `domain-contracts` delta calls out by name
+      // ("A response missing one translation does not qualify"). Asserting only the Filipino-only
+      // direction would leave the English-only one untested, and the two are symmetric by
+      // construction rather than by observation — the constraint's predicate tests them alike, but
+      // "alike in the source" is not evidence that a typo in one column name is caught.
+      await expectRejected(
+        `insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation)
+         values ('res_cantr1', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'Ride the jeep.')`,
         /validations_bilingual_pair_absent_when_unevaluable/i,
       );
     });

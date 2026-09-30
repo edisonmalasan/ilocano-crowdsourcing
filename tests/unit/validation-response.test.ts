@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countQualifyingValidations,
   isQualifyingValidation,
-  isTranslatableContent,
   requiresBilingualTranslations,
+  type CoverageResponseShape,
+  type QualifyingResponseShape,
 } from "@/lib/domain/validation-response";
 import {
   EVALUATION_CHOICES,
@@ -655,13 +657,167 @@ describe("qualifying validation", () => {
   });
 });
 
-describe("translatable content and required translations", () => {
-  it("agrees on all four evaluations, by construction rather than by coincidence", () => {
+describe("qualifying coverage over a set of responses", () => {
+  /**
+   * A stored response from a named validator.
+   *
+   * Typed rather than inferred: an `overrides` parameter of `Record<string, unknown>` widens
+   * `evaluation` to `string`, which stops the literal from being assignable to the domain shape and
+   * makes the type-check fail for a reason that has nothing to do with coverage.
+   */
+  function responseFrom(
+    validatorId: string,
+    overrides: Partial<QualifyingResponseShape> = {},
+  ): CoverageResponseShape {
+    return { validatorId, ...BOTH, ...overrides };
+  }
+
+  /**
+   * A `cannot_evaluate` response, which carries no correction and no translations.
+   *
+   * A separate helper rather than `responseFrom(validatorId, { evaluation: "cannot_evaluate" })`,
+   * because an inline object literal inside an array widens `evaluation` to `string` and stops the
+   * whole array from being assignable to the domain shape.
+   */
+  function cannotEvaluateFrom(validatorId: string): CoverageResponseShape {
+    return { validatorId, evaluation: "cannot_evaluate" };
+  }
+
+  it("counts a complete bilingual response as one", () => {
+    expect(countQualifyingValidations([responseFrom("VAL_0000beef")])).toBe(1);
+  });
+
+  it("counts three raw responses of which only two are complete as TWO, not three", () => {
+    // The spec scenario, verbatim in intent: "WHEN an entry has three stored responses of which
+    // only two are complete bilingual pairs THEN the entry has two qualifying completed validations,
+    // not three, and remains eligible for another validator."
+    //
+    // A raw `count(*)` returns 3 here, which would retire the entry one validator early. The third
+    // response is a validator who said they could not judge the entry — the most common way a
+    // stored row fails to qualify, and the one easiest to overlook because the record is perfectly
+    // good research data.
+    const stored = [
+      responseFrom("VAL_0000beef"),
+      responseFrom("VAL_0000feed"),
+      cannotEvaluateFrom("VAL_0000cafe"),
+    ];
+
+    expect(stored).toHaveLength(3);
+    expect(countQualifyingValidations(stored)).toBe(2);
+  });
+
+  it("counts a legacy row that predates the bilingual requirement as zero", () => {
+    // The spec names this case: "a stored response that predates the bilingual requirement and is
+    // missing either required translation SHALL NOT qualify". Such a row cannot be written under
+    // the current schema, so it can only exist if an operator resolved the migration's precondition
+    // by keeping one — and it must not silently advance coverage if they did.
+    const stored = [
+      responseFrom("VAL_0000beef"),
+      responseFrom("VAL_0000feed", { filipinoTranslation: null }),
+      responseFrom("VAL_0000cafe", { englishTranslation: null }),
+    ];
+
+    expect(countQualifyingValidations(stored)).toBe(1);
+  });
+
+  it("counts a cannot_evaluate response as zero even when it is the only response", () => {
+    // The research-integrity case this whole change exists to get right. A validator who was not
+    // confident has still given the thesis team something worth keeping — the record is stored — but
+    // it must not advance coverage, or an entry full of unconfident responses would look finished.
+    const stored = [cannotEvaluateFrom("VAL_0000beef"), cannotEvaluateFrom("VAL_0000feed")];
+
+    expect(countQualifyingValidations(stored)).toBe(0);
+  });
+
+  it("counts each DISTINCT validator once, not each row", () => {
+    // "computed from qualifying completed validations belonging to distinct validators, and a raw
+    // row count is never substituted for it."
+    //
+    // The duplicate is unreachable through the repository — `UNIQUE (validator_id,
+    // dataset_entry_id)` makes one response per validator per entry structurally impossible — and
+    // it is exercised anyway. A branch that cannot be reached is a branch that is never run, and the
+    // failure mode of a research metric is being quietly wrong rather than being loudly broken.
+    const stored = [
+      responseFrom("VAL_0000beef"),
+      responseFrom("VAL_0000beef"),
+      responseFrom("VAL_0000feed"),
+    ];
+
+    expect(stored).toHaveLength(3);
+    expect(countQualifyingValidations(stored)).toBe(2);
+  });
+
+  it("is empty-safe and never negative", () => {
+    expect(countQualifyingValidations([])).toBe(0);
+  });
+
+  it("agrees with a per-response filter on every combination of three stored responses", () => {
+    // `countQualifyingValidations` is `isQualifyingValidation` plus a dedupe, so the two must not
+    // disagree about WHICH responses qualify. Swept exhaustively over the three states that can
+    // occur in storage: complete, `cannot_evaluate`, and a legacy row missing a translation, across
+    // three validators. 3^3 x 3 validator assignments.
+    const shapes: readonly QualifyingResponseShape[] = [
+      { evaluation: "correct_natural", englishTranslation: ENGLISH, filipinoTranslation: FILIPINO },
+      { evaluation: "cannot_evaluate" },
+      { evaluation: "correct_natural", englishTranslation: null, filipinoTranslation: null },
+      { evaluation: "correct_natural", englishTranslation: ENGLISH, filipinoTranslation: null },
+      {
+        evaluation: "incorrect",
+        correctedInstruction: CORRECTION,
+        englishTranslation: ENGLISH,
+        filipinoTranslation: FILIPINO,
+      },
+      { evaluation: "incorrect", correctedInstruction: CORRECTION },
+    ];
+    const validators = ["VAL_0000beef", "VAL_0000feed", "VAL_0000cafe"];
+
+    let cells = 0;
+    for (const first of shapes) {
+      for (const second of shapes) {
+        for (const third of shapes) {
+          const stored = [
+            { validatorId: validators[0], ...first },
+            { validatorId: validators[1], ...second },
+            { validatorId: validators[2], ...third },
+          ];
+          const expectedQualifying = stored.filter((record) =>
+            isQualifyingValidation(record),
+          ).length;
+          const expectedCount = new Set(
+            stored.filter((record) => isQualifyingValidation(record)).map((r) => r.validatorId),
+          ).size;
+
+          // Distinct validators here, so the count and the filter must agree exactly.
+          expect(countQualifyingValidations(stored), JSON.stringify(stored)).toBe(expectedCount);
+          expect(expectedCount, JSON.stringify(stored)).toBe(expectedQualifying);
+          cells += 1;
+        }
+      }
+    }
+
+    expect(cells).toBe(shapes.length ** 3);
+  });
+});
+
+describe("required translations", () => {
+  it("agrees with the schema's own acceptance on all four evaluations", () => {
+    // Cross-checked against the vocabulary the schema ships rather than against a retyped list, so
+    // an evaluation added to `EVALUATION_CHOICES` without a decision here fails instead of being
+    // silently included by a default.
     for (const choice of EVALUATION_CHOICES) {
       const evaluation = choice.value;
+      const parsed = validationResponseInputSchema.safeParse({ evaluation });
 
-      expect(isTranslatableContent(evaluation)).toBe(evaluation !== "cannot_evaluate");
-      expect(requiresBilingualTranslations(evaluation)).toBe(isTranslatableContent(evaluation));
+      // The predicate says whether translations are required. The schema, given a payload with
+      // NEITHER correction nor translations, reports a translation issue exactly when the
+      // predicate says translations are required — and reports none when it says they are not.
+      const translationIssues = parsed.success
+        ? []
+        : parsed.error.issues
+            .map((issue) => issue.path.join("."))
+            .filter((path) => path.endsWith("Translation"));
+
+      expect(translationIssues.length > 0).toBe(requiresBilingualTranslations(evaluation));
     }
   });
 });

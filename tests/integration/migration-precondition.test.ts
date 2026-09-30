@@ -33,6 +33,22 @@ import { closeTestDatabase, createTestDatabase, query, type TestDatabase } from 
 const ORIGINAL_MIGRATION = "20260930120000_research_schema.sql";
 const BILINGUAL_MIGRATION = "20260930160000_required_bilingual_translations.sql";
 
+/**
+ * SHA-256 of `20260930120000_research_schema.sql` as committed on `main`, in BYTES.
+ *
+ * A forward migration must not rewrite migration history, and this is what makes that checkable
+ * rather than merely intended. The constant is the whole assertion — deriving the expected digest
+ * from the file under test instead would make the guard unfalsifiable.
+ *
+ * Derived with `git cat-file -p main:<path>` piped straight into Node's crypto, because a
+ * PowerShell pipeline re-encodes the bytes: the same command routed through `git show >` produced
+ * three DIFFERENT hashes for one file, which is precisely the failure `AGENTS.md` records about
+ * `>` writing UTF-16LE with a BOM. This file is 16280 bytes and has no CRLF, matching
+ * `.gitattributes`' `text=auto eol=lf`.
+ */
+const EXPECTED_ORIGINAL_MIGRATION_SHA256 =
+  "1b94e7f962b7974ddc134355936d843594ec809a4004c84bab3e8ac59f8a1500";
+
 /** The name the migration's raised exception is matched on. */
 const PRECONDITION_MESSAGE = /required-bilingual-translations/;
 
@@ -126,10 +142,20 @@ describe("the bilingual migration refuses rather than repairs", () => {
   });
 
   it("has NOT dropped the superseded columns when it refuses, so no data is lost", async () => {
-    // The ordering claim, measured. If the drop ran before the check, this assertion would fail:
-    // `translation_language` and `translation_text` would be gone, the table would no longer
-    // describe the pre-change schema, and the "refusing is lossless" argument would be false
-    // because the refusal would have already destroyed the columns holding the offending data.
+    // WHAT THIS PROVES, stated precisely because an earlier version of this comment claimed more.
+    //
+    // It does NOT prove "the precondition runs before the drop". A probe settled that: the harness
+    // applies each migration file inside a transaction, so the `raise exception` rolls the file
+    // back and any drop that had already executed is undone with it. This test passed with the
+    // ordering deliberately reversed, so it could not have detected the reversal.
+    //
+    // What it does prove is the property that actually matters: after a refusal, the pre-change
+    // schema and the pre-existing row are both intact, and the new columns were never added. That
+    // is worth asserting, and it is what "refusing is lossless" means in practice on a runner that
+    // does use a transaction.
+    //
+    // The non-transactional hazard is closed in the SQL instead, by the precondition's own
+    // assertion that `translation_language` still exists — and THAT is what the next test checks.
     const db = await freshDatabase();
     await applyOriginalOnly(db);
     await seedParents(db);
@@ -162,6 +188,27 @@ describe("the bilingual migration refuses rather than repairs", () => {
       ["res_01"],
     );
     expect(survivors).toEqual([{ translation_text: "Ride the jeep." }]);
+  });
+
+  it("refuses by name if the superseded columns are already gone, closing the ordering hazard", async () => {
+    // The real ordering guard, and unlike the test above it is genuinely red-on-reversal.
+    //
+    // The migration's precondition first asserts that `translation_language` still exists. If the
+    // drop were moved above the precondition, that assertion would fire, name this migration, and
+    // explain the required order — so a drop-then-check file fails loudly instead of quietly
+    // proceeding from a schema that has already lost the columns holding the data.
+    //
+    // This closes the hazard in the SQL rather than in a test, which is the only way to close it:
+    // the harness cannot distinguish the two orderings, because rollback hides the difference.
+    // Simulated here by applying the migration twice — the second run finds the columns gone.
+    const db = await freshDatabase();
+    await applyOriginalOnly(db);
+    await seedParents(db);
+    await applyBilingualOnly(db);
+
+    await expect(applyBilingualOnly(db)).rejects.toThrow(
+      /must run BEFORE the superseded columns are dropped/i,
+    );
   });
 
   it("applies cleanly and removes the superseded columns when only cannot_evaluate rows exist", async () => {
@@ -229,6 +276,11 @@ describe("the bilingual migration refuses rather than repairs", () => {
     // constraint error has no way to know the migration refused on purpose, that it will not discard
     // or fabricate their data, or that the fix is theirs to make. That is the value, and asserting
     // it is the honest way to prove the block is doing something.
+    //
+    // The assertion is on the EVALUABLE-ROW branch specifically. The precondition block also
+    // contains the ordering assertion, and the mutated file keeps the drop AFTER the block, so
+    // removing the whole block removes both branches at once — which is why this asserts the
+    // evaluable-row message rather than merely "no longer the named message".
     const migrations = await readMigrations();
     const bilingual = migrations.find((migration) => migration.filename === BILINGUAL_MIGRATION);
     if (!bilingual) throw new Error(`${BILINGUAL_MIGRATION} is missing`);
@@ -307,31 +359,47 @@ describe("the bilingual migration refuses rather than repairs", () => {
 });
 
 describe("the original migration is not modified", () => {
-  it("is byte-identical to the committed file, and the guard is shown to fail on an altered copy", async () => {
-    // The content hash is not an invented constant: it is derived from the file in this same test,
-    // which is what makes the second half of this test meaningful. A fixed expected hash would prove
-    // only that the file matches a number someone typed once.
-    const originalPath = path.join(MIGRATIONS_DIR, ORIGINAL_MIGRATION);
-    const contents = await readFile(originalPath, "utf8");
-    const digest = createHash("sha256").update(contents, "utf8").digest("hex");
+  it("is byte-identical to the file committed on the base branch", async () => {
+    // THE GUARD. A FIXED expected hash, because that is the only form of this assertion that can
+    // fail. An earlier version of this test derived the digest from the file itself and then
+    // compared it against a MUTATED COPY OF ITSELF — satisfied by construction, and true of any
+    // file content whatsoever. It proved SHA-256 is not the identity function and nothing else.
+    // A probe confirmed it: renaming an index inside the original migration left all 7 tests green.
+    //
+    // This is the same pattern `immutable-dataset.test.ts` already uses for the dataset blob, and
+    // for the same reason: a research source that can be edited silently is not a research source.
+    // The constant below is the SHA-256 of the file as committed on `main`, obtained with
+    // `git cat-file -p main:<path>` and hashed in Node so no PowerShell pipeline can re-encode the
+    // bytes in transit. Re-derive it the same way if the constant ever needs checking.
+    const bytes = await readFile(path.join(MIGRATIONS_DIR, ORIGINAL_MIGRATION));
+    const digest = createHash("sha256").update(bytes).digest("hex");
 
-    // The pre-change schema is what the file must still describe: the two translation columns are
-    // present and the two new ones are not. Read structurally rather than by hashing a remembered
-    // string, so this stays a statement about the schema the migration creates.
+    expect(digest).toBe(EXPECTED_ORIGINAL_MIGRATION_SHA256);
+    // The file is a real migration, not a stub that happens to hash correctly.
+    expect(bytes.length).toBeGreaterThan(1000);
+  });
+
+  it("still describes the PRE-change schema, so a hash match is not the whole claim", async () => {
+    // The companion to the hash guard, and deliberately not redundant with it. A hash proves "this
+    // file is unchanged"; it cannot prove "this file is the right thing to be unchanged at". If the
+    // wrong file were ever committed under this name, or a hash constant were updated in the same
+    // commit as an unwanted edit, this is the assertion that would object.
+    const contents = await readFile(path.join(MIGRATIONS_DIR, ORIGINAL_MIGRATION), "utf8");
+
     expect(contents).toContain("translation_language");
     expect(contents).toContain("translation_text");
     expect(contents).not.toContain("english_translation");
     expect(contents).not.toContain("filipino_translation");
-
-    // The guard is real: an altered copy does not produce this digest.
-    const altered = createHash("sha256")
-      .update(contents.replace("translation_language", "translation_locale"), "utf8")
-      .digest("hex");
-    expect(altered).not.toBe(digest);
-
-    // And the file is not empty, truncated, or replaced by a stub — the failure mode a hash guard
-    // would otherwise report as a clean pass if the file were both altered AND the guard were wrong.
-    expect(contents.length).toBeGreaterThan(1000);
-    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    // And it is the migration that creates the six research tables, not a fragment.
+    for (const table of [
+      "dataset_entries",
+      "validators",
+      "validation_sessions",
+      "validation_batches",
+      "batch_entries",
+      "validations",
+    ]) {
+      expect(contents, `creates ${table}`).toContain(`create table public.${table}`);
+    }
   });
 });
