@@ -11,14 +11,14 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase | Phase 2 — Database and Dataset Import — **complete and archived**. The cursor has moved to Phase 3 — Landing and Screening; that change has not been started |
-| Current OpenSpec change | none active. `openspec/changes/` holds no unarchived change |
-| Lifecycle state | `archived` — `od-dataset-schema-and-import` applied, independently verified, merged (PR #7, `d2eea22`), synced into `openspec/specs/`, and archived as `2026-09-30-od-dataset-schema-and-import`. Sync and Archive ran as one stage on `chore/archive-od-dataset-schema-and-import` |
-| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, post-implementation review, spec sync, and archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`) |
-| Last merged OpenSpec stage | #8 — `Merge pull request #8 from edisonmalasan/chore/archive-od-dataset-schema-and-import` (`1ed3340`), the `od-dataset-schema-and-import` Sync + Archive stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
-| Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) — reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
-| Next eligible objective | Phase 3, `landing-and-screening`: landing, Ilocano proficiency screening, anonymous validator create/restore. Requires a new Propose stage on a `docs/landing-and-screening-proposal` branch from updated `main` |
-| Blockers | **Supabase project credentials still required for Phase 2 hosted verification** — see "Active Blockers" below. Not a build blocker: the schema, the import, and the 600-record verification are proven against a real PostgreSQL engine via PGlite. Does not block Phase 3, which is UI and screening work |
+| Current roadmap phase | Phase 3 — Landing and Screening — **implementing**. The Propose stage is merged (PR #11, `d111a9d`) and the Apply stage is in progress on `feat/landing-and-screening`. Sync and Archive have not run |
+| Current OpenSpec change | `landing-and-screening`, unarchived in `openspec/changes/`. All 4 planning artifacts complete; `openspec validate landing-and-screening --strict` exits 0 |
+| Lifecycle state | `implementing` — Apply in progress on `feat/landing-and-screening`. Independent verification has NOT yet run. This change is not verified and not archived |
+| Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`) |
+| Last merged OpenSpec stage | #11 — `Merge pull request #11 from edisonmalasan/docs/landing-and-screening-proposal` (`d111a9d`), the `landing-and-screening` Propose stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
+| Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) and #10 (`35cee22`, merged `3518514`) — both reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
+| Next eligible objective | Finish the `landing-and-screening` Apply stage: independent verification, PR, merge commit, then Sync + Archive. Phase 4 (`coverage-aware-allocation`) becomes eligible only once this change is archived |
+| Blockers | **No Supabase project credentials** — all three of `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are absent, so `getServerEnv()` throws `ServerEnvError` on every real request and no Supabase client has ever been constructed. See "Active Blockers" below. **Plus one new open decision needing thesis-team input: the anonymous identifier carries 32 bits of entropy** (see "Open Decisions") |
 
 > **Why this block splits "OpenSpec stage" from "PR".** A block that names "the last merged PR"
 > is self-referential: the PR that corrects the number is itself a PR, and its own merge falsifies
@@ -313,9 +313,100 @@ assumptions and must be confirmed before production crowdsourcing (Phase 11):
 - which proficiency levels count as *eligible* validations;
 - whether `Conversational` validators are eligible;
 - disagreement/adjudication rules;
-- whether optional translations enter the final dataset;
+- **anonymous-identifier entropy** (raised by Phase 3, needs a decision before Phase 11).
+  The identifier is `VAL_` plus four random bytes, so 32 bits. `createAnonymousValidatorId` and
+  the `validators` primary key both pin the 8-hex-character format, so widening it is a
+  migration against an already-archived spec rather than a field to change quietly. 2^32 is
+  brute-forceable by a determined party against a reachable enrollment surface. The identifier
+  is not a credential — it grants no access beyond resuming an anonymous session — but a
+  successful guess would let someone continue as another participant and contaminate that
+  participant's research record. The right answer depends on the participation model (a
+  link-shared pilot versus a public deployment) and on whether an enumeration rate limit is in
+  scope, neither of which this repository can decide. Interim mitigation, in place since Phase 3:
+  resume is the only surface that accepts a client-supplied identifier, and it answers a
+  yes/no question with no distinguishing error;- whether optional translations enter the final dataset;
 - whether any demographic data is academically required;
 - whether ethics/consent language is required before participation.
+
+### Local Verification Evidence — `landing-and-screening` (2026-09-30, Apply stage)
+
+Recorded from the commands actually run on Windows/PowerShell, Node.js `v26.10.0`, pnpm `12.6.0`.
+**This change is still in Apply. It has not been independently verified and is not archived.**
+
+| Command | Observed result |
+| --- | --- |
+| `pnpm run lint` | exit 0, no errors, no warnings |
+| `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
+| `pnpm run typecheck` | exit 0 |
+| `pnpm run test:unit` | exit 0 — 20 files, **445 tests passed** (up from 14 files / 312) |
+| `pnpm run test:integration` | exit 0 — 4 files, **69 tests passed** (unchanged; this change adds no migration) |
+| `pnpm run build` | exit 0, "Compiled successfully"; `/`, `/_not-found`, `/ready`, `/start` all prerendered static |
+| `openspec validate landing-and-screening --strict` | exit 0, "Change 'landing-and-screening' is valid" |
+| `openspec validate --specs --strict` | "Totals: 6 passed, 0 failed (6 items)" — the six main specs are untouched by an unarchived change |
+
+What this evidence explicitly does **not** establish:
+
+- **No Supabase client has ever been constructed.** All three of `SUPABASE_URL`,
+  `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are absent, so `getServerEnv()` throws
+  `ServerEnvError` on every real request. The enrollment and resume logic is proven against an
+  in-memory fake with exact-value assertions; the hop from the repository to PostgREST is
+  unexercised, exactly as in Phase 2. The action logic was deliberately split into
+  `onboarding-actions-core.ts` (pure, injected dependencies) and a `"use server"` wrapper precisely
+  so that no test needs a database, and so that no test can be mistaken for one that reached one.
+- **No browser ever rendered any of this.** `renderToStaticMarkup` produces the HTML a server
+  render would. It does not run effects, does not fire click handlers, and does not execute the
+  Server Action round trip. The submit-time resume check, the `localStorage` write, and the
+  navigation to `/ready` are proven by pure decision functions and unit tests on
+  `browser-identity`, not by anything that clicked a button.
+- **A successful build is not a behavioural result.** It proves four routes compile. The 445
+  unit tests and the probe run below are the behavioural evidence.
+- **WCAG contrast is inferred from token values, not measured.** There is still no human visual
+  review of any screen, and `next start` has still never been run.
+
+#### Load-bearing proof
+
+15 deliberate single-line breaks of this change's guarantees, each reverted immediately.
+**14 turned the suite red in the expected file.** The one that did not is recorded rather than
+hidden: removing the Server Action's identifier check changes no behaviour, because
+`isAnonymousValidatorIdFormat` inside the service rejects the same values from the same
+`ANONYMOUS_VALIDATOR_ID_PATTERN`. So the check is a duplicate, not a boundary. It was kept and
+relabelled in `onboarding-actions-core.ts` as what it actually is — a narrowing parse from
+`unknown` to the branded type, with no cast — and a new test
+(`tests/unit/validators-identifier-format.test.ts`, 4 valid and 17 near-miss inputs) now pins
+that the two format checks agree, so a future second pattern definition cannot make them diverge
+silently.
+
+Two defects in the probe harness itself were found and fixed, both of which had briefly produced
+false evidence. Worth recording because both are easy to repeat:
+
+1. The first harness restored files with `git checkout --`, which does nothing for an untracked
+   file. Three breaks leaked into later probes and inflated the failure counts. Replaced with
+   in-memory content restore.
+2. The first harness scored a suite that failed to **collect** as "did not go red". A probe
+   referencing an unimported component threw at collection time, Vitest reported "no tests", and
+   the probe was recorded as a pass. The harness now reports collection failure as its own
+   outcome, because *no tests* is not *passed*.
+
+A residue check confirmed all nine probed files were byte-identical afterwards.
+
+#### Phase 3 architecture decisions worth reviewing
+
+- **Screening is answered before the identifier exists** and rides in the single `create` write.
+  Creating first and recording proficiency second would need a repository method that does not
+  exist, cost two writes, and leave a participant holding an identity with no screening answer if
+  they abandoned the flow. This is why the change adds **no migration and no new
+  `ValidatorsRepository` method**: the nullable `ilocano_proficiency` column already models the
+  state, and this ordering makes it reachable only by *declining*, never by *abandoning*.
+- **`localStorage`, not an httpOnly cookie.** A cookie would let the server render "welcome
+  back" with no round trip, but it would transmit the identifier on every request to the origin
+  — a worse fit for a project whose headline property is anonymity. The cost is that resume is
+  an explicit client action, which also means a shared device never silently hands one person
+  another's session.
+- **Resume is checked at submit time, not revealed on load.** A load-time reveal needs a
+  post-hydration `setState`, which the React lint rules rightly reject. Checking at submit time
+  is a plain synchronous read and also closes a real hole: a participant who already holds an
+  identity and submits the screening form must not be issued a second one, because that would
+  split one person's research record in two with nothing in the stored data able to tell.
 
 ## 1. Project Goal
 
