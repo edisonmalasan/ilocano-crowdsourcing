@@ -10,34 +10,87 @@
 
 ## 1. Feasibility spike: can a DOM test observe a handler effect at all?
 
-- [ ] 1.1 Add `happy-dom` and prove, **before anything depends on it**, that a `dom`-environment
-      test can render `ResumeValidator` with `createRoot`, dispatch a click inside `act`, and
-      observe the effect. The concrete bar: the recording `useRouter` stub must record a `push`
-      after the click, and the test must pass. Verify by reverting the click dispatch and
-      confirming the assertion fails — a spike that passes without doing the thing is the exact
-      failure this repository keeps finding.
-- [ ] 1.2 Confirm the spike also reaches the **pending** state, not only the idle one. Static markup
-      cannot (`onboarding-routes.test.tsx:446`), so this is the half that matters: a test must
-      observe `isPending === true` between the click and the action's resolution. Verify by
-      asserting a control is disabled mid-flight with a never-resolving action stub.
-- [ ] 1.3 Record the verdict in this `tasks.md`, and — **if either bar failed** — record that D1 was
-      not implemented, name the failure, and state that the remaining sites fall back to structural
-      scans carrying the stated weakness required by D3. A failed spike is a legitimate outcome; an
-      unrecorded one is not.
+- [x] 1.1 **`happy-dom` 20.14.5 installed and BAR A proved.** `tests/dom/feasibility-spike.test.tsx`
+      renders the real `ResumeValidator` with `createRoot` + React 19's `act` inside a
+      `happy-dom` document, dispatches a real click, and observes the recording `useRouter` stub
+      record `push("/ready")`. Baseline `1 file / 4 tests`.
+
+      **Proved red, not merely green.** Control `4 passed`, then three reversals, each at
+      `--project dom`, each restored byte-identical afterwards (`ba9e30a1f6c30d6c`):
+
+      | Probe | Mutation | Result | Attributed to |
+      | --- | --- | --- | --- |
+      | P1 | `control().click();` → `// the click was removed` | `1 failed \| 3 passed (4)`, exit 1 | `BAR A … > navigates to /ready when a stored identity is restored` |
+      | P2 | `h.resume = neverResolves;` → `h.resume = null;` | `1 failed \| 3 passed (4)`, exit 1 | `BAR B … > marks the control busy and disabled while the write is in flight` |
+      | P3 | `act(() => { control().click(); })` → click removed | `1 failed \| 3 passed (4)`, exit 1 | `BAR B … > marks the control busy and disabled while the write is in flight` |
+
+      **P2 and P3 are both required, and together they are what makes P2's red attributable.** P2
+      shows the pending assertions depend on the lookup staying unresolved; P3 shows they depend on
+      the click having happened at all. One alone would be consistent with an incidental cause.
+- [x] 1.2 **BAR B proved — the pending window is reachable, which is the half static markup cannot
+      do.** With a never-resolving resume lookup, the control is observed `disabled === false` and
+      `aria-busy` absent **before** the click, and `disabled === true` with `aria-busy="true"`
+      **during** the in-flight write. The before/after pair is what stops this from being an
+      assertion that is true in one state by accident; P2 reverses it to `h.resume = null`, the
+      window closes, and the test goes red.
+- [x] 1.3 **VERDICT: the spike HOLDS. D1 is implemented and seven guards may now be written against
+      it.** Both bars were seen red, each attributed to a named test, so a green in `tests/dom/`
+      means something. The structural-scan fallback is **not** taken, so D3 applies to the guards
+      written in group 3: each states the mutation it does *not* catch.
+
+      **This verdict was wrong three times before it was right, and the failures are the
+      point.** A probe of mine shipped with a syntax error and ran **nothing**, exiting 1 — which
+      read exactly like "ran and refused". Then the report printed an **empty `TO:` block** for P1
+      and P3, so the replacement was never stated, and captured **no failing test names** at all,
+      so no red could be attributed. Both were defects in the instrument, not in the spike.
+
+      The attribution bug is the **fourth occurrence in this repository of a bug already recorded in
+      `AGENTS.md`**: the ANSI strip was written `/\[[0-9;]*[A-Za-z]/g` **without the escape byte**, so
+      `[41m` matched literally, every strip left a bare `U+001B` in front of the text, and a
+      `^\s*FAIL` pattern matched nothing. Measured ground truth, read in Node rather than read off a
+      console:
+
+      ```
+      \u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m \u001b[30m\u001b[42m unit \u001b[49m tests/… > <name>
+      ```
+
+      The failure mode this time was **an empty capture rather than a false green**, which is the
+      sibling defect and the more dangerous one: the earlier occurrence scored genuinely red probes
+      green, and this one would have scored a genuine red as *unattributable* and let it pass
+      unexamined. The verdict now refuses `named=false` rather than treating it as a pass.
+- [ ] 1.4 A **fourth instrument defect, found by measurement and not by reasoning, is recorded in
+      `AGENTS.md`** under task 4.2: a PowerShell display filter of `Select-String -NotMatch '^\s*\+'`
+      silently deleted the probe's own `+ mutation` lines, making a correct report look like it had
+      printed nothing. The probe was right and the console was wrong — the same instrument failure as
+      the `git show` pipe and the `U+2026` mis-render already in that file.
 
 ## 2. The `dom` Vitest project
 
-- [ ] 2.1 Add a third project to `vitest.config.ts` named `dom`, `environment: "happy-dom"`, with an
-      include glob limited to `tests/dom/`, and the same `@` alias as the other two. Verify that
-      `pnpm exec vitest run --project unit` still reports **32 files / 881 tests** unchanged —
-      proving the DOM runtime is opt-in and did not leak into `unit`, which is D1's premise.
-- [ ] 2.2 Add `pnpm run test:dom` mirroring the existing `test:unit` / `test:integration` scripts,
-      using `pnpm exec vitest run --project dom`. Verify the script runs and exits 0. Add the same
-      command to `AGENTS.md`'s verified-commands table with what it proves **and does not prove**, per
-      that file's existing rule.
-- [ ] 2.3 Move `happy-dom` into the manifest deliberately: `package.json` plus a `pnpm-lock.yaml`
-      regenerated **by pnpm only**. Verify `pnpm install --frozen-lockfile` exits 0 afterwards,
-      which is the proof the lockfile and manifest agree.
+- [x] 2.1 A third project `dom` added to `vitest.config.ts`: `environment: "happy-dom"`, include
+      glob limited to `tests/dom/**/*.test.{ts,tsx}`, the same `@` alias as the other two, and its
+      own `testTimeout: 15_000` for the microtask-crossing writes a client component performs.
+
+      **The bar this task set for itself, and it is the one that matters:** the DOM runtime must not
+      leak into `unit`. Measured after the change — `pnpm run test:unit` reports **32 files / 881
+      tests**, byte-identical to the pre-change baseline. `unit` keeps `environment: "node"`; only
+      `tests/dom/` opts in. The config comment records *why* the split exists rather than asserting
+      a preference, and names the four critical handler/wiring sites that motivated it.
+- [x] 2.2 `pnpm run test:dom` added, mirroring the existing scripts, running
+      `vitest run --project dom`. Verified: exit 0, `1 file / 4 tests`. Added to `AGENTS.md`'s
+      verified-commands table with what it proves **and does not prove**, per that file's own rule —
+      it proves a click's effect and the pending window are observable in a synthetic DOM; it does
+      **not** prove `happy-dom` behaves like a browser for anything subtler, and it is not a
+      substitute for a human opening the app.
+- [x] 2.3 `happy-dom` moved into the manifest deliberately and **only** by pnpm: `pnpm add -D
+      happy-dom` → `^20.14.5` in `devDependencies`, `dependencies` unchanged, `pnpm-lock.yaml`
+      regenerated by pnpm 12.6.0. Verified: `pnpm install --frozen-lockfile` exits **0** afterwards,
+      which is the proof manifest and lockfile agree; and `require("happy-dom/package.json").version`
+      resolves to `20.14.5`.
+
+      **One new dependency, and that was the point of D1.** `act` is exported by React itself
+      (19.2.8, checked directly rather than assumed) and `createRoot` by `react-dom/client`, so
+      `@testing-library/react` and `user-event` were both declined. A DOM project that needs a
+      third party's opinion about click synthesis is harder to explain when a guard misbehaves.
 
 ## 3. Close the measured gaps
 
