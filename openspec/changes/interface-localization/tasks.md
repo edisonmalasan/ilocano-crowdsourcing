@@ -251,13 +251,51 @@
       this repository has reported `success` having run nothing **four times, affecting both jobs**,
       including the immutability guard — the one check that can never be skipped. `gh pr checks`
       said `pass` on every one of those.
-- [ ] 7.3 Merge on a **merge commit** only, delete the branch after, and return to updated `main`.
+- [x] 7.3 Merged on a **merge commit** only, branch deleted after, returned to updated `main`.
+      `gh pr merge 30 --merge --delete-branch`, then `git switch main` and `git pull --ff-only origin
+      main`. Verified rather than assumed: `git rev-list --parents -n 1 HEAD` returns **three**
+      fields — `2aaca46 50ff9eb 822233c` — so the tip is a merge of the synced `main` (`50ff9eb`)
+      with the branch tip, not a squash or a rebase. `git branch --list` shows only `main` locally.
+      No force-push, no history rewrite, and the three branch commits
+      (`33d1cf8` → `2f66ea4` → `822233c`) are preserved in the merged history.
 
 ## 8. Sync, then Archive
 
-- [ ] 8.1 Sync the `interface-localization` capability into `openspec/specs/`. This is a wholly new
-      capability with no `MODIFIED` block, so the loss guard has nothing to police — assert that
-      anyway rather than assuming it.
-- [ ] 8.2 `openspec validate --specs --strict` exits 0 at 9/9.
+- [x] 8.1 Synced into `openspec/specs/interface-localization/spec.md`, and the premise of this task
+      was **right while being misleading**. A wholly new capability carries only `## ADDED
+      Requirements`, so the usual loss guard — which polices a *renamed* or *dropped* requirement,
+      because the delta validator treats a renamed scenario as a dropped one — genuinely has nothing
+      to police here. Asserted rather than assumed, and asserting it **exposed a false claim in my
+      own script**:
+
+      The sync is done by a script that transforms two header lines (`# Spec Delta` →
+      `# interface-localization Specification`, `## ADDED Requirements` → `## Requirements`) and
+      slices the rest through unchanged. It prints `delta body === spec body`, which reads like a
+      loss guard. **It is not one.** The written file is derived from the delta, so body-equality
+      holds by construction; I tampered with the delta's requirement text and the script still
+      **exited 0**, reporting the tampered hash `715b5606…` as "byte-identical to the delta's body"
+      — because the derived file was wrong in exactly the same way. A guard that confirms a false
+      fact is worse than no guard, so the claim is now stated as what it is: **the transformation is
+      faithful.** What it genuinely catches is a buggy transform and any later hand-edit of the
+      written spec. Whether the *delta* matches what was approved is Sync review's job, not a
+      property this script can have.
+
+      The substantive claim, verified by a **check independent of the script that made the file**:
+      `delta body === spec body` is `true`, the first line is
+      `# interface-localization Specification`, no `## ADDED|MODIFIED|REMOVED|RENAMED Requirements`
+      heading survives, counts are **6 requirements / 17 scenarios** (unchanged from the delta), the
+      file is 8815 bytes, LF only, trailing newline present. Body sha256
+      `3553e759ea706ef90df7a8e1943321030eec938a610dc911a90302f69687048e`.
+- [x] 8.2 `openspec validate --specs --strict` exits 0 at **9/9**, up from 8/8 — the item count is
+      the evidence that a sync landed, and it moved by exactly one, which is what a wholly new
+      capability must do. **A CLI consequence worth recording, because the error is a trap:** once
+      `openspec/specs/interface-localization/` exists, the bare command
+      `openspec validate interface-localization --strict` **exits 1** with `Ambiguous item
+      'interface-localization' matches both a change and a spec.` That is a naming collision, not a
+      broken change, and the obvious "fix" — renaming or deleting the spec — would destroy the thing
+      that was just synced correctly. Use `openspec change validate interface-localization
+      --strict`, which prints `Change "interface-localization" is valid` and exits 0; the
+      `change …`/`spec …` forms additionally print a deprecation warning recommending verb-first
+      equivalents, so **the warning is expected and is not a failure** — judge by the exit code.
 - [ ] 8.3 Archive only after verifying the sync landed, comparing each delta block against its
       in-force counterpart byte for byte.
