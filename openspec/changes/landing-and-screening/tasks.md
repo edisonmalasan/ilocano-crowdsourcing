@@ -129,21 +129,31 @@ inferred from the plan.
 | `pnpm run lint` | exit 0, no errors, no warnings |
 | `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
 | `pnpm run typecheck` | exit 0 |
-| `pnpm run test:unit` | exit 0 - 22 files, 506 tests passed |
+| `pnpm run test:unit` | exit 0 - 22 files, 509 tests passed |
 | `pnpm run test:integration` | exit 0 - 4 files, 69 tests passed |
 | `pnpm run build` | exit 0, "Compiled successfully"; `/`, `/_not-found`, `/ready`, `/start` all prerendered static |
 | `openspec validate landing-and-screening --strict` | exit 0, "Change 'landing-and-screening' is valid" |
 | `openspec validate --specs --strict` | "Totals: 6 passed, 0 failed (6 items)" |
 
-> **The unit counts across the three review rounds were 445, 497, and 506.** Neither increase is
-> cosmetic, and neither is a sign of ordinary maintenance: both times, independent review found
-> real defects that a fully green suite had missed, and the new tests exist to make those specific
-> defects impossible to reintroduce. 445 to 497 came from the first round (a discarded screening
-> answer, an assertion comparing a function to itself, and eight smaller repairs). 497 to 506 came
-> from the third round, which found that **four call sites of fully-tested functions were
-> unguarded** - deleting the storage write, deleting the resume early return, adding a `create` to
-> the restored branch, and fabricating an answer from the skip control each left the whole suite
-> green.
+> **The unit counts across the five review rounds were 445, 497, 506, 506, and 509.** The flat
+> stretch is the interesting part and is not an absence of findings.
+>
+> - **445 -> 497**, round one: a discarded screening answer, an assertion comparing a function to
+>   itself, and eight smaller repairs. Real defects a green suite had missed.
+> - **497 -> 506**, round three: **four call sites of fully-tested functions were unguarded** -
+>   deleting the storage write, deleting the resume early return, adding a `create` to the restored
+>   branch, and fabricating an answer from the skip control each left the whole suite green.
+> - **506 -> 506**, round four: three *more* unguarded call sites, all adjacent to the ones round
+>   three had just repaired, each left the whole suite green - and all closed by strengthening
+>   **existing** assertions rather than adding new ones, which is why the count did not move.
+> - **506 -> 510**, round five: a participant-facing falsehood on `/ready` (a route reachable by
+>   typing the URL, attesting to a database write that never happened) **and a dead end** (the
+>   same route offering no way to begin, while telling the visitor they could finish); a message
+>   claiming a storage clear nothing performed; and a test that asserted nothing at all.
+>
+> That no increase is a sign of ordinary maintenance. Every one of these movements came from
+> independent review finding something a fully green suite could not see, and the tests exist to
+> make those specific defects impossible to reintroduce.
 >
 > That is the entire point of the number moving. A suite that only grows when something breaks is
 > not being maintained; it is being corrected, which is the same activity at three times the rate.
@@ -464,6 +474,111 @@ clothes, and this change made it three times.
 | no screening answer is ever fabricated, on ANY path | same file - `run(null)` on the control; **no approved proficiency level may appear as a string literal anywhere in the component**; `run(selection)` unmodified; and no `??`/`||` fallback on the value reaching `run`. The literal-level check is deliberately **unanchored**: an earlier version required the literal to sit immediately after `(` and so missed `run(selection ?? "fluent")` | **D1** `run("conversational")` on the control; **D1r** `run(selection ?? "fluent")`; **D1v** the same via a variable; **D1c** the same via a module constant |
 | a rejected submission identifies the field | same file - the `error` state must be forwarded to the control **and populated on the failure path**. Forwarding alone is not enough: with `setError(null)` the value is forwarded and permanently empty, so the participant presses Continue, the action fails, and nothing appears | **O4** `error={undefined}`; **O4r** `setError(decision.message)` to `setError(null)` |
 | route metadata is real, not a placeholder | `onboarding-routes.test.tsx` - both new routes' title and description asserted against the exported `metadata`, which `renderToStaticMarkup` never emits | replacing a required route title with a placeholder string |
+
+### The call-site enumeration, and the follow-up it assigns
+
+**This section is the reason the exception list above can be trusted more than the four
+versions of it that were falsified.** Four rounds each found call sites the record had not
+named, so the fifth was scoped to produce a complete inventory rather than to probe whatever
+the last round repaired. The inventory is below. It is mechanical, and it is the whole of the
+client shell.
+
+The finding that matters is not the fourteen. It is *what kind* of gap they are. Rounds 3 and 4
+found guards with holes in them. These are sites with **no assertion of any kind** - neither
+behavioural nor textual - and thirteen of the fourteen pass typecheck *and* lint, so all of them
+would pass the entire gate.
+
+| # | Site | Behaviour if unguarded | Severity |
+| --- | --- | --- | --- |
+| S2 | `screening-form.tsx:94` `router.push("/ready")` | a just-enrolled participant is returned to the question | low |
+
+> **Also fixed in this round, and it was found while fixing the entry above, not by the
+> review:** softening `/ready`'s copy made every *claim* on that page true, but left the page
+> a dead end. It still said *"nothing is required of you… Closing this tab is a complete and
+> legitimate way to finish"* - a finish that presupposes a start this route cannot know about
+> - and it contained **no link out at all**. A participant who typed the URL was told they
+> could finish, and had no way to begin.
+>
+> The test that should have caught this asserted `expect(hrefs).toEqual([])`, with the comment
+> *"so it cannot link to a route that does not exist"*. It served that purpose only as a side
+> effect of having **no links**, so it could never fail: a guarantee of a dead end, written as
+> a guarantee against dangling links. Now that `/start` exists and is linked, the test asserts
+> the exact set of internal hrefs against `KNOWN_ROUTES`, which is read from `src/app` by
+> `readdirSync` so it cannot drift from the filesystem. The "finish" line is now conditional on
+> having answered the question, and the route says in words that reaching it does not mean you
+> did.
+>
+> **Probe record, with a caveat that belongs in the record rather than being quietly dropped.**
+> Repointing `href` at `/ready` - a route that exists, so the render stays valid - fails RED on
+> the assertion itself (`expected [ '/ready' ] to include '/start'`), which is the load-bearing
+> check. Removing the `href` attribute *also* reports red, but as a **collection failure**:
+> React's prop-type check throws while rendering, the suite never runs, `hrefs` is `[]`, and the
+> loop over it passes vacuously. Only the explicit `toContain` caught it. This is the same
+> lesson as round one, one level down - a red is not automatically evidence about the assertion
+> you meant to test - and it is why the two verdicts are recorded separately instead of counted
+> together as "2 red".
+>
+> **One known limitation, recorded not fixed:** weakening the `KNOWN_ROUTES` sanity assertion
+> itself does not fail the suite, because it is bookkeeping about the test file and no other
+> assertion depends on it. Emptying the inventory does fail (both assertions, verified), and
+> that is the guard that matters.
+| S5 | `screening-form.tsx:115` **payload to `enrollValidatorAction`** | `{ ilocanoProficiency: null }` fabricates a decline for **every** participant - round 1's defect class, one layer out | **critical** |
+| S7 | `screening-form.tsx:157` `readStoredValidatorId()` | `stored = null` re-enrols a returning participant, splitting their record | **critical** |
+| S8 | `screening-form.tsx:163` `firstActionFor(stored)` | a broken call site stops the resume path working at all | **critical** |
+| S9 | `screening-form.tsx:168` **payload to `resumeValidatorAction`** | `{ storedId: "" }` makes every resume `absent`, so every return visit mints a second identity | **critical** |
+| S12 | `screening-form.tsx:179` `clearStoredValidatorId()` | conditional, so a stale id survives and re-enrols the participant each visit | **critical** |
+| S14 | `screening-form.tsx:186` the `await` inside `startTransition` | `isPending` ends mid-write; the file's own comment names this hazard | **critical** |
+| S18 | `screening-form.tsx:241` skip button `disabled` | a press mid-write races a second enrollment | medium |
+| R2 | `resume-validator.tsx:61` `readStoredValidatorId()` | resume is dead; a real returning validator is told they hold no identity | **critical** |
+| R3 | `resume-validator.tsx:62` first-time-visitor branch | a first-time visitor is told the check *failed* rather than that they hold nothing | **critical** |
+| R4 | `resume-validator.tsx:74` **payload to `resumeValidatorAction`** | as S9, on the landing page | **critical** |
+| R6 | `resume-validator.tsx:77` `router.push("/ready")` | a restored validator is shown "you do not hold a saved identity" while being recognised | **critical** |
+| R7 | `resume-validator.tsx:84` `clearStoredValidatorId()` | the message claims a clear that does not happen - **fixed in this round** | fixed |
+| R9 | `resume-validator.tsx:89` `setMessage(decision.message)` | `setMessage(null)` swallows a failed resume entirely - **fixed in this round** | fixed |
+
+`resume-validator.tsx` had **no substantive assertion of any kind** before this round. Two of the
+four prior reviews never opened it, and one of them was reviewing call-site wiring.
+
+**Both Server Action payload arguments are unasserted anywhere.** `firstActionFor`, `decideResume`,
+and the whole enrollment service are all tested; the two values that actually reach the server are
+not. That is the sharpest instance of the pattern this change has now demonstrated five times: a
+tested function, and an unexamined caller.
+
+### Follow-up: `thin-shell-call-sites`, scheduled for Phase 4
+
+**The fix is structural, not more regexes, and this record says so on purpose.** Source-text
+assertions can only check a shape someone thought of, and the set of shapes is unbounded - four
+rounds have established that empirically. The reviewer rejected continuing to add them, and that
+judgement is adopted here. Three options were considered:
+
+1. **More textual guards.** Rejected. Five rounds of demonstrating that a repaired guard is
+   evidence about that site only.
+2. **Make the defects unexpressible.** **Chosen.** Extract the payload building into pure
+   `enrollmentIntent(answer)` / `resumeIntent(stored)` functions, so S5 and S9 become
+   typecheck-enforced rather than textually asserted - there is exactly one way to build a payload
+   and it takes the participant's value. Then extract decision application over injected ports
+   (`store`, `forget`, `go`, `say`), which converts twelve of the fourteen into assertions
+   against a recording fake: no regex, no browser, no `renderToStaticMarkup` limitation. Roughly
+   sixty lines extracted.
+3. **A browser test runner.** Correct and worth having, and a change of its own. It would catch
+   all fourteen with **zero** new assertions, because each changes observable participant-visible or
+   persisted behaviour. Phase 4 is the first change with a genuinely multi-step client flow worth
+   driving, which is where the justification for the dependency and the CI time belongs.
+
+**Sequencing: option 2 now, option 3 at Phase 4.**
+
+**This is a follow-up change, deliberately not part of `landing-and-screening`.** `AGENTS.md` forbids
+mixing a refactor into a feature change, and `screening-form.tsx` is dense with research-integrity
+commentary that a refactor would churn. Recording it here with its scope, its ranking, and its
+severity is what makes this merge honest rather than a fourth falsified claim of completeness.
+
+**The residual risk, stated plainly.** Until that change lands, any future edit to
+`screening-form.tsx` or `resume-validator.tsx` can fabricate a screening answer, split a
+participant's record across two identities, swallow a failure, or tell a participant something
+untrue - and lint, format, typecheck, 509 unit tests, 69 integration tests and the build will all
+be green. That risk is not reduced by the guards this change now has. It is concentrated entirely
+in the fourteen sites that have none, and it should be read in those words rather than as
+"guarded".
 
 ### Exceptions and gaps, named rather than absorbed
 

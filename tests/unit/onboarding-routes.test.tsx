@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -76,6 +78,31 @@ function radioOptionClasses(html: string): string[] {
     (match) => match[1],
   );
 }
+
+/**
+ * The internal routes this app actually serves, read from the App Router directory rather
+ * than listed by hand.
+ *
+ * A hand-written list of routes is a second place to update when a route is added, and it
+ * drifts silently: the list keeps asserting that a deleted route exists long after the
+ * directory no longer has it. `readdirSync` makes the filesystem the authority, so this
+ * cannot go stale, and a link to a route that does not exist fails here rather than
+ * producing a 404 for a participant.
+ */
+const KNOWN_ROUTES = readdirSync(join(process.cwd(), "src", "app"), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => `/${entry.name}`);
+
+describe("the internal route inventory this suite relies on", () => {
+  it("found the routes it expects, so a wrong directory fails loudly instead of vacuously", () => {
+    // Without this, a `readdirSync` pointed at the wrong path yields an empty array, and
+    // every `expect(hrefs.every(...))` over it passes. An empty inventory is exactly the
+    // condition this file's route tests exist to detect, so it must never pass silently.
+    expect(KNOWN_ROUTES).toEqual(expect.arrayContaining(["/start", "/ready"]));
+  });
+});
 
 describe("landing route", () => {
   const html = renderToStaticMarkup(<HomePage />);
@@ -389,11 +416,47 @@ describe("confirmation route", () => {
     // Untested until third-round review: replacing this title with a placeholder passed
     // every behavioural assertion here, because `renderToStaticMarkup` never emits the
     // metadata object. Asserted against the import, which is the only place it exists.
-    expect(readyMetadata.title).toBe("You are set");
+    expect(readyMetadata.title).toBe("Before you begin");
     expect(readyMetadata.title).not.toMatch(/todo|placeholder|nowhere|untitled/i);
     expect(readyMetadata.description).toBeTypeOf("string");
     expect((readyMetadata.description ?? "").trim().length).toBeGreaterThan(30);
     expect(readyMetadata.description).not.toMatch(/todo|placeholder|nowhere|lorem/i);
+  });
+
+  it("attests to nothing that has not happened", () => {
+    // THE DEFECT THIS EXISTS TO CATCH. Round five reached this route with a clean
+    // session - no cookies, no storage, no enrollment - by typing the URL, and the page
+    // told them "A random code was generated for you and saved to the database" and "A
+    // copy of that code was kept in this browser only". Nothing had been generated and
+    // nothing had been saved. They left believing they were enrolled; their screening
+    // answer had never been collected.
+    //
+    // There is no `middleware.ts` in this project and this route has no session
+    // dependency, so every one of those visitors is reachable. The fix was to make every
+    // sentence on the page true unconditionally rather than to gate the route; this
+    // assertion is what keeps it that way, because the failure mode is a page that is
+    // *slightly* too confident and reads perfectly well.
+    //
+    // Past tense is the tell. Each of these was on the page and is now absent.
+    expect(html).not.toMatch(/was generated for you/i);
+    expect(html).not.toMatch(/was kept in this browser/i);
+    expect(html).not.toMatch(/identity is saved/i);
+    expect(html).not.toMatch(/Your answer to the Ilocano question is kept/i);
+    expect(html).not.toMatch(/Validator ready/);
+    expect(html).not.toMatch(/What just happened/);
+    expect(html).not.toMatch(/You are set/);
+    expect(html).not.toMatch(/Before you begin<\/h1>\s*<p[^>]*>[^<]*identity is saved/i);
+
+    // ...and the unconditionally-true forms are present instead.
+    expect(html).toMatch(/is generated for you and saved to the database/i);
+    expect(html).toMatch(/is kept in this browser only/i);
+    expect(html).toMatch(/How this works/);
+
+    // The ethics-relevant content survived the rewording. These are the parts of this
+    // page that actually matter to a participant deciding whether to take part, and
+    // softening the copy must not cost any of them.
+    expect(html).toMatch(/not derived from anything about you/i);
+    expect(html).toMatch(/Nothing identifying was collected/);
   });
 
   it("states that nothing identifying was collected", () => {
@@ -447,11 +510,44 @@ describe("confirmation route", () => {
     expect(html).not.toMatch(/exactly as you gave it/i);
   });
 
-  it("links to no internal route at all, so it cannot link to a route that does not exist", () => {
-    // Asserted as "no internal href whatsoever" rather than a filtered subset, so a page
-    // with zero links cannot pass by accident.
+  it("links only to routes that exist, and offers a way in for someone who has not started", () => {
+    // This test used to assert `expect(hrefs).toEqual([])` - "no internal href whatsoever,
+    // so it cannot link to a route that does not exist". It served its stated purpose, but
+    // only as a side effect of having no links at all, and that guarantee produced a dead
+    // end: a participant who reached `/ready` without answering the screening question was
+    // told they could close the tab and finish, and was never told they had not started.
+    // Nothing a page does not link to can be a defect of that page, so the assertion could
+    // not have caught this.
+    //
+    // It is now asserted against the set of routes that actually exist, which is what the
+    // original comment claimed to be testing. `KNOWN_ROUTES` is the authority: a route is
+    // either listed here or it does not exist, so this fails on a dangling link rather than
+    // on any link.
     const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1]);
-    expect(hrefs).toEqual([]);
+
+    for (const href of hrefs) {
+      expect(
+        KNOWN_ROUTES,
+        `"/ready" links to "${href}", which is not a route in this app`,
+      ).toContain(href);
+    }
+
+    // The specific route, asserted separately. The screen it belongs to is the Ilocano
+    // question, and that question is what creates an identity - so a visitor who has not
+    // started has exactly one correct destination, and this is it.
+    expect(hrefs).toContain("/start");
+
+    // ...and the page says so in words, because a link labelled with jargon is not a way
+    // in for a participant. This also guards the reason the link exists: a bare link to
+    // /start would be reachable but unexplained.
+    expect(html).toMatch(/Reaching this page does not mean you answered the Ilocano question/);
+    expect(html).toMatch(/Go to the Ilocano question/);
+
+    // The "you can finish" line must not be unconditional. It presupposes a start, and
+    // this route cannot know whether one happened - which is the whole reason the copy was
+    // softened rather than this route gated.
+    expect(html).toMatch(/If you have already answered the Ilocano\s+question in this browser/);
+    expect(html).not.toMatch(/Closing this tab is a complete and legitimate way to finish\./);
   });
 
   it("does not display a validator identifier or a proficiency value", () => {

@@ -186,12 +186,32 @@ describe("browser-local anonymous identity", () => {
   it("reports absent when the storage object has no numeric length", () => {
     // Some embedded and instrumented webviews expose a `localStorage` object whose
     // `length` is not a number. `typeof` rather than a truthiness check, so a `length` of
-    // 0 — a genuinely empty store — is still treated as usable.
+    // 0 - a genuinely empty store - is still treated as usable.
+    //
+    // ROUND FIVE: this test asserted only that `readStoredValidatorId()` is null, against
+    // an EMPTY fake storage. An empty store returns null whether or not the
+    // `typeof candidate.length !== "number"` guard exists, so deleting that guard left
+    // the test green. It was enforcing nothing at all while `tasks.md` recorded this row
+    // as red-confirmed against "a non-numeric `length`". That is the "compares a function
+    // to itself" mistake rounds two and three also found, in its purest form: a passing
+    // test with no claim behind it.
+    //
+    // The fix is to make the guard the ONLY possible reason for a null. Store a real
+    // identifier first, so the storage genuinely holds one and the non-numeric length is
+    // the single thing preventing it being read. Now deleting the guard returns the
+    // identifier and this test goes red.
     const { storage } = createFakeStorage();
-    Object.defineProperty(storage, "length", { get: () => "0" });
     vi.stubGlobal("localStorage", storage);
+    writeStoredValidatorId(VALID_ID);
+    expect(readStoredValidatorId()).toBe(VALID_ID); // the control: storage works
 
+    Object.defineProperty(storage, "length", { get: () => "0" });
+
+    // Null now, and only because the length is not a number.
     expect(readStoredValidatorId()).toBeNull();
+
+    // And the same is true on the way out: a write is refused rather than throwing.
+    expect(() => writeStoredValidatorId("VAL_deadbeef")).not.toThrow();
   });
 
   it("treats a storage with length 0 as usable, not as unavailable", () => {

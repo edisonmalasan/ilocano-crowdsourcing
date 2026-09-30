@@ -87,8 +87,14 @@ without a visible action.
 > **Amended during Apply.** This paragraph originally said the affordance was "enabled only after the
 > client finds a well-formed stored value". That was the design as proposed and it was not what got
 > built, because it needs a post-hydration `setState` — `localStorage` does not exist during server
-> rendering — which cascades a render and is the pattern the React lint rules exist to reject. The
-> control is rendered always and reveals what it found only after the participant asks. The cost is
+> built, because it needs a post-hydration `setState`: `localStorage` does not exist during server
+> rendering, and storage can tell this component an identifier is *stored* while only the server
+> can say whether it is *recognised*, so a control that appeared or vanished before the server
+> answered would be guessing. (This paragraph originally gave a different reason — that the cascading
+> render is "the pattern the React lint rules exist to reject" — which review tested and found
+> **half false**: `useSyncExternalStore` lints and typechecks clean on React 19.2.8. That correction
+> and its evidence are in the block immediately below.)
+> The control is rendered always and reveals what it found only after the participant asks. The cost is
 > that a first-time visitor can press a button that turns out to have nothing to resume; the benefit
 > is that the affordance is present for the person who needs it, with no effect, no hydration
 > mismatch, and no control whose existence depends on which machine the code ran. The argument for the

@@ -323,6 +323,57 @@ describe("a rejected submission reaches the field", () => {
   });
 });
 
+describe("the resume component's promises are backed by its calls", () => {
+  // Round five opened this file for the first time across five review rounds, and found
+  // that one of its participant-facing strings asserts a side effect nothing guards.
+  //
+  // MESSAGES.unknown reads "That saved identity is no longer recognised, so it has been
+  // cleared." The clear is at L84. Deleting it is caught, but making it CONDITIONAL is
+  // not - `if (answer === null) clearStoredValidatorId();` passes the bare-name check
+  // while the stale identifier survives. The participant is then told it was cleared, and
+  // it is still there, so every later visit silently re-enrols them a second time.
+  //
+  // This is the same shape as the form's C3: round three closed "delete the write", and
+  // round five found "write only sometimes" reaches the same data loss by another route.
+  // Both are now whole-statement matches, so a leading `if (...)` fails them.
+  it("clears the stale identifier unconditionally on the path that claims it did", () => {
+    const source = code(RESUME_COMPONENT_PATH);
+
+    const clearLines = source
+      .split("\n")
+      .filter((line) => line.includes("clearStoredValidatorId("));
+    expect(clearLines).toHaveLength(1);
+    expect(
+      clearLines[0].trim(),
+      "the clear must be an unconditional statement, not a conditional one",
+    ).toBe("clearStoredValidatorId();");
+
+    // The message that makes the claim is set on the very next statement, so the claim
+    // and the call cannot drift apart silently.
+    const clearAt = source.indexOf("clearStoredValidatorId();");
+    const messageAt = source.indexOf("setMessage(MESSAGES.unknown);");
+    expect(clearAt).toBeGreaterThan(-1);
+    expect(messageAt).toBeGreaterThan(clearAt);
+    expect(messageAt - clearAt).toBeLessThan(120);
+  });
+
+  it("reports a failed resume rather than swallowing it", () => {
+    // The round-four C2, in the file round four never opened. `setMessage(null)` on the
+    // failure path typechecks and lints cleanly and leaves the participant pressing a
+    // button that does nothing, with no explanation. The same defect, unguarded twice.
+    const source = code(RESUME_COMPONENT_PATH);
+
+    expect(source).toMatch(/setMessage\(decision\.message\)/);
+    // The success and decline messages are named constants, so a fabricated proficiency
+    // level cannot be introduced by a literal here either.
+    for (const level of ["native", "fluent", "conversational", "basic", "not_confident"]) {
+      expect(source, `a literal "${level}" appears in the resume component`).not.toMatch(
+        new RegExp(`["'\`]${level}["'\`]`),
+      );
+    }
+  });
+});
+
 describe("the resume component never enrolls", () => {
   it("does not import the enrollment action at all", () => {
     // The landing page must not be able to create a validator. If it could, a first-time
