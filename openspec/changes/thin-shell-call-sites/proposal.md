@@ -71,11 +71,38 @@ None.
 
 None, and this is a deliberate, stated decision rather than an omission.
 
-`validator-onboarding` (7 requirements / 24 scenarios) **already specifies all seven behaviours** —
-including "Screening precedes identity creation", "No half-enrolled identity is left behind", "The
-identifier is stored after enrollment", "An existing validator is restored", and "A failed enrollment
-is not reported as success". Nothing here is unspecified. The defect is that no test fails when the
-implementation stops honouring the specification.
+**This claim was false as first written, and an independent verification pass is what caught it.** An
+earlier draft of this section said `validator-onboarding` (7 requirements / 24 scenarios) "already
+specifies **all seven** behaviours" and that "nothing here is unspecified". Re-deriving it by
+enumerating the requirement blocks of all **nine** in-force specs — not by grepping for words, because
+`design-system` contains "WHEN a control is disabled THEN it does not respond to activation", which
+uses the whole vocabulary while specifying only the *semantics* of a disabled control, conditioned on
+*when* it is disabled —
+
+| Site | Behaviour | In-force requirement |
+| --- | --- | --- |
+| `SF-4` | an answer given before an unrecognised identifier is discovered is kept | **Yes** — "Screening precedes identity creation" |
+| `RV-1` | an existing validator is restored rather than re-enrolled | **Yes** — "An existing validator is restored" |
+| `SF-5`, `RV-2` | the participant is sent onward to `/ready` | **Partial** — onward movement is implied by the Req-1 sequence, but **no spec names the route**: `grep -i "/ready"` across all nine specs returns **0 hits** |
+| `SF-1`, `SF-2`, `SF-3` | the options, Continue, and skip controls are disabled while a write is in flight | **No requirement, in any of the nine specs** |
+
+The decisive measurement: **15 requirement blocks mention the pending-state vocabulary and 0 scenarios
+mandate** a control be disabled while a write is in flight. So the claim held for two sites, was
+overstated for a third, and was simply wrong for three — including `SF-2`, which `design.md` itself
+classes as **critical**.
+
+**The correction is to the rationale, not to `skip_specs`.** The flag is correct on OpenSpec's own
+criterion, which is that no spec-level behaviour changed, and `git diff main --numstat -- src/` is
+empty. What was wrong was the supporting claim used to justify it.
+
+**No requirement is added here, and the reason matters.** The pending-state bindings already exist in
+the implementation, so this is a **pre-existing gap** D existing product behaviour carrying no
+requirement D not a new behaviour introduced by this change. Writing a requirement for it inside a
+change that alters no product behaviour is precisely the invention `openspec instructions specs`
+forbids and that the paragraph below already declines. The gap is recorded as a follow-up instead,
+in `tasks.md` and in `docs/ROADMAP.md`'s Active Blockers: **the specs under-describe the screening
+screen as it actually behaves**, which is a real finding for the thesis project and should be closed
+before Phase 5 builds more participant-facing UI on the same components.
 
 `openspec instructions specs` requires a change with no spec-level behaviour change to set
 `skip_specs: true` and states: *"Do not invent a requirement just to satisfy validation."* A

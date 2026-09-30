@@ -60,6 +60,21 @@ jobs:
       - name: Unit tests
         run: pnpm run test:unit
 
+      # Client components driven for real: `createRoot` + React's `act`, a genuine click, and the
+      # effect observed in the DOM. It is a separate step, not folded into the unit tests, for the
+      # same reason integration is: a failure here means a browser-side behaviour broke, and that
+      # is a different diagnosis from a domain-logic failure.
+      #
+      # Scoped to `--project dom` by the script rather than by a path filter. The recorded
+      # precedent is that a `pnpm run test:dom -- <path>` filter is dropped on Linux by the
+      # `pnpm run` layer, which once made the immutability job silently execute the entire
+      # integration suite while reporting success. Here there is no path filter at all, so that
+      # failure mode cannot recur - but the same refusal to trust a step's name applies, and the
+      # step is read back out of the run log after the first run rather than taken from the
+      # checkmark.
+      - name: DOM tests
+        run: pnpm run test:dom
+
       # Runs real PostgreSQL (PGlite/WASM), so it needs no service container. It still gets a
       # separate step so a database failure is distinguishable from a domain-logic failure.
       - name: Integration tests

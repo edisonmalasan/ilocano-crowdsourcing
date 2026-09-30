@@ -11,13 +11,13 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase | Phase 4 is **CLOSED** (`coverage-aware-allocation`: #22-#25) and `research-schema-guarantee-coverage` is **CLOSED** (#26-#28). `interface-localization` is **CLOSED and ARCHIVED** (#29-#32, Archive `794aaf5`). `thin-shell-call-sites` is at the **Propose** stage on `docs/thin-shell-call-sites-proposal` |
-| Current OpenSpec change | **ACTIVE: `thin-shell-call-sites`**, Propose merged, Apply not started. It is a **pure verification repair** and declares `skip_specs: true`: the seven call sites it repairs are **already specified** by `validator-onboarding` (7 req / 24 scen), all seven currently behave correctly, and no product behaviour changes - so `openspec instructions specs`' rule against inventing a requirement to satisfy the validator applies directly. **What it does change is the record**: the ledger's long-carried "21 unguarded client-shell call sites, two of them critical" was re-derived and is wrong in both directions |
-| Lifecycle state | `proposing` - `thin-shell-call-sites`, artifacts complete, `openspec change validate thin-shell-call-sites --strict` **exit 0** with `specs -> skipped` by the declared `skip_specs: true`. **The re-derivation, measured not inherited.** The archived `landing-and-screening` review produced a 21-site enumeration, and its own `tasks.md` says an enumeration here is "a claim to be re-derived, not a fact to be inherited" - so it was re-derived by mutation: one call site mutated, `vitest run --project unit` (**the full** 32 files / 881 tests), negative control green first at the same scope, every anchor asserted to occur a known number of times, both files restored byte-identical (`b3ab4956bd2d889e`, `723f6b30a2b7cf33`). Result: **7 unguarded of 10 probed, 4 critical, 0 inconclusive**. The other three are genuinely guarded, attributed by name - SF-6 to `onboarding-routes.test.tsx:208`, RV-3 to `screening-form-wiring.test.ts:404-409`, RV-4 to `:429`. Corroborating scan: **`submitState` has 0 hits and `router.push` has 0 hits anywhere in `tests/unit`.** Four of the unguarded are **research-integrity** failures, not robustness gaps: sending `null` instead of the answer records a **decline for every participant** (a defect the file's own comment says existed once and was fixed, so it is reintroducible); reading `readStoredValidatorId()` as `null` makes **resume permanently dead** and re-enrols returning validators, orphaning their first identity; and dropping either `router.push("/ready")` leaves a recognised participant told they hold no identity |
+| Current roadmap phase | Phase 4 is **CLOSED** (`coverage-aware-allocation`: #22-#25) and `research-schema-guarantee-coverage` is **CLOSED** (#26-#28). `interface-localization` is **CLOSED and ARCHIVED** (#29-#32, Archive `794aaf5`). `thin-shell-call-sites` is at the **Apply** stage on `feat/thin-shell-call-sites` |
+| Current OpenSpec change | **ACTIVE: `thin-shell-call-sites`**, at the **Apply** stage on `feat/thin-shell-call-sites` (PR **not yet opened**). It is a **pure verification repair** and declares `skip_specs: true`: the seven call sites it repairs are **already specified** by `validator-onboarding` (7 req / 24 scen), all seven already behave correctly, and **no product behaviour changes** - so `openspec instructions specs`' rule against inventing a requirement to satisfy the validator applies directly. **What it changes is the record**: the figure this ledger long carried was an enumeration rather than a measurement, and re-deriving it by mutation replaced it (see the Lifecycle state row). It also **closes an open flake** that four merged changes had recorded as having no cause |
+| Lifecycle state | `applying` - `thin-shell-call-sites`, artifacts complete, `openspec change validate thin-shell-call-sites --strict` **exit 0** with `specs -> skipped` by the declared `skip_specs: true`. **The re-derivation, measured not inherited, and now reproducible.** The script is committed at `tests/tools/rederive-shell-worklist.mjs` with its run command in its header, per D4. The archived `landing-and-screening` review produced a 21-site enumeration whose own `tasks.md` says an enumeration here is "a claim to be re-derived, not a fact to be inherited", so it was re-derived by mutation: one call site at a time, negative control green **first at every scope**, every anchor asserted to occur a known number of times, every red attributed to NAMED failing tests, both files restored byte-identical (`b3ab4956bd2d889e`, `723f6b30a2b7cf33`). **Scope is both Vitest projects, not `unit` alone**, because the guards now live in the separate `dom` project and a `unit`-only run would keep reporting the pre-repair figure indefinitely. **PRE-REPAIR: 7 unguarded of 10 probed, 4 critical, 0 inconclusive. POST-REPAIR: 0 unguarded, 10 guarded, 0 inconclusive.** The tool probes **ten** sites - `SF-1` through `SF-6` and `RV-1` through `RV-4` - and all ten now stay red under mutation, so no site lost a guard. The three that were already guarded before this change - `SF-6`, `RV-3`, `RV-4` - were re-mutated here and each still stays red. **`SF-7` is not among the committed tool's ten probes**, so nothing above is a claim about it: it is a regression guard in `tests/dom/` that a separate eleven-site probe measured at `--project dom` during the Apply stage, but that probe is not committed, so the tool a future reader can run does not re-measure it. An earlier draft of this row said `SF-7` was "guarded at **two** layers", which was authored from memory of the group-3 work rather than read off the committed tool, and the probe list is what caught it. **The one gap the audit surfaced and did NOT close:** `RV-4`, a *failed* resume must report rather than swallow, is still guarded only by a **textual scan** - the run confirms it independently, caught at `--project unit` while `--project dom` is green. Recorded as the highest-value follow-up rather than left as an implicit gap. **AND A FLAKE THAT FOUR MERGED CHANGES RECORDED AS HAVING NO CAUSE IS NOW DIAGNOSED AND FIXED** - see the Blockers row |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`); **`landing-and-screening` Apply (PR #12, `e1390ba`)**; `landing-and-screening` Sync + Archive (PR #13, `411e18f`); bilingual requirements into this roadmap (PR #14, `523cfd0`); bilingual proposal (PR #15, `d4c40cd`); status reconciliation (PR #16, `0c042ed`); bilingual requirements into `AGENTS.md` (PR #17, `0ef5cd8`) |
-| Last merged OpenSpec stage | **#20 — `Merge pull request #20 from edisonmalasan/chore/archive-required-bilingual-translations` (`76fd7a3`), the `required-bilingual-translations` Archive stage**, merged 2026-09-30. This row went through three states on purpose, and the sequence is the point: a placeholder, then `OPEN AND AWAITING MERGE` once PR #20 existed but had not merged, then this. A merge commit cannot be named before it exists, and a row left describing a merge that has since happened is a false claim sitting on `main` — so it was corrected in a follow-up commit rather than left tidy and wrong. `required-bilingual-translations` is now complete through Apply (#18 `438b691`), Sync (#19 `aaa8810`), and Archive (#20 `76fd7a3`). The two stages before it are already merged: **#18 — `Merge pull request #18 from edisonmalasan/feat/required-bilingual-translations` (`438b691`)**, the Apply stage, and **#19 — `Merge pull request #19 from edisonmalasan/docs/required-bilingual-translations-spec-sync` (`aaa8810`)**, the Sync stage. Both were merge commits, never squash or rebase. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
+| Last merged OpenSpec stage | **#33 — `b5b59b2` — `docs: propose thin-shell-call-sites`**, merged 2026-09-30. **This row was stale by thirteen merged PRs** and said #20, which is exactly the failure its own earlier text warned about — "a row left describing a merge that has since happened is a false claim sitting on `main`". It had been corrected twice before for the same reason (#9, #10), so this is the third time it falsified itself, and the correction is recorded rather than made silently. **What superseded #20** (`chore/archive-required-bilingual-translations`, `76fd7a3`), all merge commits and all OpenSpec stages: #33 `b5b59b2`, #32 `794aaf5`, #31 `f03bf65`, #30 `2aaca46`, #29 `50ff9eb`, #28 `5788383`, #27 `06dc92e`, #26 `8ae4bc3`, #25 `174fa2c`, #24 `304d450`, #23 `1134da9`, #22 `d2fd596`, #21 `788bbbb`. Four complete changes have been carried to Archive since — `coverage-aware-allocation` (#22-#25), `research-schema-guarantee-coverage` (#26-#28), `interface-localization` (#29-#32) — and `thin-shell-call-sites` is at Propose merged / Apply in flight, which is what the Lifecycle state row records. **The commit named here was read back from `gh` and verified to be an ancestor of `origin/main`**, because a row claiming a merge commit that does not exist is the same defect one stage earlier. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table. |
 | Doc-only PRs since that stage | PRs #14-#17 all changed tracked artifacts (roadmap status block, OpenSpec proposal artifacts, `AGENTS.md` durable rules), so each is a real content change rather than a documentation-only follow-up. No documentation-only PR has been opened; the Sync and Archive stages of `required-bilingual-translations` both changed specification and status content. See the note below the table |
-| Next eligible objective | Finish `thin-shell-call-sites` (Apply, then Archive), then **Phase 5**, the core per-entry validation experience. Phase 5 is where this work pays off: its surface is the same kind of problem at roughly ten times the size - a conditional correction field and two required translations, both handler-driven - and `renderToStaticMarkup` structurally cannot observe either, which is the reason `design.md` D1 adds a `dom` Vitest project rather than a fourth structural scan. Two `coverage-aware-allocation` items remain carried-forward limitations because fixing either is a spec change that was not made: an **empty active pool reports `exhausted`**, and **allocation is not concurrency-safe** for two simultaneous requests by one validator |
+| Next eligible objective | Finish `thin-shell-call-sites` (Apply PR, then Archive), then **Phase 5**, the core per-entry validation experience. Phase 5 is where this work pays off: its surface is the same kind of problem at roughly ten times the size - a conditional correction field and two required translations, both handler-driven - and `renderToStaticMarkup` structurally cannot observe either, which is the reason `design.md` D1 adds a `dom` Vitest project rather than a fourth structural scan. That project now exists and `tests/dom/` holds 15 passing tests, so Phase 5 extends a working pattern instead of inventing one. Two `coverage-aware-allocation` items remain carried-forward limitations because fixing either is a spec change that was not made: an **empty active pool reports `exhausted`**, and **allocation is not concurrency-safe** for two simultaneous requests by one validator. **New, and named as this change's highest-value follow-up: give `RV-4` a behavioural guard**, so a failed resume is caught by an effect rather than by a source scan |
 | Blockers | **No Supabase project credentials** - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are all absent, so `getServerEnv()` throws on every real request and **no Supabase client has ever been constructed**. This change needs none of them: it touches two client components, tests, and docs, and the dataset guard is unaffected. **No browser has ever rendered any screen in this project**, so nothing here is a visual verification and none of the seven findings is a visual defect; a human still has to look. **CI INTEGRITY - FOUR OCCURRENCES, BOTH JOBS AFFECTED**; the three runs for `interface-localization` verified cleanly on the first try. **New in this change, and unresolved until task 1.1 returns:** whether a `happy-dom` test can reach the **pending** state, not only the idle one. Static markup provably cannot (`onboarding-routes.test.tsx:446`), so if the spike fails, the seven sites fall back to structural scans that must each state the weakness they cannot catch. Also open: the anonymous identifier carries 32 bits of entropy, the migration-atomicity scenario in `research-schema` still has no test injecting a failing migration, and `tests/integration/pglite-harness.test.ts` remains order-dependent under `--sequence.shuffle` (pre-existing, confirmed untouched) |
 
 > **Why this block splits "OpenSpec stage" from "PR".** A block that names "the last merged PR"
@@ -281,6 +281,37 @@ What this evidence explicitly does **not** establish:
     defect in the workflow itself — the guard job's path filter was dropped on Linux, so it ran the
     whole integration suite instead of the file it claimed to isolate. Green did not mean correct.
     No *failing* CI run has ever been observed, so "a failing test blocks the PR" remains inferred.
+- **The in-force specs under-describe the screening screen as it actually behaves** (found during
+  `thin-shell-call-sites` Apply; **pre-existing, not introduced by any change**, and not closable
+  inside that change).
+  An independent verification pass checked the claim that `validator-onboarding` "already specifies
+  all seven behaviours" the client-shell tests pin, by enumerating the requirement blocks of all
+  **nine** in-force specs rather than by grepping for words — because `design-system` contains
+  "WHEN a control is disabled THEN it does not respond to activation", which uses the whole
+  vocabulary while specifying only the *semantics* of a disabled control, conditioned on *when* it is
+  disabled. The measurement:
+  - **15** requirement blocks mention the pending-state vocabulary and **0 scenarios mandate** a
+    control be disabled while a write is in flight. The three **pending-state bindings** (`SF-1`
+    options inert mid-write, `SF-2` Continue disabled mid-write, `SF-3` skip disabled mid-write) are
+    specified **nowhere**, and `SF-2` is one of the sites `design.md` classes as **critical**.
+  - the route **`/ready`** is named in **0** of the nine specs, though onward movement after
+    screening and enrollment is implied by the `validator-onboarding` sequence.
+  What *is* specified: `SF-4` ("Screening precedes identity creation") and `RV-1` ("An existing
+  validator is restored").
+  - *Consequence for this change:* `skip_specs: true` is **unaffected**. Its criterion is that no
+    spec-level behaviour changed, and `git diff main --numstat -- src/` is empty. What was wrong was
+    the *rationale* written to support it, which has been corrected in `proposal.md` and `design.md`
+    — D7 in place rather than quietly dropped.
+  - *Why no requirement was added:* the pending-state bindings **already exist in the
+    implementation**, so this is existing behaviour with no requirement, not new behaviour
+    introduced here. Writing a requirement for it inside a change that alters no product behaviour is
+    precisely the invention `openspec instructions specs` forbids, and that the same proposal
+    paragraph already declines on its own reasoning.
+  - *What would close it:* a change that **specifies the behaviour that already exists** — a
+    `validator-onboarding` requirement for the pending state, and one naming the onward route. That is
+    a specification change with a delta, so it needs its own bounded change and is **not**
+    `skip_specs`. Worth doing **before Phase 5** builds more participant-facing UI on these same
+    components, so the behaviour being extended is the behaviour that is specified.
 
 ### Planned Change Sequence
 
@@ -303,7 +334,8 @@ been proposed yet.
    browser-local, never research data. Ordered after the research-translation change because it
    touches the same participant-facing screens and should not be built on top of copy that is about
    to change;
-7. `thin-shell-call-sites` — the deferred client-shell call sites (21 of them, two critical) plus
+7. `thin-shell-call-sites` — the client-shell call sites, whose count and criticality were
+   both wrong in the version of this list that inherited them (see the Project Status block), plus
    the Phase 4 browser test runner. Carried forward from `landing-and-screening`;
 8. `validation-experience` — Phase 5: per-entry validation, conditional correction, required
    bilingual translation, immediate persistence.
@@ -475,6 +507,30 @@ Two further honesty notes, because they are the kind that get lost:
   regex omitted the escape character so the `Tests … failed` pattern never matched. It was caught
   only by re-checking one probe by hand. A harness that reports "no failures" is
   indistinguishable from one that cannot detect failures.
+
+### A correction about an ARCHIVED change's claims, and what it does not say
+
+The archived `landing-and-screening` review recorded that its findings **S2** (`SF-5`, the missing
+`router.push("/ready")` after enrollment) and **R6** (`RV-2`, the same push inside the resume
+component's click handler) had been repaired. **That claim does not hold against the current code.**
+Re-derived by mutation on `feat/thin-shell-call-sites`, both sites were measured **unguarded**: no
+test in the `unit` project observed either one, and at the time of measurement `router.push` had
+**0 hits anywhere in `tests/unit`**.
+
+**What this does NOT say.** It does **not** say the archived change was wrong when it was written, and
+it does **not** modify any archived artifact. Its line-number anchors had simply moved across four
+changes merged since, and a repair claim tied to a line number is a claim about a location rather than
+about a behaviour. `git diff main -- openspec/changes/archive/ openspec/specs/` is empty for this
+change.
+
+**Both sites are now guarded behaviourally**, by real clicks and real form submits in `tests/dom/`
+rather than by a source scan — which is the only reason the claim could be re-tested at all. The
+general lesson is recorded in `AGENTS.md`: **a remediation claim inherited from an archive is an
+enumeration to be re-derived, not a fact to be inherited**, and its labels did not survive re-reading
+either. The archived table called one line "S21, the PRIMARY submit disabled, critical"; in the
+current file `disabled={isPending}` occurs exactly **once** and belongs to the `AnswerGroup`, while
+**both** buttons bind `disabled={submitState.disabled}` — so a probe anchored on the archived label
+mutates the *skip* affordance and calls it the primary submit.
 
 ## 1. Project Goal
 

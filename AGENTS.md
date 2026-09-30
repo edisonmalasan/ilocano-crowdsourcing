@@ -193,8 +193,9 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 
 | Command | Result | Proves | Does **not** prove |
 | --- | --- | --- | --- |
-| `pnpm run test:unit` | exit 0 — **22 files, 596 tests passed** | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation and browser-local storage, env validation, the Supabase client construction paths, the repository interface seam, the dataset source parser against the real 600-record file, a source-text scan proving the import path contains no filesystem write/rename/delete call, the row-to-domain and error-mapping logic of the three Supabase repositories, the write-intake boundary, the design-token contract, rendered-markup accessibility assertions, the onboarding **pure** decision functions, the Server Action **core** against injected fakes, the Server Action **wrapper** driven with the environment module throwing, rendered-markup assertions on the three public routes including the neutrality of every screening option's **rendered** class, and source-text assertions on the screening form's write wiring - specifically that the minted identifier is persisted, that a restored validator returns instead of falling through to enrolling, that the resume path contains no repository write, that the skip control records a decline rather than a fabricated proficiency level, and that a rejected submission forwards its error to the field. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env`, `write-intake`, and the route tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. `repositories-supabase.test.ts` stubs the `server-only` marker, so it proves the translation and error-mapping logic against a recording fake and nothing at all about PostgREST, the wire protocol, or whether `.in()`/`.range()`/`count: "exact"` behave as assumed. The filesystem scan and `screening-form-wiring.test.ts` are **textual** scans of named files: they prove a string is or is not present, not that the code behaves as the string suggests, and a cosmetic rename will fail them. Nothing here clicked a button, ran an effect, or started a transition — `renderToStaticMarkup` cannot — so the submit-time resume check, the `localStorage` write, and navigation to `/ready` are proven by pure functions and source assertions, never by an executed flow. |
-| `pnpm run test:integration` | exit 0 — **5 files, 83 tests passed** | A real PostgreSQL engine (PGlite/WASM) boots, applies SQL in filename order inside per-file transactions, and rolls back. Applied from the production `supabase/migrations/` directory, it proves the six research tables with closed column sets, the named `UNIQUE (validator_id, dataset_entry_id)` constraint, the vocabulary checks in **both** directions (each approved value accepted, each unapproved one rejected, and each rejection matched against the named constraint), the not-blank and cross-column consistency checks, the foreign keys and their `on delete` behavior, the indexes, and the measured deny-all RLS posture (a `select`, `update`, or `delete` as `anon`/`authenticated` returns or affects zero rows **without an error**; an `insert` is rejected with an RLS error; `service_role` still reads). It also proves that all 600 parsed records import idempotently into that schema with each stored instruction byte-identical to the source, that the stored `source_payload` matches the source record as a value, and that `data/ilocano-synthetic-data.json` is unchanged by the whole run by record count, ID set, and SHA-256, with the guard proved to fail on a deliberately altered copy. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the database engine evaluates them*. It does **not** cover Supabase Auth, Storage, Realtime, PostgREST behaviour, or RLS as enforced by the Supabase API gateway, and it is not a substitute for verifying against a real project. Each integration test file manages its own state: the import tests reset and import per test, verified by running the file under two different `--sequence.shuffle` seeds, so no result depends on test order — but each still shares one database per file, not one per test. |
+| `pnpm run test:unit` | exit 0 — **33 files, 897 tests passed** (re-measured 2026-10-01; the row previously read `22 files, 596 tests`, which this change made stale by adding one audit file and its 16 tests) | Domain contracts, the seven evaluation/correction/translation integrity rules, the batch and allocation-configuration contracts, anonymous identity generation and browser-local storage, env validation, the Supabase client construction paths, the repository interface seam, the dataset source parser against the real 600-record file, a source-text scan proving the import path contains no filesystem write/rename/delete call, the row-to-domain and error-mapping logic of the three Supabase repositories, the write-intake boundary, the design-token contract, rendered-markup accessibility assertions, the onboarding **pure** decision functions, the Server Action **core** against injected fakes, the Server Action **wrapper** driven with the environment module throwing, rendered-markup assertions on the three public routes including the neutrality of every screening option's **rendered** class, and source-text assertions on the screening form's write wiring - specifically that the minted identifier is persisted, that a restored validator returns instead of falling through to enrolling, that the resume path contains no repository write, that the skip control records a decline rather than a fabricated proficiency level, and that a rejected submission forwards its error to the field. | Anything requiring a database, a network, or a browser. `server-only` cannot be imported under Vitest, so `env`, `write-intake`, and the route tests stub that module marker; `supabase-clients.test.ts` deliberately does **not** stub it and instead asserts that importing the admin client rejects. No Supabase client has ever been *constructed* at runtime, because no project exists. `repositories-supabase.test.ts` stubs the `server-only` marker, so it proves the translation and error-mapping logic against a recording fake and nothing at all about PostgREST, the wire protocol, or whether `.in()`/`.range()`/`count: "exact"` behave as assumed. The filesystem scan and `screening-form-wiring.test.ts` are **textual** scans of named files: they prove a string is or is not present, not that the code behaves as the string suggests, and a cosmetic rename will fail them. Nothing here clicked a button, ran an effect, or started a transition — `renderToStaticMarkup` cannot — so the submit-time resume check, the `localStorage` write, and navigation to `/ready` are proven by pure functions and source assertions, never by an executed flow. |
+| `pnpm run test:dom` | exit 0 — **3 files, 15 tests passed** (re-measured 2026-10-01; the row previously read `1 file, 4 tests`, which was the feasibility spike alone before the two guard files landed) | That a client component's **event handlers** and its **pending state** are observable at all. `renderToStaticMarkup` provably cannot do either — it never fires a handler and can only ever see the idle state — and every one of the four critical call sites behind the `thin-shell-call-sites` change is a handler or wiring fact. The project drives components with `createRoot` + React's own `act` inside a `happy-dom` document, so a real click's effect and the window *during* a write are both asserted. Both bars were proved red before any guard depended on them: removing the click, and letting the action resolve immediately, each turned this file red and each was attributed to a named test. | Anything about a real browser. `happy-dom` is a synthetic DOM, so this proves a click reaches a handler and that `disabled`/`aria-busy` track `isPending` — it proves nothing about layout, contrast, focus order, or a real viewport's 44px target. **No human has ever rendered any screen in this project**, and this row does not change that. It is not a substitute for opening the app. The Vitest project is deliberately opt-in (`environment: "happy-dom"` scoped to `tests/dom/`): `unit` stays on `node`, and its count is asserted unchanged at 32 files / 881 tests so the DOM runtime cannot silently leak in. |
+| `pnpm run test:integration` | exit 0 — **6 files, 100 tests passed** (re-measured 2026-10-01; the row previously read `5 files, 83 tests` and **was already stale before this change** — `git diff main` touches no file under `tests/integration/`, so this row was not made wrong here, it was found wrong here) | A real PostgreSQL engine (PGlite/WASM) boots, applies SQL in filename order inside per-file transactions, and rolls back. Applied from the production `supabase/migrations/` directory, it proves the six research tables with closed column sets, the named `UNIQUE (validator_id, dataset_entry_id)` constraint, the vocabulary checks in **both** directions (each approved value accepted, each unapproved one rejected, and each rejection matched against the named constraint), the not-blank and cross-column consistency checks, the foreign keys and their `on delete` behavior, the indexes, and the measured deny-all RLS posture (a `select`, `update`, or `delete` as `anon`/`authenticated` returns or affects zero rows **without an error**; an `insert` is rejected with an RLS error; `service_role` still reads). It also proves that all 600 parsed records import idempotently into that schema with each stored instruction byte-identical to the source, that the stored `source_payload` matches the source record as a value, and that `data/ilocano-synthetic-data.json` is unchanged by the whole run by record count, ID set, and SHA-256, with the guard proved to fail on a deliberately altered copy. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the database engine evaluates them*. It does **not** cover Supabase Auth, Storage, Realtime, PostgREST behaviour, or RLS as enforced by the Supabase API gateway, and it is not a substitute for verifying against a real project. Each integration test file manages its own state: the import tests reset and import per test, verified by running the file under two different `--sequence.shuffle` seeds, so no result depends on test order — but each still shares one database per file, not one per test. |
 
 #### Build and runtime
 
@@ -209,7 +210,7 @@ pnpm `12.6.0`, and are re-run by `.github/workflows/verify.yml` on `ubuntu-lates
 | --- | --- | --- | --- |
 | `openspec validate project-foundation --strict` | exit 0, "Change 'project-foundation' is valid" | The active change's proposal, design, and capability deltas satisfy the OpenSpec schema strictly. | That the implementation matches the change. That is verified by inspecting the code and tests, not by this command. |
 | `openspec validate od-dataset-schema-and-import --strict` | exit 0, "Change 'od-dataset-schema-and-import' is valid" | The active change's proposal, design, and capability deltas satisfy the OpenSpec schema strictly. | That the implementation matches the change. That is verified by inspecting the code and tests, not by this command. |
-| `openspec validate --specs --strict` | exit 0, "Totals: 6 passed, 0 failed (6 items)" | All six **main** capabilities in `openspec/specs/` — `application-foundation`, `data-access-boundary`, `dataset-import`, `design-system`, `domain-contracts`, `research-schema` — satisfy the OpenSpec schema strictly after the `od-dataset-schema-and-import` archive synced its deltas into them. | That the implementation matches the specs. The three per-change `openspec validate <change> --strict` rows above still apply to any *new* unarchived change. |
+| `openspec validate --specs --strict` | exit 0, "Totals: 9 passed, 0 failed (9 items)" | All nine **main** capabilities in `openspec/specs/` — `application-foundation`, `batch-allocation`, `data-access-boundary`, `dataset-import`, `design-system`, `domain-contracts`, `interface-localization`, `research-schema`, `validator-onboarding` — satisfy the OpenSpec schema strictly. Six were synced by the `od-dataset-schema-and-import` archive; `batch-allocation` by `coverage-aware-allocation`, `interface-localization` by its own sync, and `validator-onboarding` by `landing-and-screening`. The list is re-derived from this command's own output, so when it rises again this row is the one that will be stale. | That the implementation matches the specs. The three per-change `openspec validate <change> --strict` rows above still apply to any *new* unarchived change. |
 
 `project-foundation` and `od-dataset-schema-and-import` are both archived
 (`openspec/changes/archive/`), so `openspec validate <change> --strict` no longer accepts their
@@ -644,6 +645,117 @@ before assuming the code is at fault.**
   returning empty. The default (unshuffled) run passes, and the file is excluded from shuffle
   verification. Fix it by giving each test its own database or adding a `beforeEach` reset; do not
   "fix" it by removing the shuffle check.
+- **A probe scoped to ONE test file reports the rest of the suite as silent, and the report is
+  indistinguishable from a finding.** A mutation probe was run as `vitest run --project unit
+  tests/unit/screening-form-wiring.test.ts` and returned three sites "unguarded". Re-run at
+  `--project unit` with no path filter, one of those three is **guarded** — by
+  `tests/unit/onboarding-routes.test.tsx:208`, a file the narrow probe never executed. The site
+  is fine; the *scope* was wrong, and the wrong scope produced a confident wrong claim. This is
+  the same defect as the CI step that claims to run a subset and reports green: **the step ran a
+  subset, and the green said nothing about the rest.** Before concluding anything from a scoped
+  run, **enumerate what actually reads the file under test** — `Select-String -Path
+  tests/unit/*.ts,tests/unit/*.tsx -Pattern '<basename>' -List` — and run at that scope, or state
+  in the report that the scope is partial. A probe may narrow scope for *speed* only if it says
+  so and the full-scope run also happens.
+- **An inherited remediation figure in the status ledger is a CLAIM, and this repository already
+  contains the record that contradicts it.** The ledger carried "21 unguarded client-shell call
+  sites, two of them critical" as the next objective through **five** merged changes. Re-deriving
+  it gave **7 unguarded of 10 probed, 4 critical** — wrong in both directions: the count was far
+  too high, *and* four critical research-integrity sites were open that the old figure never
+  described. Three parts of why it survived so long, each worth checking: the number was carried
+  and the *method* was not; its **line numbers** had all moved across four changes; and its
+  **labels no longer matched its own text** — the archive calls `screening-form.tsx:232` "the
+  PRIMARY submit", but `disabled={isPending}` occurs exactly once in the current file and belongs
+  to the `AnswerGroup`, while *both* buttons bind `disabled={submitState.disabled}`. A probe
+  anchored on the archived label therefore mutates the skip affordance and reports it as the
+  primary — a wrong experiment wearing a right one's name. **Anchor on text, assert the
+  occurrence count, and label from the code.** The archived change that produced the enumeration
+  said the right thing itself: *an enumeration in this project is a claim to be re-derived, not a
+  fact to be inherited.*
+- **The ANSI-strip-without-the-escape-byte bug has now appeared a FOURTH time, in a new form, and
+  the new form is worse.** Written as `/\[[0-9;]*[A-Za-z]/g` — no `\u001b` — the `[` matches
+  literally, every strip leaves a bare U+001B in front of the text, and any `^\s*` anchored
+  pattern matches **nothing**. Previously that made a `Tests … failed` predicate miss a genuinely
+  red run and **score it green**. This time it matched no `FAIL` line at all, so three real reds
+  were captured as **zero** names. An empty capture is the more dangerous sibling: the red was
+  real, and the harness would have let it pass unexamined while reporting nothing. Ground truth,
+  read in Node and never off a console: `\u001b[41m\u001b[1m FAIL \u001b[22m\u001b[49m …` — after a
+  correct strip the line begins ` FAIL `. **Refuse to score `named=false` as anything but NOT
+  ATTRIBUTABLE**, and keep both notations (`0x1b` for real output, the two literal characters `^[`
+  for `gh run view --log`).
+- **A probe that cannot run at all must be distinguishable from one that ran and refused — and a
+  syntax error is not distinguishable from a refusal if only the exit code is read.** A probe
+  shipped with a stray `)` in a `while` condition: it printed nothing, ran nothing, and exited
+  **1**, which is byte-for-byte the same signal a scored red would give. Four shapes, not three,
+  and the fourth is the dangerous one: `GREEN` / `RED` / `DID-NOT-RUN` / **`DID-NOT-PARSE`**. Run
+  `node --check <probe>` first and require exit 0 before trusting any verdict from it. A second
+  defect in the same probe: it printed each mutation's replacement through a multiline template
+  literal, and the `+` lines came out **empty**, so the probe could not state which mutation it
+  performed — and a probe that cannot state its mutation cannot be used to correct a claim about a
+  different one. Print the **common prefix/suffix delta** between original and mutant, plus the
+  mutant's sha256, instead of the replacement text.
+- **Your own display pipeline will eat your own output, and it looks exactly like an instrument
+  defect.** `Select-String -NotMatch '^\s*\+'` — written to strip PowerShell's `+ CategoryInfo`
+  noise — silently deleted the probe's own `+ mutation` lines from every report, making a
+  **correct** report look like it had printed nothing. Two of four "defects" investigated in one
+  round were the console, not the code. The same failure as the `git show` pipe and the `U+2026`
+  mis-render already recorded here: **judge a run by the bytes, not by what a PowerShell pipeline
+  printed.**
+- **An intermittent failure whose cause stays unknown must be recorded as unresolved — but check
+  first whether your reproduction method can produce the condition, because "cannot be reproduced"
+  is a statement about the method.** The entry this one replaces read, in the earlier version of
+  this file, that a `test:unit` failure was *"never named"* because *"both readers built to name it
+  were broken"*, and that its *"cause is unknown"*. **Both halves of that were falsified**, and the
+  mistake was the method rather than the flake.
+
+  The cause was `Test timed out in 5000ms` — Vitest's **default** `testTimeout`. This repository
+  declared one for `dom` and for `integration` and left `unit` on the library default, while `unit`
+  contains tests that do real work. It affected **four** files, not one.
+
+  It was load-dependent, and that is the whole entry. **One sequential run produced it never; four
+  concurrent full suites produced it in 10 runs of 12.** Thirty sequential reproduction attempts
+  were thirty attempts with the cause removed. The `2 in ~30 on the branch against 0 in 10` control
+  was measuring nothing, because both arms removed the cause — so *"a negative result from a
+  reproduction method that cannot produce the condition is not a negative result"*, which is the
+  sharper form of the *"a negative result is not a cause"* this file already recorded. Before
+  concluding a flake is unreproducible, ask what condition produces it and **create that condition**:
+  saturate the CPU, run suites concurrently, run on a slower machine. A flake that never appears on
+  your machine and would appear on CI is not a flake you have disproved.
+
+  Two further generalisations from the fix:
+
+  - **A declared timeout is a design decision, and an undeclared one is too — the library default
+    is not a neutral choice.** Per-project `testTimeout` values that differ by 12x (`dom` 15 000,
+    `integration` 60 000, `unit` 5 000) meant one project was held to a limit nobody wrote down.
+    Audit the project that got the default, not the ones someone tuned.
+  - **Fix the source before granting the time.** The dominant offender made **204,000** individual
+    `expect()` calls (2 catalogs x 85 keys x 600 entries x 2 directions). Raising the timeout would
+    have concealed that and reported a fix. Collecting the violations and asserting once per
+    catalog was orders of magnitude faster **and reported strictly more** — the cell-by-cell form
+    stopped at the first violation, while the collected form named all 29 in one failure. **A
+    timeout raised to stop a flake is a diagnosis deferred; measure what the test is doing.**
+
+  And the standing rule this entry originally got right, kept: **record a rate, and do not attribute
+  an intermittent failure to whichever change happened to be open.** What was ruled out by search
+  rather than assumption, and remains true — `Date.now` 0, `performance.now` 0, `Math.random` 3 (all
+  in comments asserting a random source has no default), `randomUUID` 0, `getRandomValues` 0,
+  `os.tmpdir`/`mkdtemp` 0, `process.env` 1 (in a comment), and the single `setTimeout` sits inside a
+  promise its test awaits, so it is deterministic. **A negative result is not a cause** — and neither
+  is thirty of them from a method that could not have produced one.
+- **A `RegExp.exec` index taken from `src.slice(a, b)` is relative to the slice, and splicing it
+  back into the un-sliced string corrupts the artefact.** A probe intended to edit one catalog's
+  first entry wrote `"meta.siteTitle": "…",ort type { InterfaceLocale } from "@/lib/domain/locale";`
+  at **line 5** of the file, splicing the replacement into the middle of an import. The suite then
+  reported `Failed Suites` and `no tests` — and the `DID-NOT-PARSE` refusal is the only reason that
+  was not scored as evidence that the guard fires. The general form: **an offset is only meaningful
+  relative to the string it was computed from**, so any code that searches a slice and writes into
+  the original must add the base offset back. A probe that finds an anchor with
+  `src.slice(FROM, TO)` and then splices into `src` should be read as a bug until the offset
+  addition is visible. Note the related trap one line away: `indexOf("FILIPINO_COPY")` matched an
+  earlier *mention* of the name rather than its `export const` declaration, so a probe labelled
+  "Filipino" edited the English catalog — and the guard, firing correctly, named the wrong language.
+  **Anchor on the declaration (`^export const NAME`) and assert the declaration offsets are in the
+  expected order**, or the probe will be honest about the wrong file.
 
 ---
 

@@ -147,9 +147,22 @@ false figure steers five more changes. A correction recorded later is a correcti
 
 ### D7 — `skip_specs: true`, stated as a decision rather than left implicit
 
-**Decision.** `.openspec.yaml` sets `skip_specs: true`. `validator-onboarding` already specifies all
-seven behaviours; no product behaviour changes; `openspec instructions specs` forbids inventing a
-requirement to satisfy a validator.
+**Decision.** `.openspec.yaml` sets `skip_specs: true`. No product behaviour changes, which is the
+criterion the flag answers to; `openspec instructions specs` forbids inventing a requirement to satisfy
+a validator.
+
+**The supporting rationale was corrected during Apply, and the correction is load-bearing.** This
+decision originally read "`validator-onboarding` already specifies **all seven** behaviours". That was
+**false**: an independent verification pass enumerated the requirement blocks of all nine in-force
+specs and found that the three **pending-state bindings** (`SF-1`, `SF-2`, `SF-3` D the options,
+Continue, and skip controls disabled while a write is in flight) are specified **nowhere**, and that
+**0 scenarios** mandate a control be disabled mid-write. Fifteen requirement blocks use the
+vocabulary; none require the binding. `SF-5`/`RV-2`'s route `/ready` is likewise named in **0** specs.
+
+The flag survives because it never depended on that claim: it depends on `src/` being untouched,
+which `git diff main --numstat -- src/` confirms is empty. See `proposal.md` for the full per-site
+table. **Recorded rather than papered over, because a rationale that overstates its own coverage is
+the same defect class this change exists to repair** D and it was written here, in this change.
 
 **Open question, not blocking.** Whether "specified client-shell behaviour must be pinned by an
 assertion that can fail" should itself be a requirement — most plausibly in `application-foundation`,

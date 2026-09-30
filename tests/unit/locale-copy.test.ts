@@ -247,6 +247,26 @@ describe("the typing of the research material that must never be localized", () 
     // below, which is the very defect this rewrite exists to remove.
     expect(entries.length, "the guard read a real dataset, not an empty one").toBe(600);
 
+    // The distinct place names, computed ONCE rather than inside the per-language loop below. Every
+    // one is a proper noun of at least ten characters, so this carries no false-positive risk - the
+    // property the old `naka` marker lacked, where ordinary Filipino UI copy tripped a guard meant
+    // for Ilocano. It does not depend on the language, so rebuilding it twice asserted nothing
+    // extra and cost a second pass over 600 records.
+    const placeNames = new Set<string>();
+    for (const entry of entries) {
+      // `origin` and `destination` are optional in the domain type, so the narrowing is explicit
+      // rather than assumed - a `null` reaching a `Set<string>` would be a TypeError at runtime,
+      // and every one of the 600 records does carry both.
+      if (entry.origin) placeNames.add(entry.origin);
+      if (entry.destination) placeNames.add(entry.destination);
+    }
+    // Asserted rather than assumed: a set that read nothing would make the loop below vacuous,
+    // which is the defect this whole guard was rewritten to remove.
+    expect(
+      placeNames.size,
+      "the place-name set is non-empty, so the loop below is real",
+    ).toBeGreaterThan(0);
+
     // BOTH catalogs. A first draft scanned `ENGLISH_COPY` only; a Filipino string is exactly as
     // capable of carrying a pasted instruction, so checking one language was checking half the
     // surface while looking like the whole of it.
@@ -254,42 +274,59 @@ describe("the typing of the research material that must never be localized", () 
       ["English", ENGLISH_COPY],
       ["Filipino", FILIPINO_COPY],
     ] as const) {
+      // ===========================================================================================
+      // COLLECTED, NOT ASSERTED ONE CELL AT A TIME. This rewrite is a bug fix, not a style choice.
+      // ===========================================================================================
+      // The previous version made 2 catalogs x 85 keys x 600 entries x 2 directions = **204,000
+      // individual `expect()` calls**, and every one of them builds an assertion object, records a
+      // result, and is counted by the reporter.
+      //
+      // The 85th key is `skipToContent`, which is declared UNQUOTED, so a quoted-key regex reports 84
+      // and two independent regexes agreeing on 84 is not evidence. The count above was taken by
+      // evaluating the module and reading `Object.keys(...).length`, which is why it is 85.
+      //
+      // That cost was the intermittent failure recorded as an open, uncaused item in `AGENTS.md`
+      // and `tasks.md`: this test failed `Test timed out in 5000ms` — Vitest's DEFAULT timeout,
+      // not a limit anybody chose here — whenever it crossed 5s under parallel load. It was
+      // reproduced 10 times in 12 runs by running four full suites concurrently, and it affected
+      // **four** files, of which this was the dominant one (5929ms-6755ms observed).
+      //
+      // So "cannot be reproduced" was never the truth. It was a REPRODUCTION-METHOD failure: a
+      // load-dependent flake needs load to appear, and a single sequential run does not create it.
+      //
+      // Collecting the violations and asserting once per catalog is faster by orders of magnitude
+      // AND reports strictly more: the old form stopped at the first offending cell, so a real
+      // regression would have named one key out of however many were affected.
+      const violations: string[] = [];
+
       for (const [key, value] of Object.entries(catalog)) {
         for (const entry of entries) {
-          expect(
-            value.includes(entry.instruction),
-            `${language} key "${key}" contains the whole instruction of ${entry.id}`,
-          ).toBe(false);
-          expect(
-            entry.instruction.includes(value),
-            `${language} key "${key}" has leaked into the instruction of ${entry.id}`,
-          ).toBe(false);
+          if (value.includes(entry.instruction)) {
+            violations.push(
+              `${language} key "${key}" contains the whole instruction of ${entry.id}`,
+            );
+          }
+          if (entry.instruction.includes(value)) {
+            violations.push(
+              `${language} key "${key}" has leaked into the instruction of ${entry.id}`,
+            );
+          }
         }
       }
+
       const all = Object.values(catalog).join(" ");
       // A dataset identifier, in either catalog.
-      expect(all, `${language} catalog holds a dataset identifier`).not.toMatch(/OD_\d{4}/);
-      // Any of the distinct place names. Every one is a proper noun of at least ten characters, so
-      // this carries no false-positive risk - the property the old `naka` marker lacked, where
-      // ordinary Filipino UI copy tripped a guard meant for Ilocano.
-      const placeNames = new Set<string>();
-      for (const entry of entries) {
-        // `origin` and `destination` are optional in the domain type, so the narrowing is explicit
-        // rather than assumed - a `null` reaching a `Set<string>` would be a TypeError at runtime,
-        // and every one of the 600 records does carry both.
-        if (entry.origin) placeNames.add(entry.origin);
-        if (entry.destination) placeNames.add(entry.destination);
+      if (/OD_\d{4}/.test(all)) {
+        violations.push(`${language} catalog holds a dataset identifier`);
       }
-      expect(
-        placeNames.size,
-        "the place-name set is non-empty, so the loop below is real",
-      ).toBeGreaterThan(0);
       for (const name of placeNames) {
         if (name.length < 10) continue;
-        expect(all.includes(name), `${language} catalog contains the place name "${name}"`).toBe(
-          false,
-        );
+        if (all.includes(name)) {
+          violations.push(`${language} catalog contains the place name "${name}"`);
+        }
       }
+
+      expect(violations, `${language} catalog holds no research material`).toEqual([]);
     }
   });
 
