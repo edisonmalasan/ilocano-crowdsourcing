@@ -55,13 +55,26 @@
 
 ## 5. Sync
 
-- [ ] 5.1 Relax the sync script's guard that refuses a scenario added inside a `MODIFIED` block,
-      keeping the loss guard absolute: additions permitted, renames and removals still refused.
-- [ ] 5.2 Sync the delta into `openspec/specs/research-schema/spec.md`, extracting text from the
-      approved delta rather than retyping it.
-- [ ] 5.3 Verify the resulting requirement and scenario counts, and that no pre-existing scenario
-      heading was lost or renamed.
-- [ ] 5.4 `openspec validate --specs --strict` exits 0, and `pnpm run format:check` exits 0.
+- [x] 5.1 Correct the sync script's guard that refused a scenario added inside a `MODIFIED` block,
+      keeping the loss guard absolute: additions permitted, **renames, removals, and reorderings
+      still refused**. Recorded honestly: the previous script was a tool in `TEMP` and was never
+      committed, so there was no repo file to relax — the corrected rule lives in this change's
+      script, and the old rule's reasoning is quoted in its header so the next writer does not
+      reinstate it.
+- [x] 5.2 Sync the delta into `openspec/specs/research-schema/spec.md`, extracting text from the
+      approved delta rather than retyping it. Result: **7 -> 8 requirements, 33 -> 43 scenarios**.
+- [x] 5.3 Verify no pre-existing scenario heading was lost or renamed (**15 preserved verbatim, 0
+      renamed, 0 reordered**), that every requirement is declared exactly once — the failure mode
+      that left a requirement declared twice in the previous sync — and that no scenario was lost
+      file-wide.
+- [x] 5.4 `openspec validate --specs --strict` exits 0 (8 passed / 0 failed), and
+      `pnpm run format:check` exits 0.
+- [x] 5.5 Make the sync **idempotent**, which it was not on the first run: re-running aborted with
+      "ADDED requirement already present" instead of reporting the delta already in force. Treating
+      "already there" as a failure makes a tool unsafe to re-run, which is how a half-applied sync
+      gets papered over. Present-and-byte-identical is now skipped, present-and-**different** is
+      still refused. Proved by hashing the file across a re-run: `5FFDF67DFF13578304BCD346`
+      unchanged.
 
 ## 6. Archive
 
