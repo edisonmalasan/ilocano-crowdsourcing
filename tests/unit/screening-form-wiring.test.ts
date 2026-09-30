@@ -139,6 +139,24 @@ describe("the server still has no access to browser storage", () => {
     // and never from the participant's input.
     expect(source).toMatch(/writeStoredValidatorId\(\s*\w+\.validatorId\s*\)/);
 
+    // ...and it happens UNCONDITIONALLY. The match above proves the call is present, which
+    // is not the same as proving it always runs. Round four made it conditional:
+    // `if (selection !== null) writeStoredValidatorId(decision.validatorId);`. Typecheck
+    // exit 0, all 506 tests green - and every participant who used "Skip and continue" was
+    // enrolled with no stored identifier, so every later visit failed closed into
+    // `enroll-fresh` and minted a SECOND identity. Same data loss as deleting the write,
+    // reached by a different route, so the same guard has to close both.
+    //
+    // Asserted as a whole-statement match on its own line, so a leading `if (...)` fails it.
+    const writeLines = code(FORM_PATH)
+      .split("\n")
+      .filter((line) => line.includes("writeStoredValidatorId("));
+    expect(writeLines).toHaveLength(1);
+    expect(
+      writeLines[0].trim(),
+      "the identifier write must be an unconditional statement, not a conditional one",
+    ).toBe("writeStoredValidatorId(decision.validatorId);");
+
     // The server owns the identifier: nothing in this file may mint one. If the client
     // could choose its own identifier, a participant could collide with or impersonate
     // another by picking the value.
@@ -253,15 +271,33 @@ describe("the skip control records a decline and never a fabricated answer", () 
 
     expect(skipLine ?? source).toMatch(/run\(null\)/);
 
-    // Belt and braces: no proficiency LEVEL may appear as an argument anywhere in the
-    // component. `run` is called exactly twice — once with the participant's selection
-    // and once with the decline — so a literal level at either site is fabrication.
+    // Belt and braces: no proficiency LEVEL may appear as a literal ANYWHERE in the
+    // component. `run` is called exactly twice - once with the participant's selection
+    // and once with the decline - so a literal level at either site is fabrication.
+    //
+    // The first version of this assertion anchored on `(`: `\(\s*["']fluent["']`. It passed
+    // the D1 probe because `run("conversational")` happens to have that exact shape, and it
+    // is narrower than its own comment claimed. Round four found the gap by writing
+    // `run(selection ?? "fluent")` - a participant who pressed Continue without choosing
+    // anything was enrolled as Fluent, fabricated research data, and the whole 506-test suite
+    // stayed green. The anchor was the whole problem: requiring the literal to sit
+    // immediately after an open paren means any other route to the same value passes.
+    //
+    // So the assertion no longer looks for a shape at all. No approved level may occur as a
+    // string literal in this component, in any argument position, in any expression. That is
+    // a stronger claim than the one the comment used to make, and it is now the one the
+    // comment makes.
     const levels = ["native", "fluent", "conversational", "basic", "not_confident"];
     for (const level of levels) {
-      expect(source, `a literal "${level}" is passed somewhere in the screening form`).not.toMatch(
-        new RegExp(`\\(\\s*["'\`]${level}["'\`]`),
+      expect(source, `a literal "${level}" appears somewhere in the screening form`).not.toMatch(
+        new RegExp(`["'\`]${level}["'\`]`),
       );
     }
+
+    // And the participant's own selection is what reaches `run`, unmodified. This is the
+    // specific mutation round four used, asserted directly so the failure names itself.
+    expect(source).toMatch(/run\(selection\)/);
+    expect(source).not.toMatch(/run\(\s*\w+\s*(\?\?|\|\|)/);
   });
 });
 
@@ -275,6 +311,15 @@ describe("a rejected submission reaches the field", () => {
     const source = code(FORM_PATH);
 
     expect(source).toMatch(/error=\{[^}]*\berror\b[^}]*\}/);
+
+    // Forwarding is necessary and NOT sufficient. The forwarded value must actually be
+    // POPULATED on the failure path. Round four changed `setError(decision.message)` to
+    // `setError(null)`: typecheck exit 0, 506 tests green, and a rejected submission
+    // rendered nothing at all - the participant pressed Continue, the action failed, no
+    // message appeared, and the form simply sat there. That is exactly the silent failure
+    // the forwarding assertion's own comment describes, one step further from where the
+    // assertion was looking.
+    expect(source).toMatch(/setError\(decision\.message\)/);
   });
 });
 

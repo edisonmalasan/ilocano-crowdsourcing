@@ -348,6 +348,59 @@ line that called it was not. `decideEnrollment`'s terminal branch was type-narro
 whether control actually returned to it was not. `AnswerGroup` rendered `role="alert"`
 and `aria-invalid`; whether the call site forwarded the value was not.
 
+### Fourth-round re-probe: the same category, one level up
+
+A fourth review independently re-ran all five round-three probes and got RED on every one,
+then attacked the neighbourhood rather than the repaired sites themselves. It found three
+more mutations that all 506 tests could not see - each adjacent to a site round three had
+just guarded:
+
+| Probe | Break | Result |
+| --- | --- | --- |
+| C1 | `run(selection ?? "fluent")` - a participant who pressed Continue without choosing anything is enrolled as Fluent | RED - 1 failing |
+| C1b | the same defect arriving through a variable, so no literal sits next to the call | RED - 1 failing |
+| C1c | the same defect with the literal hoisted to a module constant, leaving the call site clean | RED - 1 failing |
+| C2 | `setError(decision.message)` to `setError(null)` - the error is forwarded but permanently empty, so a rejected submission renders nothing | RED - 1 failing |
+| C3 | `if (selection !== null) writeStoredValidatorId(...)` - the decline path enrols with no stored identifier, so every later visit mints a second identity | RED - 1 failing |
+| C3b | the same write made conditional in the other direction | RED - 1 failing |
+| N15 | deleting `clearStoredValidatorId()` on the stale-identifier path | RED - 1 failing |
+| CTL | negative control: a false assertion injected inside a real test body | RED - the harness detects failure |
+
+**C1 is the one that mattered, and it is the exact defect class round one found.** A
+fabricated self-reported screening datum, produced by a change that typechecks and lints
+cleanly, invisible to a 506-test green suite. It survived my own round-three guard because
+that guard was `\\(\\s*["'\`]${level}["'\`]` - it required the literal to sit immediately after
+an open paren. `run(selection ?? "fluent")` has `selection` after the paren, so the regex
+never saw it. The assertion was also narrower than its own comment, which claimed to cover
+"anywhere in the component".
+
+**So the assertion no longer looks for a shape at all.** No approved proficiency level may
+occur as a string literal anywhere in the component, in any argument position. C1b and C1c
+exist to prove that: the literal is forbidden whether it is inline, behind a variable, or
+hoisted to a module constant.
+
+**C3 is the same lesson as A1.** A1 closed "delete the write". C3 is "write only
+sometimes", which loses the same data by a different route. The guard is now a
+whole-statement match on its own line, so a leading `if (...)` fails it.
+
+**C2 is the lesson from O4, one step further back.** O4 closed "the error is not
+forwarded". C2 leaves it forwarded and makes the value permanently `null`. Forwarding is
+necessary and not sufficient; `setError(decision.message)` is now required in the source.
+
+**The reviewer's own harness hit the collection-failure trap.** Its first negative control
+threw at module scope and produced `Test Files 1 failed | Tests 481 passed`, which is a
+*collection* failure and proves nothing about detection; it was discarded and replaced with
+a control that fails inside a test body. That is the fourth harness defect in this change
+and the third that produced evidence which looked valid and was not. The pattern is
+consistent: a probe harness that cannot distinguish "no failure" from "no verdict" will
+happily report a green suite that never ran the assertion.
+
+**The pattern across four rounds is the transferable finding, and it is not diminishing.**
+Round one found a discarded answer. Round three found unguarded call sites of tested code.
+Round four found unguarded *neighbours* of the sites round three had just repaired. A
+repaired site is evidence about that site only, and this record should not be read as
+claiming otherwise.
+
 ### Dataset immutability (task 6.4)
 
 - working-tree blob `acaaa05ac83c3a67f9eb1e81b4432d4b11da6263` == `main`
@@ -365,8 +418,18 @@ tests green.
 
 So the table below states a scoped claim and **names every exception**, because a claim of the form
 "every X is covered" is not checkable by a later reader - they cannot tell which items the author
-happened to probe - while a claim that enumerates its exceptions is. All five exception groups are
+happened to probe - while a claim that enumerates its exceptions is. The five exception groups are
 listed immediately after the table.
+
+> **That sentence was falsified a third time, and the pattern is now on the record as a
+> known failure mode of this document.** Round four found three further unguarded call sites,
+> none covered by the five: a fabrication reachable through `selection ?? "fluent"`, an error
+> state forwarded but never populated, and a storage write made conditional. Each left all 506
+> tests green. The universal has now been falsified three times and each time the falsifier was
+> a *neighbour* of the site the previous round had just repaired - round four's three were all
+> adjacent to round three's five. **A repaired site is evidence about that site only.** No reader
+> should treat this table as exhaustive of the guards that exist, and no future revision should
+> restate an enumeration as if it were complete.
 
 The four newly-found gaps are worth naming as a category, because the pattern is the whole lesson:
 **all four were call sites of code that was itself fully tested.** `decideResume` was exhaustively
@@ -376,31 +439,31 @@ type-narrowed; what was untested was whether control actually returned to it. `A
 it. Testing a function and leaving its only caller unexamined is the same mistake in different
 clothes, and this change made it three times.
 
-| Requirement / scenario | Evidence | Confirmed red? |
+| Requirement / scenario | Evidence | Red against WHICH mutation |
 | --- | --- | --- |
-| server mints the identifier; client-supplied values ignored | `validators-enrollment.test.ts` — an input carrying `id`, `createdAt`, `lastActiveAt`, `totalValidations` is stored with none of them | yes (probes 1, 2) |
-| timestamps derived server-side | same file, against an injected fixed clock | yes (probe 2) |
-| screening choices in the approved order | `onboarding-routes.test.tsx` — index positions compared, not read by eye | yes |
-| **screening options no more weighted than validation options** | `onboarding-routes.test.tsx` — the **rendered `class` attribute of every `role="radio"`** is read out of the markup and compared to `answerOptionClasses({selected:false})`, plus a no-`accent` check on resting classes with hover/focus variants stripped | **yes — the reviewer's bypass now goes red** |
-| screening options gain weight only after selection | same file — **`AnswerGroup` rendered with a value set**, asserting exactly one option carries the selected class and the other four carry the unselected one. An earlier version of this row cited `answerOptionClasses({selected:false})` versus `({selected:true})`, which compares the function to itself and touches no screen; corrected to cite the rendered assertion | yes |
-| the submit control is disabled while a write is in flight | `submitControlState` is a pure function asserted directly, because `renderToStaticMarkup` can only ever render the idle state | yes |
-| options are disabled, not restyled, while pending | `onboarding-routes.test.tsx` — `AnswerGroup` rendered with `disabled`, asserting every button carries `disabled` and keeps the unselected class | yes |
-| a rejected submission surfaces the error and marks the group invalid | same file — `AnswerGroup` rendered with `error`, asserting `role="alert"`, `aria-invalid="true"`, and that `aria-describedby` actually names the error node's id | yes |
-| an answer given before a stale identifier is discovered is kept | `validators-onboarding-flow.test.ts` — all five approved values survive the `enroll-fresh` fallback; a genuine `null` decline still records as `null` | yes (re-probe 3) |
-| the screening answer reaches the enrollment write, not just the decision | `screening-form-wiring.test.ts` — source assertions on the call site: no literal `null` passed to `decideResume`, and `await enroll(answer)` on the fallback | yes (re-probes 4, 5) |
-| an unrecognised identifier is replaced, not reused | `validators-onboarding-flow.test.ts` — `absent` routes to `enroll-fresh`, and a FAILED resume routes to `error`, never to `enroll-fresh` | yes |
-| local storage is not a source of authority | `validators-actions.test.ts` — the resume result is asserted to contain no proficiency, counter, or timestamp | yes |
-| the notice precedes the screening answer | `onboarding-routes.test.tsx` — each notice statement's **byte offset compared against the first `type="submit"`**, so position is asserted rather than presence | yes (re-probe 6) |
-| failure is never reported as success | `validators-onboarding-flow.test.ts` — every failure decision asserted to carry no identifier | yes |
-| a missing database reads as "not open", not as a fault | `validators-actions-wrapper.test.ts` — the **real `actions.ts` wrapper** driven with the environment module throwing `ServerEnvError`, which is how production actually fails; plus `validators-onboarding-flow.test.ts` for the copy | yes (re-probe 8) |
-| a payload carrying an identifying field is rejected | `validators-actions.test.ts` — nine literal field names (`name`, `email`, `studentId`, `phoneNumber`, `address`, …) each asserted `invalid` with zero repository calls, plus the exact stored key set | yes |
-| storage is usable when `localStorage` access itself throws | `validators-browser-identity.test.ts` — a throwing **getter**, as Safari private mode implements, plus a non-numeric `length`, plus the `length: 0` boundary | yes |
-| the minted identifier is actually persisted | `screening-form-wiring.test.ts` - the **write** is required specifically, not an alternation of the three storage helpers. The earlier alternation still matched when the write was deleted | yes (probe A1) |
-| a restored validator never falls through to enrolling again | same file - the `enroll-fresh` guard, the `apply`, and the `return` are all required, and the stale-identifier fallback must appear after it. Asserting only the `apply` would have been half a guard | yes (probe A2) |
-| the resume path performs no write, anywhere | same file, plus `onboarding-actions-core.ts` - the `restored` branch contains no `create`, and the whole `runResume` body contains no `create`/`update`/`delete`/`upsert` | yes (probe I3b, 4 failing) |
-| the skip control records a decline, never a fabricated answer | same file - `run(null)` is required on the control, and **no approved proficiency level may appear as a literal argument anywhere in the component**. `run("conversational")` typechecks and lints cleanly, because every approved value is a legal argument | yes (probe D1) |
-| a rejected submission identifies the field | same file - the `error` state must be forwarded to the control, not only held. The `role="alert"` and `aria-describedby` work is invisible unless the call site passes it | yes (probe O4) |
-| route metadata is real, not a placeholder | `onboarding-routes.test.tsx` - both new routes' title and description asserted against the exported `metadata`, which `renderToStaticMarkup` never emits | yes |
+| server mints the identifier; client-supplied values ignored | `validators-enrollment.test.ts` — an input carrying `id`, `createdAt`, `lastActiveAt`, `totalValidations` is stored with none of them | deleting the client-supplied id/timestamps/counter so the service would store them |
+| timestamps derived server-side | same file, against an injected fixed clock | replacing the injected clock with `new Date()` |
+| screening choices in the approved order | `onboarding-routes.test.tsx` — index positions compared, not read by eye | reversing the rendered option order |
+| **screening options no more weighted than validation options** | `onboarding-routes.test.tsx` — the **rendered `class` attribute of every `role="radio"`** is read out of the markup and compared to `answerOptionClasses({selected:false})`, plus a no-`accent` check on resting classes with hover/focus variants stripped | the reviewer's own bypass: a bespoke group accenting one **unselected** screening option, so the rendered class diverges from `answerOptionClasses({selected:false})` |
+| screening options gain weight only after selection | same file — **`AnswerGroup` rendered with a value set**, asserting exactly one option carries the selected class and the other four carry the unselected one. An earlier version of this row cited `answerOptionClasses({selected:false})` versus `({selected:true})`, which compares the function to itself and touches no screen; corrected to cite the rendered assertion | giving a second option the selected treatment |
+| the submit control is disabled while a write is in flight | `submitControlState` is a pure function asserted directly, because `renderToStaticMarkup` can only ever render the idle state | making `submitControlState` return `disabled: false` |
+| options are disabled, not restyled, while pending | `onboarding-routes.test.tsx` — `AnswerGroup` rendered with `disabled`, asserting every button carries `disabled` and keeps the unselected class | rendering `AnswerGroup` pending and disabled with the error removed |
+| a rejected submission surfaces the error and marks the group invalid | same file — `AnswerGroup` rendered with `error`, asserting `role="alert"`, `aria-invalid="true"`, and that `aria-describedby` actually names the error node's id | rendering `AnswerGroup` with `error` removed |
+| an answer given before a stale identifier is discovered is kept | `validators-onboarding-flow.test.ts` — all five approved values survive the `enroll-fresh` fallback; a genuine `null` decline still records as `null` | `decideResume` hardcoding `answer: null` again |
+| the screening answer reaches the enrollment write, not just the decision | `screening-form-wiring.test.ts` — source assertions on the call site: no literal `null` passed to `decideResume`, and `await enroll(answer)` on the fallback | the call site passing `null` instead of the selection |
+| an unrecognised identifier is replaced, not reused | `validators-onboarding-flow.test.ts` — `absent` routes to `enroll-fresh`, and a FAILED resume routes to `error`, never to `enroll-fresh` | routing `absent` to `error` instead of `enroll-fresh` |
+| local storage is not a source of authority | `validators-actions.test.ts` — the resume result is asserted to contain no proficiency, counter, or timestamp | returning proficiency, a counter, or a timestamp in the resume result |
+| the notice precedes the screening answer | `onboarding-routes.test.tsx` — each notice statement's **byte offset compared against the first `type="submit"`**, so position is asserted rather than presence | moving the participation notice below the submit control |
+| failure is never reported as success | `validators-onboarding-flow.test.ts` — every failure decision asserted to carry no identifier | giving a failure decision an identifier |
+| a missing database reads as "not open", not as a fault | `validators-actions-wrapper.test.ts` — the **real `actions.ts` wrapper** driven with the environment module throwing `ServerEnvError`, which is how production actually fails; plus `validators-onboarding-flow.test.ts` for the copy | collapsing `not_configured` into `persistence` |
+| a payload carrying an identifying field is rejected | `validators-actions.test.ts` — nine literal field names (`name`, `email`, `studentId`, `phoneNumber`, `address`, …) each asserted `invalid` with zero repository calls, plus the exact stored key set | accepting any of nine literal personal field names |
+| storage is usable when `localStorage` access itself throws | `validators-browser-identity.test.ts` — a throwing **getter**, as Safari private mode implements, plus a non-numeric `length`, plus the `length: 0` boundary | a `localStorage` getter that throws, as Safari private mode implements |
+| the minted identifier is actually persisted | `screening-form-wiring.test.ts` - the **write** is required specifically, not an alternation of the three storage helpers, **and required as an unconditional whole statement**. The alternation still matched when the write was deleted; the presence-only check still matched when the write was made conditional | **A1** delete the write; **A2r** `if (selection !== null) writeStoredValidatorId(...)` |
+| a restored validator never falls through to enrolling again | same file - the `enroll-fresh` guard, the `apply`, and the `return` are all required, and the stale-identifier fallback must appear after it. Asserting only the `apply` would have been half a guard | **A2** deleting the `enroll-fresh` early-return branch |
+| the resume path performs no write, anywhere | same file, plus `onboarding-actions-core.ts` - the `restored` branch contains no `create`, and the whole `runResume` body contains no `create`/`update`/`delete`/`upsert` | **I3b** adding `validators.create(...)` to the `restored` branch |
+| no screening answer is ever fabricated, on ANY path | same file - `run(null)` on the control; **no approved proficiency level may appear as a string literal anywhere in the component**; `run(selection)` unmodified; and no `??`/`||` fallback on the value reaching `run`. The literal-level check is deliberately **unanchored**: an earlier version required the literal to sit immediately after `(` and so missed `run(selection ?? "fluent")` | **D1** `run("conversational")` on the control; **D1r** `run(selection ?? "fluent")`; **D1v** the same via a variable; **D1c** the same via a module constant |
+| a rejected submission identifies the field | same file - the `error` state must be forwarded to the control **and populated on the failure path**. Forwarding alone is not enough: with `setError(null)` the value is forwarded and permanently empty, so the participant presses Continue, the action fails, and nothing appears | **O4** `error={undefined}`; **O4r** `setError(decision.message)` to `setError(null)` |
+| route metadata is real, not a placeholder | `onboarding-routes.test.tsx` - both new routes' title and description asserted against the exported `metadata`, which `renderToStaticMarkup` never emits | replacing a required route title with a placeholder string |
 
 ### Exceptions and gaps, named rather than absorbed
 

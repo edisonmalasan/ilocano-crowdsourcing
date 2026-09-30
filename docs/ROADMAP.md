@@ -13,7 +13,7 @@
 | --- | --- |
 | Current roadmap phase | Phase 3 — Landing and Screening — **verifying**. The Propose stage is merged (PR #11, `d111a9d`); the Apply stage is complete on `feat/landing-and-screening` and has been through one round of independent verification and repair. Sync and Archive have not run |
 | Current OpenSpec change | `landing-and-screening`, unarchived in `openspec/changes/`. All 4 planning artifacts complete; `openspec validate landing-and-screening --strict` exits 0 |
-| Lifecycle state | `verifying` — **three independent verification rounds have run and all three returned FAIL.** Round 1 raised 2 CRITICAL + 9 WARNING; round 2 confirmed every round-1 repair load-bearing (all 8 of that reviewer's proofs go red) and raised 2 CRITICAL + 7 WARNING of its own; round 3 confirmed every round-2 repair load-bearing (20 further probes red) and raised 1 CRITICAL + 4 WARNING, the CRITICAL being that **four call sites of fully-tested functions were unguarded** — deleting the storage write, deleting the resume early return, adding a `create` to the restored branch, and wiring the skip control to a fabricated proficiency level each left all 498 tests green. All are now repaired and probe-confirmed. **A fourth review is required before this change may be called verified.** Not archived. Full gate green on the repairs: lint 0, format 0, typecheck 0, 22 files / 506 unit tests, 4 files / 69 integration tests, build "Compiled successfully" |
+| Lifecycle state | `verifying` — **four independent verification rounds have run and all four returned FAIL.** Round 1 raised 2 CRITICAL + 9 WARNING; round 2 confirmed every round-1 repair load-bearing (all 8 of that reviewer's proofs go red) and raised 2 CRITICAL + 7 WARNING of its own; round 3 confirmed every round-2 repair load-bearing (20 further probes red) and raised 1 CRITICAL + 4 WARNING, the CRITICAL being that **four call sites of fully-tested functions were unguarded**; round 4 independently re-ran all five round-3 probes and got RED on every one, then found **three more unguarded call sites, each adjacent to one round 3 had just repaired** — a fabricated screening answer reachable through `selection ?? "fluent"`, an error forwarded but never populated, and a storage write made conditional. All are repaired and probe-confirmed. **A fifth review is required before this change may be called verified.** Not archived. Full gate green: lint 0, format 0, typecheck 0, 22 files / 506 unit tests, 4 files / 69 integration tests, build "Compiled successfully" |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`) |
 | Last merged OpenSpec stage | #11 — `Merge pull request #11 from edisonmalasan/docs/landing-and-screening-proposal` (`d111a9d`), the `landing-and-screening` Propose stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
 | Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) and #10 (`35cee22`, merged `3518514`) — both reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
@@ -322,9 +322,14 @@ assumptions and must be confirmed before production crowdsourcing (Phase 11):
   successful guess would let someone continue as another participant and contaminate that
   participant's research record. The right answer depends on the participation model (a
   link-shared pilot versus a public deployment) and on whether an enumeration rate limit is in
-  scope, neither of which this repository can decide. Interim mitigation, in place since Phase 3:
-  resume is the only surface that accepts a client-supplied identifier, and it answers a
-  yes/no question with no distinguishing error;
+  scope, neither of which this repository can decide. **There is no interim mitigation.** An earlier
+  version of this entry claimed one - "resume is the only surface that accepts a client-supplied
+  identifier, and it answers a yes/no question with no distinguishing error" - and the Phase 3
+  design record retracts that claim verbatim as false. The resume action **is** the enumeration
+  oracle: unauthenticated, unmetered, no rate limit, a clean boolean over 2^32. "There is no
+  second surface" is a restatement of there being one surface, and one is sufficient. A successful
+  guess also discloses the other participant's self-reported proficiency. See `design.md` D5 for
+  the deferral and the three cheap schema-free options if the exposure is reduced before Phase 11;
 - whether optional translations enter the final dataset;
 - whether any demographic data is academically required;
 - whether ethics/consent language is required before participation.
@@ -339,7 +344,7 @@ Recorded from the commands actually run on Windows/PowerShell, Node.js `v26.10.0
 | `pnpm run lint` | exit 0, no errors, no warnings |
 | `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
 | `pnpm run typecheck` | exit 0 |
-| `pnpm run test:unit` | exit 0 — 20 files, **445 tests passed** (up from 14 files / 312) |
+| `pnpm run test:unit` | exit 0 - 22 files, **506 tests passed** (up from 14 files / 312) |
 | `pnpm run test:integration` | exit 0 — 4 files, **69 tests passed** (unchanged; this change adds no migration) |
 | `pnpm run build` | exit 0, "Compiled successfully"; `/`, `/_not-found`, `/ready`, `/start` all prerendered static |
 | `openspec validate landing-and-screening --strict` | exit 0, "Change 'landing-and-screening' is valid" |
@@ -359,8 +364,10 @@ What this evidence explicitly does **not** establish:
   Server Action round trip. The submit-time resume check, the `localStorage` write, and the
   navigation to `/ready` are proven by pure decision functions and unit tests on
   `browser-identity`, not by anything that clicked a button.
-- **A successful build is not a behavioural result.** It proves four routes compile. The 445
-  unit tests and the probe run below are the behavioural evidence.
+- **A successful build is not a behavioural result.** It proves four routes compile. The
+  behavioural evidence is the unit suite and the probe runs below. The figure those probes ran
+  against has moved across four review rounds, and each probe is recorded against the suite size
+  at the time it was run rather than against the current one.
 - **WCAG contrast is inferred from token values, not measured.** There is still no human visual
   review of any screen, and `next start` has still never been run.
 
