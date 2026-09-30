@@ -415,9 +415,57 @@ so every control reported `9 skipped` — a shape indistinguishable from "no tes
 from a pass if only the exit code is read. **A control that reports a shape you did not expect is
 evidence about your harness, not about the code under test.**
 
+**A probe that cannot state which mutation it performed cannot be used to correct a claim about a
+different one.** This is the mirror image of every lesson above, and it is the one that produced a
+confident *wrong finding*. The `coverage-aware-allocation` migration comment states a measured
+`Tests 2 failed | 11 passed (13)`. A probe removed only the emptiness precondition — a strict subset
+of what the comment describes, which says "deleting this `do` block" — got `1 failed | 12 passed (13)`,
+and concluded the comment had misattributed its figure. It had not: removing the whole
+`do $$ … end $$;` block reproduces `2 failed | 11 passed` exactly, down to both received messages. The
+narrower mutation was simply a different experiment, and the difference between one guard and two is
+one failing test. **Before reporting that a documented number is wrong, reproduce it with the mutation
+the document describes — and say in the report which mutation you performed, so the next reader does
+not have to guess whether a discrepancy is a finding or a different experiment.** An independent
+verification pass caught this by re-deriving rather than inheriting, which is the whole argument for
+treating an enumeration as a claim.
+
+**A behavioural test cannot pin a guarantee that is the ABSENCE OF A PARAMETER, and the type layer
+can.** The spec scenario "a client cannot dictate the batch order" was enforced only by no such field
+existing, and the two-file mutation that adds a `clientOrder` field *and honours it* left the suite
+green at `51 passed (51)` against a `51 passed (51)` control. The obvious repair — smuggle a client
+order into the request and assert it is ignored — was written, measured, and **does not work**: the
+mutation honours a field named `clientOrder`, a test smuggling `order` and `positions` never triggers
+it, and the suite was still `52 passed (52)`. Enumerating plausible key names cannot close the gap,
+because a mutation may name its field anything. What does: an **exact key-set assertion on the
+interface**, so any third key — whatever it is called — fails `pnpm run typecheck`. Measured: control
+`exit=0 / 0 errors`; with `clientOrder` added, `exit=2`, `TS2322: Type 'true' is not assignable to
+type 'never'`. **Put the pin at the layer that can see a key which does not exist yet.**
+
+**A bare-substring anchor is satisfied by a comment, and a test that APPEARS to be a guard while not
+being one is worse than no test.** A forward-migration assertion read
+`expect(contents).toContain("alter table public.batch_entries")`; replacing the real
+`add column position integer;` statement with a comment naming it left the file GREEN at
+`13 passed (13)`. The whole-project run did catch the reversal in three other integration files, so it
+was not the *only* guard — but the assertion that looked like the guard was not one, and it was
+reporting coverage it was not providing. The fix is the one already used elsewhere in this repository:
+anchor on the statement's own terminator (`create table public.${table} (`) or on the verb plus its
+newline. Re-probed after the fix: the same reversal is `1 failed | 12 passed (13)`.
+
 - `pnpm-workspace.yaml` sets `allowBuilds: { esbuild: true, sharp: false, unrs-resolver: false }`. `esbuild` **must** stay `true` or Vitest cannot start; `sharp` and `unrs-resolver` install scripts are deliberately disabled because nothing in this project uses them.
 - `.gitattributes` sets `* text=auto eol=lf` (and `*.ico binary`). This is load-bearing, not cosmetic. `.editorconfig` already declared `end_of_line = lf`, but `.editorconfig` only configures editors and **git does not read it**. Before this file existed, line endings were decided by each contributor's local `core.autocrlf`, which broke two things on a machine with `core.autocrlf=true`: `pnpm run format:check` failed on all 56 formatter-owned files, and a fresh clone produced `data/ilocano-synthetic-data.json` with CRLF and SHA-256 `152ae7e8…` against the guard's expected `39f757e6…`. **The immutability guard hashes the working-tree file, so without this file it fails for autocrlf users and passes on CI.** If your local checks suddenly disagree with CI, check your line endings before suspecting the code.
 - Line endings were normalized after `.gitattributes` was added, so **an existing checkout created before that commit still has CRLF working-tree files and will keep failing `format:check` until it is re-normalized**: `git add --renormalize .` then re-checkout the affected files, or simply re-clone. A `git pull` alone will not rewrite the working tree.
+- **Ask `git ls-files --eol`, never pipe `git show` through PowerShell, to settle a line-ending question.**
+  A check of mine reported 137 CR bytes in a committed blob and nearly triggered a repair to a
+  non-problem. The pipeline was the lie: `git show HEAD:<path> | node -e …` hands the blob to
+  PowerShell, which re-encodes it as CRLF, so the count reflects the pipe and not the repository.
+  `git ls-files --eol` reports the index blob and the working-tree copy separately and is the
+  authoritative answer. It showed every index blob in this repository is LF, `data/` is LF so the
+  immutability guard is safe, and exactly one working-tree file differed — a file inside the
+  prettier-ignored `openspec/` directory, so `format:check` was unaffected either way. The
+  underlying cause is `core.autocrlf=true` on this machine, which is the documented condition the
+  `.gitattributes` entry above exists to neutralise; the neutralisation protects the *committed*
+  content, and a CRLF working-tree copy on an autocrlf machine is cosmetic unless the file is
+  formatter-owned or is hashed by a guard.
 - `vitest.config.ts` declares two projects, `unit` and `integration`. `fileParallelism` is not a valid key inside a project config and must not be added there.
 - The PGlite harness stubs only `auth.uid()` and `auth.role()`, in a stubbed `auth` schema, and provides **no `auth.users` table**. A migration that references `auth.users` fails in CI. It also grants the `anon`/`authenticated`/`service_role` privileges only *after* the migration files run, so a test that builds its own tables with `db.exec` sees `permission denied for table` for every role including `service_role` and mistakes a grant problem for an RLS result. See `supabase/migrations/README.md`.
 - The Supabase repositories are typed against a narrow hand-written client interface rather than `SupabaseClient`, and `factory.ts` presents the real client as that interface with a documented cast. The cast is forced, not stylistic: assigning `AdminSupabaseClient` to the interface fails with `TS2589: Type instantiation is excessively deep` (verified on TypeScript 5.9.3 with `@supabase/postgrest-js` 2.117.2), because relating the real generic builder to a recursive interface exhausts the instantiation budget. What *is* enforced is name-level, by a compile-time check that the real builder still declares every member. Do not "clean up" the cast by typing the repositories against the concrete client: that makes every method in the directory untestable without a network, and there is still no credential that would allow one.

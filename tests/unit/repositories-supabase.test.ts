@@ -16,8 +16,10 @@ import type {
   SupabaseClientLike,
   TableHandleLike,
 } from "@/lib/repositories/supabase/client";
+import { SupabaseBatchesRepository } from "@/lib/repositories/supabase/batches";
 import { SupabaseDatasetEntriesRepository } from "@/lib/repositories/supabase/dataset-entries";
 import {
+  BATCHES_OPERATIONS,
   DATASET_ENTRIES_OPERATIONS,
   VALIDATIONS_OPERATIONS,
   VALIDATORS_OPERATIONS,
@@ -63,9 +65,44 @@ interface RecordedCall {
   method: "select" | "insert" | "update";
   columns?: string;
   options?: SelectOptionsLike;
-  write?: Record<string, unknown>;
+  /**
+   * The written payload, in EITHER form `TableHandleLike.insert` accepts.
+   *
+   * The array form is not hypothetical: `SupabaseBatchesRepository.create` writes every
+   * `batch_entries` row in one request. Recording it as a union rather than widening it to
+   * `unknown` is deliberate — `unknown` would let a test accidentally compare a write to anything
+   * at all, and a widened-for-convenience type here would hide exactly the mistake this recorder
+   * exists to catch. `writtenRow` and `writtenRows` below narrow it, and both throw rather than
+   * coercing, so "the wrong write shape was used" is a named failure instead of a passing
+   * assertion against a value that never matched.
+   */
+  write?: Record<string, unknown> | readonly Record<string, unknown>[];
   filters: RecordedFilter[];
   terminal: "await" | "single" | "maybeSingle" | null;
+}
+
+function isSingleRowWrite(
+  write: NonNullable<RecordedCall["write"]>,
+): write is Record<string, unknown> {
+  return !Array.isArray(write);
+}
+
+/** The write of a call that must have written ONE row. Throws if it wrote an array instead. */
+function writtenRow(call: RecordedCall): Record<string, unknown> {
+  const write = call.write;
+  if (write === undefined || !isSingleRowWrite(write)) {
+    throw new Error(`${call.table}.${call.method} did not write a single row`);
+  }
+  return write;
+}
+
+/** The write of a call that must have written SEVERAL rows. Throws if it wrote one row instead. */
+function writtenRows(call: RecordedCall): readonly Record<string, unknown>[] {
+  const write = call.write;
+  if (write === undefined || isSingleRowWrite(write)) {
+    throw new Error(`${call.table}.${call.method} did not write multiple rows`);
+  }
+  return write;
 }
 
 /**
@@ -325,6 +362,75 @@ const catchError = async (work: Promise<unknown>): Promise<unknown> =>
     (caught: unknown) => caught,
   );
 
+/**
+ * The ten `validations` columns, sorted, for the read-shape assertions to compare against.
+ *
+ * Duplicated here rather than imported from `validations.ts` on purpose. Importing it would make
+ * every "selects exactly these columns" assertion vacuously true — it would compare the
+ * implementation's list against itself — and the whole point of those tests is that a column
+ * silently added or dropped is a failure. This list is the EXPECTATION, written out.
+ */
+const VALIDATION_COLUMN_SET = [
+  "batch_id",
+  "corrected_instruction",
+  "created_at",
+  "dataset_entry_id",
+  "english_translation",
+  "evaluation",
+  "filipino_translation",
+  "id",
+  "updated_at",
+  "validator_id",
+];
+
+/**
+ * `count` legal `validations` rows with ids `res_<start>` … `res_<start + count - 1>`.
+ *
+ * Every row is `correct_natural` with both translations, so a page of any size translates
+ * successfully and the paging tests measure PAGING rather than tripping over a fixture that the
+ * domain rejects. Ids are unique and derived from the offset, which is what lets the paging test
+ * assert the pages did not overlap.
+ */
+function responseRows(start: number, count: number): Record<string, unknown>[] {
+  return Array.from({ length: count }, (_, offset) => ({
+    ...VALIDATION_ROW,
+    id: `res_${start + offset}`,
+  }));
+}
+
+const BATCH_ROW = { id: "batch_01", validator_id: "VAL_a81d92c1" };
+
+/**
+ * Three `batch_entries` rows, shuffled relative to their own `position` values.
+ *
+ * A database is free to return rows in any order, and a `create` that read back in storage order
+ * would hand a validator a batch whose first entry is its third. The positions are 3, 1, 2 rather
+ * than 2, 1 specifically so that the fixture distinguishes THREE candidate implementations from
+ * each other rather than two:
+ *
+ *   - echoing the `create` argument, which would return 1, 2, 3 and pass a merely-unordered fixture;
+ *   - returning the rows in the order the wire gave them, which returns 3, 1, 2;
+ *   - sorting by `position`, which returns 1, 2, 3.
+ *
+ * Only the third is correct, and with an "already in order" fixture the first would be
+ * indistinguishable from it.
+ */
+const BATCH_ENTRY_ROWS_SHUFFLED = [
+  { batch_id: "batch_01", dataset_entry_id: "OD_0003", position: 3 },
+  { batch_id: "batch_01", dataset_entry_id: "OD_0001", position: 1 },
+  { batch_id: "batch_01", dataset_entry_id: "OD_0002", position: 2 },
+];
+
+const BATCH_RECORD = {
+  id: "batch_01",
+  validatorId: "VAL_a81d92c1",
+  entries: [
+    { datasetEntryId: "OD_0001", position: 1 },
+    { datasetEntryId: "OD_0002", position: 2 },
+    { datasetEntryId: "OD_0003", position: 3 },
+  ],
+};
+
 describe("SupabaseDatasetEntriesRepository", () => {
   it("translates a row to a domain entry, in camelCase, with no persistence field left in it", async () => {
     const fake = createFakeClient();
@@ -513,7 +619,7 @@ describe("SupabaseValidatorsRepository", () => {
     });
 
     expect(fake.lastCall().method).toBe("insert");
-    expect(fake.lastCall().write).toEqual({
+    expect(writtenRow(fake.lastCall())).toEqual({
       id: "VAL_a81d92c1",
       ilocano_proficiency: "fluent",
       created_at: ISO_UTC,
@@ -645,8 +751,8 @@ describe("SupabaseValidationsRepository", () => {
       filipinoTranslation: "Sumakay ng jeep.",
     });
 
-    expect(fake.lastCall().write?.english_translation).toBe("Ride the jeep.");
-    expect(fake.lastCall().write?.filipino_translation).toBe("Sumakay ng jeep.");
+    expect(writtenRow(fake.lastCall()).english_translation).toBe("Ride the jeep.");
+    expect(writtenRow(fake.lastCall()).filipino_translation).toBe("Sumakay ng jeep.");
     expect(stored.englishTranslation).toBe("Ride the jeep.");
     expect(stored.filipinoTranslation).toBe("Sumakay ng jeep.");
   });
@@ -672,7 +778,7 @@ describe("SupabaseValidationsRepository", () => {
     });
 
     expect(fake.lastCall().table).toBe("validations");
-    expect(fake.lastCall().write?.corrected_instruction).toBe("Gemahen ti jeep.");
+    expect(writtenRow(fake.lastCall()).corrected_instruction).toBe("Gemahen ti jeep.");
     expect(stored.correctedInstruction).toBe("Gemahen ti jeep.");
     // The correction travels on the response row; there is no write to `dataset_entries` at all.
     expect(fake.calls.every((call) => call.table === "validations")).toBe(true);
@@ -853,6 +959,428 @@ describe("SupabaseValidationsRepository", () => {
   });
 });
 
+describe("the coverage read a pool is measured with", () => {
+  it("filters on the entry ids with `in`, and asks for the exact total", async () => {
+    // `.in()` rather than a chain of `.eq()`s, and one request rather than one per entry: the pool
+    // is the whole dataset at the start of a session. The exact count is not decoration — it is the
+    // number the paging loop below is driven by, and a `null` count must raise rather than be
+    // treated as "no more rows".
+    const fake = createFakeClient();
+    fake.enqueue(rows([VALIDATION_ROW], 1));
+
+    await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001", "OD_0002"]);
+
+    const call = fake.lastCall();
+    expect(call.table).toBe("validations");
+    expect(call.filters).toEqual([
+      { kind: "in", column: "dataset_entry_id", value: ["OD_0001", "OD_0002"] },
+      { kind: "range", from: 0, to: 999 },
+    ]);
+    expect(call.options).toEqual({ count: "exact" });
+  });
+
+  it("issues no query for an empty pool, because `.in([])` is malformed rather than empty", async () => {
+    const fake = createFakeClient();
+
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries([]);
+
+    expect(found).toEqual([]);
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it("returns EVERY stored response, including the ones that do not count toward coverage", async () => {
+    // The load-bearing property of this method, and the one a `where` clause would quietly break.
+    // `CANNOT_EVALUATE_ROW` contributes nothing to qualifying coverage, so a repository that
+    // filtered for qualifying rows would return `[]` here — and would be returning a SECOND
+    // implementation of a research rule that has exactly one owner, in a language nothing keeps in
+    // agreement with it. The non-qualifying row must come back and be counted by the caller.
+    const fake = createFakeClient();
+    fake.enqueue(rows([VALIDATION_ROW, CANNOT_EVALUATE_ROW], 2));
+
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+
+    expect(found.map((response) => response.evaluation).sort()).toEqual([
+      "cannot_evaluate",
+      "correct_natural",
+    ]);
+    // And the non-qualifying row is genuinely READABLE, not degraded: its NULL translations became
+    // absent keys, which is the only way a legal `cannot_evaluate` record survives its own
+    // integrity rules. A repository that filtered it out would return one row, and a repository
+    // that half-mapped it would raise — so this distinguishes all three outcomes.
+    const unevaluable = found.find((response) => response.evaluation === "cannot_evaluate");
+    expect(unevaluable).toEqual(CANNOT_EVALUATE_RESPONSE);
+    expect("englishTranslation" in (unevaluable ?? {})).toBe(false);
+    expect("filipinoTranslation" in (unevaluable ?? {})).toBe(false);
+  });
+
+  it("pages on the exact count instead of raising on a truncated pool", async () => {
+    // 1500 rows at the documented 1000-row page size: a first page of 1000 with a count of 1500 is
+    // exactly the case `findByEntry` refuses. The read was cut off, and treating it as complete
+    // would compute coverage over two thirds of the pool and hand already-covered entries out
+    // again. Here it issues a SECOND ranged request rather than either truncating or giving up.
+    const fake = createFakeClient();
+    fake.enqueue(rows(responseRows(0, 1000), 1500));
+    fake.enqueue(rows(responseRows(1000, 500), 1500));
+
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+
+    expect(found).toHaveLength(1500);
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[0]?.filters).toContainEqual({ kind: "range", from: 0, to: 999 });
+    // The offset ADVANCED. Asserting only that a second request happened would also be satisfied by
+    // a loop that re-requested page one and got lucky with a shorter fixture.
+    expect(fake.calls[1]?.filters).toContainEqual({ kind: "range", from: 1000, to: 1999 });
+    // The pages do not overlap: 1500 rows read as 1500 distinct ids, which is the property that
+    // makes the concatenated array a coverage input rather than a pile with duplicates in it.
+    expect(new Set(found.map((response) => response.id)).size).toBe(1500);
+  });
+
+  it("stops paging as soon as the rows read reach the exact count", async () => {
+    // The control for the test above. Without it, a loop that always ran one iteration too many
+    // would pass the paging test and fail here, and a loop that never paged would fail that one
+    // while passing this — so the two are what make "pages exactly as often as needed" a claim.
+    const fake = createFakeClient();
+    fake.enqueue(rows([VALIDATION_ROW], 1));
+
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+
+    expect(found).toHaveLength(1);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("raises rather than looping forever on an empty page below the exact count", async () => {
+    // The failure the paging loop is most likely to meet in production: a proxy, a gateway, or a
+    // row limit that truncates WITHOUT reporting a count on that response. Re-issuing the identical
+    // request would spin; reporting what was read would compute a coverage number over a partial
+    // pool. Both are wrong, so the read refuses and says which offset it stopped at.
+    const fake = createFakeClient();
+    fake.enqueue(rows(responseRows(0, 1000), 1500));
+    fake.enqueue(rows([], 1500));
+
+    const error = await catchError(
+      new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]),
+    );
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validations.listForEntries");
+    expect((error as RepositoryError).detail).toContain("offset 1000");
+    // Two requests, and no third: the loop actually terminated rather than hanging or spinning.
+    expect(fake.calls).toHaveLength(2);
+  });
+
+  it("raises rather than treating a missing count as zero rows", async () => {
+    // A `null` count would make the paging loop stop after the first page and report a partial
+    // pool as the whole one, so it must raise before any rows are trusted.
+    const fake = createFakeClient();
+    fake.enqueue(rows([VALIDATION_ROW], null));
+
+    await expect(
+      new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]),
+    ).rejects.toMatchObject({ name: "RepositoryError", operation: "validations.listForEntries" });
+  });
+
+  it("selects the ten columns the predicate reads from, not the five it needs", async () => {
+    // A deliberate cost, recorded in `design.md` D1: `countQualifyingValidations` reads five
+    // columns and this selects ten, because `toDomain` is the already-tested code that knows a
+    // NULL translation means an ABSENT key. A narrower projection is the right revisit at scale,
+    // and it should be a projection of columns — never a copy of the predicate in SQL. Asserted as
+    // a full set so a column silently dropped from `VALIDATION_COLUMNS` fails here too.
+    const fake = createFakeClient();
+    fake.enqueue(rows([VALIDATION_ROW], 1));
+
+    await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+
+    expect(fake.lastCall().columns?.split(",").sort()).toEqual(VALIDATION_COLUMN_SET);
+  });
+});
+
+describe("the exclusion read", () => {
+  it("selects exactly one column and filters on the validator", async () => {
+    // One column, because the result IS one column. This is asserted exactly rather than with
+    // `toContain`, because the failure this guards against is widening: `listForEntries` already
+    // fetched full responses for the pool, and a method that exists to keep the exclusion rule from
+    // reading anything about a response is the wrong place to start handing them out.
+    const fake = createFakeClient();
+    fake.enqueue(rows([{ dataset_entry_id: "OD_0001" }, { dataset_entry_id: "OD_0002" }]));
+
+    const ids = await new SupabaseValidationsRepository(fake.client).listEntryIdsForValidator(
+      "VAL_a81d92c1",
+    );
+
+    expect(ids).toEqual(["OD_0001", "OD_0002"]);
+    const call = fake.lastCall();
+    expect(call.columns).toBe("dataset_entry_id");
+    expect(call.filters).toEqual([{ kind: "eq", column: "validator_id", value: "VAL_a81d92c1" }]);
+    // No count and no range: see the method comment for why a truncated result is safe here.
+    expect(call.options).toBeUndefined();
+    expect(call.filters.some((filter) => filter.kind === "range")).toBe(false);
+  });
+
+  it("returns an empty list for a validator who has answered nothing", async () => {
+    // `[]` is the honest answer and is distinguishable from a failure, which raises instead.
+    const fake = createFakeClient();
+    fake.enqueue(rows([]));
+
+    const ids = await new SupabaseValidationsRepository(fake.client).listEntryIdsForValidator(
+      "VAL_a81d92c1",
+    );
+
+    expect(ids).toEqual([]);
+  });
+
+  it("raises rather than excluding nothing when the read fails", async () => {
+    // The dangerous direction. A failed read reported as `[]` would mean "this validator has
+    // answered nothing", allocation would offer entries they already answered, and the second
+    // response would be refused by the database as a duplicate. Raising puts the decision where it
+    // is visible.
+    const fake = createFakeClient();
+    fake.enqueue(failure("42501", "permission denied for table validations"));
+
+    const error = await catchError(
+      new SupabaseValidationsRepository(fake.client).listEntryIdsForValidator("VAL_a81d92c1"),
+    );
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validations.listEntryIdsForValidator");
+  });
+
+  it("rejects a stored entry id that is not a dataset entry id", async () => {
+    // The narrow projection means this row is never translated by `toDomain`, so nothing else
+    // validates it. Without this, an id outside the `datasetEntryId` shape would reach the
+    // exclusion set and silently exclude a dataset entry that does not exist.
+    const fake = createFakeClient();
+    fake.enqueue(rows([{ dataset_entry_id: "not-an-entry-id" }]));
+
+    const error = await catchError(
+      new SupabaseValidationsRepository(fake.client).listEntryIdsForValidator("VAL_a81d92c1"),
+    );
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validations.listEntryIdsForValidator");
+  });
+});
+
+describe("SupabaseBatchesRepository", () => {
+  /**
+   * Scripts the three requests `create` makes: the batch row, the array of entry rows, and the
+   * read-back pair (`validation_batches` then `batch_entries`).
+   *
+   * The entry rows come back SHUFFLED in both the insert echo and the read-back, because
+   * `BATCH_ENTRY_ROWS_SHUFFLED` explains why: the fixture is chosen so that echoing the argument,
+   * returning the wire's order, and sorting by position are three distinguishable outcomes.
+   */
+  const scriptCreate = (fake: ReturnType<typeof createFakeClient>): void => {
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue({ data: BATCH_ENTRY_ROWS_SHUFFLED, error: null, count: null });
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue({ data: BATCH_ENTRY_ROWS_SHUFFLED, error: null, count: null });
+  };
+
+  it("writes the batch row and all its entries in ONE request, not one per entry", async () => {
+    const fake = createFakeClient();
+    scriptCreate(fake);
+
+    await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD);
+
+    const writes = fake.calls.filter((call) => call.method === "insert");
+    expect(writes.map((call) => call.table)).toEqual(["validation_batches", "batch_entries"]);
+    // The array form specifically. A per-row loop would produce THREE `batch_entries` writes for a
+    // three-entry batch and still pass every content assertion below; asserting on the COUNT of
+    // writes is what distinguishes "one request" from "N requests that happen to agree".
+    expect(writtenRows(fake.calls[1]!)).toEqual([
+      { batch_id: "batch_01", dataset_entry_id: "OD_0001", position: 1 },
+      { batch_id: "batch_01", dataset_entry_id: "OD_0002", position: 2 },
+      { batch_id: "batch_01", dataset_entry_id: "OD_0003", position: 3 },
+    ]);
+  });
+
+  it("returns the READ-BACK sorted by position, not the argument and not the wire's order", async () => {
+    // The read-back is the whole design: a repository that stored a different order must not be
+    // able to report the order the caller wanted. Both wrong answers are ruled out by the same
+    // fixture — see `BATCH_ENTRY_ROWS_SHUFFLED` — so this is not satisfiable by echoing.
+    const fake = createFakeClient();
+    scriptCreate(fake);
+
+    const stored = await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD);
+
+    expect(stored).toEqual(BATCH_RECORD);
+    expect(stored.entries.map((entry) => entry.datasetEntryId)).toEqual([
+      "OD_0001",
+      "OD_0002",
+      "OD_0003",
+    ]);
+    // The read-back went through `findById` rather than being reconstructed from what was sent.
+    expect(fake.calls[2]?.table).toBe("validation_batches");
+    expect(fake.calls[3]?.filters).toContainEqual({
+      kind: "order",
+      column: "position",
+      ascending: true,
+    });
+  });
+
+  it("reports the stored order, so a validator is shown the batch that was persisted", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue({ data: BATCH_ENTRY_ROWS_SHUFFLED, error: null, count: null });
+
+    const found = await new SupabaseBatchesRepository(fake.client).findById("batch_01");
+
+    expect(found).toEqual(BATCH_RECORD);
+    // The order was ASKED FOR and not merely hoped for: `.order()` is what keeps the query correct
+    // on the server, and the in-memory sort above keeps the RETURNED VALUE correct even if the
+    // narrow interface ever stops asking.
+    expect(fake.calls[1]?.filters).toEqual([
+      { kind: "eq", column: "batch_id", value: "batch_01" },
+      { kind: "order", column: "position", ascending: true },
+    ]);
+  });
+
+  it("returns null for an absent batch, and does not read its entries at all", async () => {
+    // Reading `batch_entries` for a batch row that does not exist is a wasted request, and one
+    // whose result would be indistinguishable from a batch with no entries. `maybeSingle` is what
+    // makes "absent" arrive as `null` rather than as `PGRST116`.
+    const fake = createFakeClient();
+    fake.enqueue({ data: null, error: null, count: null });
+
+    const found = await new SupabaseBatchesRepository(fake.client).findById("batch_9999");
+
+    expect(found).toBeNull();
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]?.terminal).toBe("maybeSingle");
+  });
+
+  it("raises on a batch that exists with no entries, rather than reporting an empty allocation", async () => {
+    // This is the detectable residue of a partial write, and the reason it is acceptable: a batch
+    // with no entries would reach a validator as being given nothing to do, and the service reports
+    // `exhausted` for a genuinely empty pool. `batchRecordSchema`'s `.min(1)` turns that into a
+    // persistence failure the service can attribute, instead of a presentational surprise.
+    const fake = createFakeClient();
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue({ data: [], error: null, count: null });
+
+    const error = await catchError(new SupabaseBatchesRepository(fake.client).findById("batch_01"));
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validation_batches.findById");
+  });
+
+  it("raises when the entry insert reports success but stored a different number of rows", async () => {
+    // No error envelope, fewer rows than were sent. Reporting a batch from this would be reporting
+    // a batch that is not the one that was allocated — a research record that differs from the one
+    // the allocation decided on, discovered by nobody.
+    const fake = createFakeClient();
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue({ data: [BATCH_ENTRY_ROWS_SHUFFLED[0]!], error: null, count: null });
+
+    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).detail).toContain("stored 1 of 3 entries");
+    // The read-back was never reached, so nothing was reported to the caller.
+    expect(fake.calls).toHaveLength(2);
+  });
+
+  it("reports a failed entry insert as a partial write, and names the constraint that likely fired", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue(
+      failure(
+        "23505",
+        'duplicate key value violates unique constraint "batch_entries_batch_position_unique"',
+      ),
+    );
+
+    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validation_batches.insert");
+    expect((error as RepositoryError).message).toContain("partial write");
+    // The message states the residue honestly rather than implying the batch was rolled back:
+    // there is no transaction here, and a message claiming otherwise would be a lie in the one
+    // situation where someone goes looking.
+    expect((error as RepositoryError).message).toContain("carries no entries");
+  });
+
+  it("raises rather than reporting a batch as persisted when the batch row read back empty", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: null, error: null, count: null });
+
+    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+
+    expect(isRepositoryError(error)).toBe(true);
+    // The exact wording is asserted rather than a looser fragment, because the point is that the
+    // write is unconfirmed — not that some error occurred. `toContain("returned no")` would pass
+    // on a message that never mentioned the store.
+    expect((error as RepositoryError).detail).toBe("validation_batches insert returned no row");
+    // Not one entry row was written: the batch row never confirmed, so nothing followed it.
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("raises rather than reporting success when the batch it just wrote reads back absent", async () => {
+    // The read-back confirmed absent. Returning the argument here would report a persisted batch on
+    // the strength of a write the class could not confirm, which is precisely what the read-back
+    // exists to prevent.
+    const fake = createFakeClient();
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue({ data: BATCH_ENTRY_ROWS_SHUFFLED, error: null, count: null });
+    fake.enqueue({ data: null, error: null, count: null });
+
+    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).detail).toContain("absent immediately after insert");
+  });
+
+  it("maps a duplicate batch id to validation_batches.insert rather than silently upserting", async () => {
+    // Batch ids are minted by the allocation service, so a collision is a server bug. It is
+    // reported rather than swallowed, and it is attributed to the same operation name `create`
+    // always reports so a caller has one name to branch on for "the write failed".
+    const fake = createFakeClient();
+    fake.enqueue(
+      failure("23505", 'duplicate key value violates unique constraint "validation_batches_pkey"'),
+    );
+
+    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validation_batches.insert");
+    expect((error as RepositoryError).detail).toContain("23505");
+  });
+
+  it("never asks for `*`, on either of the two tables a batch spans", async () => {
+    // `position` is the specific hazard: a `select("*")` would work today and would silently start
+    // returning whatever a later migration adds, which for this table is exactly the kind of
+    // unknown-field drift the rest of this directory is written to prevent.
+    const fake = createFakeClient();
+    fake.enqueue({ data: BATCH_ROW, error: null, count: null });
+    fake.enqueue({ data: BATCH_ENTRY_ROWS_SHUFFLED, error: null, count: null });
+
+    await new SupabaseBatchesRepository(fake.client).findById("batch_01");
+
+    for (const call of fake.calls) {
+      expect(typeof call.columns).toBe("string");
+      expect(call.columns).not.toBe("*");
+    }
+    expect(fake.calls[0]?.columns).toBe("id,validator_id");
+    expect(fake.calls[1]?.columns).toBe("batch_id,dataset_entry_id,position");
+  });
+
+  it("writes no timestamp, because the table has none and inventing a column is not a migration", async () => {
+    // `assigned_at`, `completed_at`, and a lifecycle `status` belong to the batch-completion change.
+    // Asserted so an eager timestamp added here fails rather than being absorbed: the structural
+    // scenario in the research-schema spec forbids columns that no behaviour backs, and
+    // `created_at` is the most likely one to be added by reflex.
+    const fake = createFakeClient();
+    scriptCreate(fake);
+
+    await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD);
+
+    expect(Object.keys(writtenRow(fake.calls[0]!)).sort()).toEqual(["id", "validator_id"]);
+    expect(Object.keys(writtenRows(fake.calls[1]!)[0]!)).not.toContain("assigned_at");
+    expect(fake.calls[0]?.columns).not.toContain("assigned_at");
+  });
+});
+
 describe("coverage counting", () => {
   it("asks the database for an exact count of validator_id, with no row body", async () => {
     const fake = createFakeClient();
@@ -1014,15 +1542,21 @@ describe("the operation name each method reports", () => {
     datasetEntries: DATASET_ENTRIES_OPERATIONS,
     validators: VALIDATORS_OPERATIONS,
     validations: VALIDATIONS_OPERATIONS,
+    batches: BATCHES_OPERATIONS,
   };
 
-  it("pins both places the union and the method name disagree", () => {
-    // `RepositoryOperation` says `validators.insert` where the method is `create`, and
-    // `dataset_entries.list` where the method is `listActive`. The link is a type-level
-    // `satisfies` in operations.ts; this is its readable half, and it is two assertions rather
-    // than one because there are two divergences, not one.
+  it("pins every place the union and the method name disagree", () => {
+    // `RepositoryOperation` says `validators.insert` where the method is `create`,
+    // `dataset_entries.list` where the method is `listActive`, and `validation_batches.insert`
+    // where the method is `create`. The link is a type-level `satisfies` in operations.ts; this is
+    // its readable half, and it is three assertions rather than one because there are three
+    // divergences, not one. A new divergence would need a new entry here, and the `declared` list
+    // below is what makes an unrecorded one impossible.
     expect(maps.validators.create).toBe("validators.insert");
     expect(maps.datasetEntries.listActive).toBe("dataset_entries.list");
+    expect(maps.batches.create).toBe("validation_batches.insert");
+    // And the one that is NOT a divergence, pinned so its lack of a comment reads as deliberate.
+    expect(maps.batches.findById).toBe("validation_batches.findById");
   });
 
   it("gives every method of one interface its own operation name", () => {
@@ -1034,7 +1568,10 @@ describe("the operation name each method reports", () => {
 
   it("uses only names from the RepositoryOperation union", () => {
     // The exhaustive check is the compiler's job (`satisfies` in operations.ts); this is the
-    // runtime half, and it fails loudly if a name is edited in one place only.
+    // runtime half, and it fails loudly if a name is edited in one place only. The assertion is
+    // bidirectional — every name used is declared AND every declared name is used — because a
+    // one-directional check would pass while an operation sat in the union unattached to any
+    // method, which is the opposite of "reconciled".
     const declared: RepositoryOperation[] = [
       "dataset_entries.list",
       "dataset_entries.findById",
@@ -1045,8 +1582,12 @@ describe("the operation name each method reports", () => {
       "validations.insert",
       "validations.findById",
       "validations.findByEntry",
+      "validations.listForEntries",
+      "validations.listEntryIdsForValidator",
       "validations.countForEntry",
       "validations.countForValidator",
+      "validation_batches.insert",
+      "validation_batches.findById",
     ];
     const used = Object.values(maps).flatMap((map) => Object.values(map));
 

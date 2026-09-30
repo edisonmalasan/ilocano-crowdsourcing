@@ -43,6 +43,7 @@ const EXPECTED_TABLES = [
 const EXPECTED_MIGRATIONS = [
   "20260930120000_research_schema.sql",
   "20260930160000_required_bilingual_translations.sql",
+  "20260930190000_allocation_batch_positions.sql",
 ] as const;
 
 /**
@@ -182,19 +183,23 @@ describe("research schema migrations", () => {
       ]);
     });
 
-    it("gives the structural tables only their identity and their foreign keys", async () => {
+    it("gives the structural tables only their identity, their foreign keys, and the batch order", async () => {
       // The spec says these three "carry only the columns those foreign keys and their own identity
-      // require", and a table CAN have more columns than that while still reading as structural —
-      // `started_at` and `ended_at` both look like bookkeeping, and both are a claim about what a
-      // session IS, which belongs to the change that owns the lifecycle. So this is a CLOSED set,
-      // asserted per table, not a "contains the required columns" check that a lifecycle column
-      // would pass.
+      // require" — with ONE named exception, added by the coverage-aware-allocation delta:
+      // `batch_entries` carries `position` recording the server-selected order of its batch. The
+      // test is still a CLOSED set, asserted per table, not a "contains the required columns" check
+      // that a lifecycle column would pass.
+      //
+      // What the exception does NOT admit is the rest of what that delta keeps undefined: batch
+      // status, completion timestamps, and assignment timestamps. `validation_batches` therefore
+      // still carries exactly `id` and `validator_id`, and that is the assertion that would fail if
+      // `status`, `assigned_at`, `completed_at`, or `created_at` were added alongside `position`.
       //
       // `batch_entries` legitimately carries no `id`: its primary key IS the pair.
       const expected = new Map<string, string[]>([
         ["validation_sessions", ["id", "validator_id"]],
         ["validation_batches", ["id", "validator_id"]],
-        ["batch_entries", ["batch_id", "dataset_entry_id"]],
+        ["batch_entries", ["batch_id", "dataset_entry_id", "position"]],
       ]);
 
       for (const [table, columns] of expected) {
@@ -211,12 +216,25 @@ describe("research schema migrations", () => {
       }
     });
 
-    it("defines no constraint that describes a lifecycle the allocation change has not built", async () => {
+    it("defines no constraint describing a lifecycle the batch-completion change has not built", async () => {
       // The companion to the closed column set. A check constraint on a structural table is
       // behavior: `validation_batches` originally carried `requested_size` with a `1..50` bound
       // mirroring `BATCH_SIZE_HARD_MAX`, which is a second authority for a constant the allocation
-      // change owns. Foreign keys and the composite primary key are the only constraints these
-      // tables may define.
+      // change owns. Foreign keys, each table's primary key, and — on `batch_entries` alone — the
+      // two constraints that make `position` mean something are the only constraints these tables
+      // may define.
+      //
+      // NARROWED BY THE SPEC DELTA, and it is worth being explicit that this assertion is WEAKER
+      // than the one it replaced. Before the allocation change, `batch_entries` could declare no
+      // constraint beyond its foreign keys and its primary key, and this test enforced that. The
+      // delta admits `batch_entries_batch_position_unique` and `batch_entries_position_positive`,
+      // so the closed set here now has a named exception — which is a real loss of strictness, paid
+      // for a behavior the allocation change genuinely implements. What keeps it from becoming a
+      // loophole is that the exception is enumerated in `contype` terms only (a `c` and a `u` on
+      // one named table), so a LIFECYCLE constraint on `validation_batches` still fails here, and
+      // the names themselves are asserted in `migration-precondition.test.ts` rather than left to
+      // this count to imply.
+      //
       // `pg_constraint.contype` rather than `information_schema.table_constraints`, because the
       // information schema view reports a `NOT NULL` column constraint as a `CHECK` — measured, not
       // assumed: filtering that view for `CHECK` here returned six rows, one per NOT NULL column,
@@ -233,15 +251,18 @@ describe("research schema migrations", () => {
          order by c.relname, con.contype`,
       );
 
-      // Closed, per table: the foreign keys, plus the primary key each table needs anyway. Nothing
-      // else. The `requested_size between 1 and 50` bound this replaces is a `contype = 'c'` here,
-      // so adding lifecycle behavior back fails the test rather than passing behind an
-      // `arrayContaining`. `batch_entries` has two foreign keys and no `id`, because its primary
-      // key is the pair.
+      // Closed, per table. `batch_entries` has two foreign keys and no `id`, because its primary
+      // key is the pair, plus exactly the two `position` constraints the delta admits — ordered
+      // `c`, `f`, `f`, `p`, `u`, which is PostgreSQL's own collation over `contype`. The
+      // `requested_size between 1 and 50` bound this replaces is a `contype = 'c'` here, so adding
+      // lifecycle behavior back to `validation_batches` fails the test rather than passing behind an
+      // `arrayContaining`.
       expect(rows.map((row) => `${row.table_name}:${row.contype}`)).toEqual([
+        "batch_entries:c",
         "batch_entries:f",
         "batch_entries:f",
         "batch_entries:p",
+        "batch_entries:u",
         "validation_batches:f",
         "validation_batches:p",
         "validation_sessions:f",
