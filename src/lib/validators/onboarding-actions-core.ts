@@ -160,11 +160,20 @@ export async function runEnroll(
 /**
  * Resolves a client-supplied stored identifier to a server-confirmed validator.
  *
- * The write intake checks only "a non-empty string"; the shared identifier schema
- * is the check that actually means anything, and a value failing it is reported
- * as `absent` rather than `invalid`. `absent` is the right answer for a stale or
- * tampered local-storage value: the client should offer a fresh enrollment, not
- * show an error about something the participant did not do wrong.
+ * The write intake checks only "a non-empty string", so this is the check that
+ * actually means anything, and a value failing it is reported as `absent` rather
+ * than `invalid` — a stale or tampered local-storage value is not something the
+ * participant did wrong, and `invalid` reads to them like a bug.
+ *
+ * HONEST NOTE ON REDUNDANCY, because a deliberate duplicate that is not labelled as
+ * one becomes accidental the next time someone edits it. `resumeValidator` below
+ * re-checks the same format with `isAnonymousValidatorIdFormat`. The two agree
+ * because both read the single `ANONYMOUS_VALIDATOR_ID_PATTERN`, and
+ * `validators-identifier-format.test.ts` asserts that they continue to agree. So the
+ * check here is NOT a second security boundary. What it is for is narrowing an
+ * `unknown` from the network to the branded `AnonymousValidatorId` the service takes,
+ * without a cast. If the service's parameter type ever widens, the boundary
+ * re-validation rule is what keeps this parse necessary.
  */
 export async function runResume(
   raw: unknown,

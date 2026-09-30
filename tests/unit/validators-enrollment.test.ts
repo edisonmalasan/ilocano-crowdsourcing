@@ -79,7 +79,7 @@ function request(proficiency: EnrollmentRequest["ilocanoProficiency"]): Enrollme
 
 describe("enrollValidator", () => {
   it("mints the identifier server-side and returns it in the approved format", async () => {
-    const { repo, dependencies } = deps();
+    const { dependencies } = deps();
 
     const outcome = await enrollValidator(request("fluent"), dependencies);
 
