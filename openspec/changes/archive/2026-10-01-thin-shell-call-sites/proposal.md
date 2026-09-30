@@ -86,10 +86,22 @@ uses the whole vocabulary while specifying only the *semantics* of a disabled co
 | `SF-5`, `RV-2` | the participant is sent onward to `/ready` | **Partial** — onward movement is implied by the Req-1 sequence, but **no spec names the route**: `grep -i "/ready"` across all nine specs returns **0 hits** |
 | `SF-1`, `SF-2`, `SF-3` | the options, Continue, and skip controls are disabled while a write is in flight | **No requirement, in any of the nine specs** |
 
-The decisive measurement: **15 requirement blocks mention the pending-state vocabulary and 0 scenarios
-mandate** a control be disabled while a write is in flight. So the claim held for two sites, was
-overstated for a third, and was simply wrong for three — including `SF-2`, which `design.md` itself
-classes as **critical**.
+The decisive measurement: **0 of the 181 scenarios in the nine specs mandate** a control be disabled
+while a write is in flight, and only **3** requirement blocks mention the vocabulary at all —
+*accessible interactive states*, *the dataset is not mutated by validation*, and *landing, screening,
+then enrollment*, none of which is about a control's disabled state during a write. So the claim held
+for two sites, was overstated for two more, and was simply wrong for three — including `SF-2`, which
+`design.md` itself classes as **critical**.
+
+> **This paragraph originally read "15 requirement blocks mention the pending-state vocabulary and 0
+> scenarios mandate". The `0` re-derives EXACTLY; the `15` does not reproduce under any of six
+> plausible definitions of either term, the highest any reaching being 3.** The figure came from the
+> verification pass and was corrected here rather than quietly dropped, because a count that cannot
+> be re-derived is a claim, not a measurement — and because only re-derivation revealed which of the
+> two numbers the conclusion actually rested on. **The conclusion is unchanged and in one sense
+> stronger**: the binding is not merely under-specified in most of the vocabulary's contexts, it is
+> mandated by none of them. Re-measured in force at correction time: **9 specs, 50 requirement blocks,
+> 181 scenarios, 3 vocabulary blocks, 0 mandating, 0 files naming `/ready`**.
 
 **The correction is to the rationale, not to `skip_specs`.** The flag is correct on OpenSpec's own
 criterion, which is that no spec-level behaviour changed, and `git diff main --numstat -- src/` is
