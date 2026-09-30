@@ -452,17 +452,24 @@ anchor on the statement's own terminator (`create table public.${table} (`) or o
 newline. Re-probed after the fix: the same reversal is `1 failed | 12 passed (13)`.
 
 **A required check that reports `success` may have run NO tests at all, and only a reader that
-refuses will notice.** The Sync run for `coverage-aware-allocation` (36726456200) reported both jobs
-green and `gh pr checks` said pass — while the `lint, types, and tests` job's step list contained
-only *Install pnpm* and *Type-check*, and on a rerun only *Install Node.js*. **Lint, Check
-formatting, Unit tests, Integration tests, and Production build were absent from the step list
-entirely**, not failed and not skipped. A fresh run, triggered by closing and reopening the PR,
-executed all eleven steps and verified 26 files / 709 unit, 6 files / 100 integration. The workflow
-itself has no matrix, no `if:`, and no conditions, so nothing in the file explains it. What caught it
-was the reader **refusing twice** to attribute a unit or integration summary, which is the same
-property that has already saved this project four other times. **Merge on the log, never on the
-checkmark, and treat a refused reader as a stop rather than an inconvenience** — and when it
-refuses, compare the job's step list against a known-good run before assuming the code is at fault.
+refuses will notice.** This has now happened **three times, and to both jobs**, so treat it as a
+property of this repository's CI rather than as a one-off. Run 36726456200 (Sync for
+`coverage-aware-allocation`) reported both jobs green and `gh pr checks` said pass while the
+`lint, types, and tests` job's step list contained only *Install pnpm* and *Type-check* — **Lint,
+Check formatting, Unit tests, Integration tests, and Production build absent from the step list
+entirely**, not failed and not skipped. Run 36729647153 (Propose for
+`research-schema-guarantee-coverage`) truncated the OTHER job: `immutable research source` reported
+`success` while its log contained **only** the *Install pnpm* step — *Check out*, *Install
+dependencies* and *Verify the synthetic dataset is unchanged* produced no output, and the log held
+**zero** occurrences of `ilocano-synthetic` and zero of any sha-256, which the guard's own output must
+contain. **The immutability guard is the one check that can never be skipped, and it is the one that
+reported success without running.** `gh run rerun` fixed every instance; the first attempt of run
+36730070192 was also truncated and only attempt 2 verified 1 file / 7 tests. The workflow itself has
+no matrix, no `if:`, and no conditions, so nothing in the file explains it. What caught it every
+time was the reader **refusing** to attribute a summary, which is the same property that has already
+saved this project four other times. **Merge on the log, never on the checkmark; treat a refused
+reader as a stop; and when a job looks truncated, count the step list against a known-good run
+before assuming the code is at fault.**
 
 - `pnpm-workspace.yaml` sets `allowBuilds: { esbuild: true, sharp: false, unrs-resolver: false }`. `esbuild` **must** stay `true` or Vitest cannot start; `sharp` and `unrs-resolver` install scripts are deliberately disabled because nothing in this project uses them.
 - `.gitattributes` sets `* text=auto eol=lf` (and `*.ico binary`). This is load-bearing, not cosmetic. `.editorconfig` already declared `end_of_line = lf`, but `.editorconfig` only configures editors and **git does not read it**. Before this file existed, line endings were decided by each contributor's local `core.autocrlf`, which broke two things on a machine with `core.autocrlf=true`: `pnpm run format:check` failed on all 56 formatter-owned files, and a fresh clone produced `data/ilocano-synthetic-data.json` with CRLF and SHA-256 `152ae7e8…` against the guard's expected `39f757e6…`. **The immutability guard hashes the working-tree file, so without this file it fails for autocrlf users and passes on CI.** If your local checks suddenly disagree with CI, check your line endings before suspecting the code.

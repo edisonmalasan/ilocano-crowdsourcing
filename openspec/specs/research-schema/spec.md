@@ -84,6 +84,12 @@ one of the four approved values; that every stored proficiency is one of the fiv
 or absent; that each stored translation is either present and non-blank or absent; and that a
 stored correction is either present-and-non-empty or absent.
 
+The database SHALL also enforce, on `batch_entries`, that a stored position is present and
+greater than zero, and that no two entries of one batch share a position, so that a batch
+order is total and no position is written twice. A position MAY be reused across two
+different batches, because positions are scoped to a batch rather than being a global
+sequence.
+
 A stored response SHALL also be internally consistent, which a per-column constraint cannot
 express. The database SHALL reject a response whose correction does not match its evaluation, and
 SHALL reject a response whose English and Filipino translations are not both present-and-non-blank
@@ -166,6 +172,46 @@ operation, and SHALL NOT be swallowed as a successful no-op.
 - **THEN** the database accepts it, because a constraint stricter than the domain's rules would
   destroy real research responses, which is the worse of the two failure directions
 
+#### Scenario: A batch entry with no position is rejected
+
+- **WHEN** a `batch_entries` row is written with no position
+- **THEN** the database rejects it, because an entry with no recorded position has no place in
+  the order the server selected and the batch could not be replayed as the validator worked
+  through it
+
+#### Scenario: A position that is not positive is rejected
+
+- **WHEN** a `batch_entries` row is written with position `0` or with a negative position
+- **THEN** the database rejects it on `batch_entries_position_positive`, because positions are
+  1-based and a zero or negative position cannot denote a place in a batch
+
+#### Scenario: Position 1 is accepted, so the position constraint is not vacuous
+
+- **WHEN** a `batch_entries` row is written with position `1`
+- **THEN** the database accepts it, because a constraint that refused the first position would
+  refuse every position and would look like a guarantee while enforcing nothing
+
+#### Scenario: Two entries of one batch cannot share a position
+
+- **WHEN** two `batch_entries` rows of the same batch are written carrying the same position
+- **THEN** the database rejects the second on `batch_entries_batch_position_unique`, because a
+  batch order that is not total is not an order
+
+#### Scenario: One position may be reused across two different batches
+
+- **WHEN** two `batch_entries` rows in two different batches are written carrying the same
+  position
+- **THEN** the database accepts both, because the constraint that protects one batch's order
+  must not refuse two unrelated batches that happen to use the same number
+
+#### Scenario: The position constraints are asserted against a real database engine
+
+- **WHEN** the migration set is applied and each position constraint is exercised by name
+- **THEN** a missing, zero, negative, or duplicated-within-a-batch position is rejected on the
+  constraint that owns it, and position `1` and a position reused across two batches are
+  accepted, proven by the PostgreSQL integration harness rather than only by an application
+  test
+
 ### Requirement: The bilingual representation replaces the single optional translation
 
 The `validations` table SHALL store an English translation and a Filipino translation in two
@@ -182,6 +228,12 @@ NOT weaken the new constraints to accommodate them.
 When the check passes, every pre-existing row is a `cannot_evaluate` row, which under the previous
 schema carried no translation data, so removing the superseded columns discards nothing. The check
 SHALL therefore run **before** the columns are removed, and that ordering SHALL NOT be reversed.
+
+That ordering SHALL be enforced by the migration's own statements rather than by transaction
+rollback. The precondition SHALL first assert that the superseded columns are still present, and
+SHALL raise by name, stating the required order, when they are not. Rollback is not a substitute,
+because a file applied by a runner that does not use a transaction would otherwise lose the
+columns before the refusal was raised.
 
 #### Scenario: The migration refuses to apply over pre-existing evaluable rows
 
@@ -208,6 +260,15 @@ SHALL therefore run **before** the columns are removed, and that ordering SHALL 
 - **WHEN** the change is reviewed
 - **THEN** the existing research-schema migration file is byte-identical to its state before this
   change, and the new behaviour is carried by a newly added forward migration
+
+#### Scenario: The precondition refuses by name when the superseded columns are already gone
+
+- **WHEN** the forward migration's statements are applied after the superseded columns have
+  already been removed, or in an order that drops them before the precondition runs
+- **THEN** the migration fails with a raised exception that names this migration and states that
+  the precondition must run before the columns are dropped, so a reversal is refused loudly
+  rather than proceeding from a schema that has already lost the data the precondition exists
+  to protect
 
 ### Requirement: The coverage and review queries the platform depends on are indexed
 
@@ -315,3 +376,43 @@ modelled by the current domain type.
 - **THEN** each typed column is compared against the corresponding field of the stored source
   record, so a divergence between the projection and the archival copy is detected rather than
   assumed away
+
+### Requirement: The batch-entry order is recorded by a forward migration that refuses rather than invents it
+
+The `batch_entries.position` column SHALL be added by a **forward** migration.
+No existing migration file SHALL be modified, and no archived specification SHALL be rewritten as
+though the structural tables had never lacked a position.
+
+A row's position within its batch is recorded nowhere before this column exists, and every way of
+producing one fabricates research data. The migration SHALL therefore first verify that no
+pre-existing `batch_entries` row exists, and SHALL refuse to apply with a raised exception naming
+the conflict if one does. It SHALL NOT delete or quarantine those rows, SHALL NOT renumber them
+from a row identifier, a dataset entry id, or their insertion order, and SHALL NOT weaken the new
+constraints to accommodate them.
+
+The same principle governs the statement order. The migration SHALL first assert that
+`batch_entries.position` is still absent, and SHALL raise by name, stating the required order, when
+it is not. That ordering SHALL be enforced by the migration's own statements rather than by
+transaction rollback, because a file applied by a runner that does not use a transaction would
+otherwise lose the columns before the refusal was raised.
+
+#### Scenario: The position migration refuses over pre-existing batch entries
+
+- **WHEN** the forward migration is applied to a database that already holds a `batch_entries` row
+- **THEN** the migration fails with a raised exception that names the conflict and states that the
+  order will not be invented, because a row's position within its batch is recorded nowhere and
+  every way of producing one fabricates research data
+
+#### Scenario: A refused position migration leaves no trace
+
+- **WHEN** the position migration is refused
+- **THEN** the `position` column does not exist and every pre-existing `batch_entries` row is
+  unchanged, so the conflict can be resolved in the data and the migration reapplied
+
+#### Scenario: The position migration refuses when the column already exists
+
+- **WHEN** the position migration is applied to a database where `batch_entries.position` already
+  exists
+- **THEN** the migration fails with a raised exception naming this migration and stating that the
+  precondition must run before the column is added, so a reapplied file cannot half-run and then
+  fail on a duplicate-column error that says nothing about whether the data is intact
