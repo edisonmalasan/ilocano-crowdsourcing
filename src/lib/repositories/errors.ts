@@ -28,8 +28,12 @@ export type RepositoryOperation =
   | "validations.insert"
   | "validations.findByEntry"
   | "validations.findById"
+  | "validations.listForEntries"
+  | "validations.listEntryIdsForValidator"
   | "validations.countForEntry"
-  | "validations.countForValidator";
+  | "validations.countForValidator"
+  | "validation_batches.insert"
+  | "validation_batches.findById";
 
 export interface RepositoryErrorOptions {
   /** The original failure, preserved for diagnostics. Never re-wrapped into a bare message. */

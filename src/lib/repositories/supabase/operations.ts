@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  BatchesRepository,
   DatasetEntriesRepository,
   RepositoryOperation,
   ValidationsRepository,
@@ -35,6 +36,19 @@ import type {
  *   `ValidatorsRepository.create`  ->  "validators.insert"
  *   `DatasetEntriesRepository.listActive`  ->  "dataset_entries.list"
  *
+ * A THIRD divergence arrived with `BatchesRepository`, and it is the same shape as the first:
+ *
+ *   `BatchesRepository.create`  ->  "validation_batches.insert"
+ *
+ * It is named here rather than left for a reader to derive, because the union is named after the
+ * TABLE and the method after the aggregate: writing `"validation_batches.create"` would have been
+ * defensible and would still have diverged from `"validators.insert"` two entries above it. One
+ * convention for the whole union beats three locally reasonable ones.
+ *
+ * `BatchesRepository.findById` is NOT a divergence — it happens to read the same in both places,
+ * which is recorded only so a future author does not assume the absence of a comment means an
+ * oversight.
+ *
  * THE UNION IS THE AUTHORITY, and it is NOT renamed here.
  * `RepositoryOperation` is exported public API from `@/lib/repositories`, it is already asserted
  * by name in `tests/unit/repositories.test.ts`, and it is deliberately named after the
@@ -67,6 +81,19 @@ export const VALIDATIONS_OPERATIONS = {
   insert: "validations.insert",
   findById: "validations.findById",
   findByEntry: "validations.findByEntry",
+  // The two coverage reads. `listForEntries` is the one the qualifying predicate is applied to, in
+  // the application, by `countQualifyingValidations`; `listEntryIdsForValidator` is an
+  // already-answered exclusion read. Neither is a count, which is deliberate: see the note on
+  // `countForEntry` in the interface.
+  listForEntries: "validations.listForEntries",
+  listEntryIdsForValidator: "validations.listEntryIdsForValidator",
   countForEntry: "validations.countForEntry",
   countForValidator: "validations.countForValidator",
 } as const satisfies Record<keyof ValidationsRepository, RepositoryOperation>;
+
+export const BATCHES_OPERATIONS = {
+  // Divergence 3 of 3, and the same shape as divergence 1: the method names the aggregate, the
+  // union names the persistence call on the table.
+  create: "validation_batches.insert",
+  findById: "validation_batches.findById",
+} as const satisfies Record<keyof BatchesRepository, RepositoryOperation>;

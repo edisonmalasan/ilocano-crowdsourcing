@@ -5,7 +5,7 @@ import {
   type RepositoryOperation,
   type ValidationsRepository,
 } from "@/lib/repositories";
-import type { DatasetEntryId } from "@/schemas/dataset";
+import { datasetEntryIdSchema, type DatasetEntryId } from "@/schemas/dataset";
 import type { AnonymousValidatorId } from "@/schemas/validator";
 import { validationResponseSchema, type ValidationResponse } from "@/schemas/validation";
 
@@ -53,6 +53,37 @@ const VALIDATION_COLUMNS = [
 
 /** One column is enough for a count; asking for the whole row to count it would be absurd. */
 const COUNT_COLUMN = "validator_id";
+
+/**
+ * The single column `listEntryIdsForValidator` needs. It genuinely selects one column, unlike
+ * `listForEntries` — see that method's comment for why the asymmetry is a decision rather than an
+ * oversight.
+ */
+const ENTRY_ID_COLUMN = "dataset_entry_id";
+
+/**
+ * PostgREST's default maximum rows per response, and therefore the page size used to read a
+ * candidate pool's responses.
+ *
+ * WHY THIS READ PAGES AT ALL, which `findByEntry` does not have to
+ * --------------------------------------------------
+ * `findByEntry` reads one entry's responses and asserts the read was complete. This method reads
+ * the responses of an ENTIRE POOL: 600 entries × 3 validators is 1800 rows before a single entry is
+ * filtered out, and PostgREST caps a response at the project's configured maximum (1000 by
+ * default) while signalling the cap only by returning fewer rows than match.
+ *
+ * The consequence if this did not page is not a slow query. It is a coverage number computed over a
+ * truncated set: entries late in the pool would look less covered than they are, allocation would
+ * keep serving them, and the research would record over-collection as diligence. That is the exact
+ * silent-wrong-answer failure `assertPageIsComplete` exists for, and raising on it — the obvious
+ * alternative — would mean allocation fails outright once the dataset exceeds ~333 fully-covered
+ * entries, which is a functional break rather than a safety property.
+ *
+ * So the read pages, and the pages are driven by the `count: "exact"` the first page already
+ * returns. Unverified: the configured maximum on a real project. If it is higher than 1000, this
+ * simply fetches smaller pages than it needs to.
+ */
+const RESPONSE_PAGE_SIZE = 1000;
 
 /**
  * Row ⇄ domain translation, and the NULL ⇄ absent decision.
@@ -245,6 +276,109 @@ export class SupabaseValidationsRepository implements ValidationsRepository {
   }
 
   /**
+   * Every stored response for a set of entries, across all validators, UNFILTERED.
+   *
+   * ============================================================================================
+   * WHY TEN COLUMNS WHEN THE PREDICATE READS FIVE, AND WHY NOTHING IS FILTERED
+   * ============================================================================================
+   *
+   * THE FILTERING. The interface forbids this method from dropping non-qualifying responses,
+   * because the qualifying rule is defined once, in `@/lib/domain/validation-response`, and a
+   * `where` clause here would be that rule in SQL: a second copy, in a second language, with
+   * nothing keeping the two in agreement — and a drifted copy fails by producing a plausible wrong
+   * coverage number rather than an error. The interface comment carries the full argument.
+   *
+   * THE COLUMN LIST. `isQualifyingValidation` reads `evaluation`, `corrected_instruction`,
+   * `english_translation`, and `filipino_translation`; `countQualifyingValidations` adds
+   * `validator_id`. `ValidationResponse` also carries `batch_id`, `createdAt`, and `updatedAt`, so a
+   * five-column projection would mean either fabricating those three values or introducing a second
+   * domain type with its own NULL ⇄ absent rules — a second place to get the bilingual rules wrong,
+   * for the sake of a few hundred bytes. `toDomain` is the already-tested code that knows a NULL
+   * translation column means an ABSENT key, and reusing it is worth more than the bytes. The
+   * narrower projection is the right revisit at a larger scale (`design.md` D1), and it should be a
+   * projection of COLUMNS, never a re-implementation of the predicate.
+   *
+   * The paging is explained at `RESPONSE_PAGE_SIZE` above, and it is why this is not a two-liner.
+   *
+   * An empty pool short-circuits to `[]` without a query: `.in("dataset_entry_id", [])` is a
+   * malformed filter, not an empty one.
+   */
+  async listForEntries(entryIds: readonly DatasetEntryId[]): Promise<ValidationResponse[]> {
+    if (entryIds.length === 0) return [];
+
+    const collected: Record<string, unknown>[] = [];
+
+    for (let from = 0; ; from += RESPONSE_PAGE_SIZE) {
+      const result = await awaitQuery(OPS.listForEntries, "validations.listForEntries", () =>
+        this.client
+          .from("validations")
+          .select(VALIDATION_COLUMNS.join(","), { count: "exact" })
+          .in("dataset_entry_id", entryIds)
+          .range(from, from + RESPONSE_PAGE_SIZE - 1),
+      );
+
+      const rows = readRows(result, OPS.listForEntries, "validations.listForEntries");
+      const pageTotal = readExactCount(result, OPS.listForEntries, "validations.listForEntries");
+      collected.push(...rows);
+
+      if (collected.length >= pageTotal) break;
+      // A short page that has not reached the exact count means the server stopped returning rows
+      // without saying why. Looping again would reissue the identical request forever, so this is
+      // stated rather than waited out.
+      if (rows.length === 0) {
+        throw new RepositoryError(
+          OPS.listForEntries,
+          `validations.listForEntries received an empty page at offset ${from} with ` +
+            `${collected.length} of ${pageTotal} rows read. The server is truncating without ` +
+            "reporting a count, so the remaining responses cannot be read, and a coverage number " +
+            "computed from a partial pool would be silently wrong.",
+          { detail: `empty page at offset ${from} of ${pageTotal} rows` },
+        );
+      }
+    }
+
+    return collected.map((row, index) =>
+      toDomain(row, `validations.listForEntries row ${index}`, OPS.listForEntries),
+    );
+  }
+
+  /**
+   * The entry ids one validator has already answered.
+   *
+   * One column, because the result IS one column. The other coverage read selects ten for the
+   * reasons above; widening this one would fetch data the exclusion rule does not read, which is
+   * how a method that exists to keep the response out of allocation's way starts leaking it.
+   *
+   * It does NOT request `count: "exact"`. The bound here is the number of responses one validator
+   * has, which grows with their participation and is small. If a project's maximum rows were ever
+   * below that, the result would be SHORT rather than wrong — the missing entries would be offered
+   * again, and `validations_validator_entry_unique` would then refuse the second response. A
+   * duplicate request for an already-answered entry is therefore a loud, database-enforced outcome
+   * rather than a silent double count, which is why paging is not needed to make this safe.
+   */
+  async listEntryIdsForValidator(validatorId: AnonymousValidatorId): Promise<DatasetEntryId[]> {
+    const result = await awaitQuery(
+      OPS.listEntryIdsForValidator,
+      "validations.listEntryIdsForValidator",
+      () => this.client.from("validations").select(ENTRY_ID_COLUMN).eq("validator_id", validatorId),
+    );
+    const rows = readRows(
+      result,
+      OPS.listEntryIdsForValidator,
+      "validations.listEntryIdsForValidator",
+    );
+
+    return rows.map((row, index) =>
+      parseDomainValue(
+        datasetEntryIdSchema,
+        row.dataset_entry_id,
+        OPS.listEntryIdsForValidator,
+        `validations.listEntryIdsForValidator row ${index}`,
+      ),
+    );
+  }
+
+  /**
    * How many independent validators have responded for an entry.
    *
    * WHY THE COUNT CANNOT BE A ROW COUNT BY ACCIDENT, AND WHY IT IS NOT COMPUTED HERE. The
@@ -264,6 +398,12 @@ export class SupabaseValidationsRepository implements ValidationsRepository {
    * A missing count raises rather than becoming `0`: a `0` here would tell allocation that an entry
    * is uncovered when the server simply did not answer, and allocation would then hand the entry
    * to more validators.
+   *
+   * IT IS NOT THE COVERAGE NUMBER, and that is the property to preserve the next time this method
+   * is edited. It counts validators who responded AT ALL, including those whose `cannot_evaluate`
+   * response contributes nothing to qualifying coverage. It is a legitimate diagnostic for review
+   * and disagreement inspection, which is why it stays; it is the WRONG number for allocation, which
+   * is why allocation reads `listForEntries` and reduces it with the one in-force definition.
    */
   async countForEntry(entryId: DatasetEntryId): Promise<number> {
     const result = await awaitQuery(OPS.countForEntry, "validations.countForEntry", () =>
