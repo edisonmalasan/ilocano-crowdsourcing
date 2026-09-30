@@ -17,9 +17,17 @@ import { decideResume } from "@/lib/validators/onboarding-flow";
  * and the reason is worth stating because it looks like a worse design:
  *
  * A load-time discovery needs a post-hydration `setState`, because `localStorage`
- * does not exist during server rendering. That is a cascading render, it is the
- * pattern React's lint rules exist to reject, and hiding it makes the control's
+ * does not exist during server rendering, and hiding it makes the control's
  * presence a function of state the server never saw.
+ *
+ * An earlier version of this comment called that cascading render "the pattern React's
+ * lint rules exist to reject". That was checked during independent review and half of
+ * it is false: `useEffect` + `setState` does trip the rule, but
+ * `useSyncExternalStore` — the supported, hydration-safe API for exactly this read —
+ * lints and typechecks clean. The reason the control is not load-time is therefore not
+ * lint compliance. It is that storage can tell this component an identifier is *stored*,
+ * while only the server can say whether it is *recognised*, so a control that appeared
+ * or vanished before the server answered would be guessing.
  *
  * The control is therefore always rendered, and reveals what it found only after
  * the participant asks. The cost is that a first-time visitor can press a button

@@ -150,9 +150,13 @@ successful resume.
 > **Amended during Apply.** This requirement originally read "The screening question SHALL NOT be
 > asked again", and its first scenario repeated that the question "is not presented again". Both
 > were **not achievable**, and the design record explains why at D2: the identifier lives in
-> `localStorage` (D2), the server cannot read it at render time, and the client cannot read it
-> without a post-hydration effect that the React lint rules rightly reject. A participant who
-> navigates directly to `/start` therefore does see the question.
+> `localStorage` (D2), so the server cannot know who they are at render time. The client *can*
+> read it — `useSyncExternalStore` does so cleanly, and an earlier version of this note
+> wrongly said otherwise — but a stored identifier is not a recognised one, so resolving
+> before the server answers would enroll a participant whose identifier has expired with no
+> screening answer at all. See design.md D2 for the check that falsified the original
+> justification. A participant who navigates directly to `/start` therefore does see the
+> question.
 >
 > What replaces it is the property that actually protects the research data and is actually
 > testable: a second screening answer is never *stored*. The resume path performs no write, so the

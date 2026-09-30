@@ -2,8 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
-import ReadyPage from "@/app/ready/page";
-import StartPage from "@/app/start/page";
+import ReadyPage, { metadata as readyMetadata } from "@/app/ready/page";
+import StartPage, { metadata as startMetadata } from "@/app/start/page";
 import { AnswerGroup, answerOptionClasses } from "@/components/validation/answer-option";
 import { submitControlState } from "@/lib/validators/onboarding-flow";
 import {
@@ -108,6 +108,18 @@ describe("screening route", () => {
 
   it("has exactly one h1 and a distinct page title", () => {
     expect((html.match(/<h1/g) ?? []).length).toBe(1);
+  });
+
+  it("declares real route metadata rather than a placeholder", () => {
+    // Low severity, but it was untested and the failure is silent: replacing a required
+    // page title with "Nowhere" passes every behavioural assertion in this file, because
+    // `renderToStaticMarkup` does not emit the metadata object at all. Asserted against
+    // the imported metadata rather than the HTML, since that is the only place it exists.
+    expect(startMetadata.title).toBe("Screening");
+    expect(startMetadata.title).not.toMatch(/todo|placeholder|nowhere|untitled/i);
+    expect(startMetadata.description).toBeTypeOf("string");
+    expect((startMetadata.description ?? "").trim().length).toBeGreaterThan(30);
+    expect(startMetadata.description).not.toMatch(/todo|placeholder|nowhere|lorem/i);
   });
 
   it("asks the approved question verbatim", () => {
@@ -371,6 +383,17 @@ describe("confirmation route", () => {
 
   it("has exactly one h1", () => {
     expect((html.match(/<h1/g) ?? []).length).toBe(1);
+  });
+
+  it("declares real route metadata rather than a placeholder", () => {
+    // Untested until third-round review: replacing this title with a placeholder passed
+    // every behavioural assertion here, because `renderToStaticMarkup` never emits the
+    // metadata object. Asserted against the import, which is the only place it exists.
+    expect(readyMetadata.title).toBe("You are set");
+    expect(readyMetadata.title).not.toMatch(/todo|placeholder|nowhere|untitled/i);
+    expect(readyMetadata.description).toBeTypeOf("string");
+    expect((readyMetadata.description ?? "").trim().length).toBeGreaterThan(30);
+    expect(readyMetadata.description).not.toMatch(/todo|placeholder|nowhere|lorem/i);
   });
 
   it("states that nothing identifying was collected", () => {

@@ -13,7 +13,7 @@
 | --- | --- |
 | Current roadmap phase | Phase 3 — Landing and Screening — **verifying**. The Propose stage is merged (PR #11, `d111a9d`); the Apply stage is complete on `feat/landing-and-screening` and has been through one round of independent verification and repair. Sync and Archive have not run |
 | Current OpenSpec change | `landing-and-screening`, unarchived in `openspec/changes/`. All 4 planning artifacts complete; `openspec validate landing-and-screening --strict` exits 0 |
-| Lifecycle state | `verifying` — two independent verification rounds have run and **both returned FAIL**. Round 1 raised 2 CRITICAL and 9 WARNING; round 2 confirmed every round-1 repair load-bearing (all 8 of the reviewer's proofs go red) and then raised 2 more CRITICAL and 7 WARNING of its own. All are now repaired. **A third review is required before this change may be called verified.** Not archived. Full gate green on the repairs: lint 0, format 0, typecheck 0, 22 files / 498 unit tests, 4 files / 69 integration tests, build "Compiled successfully" |
+| Lifecycle state | `verifying` — **three independent verification rounds have run and all three returned FAIL.** Round 1 raised 2 CRITICAL + 9 WARNING; round 2 confirmed every round-1 repair load-bearing (all 8 of that reviewer's proofs go red) and raised 2 CRITICAL + 7 WARNING of its own; round 3 confirmed every round-2 repair load-bearing (20 further probes red) and raised 1 CRITICAL + 4 WARNING, the CRITICAL being that **four call sites of fully-tested functions were unguarded** — deleting the storage write, deleting the resume early return, adding a `create` to the restored branch, and wiring the skip control to a fabricated proficiency level each left all 498 tests green. All are now repaired and probe-confirmed. **A fourth review is required before this change may be called verified.** Not archived. Full gate green on the repairs: lint 0, format 0, typecheck 0, 22 files / 506 unit tests, 4 files / 69 integration tests, build "Compiled successfully" |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`) |
 | Last merged OpenSpec stage | #11 — `Merge pull request #11 from edisonmalasan/docs/landing-and-screening-proposal` (`d111a9d`), the `landing-and-screening` Propose stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
 | Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) and #10 (`35cee22`, merged `3518514`) — both reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
@@ -403,9 +403,14 @@ A residue check confirmed all nine probed files were byte-identical afterwards.
   — a worse fit for a project whose headline property is anonymity. The cost is that resume is
   an explicit client action, which also means a shared device never silently hands one person
   another's session.
-- **Resume is checked at submit time, not revealed on load.** A load-time reveal needs a
-  post-hydration `setState`, which the React lint rules rightly reject. Checking at submit time
-  is a plain synchronous read and also closes a real hole: a participant who already holds an
+- **Resume is checked at submit time, not revealed on load.** This was originally justified
+  as lint compliance — a load-time reveal needs a post-hydration `setState`, "the pattern the
+  React lint rules rightly reject". Review checked it and half the claim is false:
+  `useSyncExternalStore` lints and typechecks clean, so the reason is not compliance. The
+  reason that holds is that storage can say an identifier is *stored* while only the server
+  can say it is *recognised*; resolving first would enroll a stale-id participant with no
+  screening answer. The submit-time check is also a plain synchronous read and closes a real
+  hole: a participant who already holds an
   identity and submits the screening form must not be issued a second one, because that would
   split one person's research record in two with nothing in the stored data able to tell.
 

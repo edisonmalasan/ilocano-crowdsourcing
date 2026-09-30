@@ -92,15 +92,20 @@ describe("answer option neutrality (research integrity)", () => {
     // component, a per-option `className`, or an accent added to one screen - and in the
     // reviewer's bypass probe this file stayed green.
     //
-    // What is actually claimed here is about the function's SIGNATURE, and a signature is
-    // checkable: the parameter type admits no option identity at all. If a future change
-    // added a `className` or `emphasis` parameter, this file fails to COMPILE, which is a
-    // stronger guarantee than comparing two return values.
+    // What is genuinely claimed here is about the function's OUTPUT for the unselected
+    // state. An earlier version of this comment claimed something stronger and false: that
+    // adding a per-option `className` parameter would make this file "fail to COMPILE".
+    // Review added `emphasis?: boolean` to the options type and typecheck exited 0 - because
+    // `className?: string` ALREADY EXISTS on that type. The component's own header is the
+    // accurate version of this: the escape hatch is deliberate, and "the constraint is
+    // enforced by `AnswerGroup`'s call site and by test, not by the type system". Nothing
+    // here defends the type system; it defends the rendered output.
     //
     // The screen-level half is asserted on rendered markup in
     // `onboarding-routes.test.tsx`, where the rendered `class` of every `role="radio"` is
     // compared against this function's output. That is the assertion that goes red when a
-    // component is bypassed; this one is the compile-time floor beneath it.
+    // component is bypassed; this one checks the constant that comparison targets, and would
+    // not notice a bypass on its own.
     const unselected: string = answerOptionClasses({ selected: false });
     const selected: string = answerOptionClasses({ selected: true });
 

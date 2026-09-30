@@ -31,6 +31,7 @@ import { describe, expect, it } from "vitest";
 
 const FORM_PATH = "src/app/start/screening-form.tsx";
 const RESUME_COMPONENT_PATH = "src/components/onboarding/resume-validator.tsx";
+const ACTIONS_CORE_PATH = "src/lib/validators/onboarding-actions-core.ts";
 
 function read(file: string): string {
   return readFileSync(file, "utf8");
@@ -114,11 +115,166 @@ describe("the server still has no access to browser storage", () => {
     expect(source).not.toMatch(/globalThis\./);
     expect(source).not.toMatch(/localStorage/);
     expect(source).not.toMatch(/sessionStorage/);
-    expect(source).toMatch(/readStoredValidatorId|writeStoredValidatorId|clearStoredValidatorId/);
+    expect(source).toMatch(/readStoredValidatorId/);
+    expect(source).toMatch(/writeStoredValidatorId/);
+    expect(source).toMatch(/clearStoredValidatorId/);
+  });
+
+  it("persists the minted identifier, and does so only from a real one", () => {
+    // The previous version of the line above asserted an ALTERNATION of the three
+    // storage helpers, which reads as though the write is covered and is not: deleting
+    // `writeStoredValidatorId(decision.validatorId)` entirely still matches
+    // `readStoredValidatorId`. An alternation asserts that one of several names appears;
+    // it says nothing about which, and for a research-data write that distinction is the
+    // whole content of the requirement.
+    //
+    // Deleting the write is the defect that matters. With no identifier stored, every
+    // later resume in that browser fails closed into `enroll-fresh`, so one person is
+    // enrolled twice and their record is split in two — which is precisely what the
+    // resume path exists to prevent. Third-round review confirmed this mutation left all
+    // 498 tests green.
+    const source = code(FORM_PATH);
+
+    // The write takes its value from the decision's identifier, never from local state
+    // and never from the participant's input.
+    expect(source).toMatch(/writeStoredValidatorId\(\s*\w+\.validatorId\s*\)/);
+
+    // The server owns the identifier: nothing in this file may mint one. If the client
+    // could choose its own identifier, a participant could collide with or impersonate
+    // another by picking the value.
+    expect(source).not.toMatch(/VAL_/);
+    expect(source).not.toMatch(/createAnonymousValidatorId/);
   });
 
   it("the resume component does not reach `globalThis` either", () => {
     expect(code(RESUME_COMPONENT_PATH)).not.toMatch(/globalThis\./);
+  });
+});
+
+describe("the resume path performs no write, anywhere", () => {
+  // This is the single most important invariant in the change, and it was guarded by
+  // PROSE only: `screening-form.tsx` says in a comment that "the resume path contains no
+  // `create` call", and `tasks.md` listed the answer "reaches the enrollment write" as
+  // red-confirmed. Third-round review added `validators.create(...)` to the `restored`
+  // branch and got typecheck exit 0 with all 498 tests passing.
+  //
+  // What that mutation would do: a returning validator's screening answer is overwritten
+  // by whatever they just selected, or the record is replaced outright, and nothing in
+  // the system can tell afterwards. The guarantee is load-bearing and it was unasserted.
+
+  it("the restored branch of the action core returns only, and creates nothing", () => {
+    // Scoped to the `restored` arm specifically. Asserting the whole file contains no
+    // `create` would be wrong — `enrollValidatorAction` legitimately calls it.
+    const source = code(ACTIONS_CORE_PATH);
+
+    const restored = source.slice(source.indexOf('outcome.status === "restored"'));
+    expect(restored, "the restored branch is no longer shaped as expected").toContain(
+      "validatorId",
+    );
+
+    // No repository mutation of any kind on the restored path.
+    expect(restored).not.toMatch(/validators\.create/);
+    expect(restored).not.toMatch(/\.create\(/);
+    expect(restored).not.toMatch(/enroll/);
+  });
+
+  it("a restored validator is applied and the function returns, never enrolling again", () => {
+    // Deleting the early-return branch leaves a restored validator falling through to the
+    // stale-identifier fallback: the identifier is cleared and a SECOND validator is
+    // created for one person. Third-round review confirmed this mutation left all 498
+    // tests green. Nothing below the decision could catch it, because the damage happens
+    // in the branch that was deleted.
+    const source = code(FORM_PATH);
+
+    const restoredAt = source.indexOf('decision.kind !== "enroll-fresh"');
+    expect(restoredAt, "the restored branch no longer guards on enroll-fresh").toBeGreaterThan(-1);
+
+    // Both halves of the branch are required, and in this window. Removing the `return`
+    // while keeping the `apply` still falls through, so asserting only `apply` would be
+    // half a guard - which is what the earlier alternation was.
+    const block = source.slice(restoredAt, restoredAt + 200);
+    expect(block).toMatch(/apply\(decision\)/);
+    expect(block, "the restored branch applies the decision but does not return").toMatch(
+      /\breturn\b/,
+    );
+
+    // The stale-identifier fallback must come after the restored branch, never before.
+    const clearAt = source.indexOf("clearStoredValidatorId()");
+    expect(clearAt).toBeGreaterThan(restoredAt);
+
+    // Exactly two enrollment sites - no stored identifier, and an unrecognised one - and
+    // both must pass the participant's own answer through. A third site would mean some
+    // path can enroll without a decision at all.
+    expect(source.match(/await enroll\(/g)).toHaveLength(2);
+    expect(source.match(/await enroll\(answer\)/g)).toHaveLength(2);
+  });
+
+  it("the whole resume action touches the repository read-only", () => {
+    // Broader floor under the same invariant: across the entire resume action there is
+    // no write of any kind, whatever the branch structure turns out to be. This is the
+    // assertion that survives someone restructuring the `restored` ternary.
+    const source = code(ACTIONS_CORE_PATH);
+    const resumeStart = source.indexOf("export async function runResume");
+    expect(resumeStart, "runResume is no longer an exported function").toBeGreaterThan(-1);
+
+    const resumeBody = source.slice(resumeStart);
+    // Cut at the next top-level export, so a later action's writes cannot satisfy or
+    // pollute this.
+    const nextExport = resumeBody.indexOf("\nexport ", 10);
+    const scope = nextExport === -1 ? resumeBody : resumeBody.slice(0, nextExport);
+
+    // The action's whole job is to validate the intent, delegate to the resume service,
+    // and shape the outcome. It reads the stored identifier and it reads nothing else.
+    // (It does not call `findById` itself - the service does - so asserting that here
+    // would have pinned the wrong contract and would break on a harmless refactor.)
+    expect(scope).toMatch(/resumeValidator\(/);
+    expect(scope).toMatch(/anonymousValidatorIdSchema/);
+    expect(scope).not.toMatch(/\.create\(|\.update\(|\.delete\(|\.upsert\(/);
+  });
+});
+
+describe("the skip control records a decline and never a fabricated answer", () => {
+  it("the skip control calls the decline path, and no approved level appears near it", () => {
+    // A participant who presses "Skip and continue without answering" must be recorded
+    // as having DECLINED. `null` is a meaningful research datum — it distinguishes
+    // "declined to say" from "said fluent" — so silently writing any real proficiency
+    // level here is fabricated research metadata, and it is a mutation that typechecks
+    // and lints cleanly because every approved value is a legal argument.
+    //
+    // Third-round review confirmed `run("conversational")` on this handler left all 498
+    // tests green. The consequence would be invisible in the data: the record would
+    // simply claim a screening answer the participant explicitly refused to give.
+    const source = code(FORM_PATH);
+
+    // Find the control by its handler, then require the null decline on that line.
+    const skipLine = source
+      .split("\n")
+      .find((line) => /onClick/.test(line) && /run\(/.test(line) && /type="button"/.test(source));
+
+    expect(skipLine ?? source).toMatch(/run\(null\)/);
+
+    // Belt and braces: no proficiency LEVEL may appear as an argument anywhere in the
+    // component. `run` is called exactly twice — once with the participant's selection
+    // and once with the decline — so a literal level at either site is fabrication.
+    const levels = ["native", "fluent", "conversational", "basic", "not_confident"];
+    for (const level of levels) {
+      expect(source, `a literal "${level}" is passed somewhere in the screening form`).not.toMatch(
+        new RegExp(`\\(\\s*["'\`]${level}["'\`]`),
+      );
+    }
+  });
+});
+
+describe("a rejected submission reaches the field", () => {
+  it("the error state is forwarded to the control, not just held in state", () => {
+    // Holding `error` in state and never passing it down is the shape of a silent
+    // failure: the participant presses submit, nothing happens, and nothing explains
+    // why. `AnswerGroup` renders `role="alert"`, `aria-invalid`, and `aria-describedby`
+    // — all of it invisible unless the call site actually forwards the value.
+    // Third-round review confirmed `error={undefined}` left the suite green.
+    const source = code(FORM_PATH);
+
+    expect(source).toMatch(/error=\{[^}]*\berror\b[^}]*\}/);
   });
 });
 

@@ -129,16 +129,24 @@ inferred from the plan.
 | `pnpm run lint` | exit 0, no errors, no warnings |
 | `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" |
 | `pnpm run typecheck` | exit 0 |
-| `pnpm run test:unit` | exit 0 — 22 files, 498 tests passed |
-| `pnpm run test:integration` | exit 0 — 4 files, 69 tests passed |
+| `pnpm run test:unit` | exit 0 - 22 files, 506 tests passed |
+| `pnpm run test:integration` | exit 0 - 4 files, 69 tests passed |
 | `pnpm run build` | exit 0, "Compiled successfully"; `/`, `/_not-found`, `/ready`, `/start` all prerendered static |
 | `openspec validate landing-and-screening --strict` | exit 0, "Change 'landing-and-screening' is valid" |
 | `openspec validate --specs --strict` | "Totals: 6 passed, 0 failed (6 items)" |
 
-> **The unit counts before and after independent review were 445 and 497.** The 52-test
-> increase is not cosmetic. Independent review found real defects that a green suite had
-> missed, and the new tests exist to make those specific defects impossible to reintroduce.
-> That is the entire point of the number moving.
+> **The unit counts across the three review rounds were 445, 497, and 506.** Neither increase is
+> cosmetic, and neither is a sign of ordinary maintenance: both times, independent review found
+> real defects that a fully green suite had missed, and the new tests exist to make those specific
+> defects impossible to reintroduce. 445 to 497 came from the first round (a discarded screening
+> answer, an assertion comparing a function to itself, and eight smaller repairs). 497 to 506 came
+> from the third round, which found that **four call sites of fully-tested functions were
+> unguarded** - deleting the storage write, deleting the resume early return, adding a `create` to
+> the restored branch, and fabricating an answer from the skip control each left the whole suite
+> green.
+>
+> That is the entire point of the number moving. A suite that only grows when something breaks is
+> not being maintained; it is being corrected, which is the same activity at three times the rate.
 
 **The working tree was damaged during review, and the repair is part of the record.** The
 reviewer ran its mutation probes in a throwaway copy under `%TEMP%`. All 13 direct dependency
@@ -298,6 +306,48 @@ failures as passes:
 A residue check confirmed all probed files were byte-identical afterwards, including
 after the post-review re-probe.
 
+### Third-round re-probe: the four call sites that were unguarded
+
+A third review returned FAIL and, unlike the two before it, its central finding was
+not a false claim but **missing guards**. Four mutations to specified research-integrity
+behaviour left the entire suite green, and none was among the three exceptions the
+record had already named. All five probes below were re-run after the guards were
+written; all five go red.
+
+| Probe | Break | Result |
+| --- | --- | --- |
+| A1 / I2 / G1 | delete `writeStoredValidatorId(decision.validatorId)` entirely | RED — 1 failing, `screening-form-wiring.test.ts` |
+| A2 / B1 / C1 | delete the `enroll-fresh` early-return branch, so a restored validator falls through to enrolling | RED — 1 failing, `screening-form-wiring.test.ts` |
+| D1 / E3 | wire the skip control to `run("conversational")`, fabricating an answer the participant refused to give | RED — 1 failing, `screening-form-wiring.test.ts` |
+| O4 | `error={undefined}`, so a rejected submission never reaches the field | RED — 1 failing, `screening-form-wiring.test.ts` |
+| I3b | add `validators.create(...)` to the `restored` branch of the action core | RED — 4 failing, `screening-form-wiring.test.ts` and `validators-actions.test.ts` |
+| CTL | negative control: inject `expect(1).toBe(2)` | RED — the harness can detect failure |
+
+**A1 was a hole in a guard that already existed.** The assertion that the screening
+form delegates to `browser-identity` was written as an *alternation* of the three
+storage helpers:
+
+```ts
+expect(source).toMatch(/readStoredValidatorId|writeStoredValidatorId|clearStoredValidatorId/);
+```
+
+An alternation asserts that one of several names appears. It says nothing about
+which — so deleting the write entirely still matched the read. For a research-data
+write, that distinction is the entire content of the requirement.
+
+**The negative control was wrong the first time it was written.** It appended an HTML
+comment to a `.tsx` file, which broke *compilation* and was scored as a distinct
+`INVALID` outcome — correctly, but it proved nothing about failure detection. It now
+injects a false assertion, which is a genuine test failure. This is the third harness
+defect in this change and the second one that produced evidence which looked valid and
+was not.
+
+**The category is the transferable finding.** All four unguarded sites were call sites
+of code that was itself fully tested. `decideResume` was exhaustively unit-tested; the
+line that called it was not. `decideEnrollment`'s terminal branch was type-narrowed;
+whether control actually returned to it was not. `AnswerGroup` rendered `role="alert"`
+and `aria-invalid`; whether the call site forwarded the value was not.
+
 ### Dataset immutability (task 6.4)
 
 - working-tree blob `acaaa05ac83c3a67f9eb1e81b4432d4b11da6263` == `main`
@@ -306,15 +356,25 @@ after the post-review re-probe.
 
 ### Requirement coverage against executable evidence (task 6.5)
 
-Every `validator-onboarding` requirement and every `design-system` delta scenario is backed by a test
-that was confirmed to go red when the behaviour is broken, **except the three listed immediately
-below this table**, which are recorded with the reason they are not. That exception clause is the
-whole point, and it is why the post-review re-probe above exists: the earlier version of this record
-claimed a *universal*, and a second review falsified it by finding the exceptions.
+This table used to open with a universal - "every requirement and every scenario is backed by a test
+confirmed to go red" - and **two separate reviews falsified that universal by finding the exceptions**.
+The second review found three. The third review then found **four more**, none of them among the three
+already named: deleting the storage write, deleting the resume early return, adding a `create` call to
+the restored branch, and wiring the skip control to a fabricated proficiency level each left all 498
+tests green.
 
-A claim of the form "every X is covered" is not checkable by a later reader, because the reader
-cannot tell which items the author happened to probe. A claim that names its own exceptions is
-checkable. That is the entire difference between this sentence and the retracted one above it.
+So the table below states a scoped claim and **names every exception**, because a claim of the form
+"every X is covered" is not checkable by a later reader - they cannot tell which items the author
+happened to probe - while a claim that enumerates its exceptions is. All five exception groups are
+listed immediately after the table.
+
+The four newly-found gaps are worth naming as a category, because the pattern is the whole lesson:
+**all four were call sites of code that was itself fully tested.** `decideResume` was exhaustively
+unit-tested; what was untested was the line that called it. `decideEnrollment`'s terminal branch was
+type-narrowed; what was untested was whether control actually returned to it. `AnswerGroup` rendered
+`role="alert"` and `aria-invalid`; what was untested was whether the call site forwarded the value to
+it. Testing a function and leaving its only caller unexamined is the same mistake in different
+clothes, and this change made it three times.
 
 | Requirement / scenario | Evidence | Confirmed red? |
 | --- | --- | --- |
@@ -335,26 +395,50 @@ checkable. That is the entire difference between this sentence and the retracted
 | a missing database reads as "not open", not as a fault | `validators-actions-wrapper.test.ts` — the **real `actions.ts` wrapper** driven with the environment module throwing `ServerEnvError`, which is how production actually fails; plus `validators-onboarding-flow.test.ts` for the copy | yes (re-probe 8) |
 | a payload carrying an identifying field is rejected | `validators-actions.test.ts` — nine literal field names (`name`, `email`, `studentId`, `phoneNumber`, `address`, …) each asserted `invalid` with zero repository calls, plus the exact stored key set | yes |
 | storage is usable when `localStorage` access itself throws | `validators-browser-identity.test.ts` — a throwing **getter**, as Safari private mode implements, plus a non-numeric `length`, plus the `length: 0` boundary | yes |
+| the minted identifier is actually persisted | `screening-form-wiring.test.ts` - the **write** is required specifically, not an alternation of the three storage helpers. The earlier alternation still matched when the write was deleted | yes (probe A1) |
+| a restored validator never falls through to enrolling again | same file - the `enroll-fresh` guard, the `apply`, and the `return` are all required, and the stale-identifier fallback must appear after it. Asserting only the `apply` would have been half a guard | yes (probe A2) |
+| the resume path performs no write, anywhere | same file, plus `onboarding-actions-core.ts` - the `restored` branch contains no `create`, and the whole `runResume` body contains no `create`/`update`/`delete`/`upsert` | yes (probe I3b, 4 failing) |
+| the skip control records a decline, never a fabricated answer | same file - `run(null)` is required on the control, and **no approved proficiency level may appear as a literal argument anywhere in the component**. `run("conversational")` typechecks and lints cleanly, because every approved value is a legal argument | yes (probe D1) |
+| a rejected submission identifies the field | same file - the `error` state must be forwarded to the control, not only held. The `role="alert"` and `aria-describedby` work is invisible unless the call site passes it | yes (probe O4) |
+| route metadata is real, not a placeholder | `onboarding-routes.test.tsx` - both new routes' title and description asserted against the exported `metadata`, which `renderToStaticMarkup` never emits | yes |
 
-**Three gaps remain, and they are not covered by pretending.** They are recorded here
-rather than in a table row that implies otherwise:
+### Exceptions and gaps, named rather than absorbed
 
-1. **No browser ever executed this flow.** Every component-level guarantee above is either
-   a rendered-markup assertion, a pure function, or a source-text assertion. A real click
-   would be better evidence than all three, and the project has no browser test runner.
-   Adding one is a separate change, not something to smuggle into a screening change.
-2. **The Supabase hop is unexercised**, for want of credentials, as stated above.
-0. **Three scenarios have no red-confirmed test, and are structural rather than accidental.**
-   - *"No half-enrolled identity is left behind"* — true because `/start` is a Server Component
-     that performs no write on render. Proving it behaviourally needs a browser.
-   - *"Declining is possible"* — same shape: the affordance is asserted to be present and the `null`
-     decline is asserted at the decision and persistence layers, but no test presses the button.
-   - *design-system*'s *"Screening options are no more weighted than validation options"* — the
-     scenario compares the screening screen **against a validation answer screen**, and no validation
-     screen exists yet. It is Phase 4 work. The screening half is fully covered; the comparison the
-     scenario names cannot be executed until then, and the row above covers what can be.
-1. **A returning participant who navigates directly to `/start` does see the screening
-   question again.** The original spec scenario forbade this and has been amended,
-   because it is not achievable under D2's storage choice. What is guaranteed and tested
-   is that their stored answer is never overwritten. This is a deliberate, recorded
-   departure from the original requirement, not an untested gap — the difference matters.
+Five groups. Each is stated with what it would take to close it, so a later reader can disagree
+with the judgement instead of re-deriving it.
+
+**1. Three scenarios have no red-confirmed test, and are structural rather than accidental.**
+
+- *"No half-enrolled identity is left behind"* - true because `/start` is a Server Component that
+  performs no write on render. Closing it behaviourally needs a browser.
+- *"Declining is possible"* - the affordance is asserted present and the `null` decline is asserted
+  at the decision and persistence layers, but the control's wiring is a **source** assertion, not a
+  pressed button.
+- *The cross-screen half of design-system's neutrality scenario* - **now scoped out of the spec**
+  rather than carried as a live obligation. It compared the screening screen against a validation
+  answer screen, and no validation screen exists until Phase 4. A requirement that cannot be executed
+  is not evidence of anything. The screening half is fully covered; the cross-screen comparison is
+  Phase 4 work and is deliberately not promised here.
+
+**2. No browser ever executed this flow.** Every component-level guarantee in the table above is a
+rendered-markup assertion, a pure function, or a source-text assertion. A real click would be better
+evidence than all three, and this project has no browser test runner. Adding one is its own change,
+not something to smuggle into a screening change.
+
+**3. The Supabase hop is unexercised**, for want of credentials, as stated above.
+
+**4. A returning participant who navigates directly to `/start` does see the screening question
+again.** The original scenario forbade this and is amended, because it is not achievable under D2's
+storage choice. This is a deliberate, recorded departure rather than an untested gap - and the
+original justification for it was itself wrong until the third review: the stated reason was React
+lint compliance, which was falsified (`useSyncExternalStore` lints and typechecks clean). The reason
+that holds is that `useSyncExternalStore` reveals an identifier is *stored*, not that the server
+*recognises* it, so suppressing the question optimistically would enroll a participant whose
+identifier has expired with no screening answer at all. What is guaranteed and tested is that their
+stored answer is never overwritten. The difference between a recorded departure and an untested gap
+matters, and it is why this paragraph exists.
+
+**5. The four call sites the third review found unguarded are now guarded**, and each was
+probe-confirmed before this claim was restated. That is the point of recording them here even though
+they are closed: the previous version of this table named three exceptions and was still wrong, so
+the reader needs to see that the count moved for a reason and not by luck.

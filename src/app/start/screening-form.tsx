@@ -120,9 +120,22 @@ export function ScreeningForm() {
    *
    * The check happens at SUBMIT time, not by revealing a resume affordance when the
    * screen loads. A load-time reveal needs a post-hydration `setState`, because
-   * `localStorage` does not exist during server rendering; that cascades a render
-   * and is the pattern the React lint rules rightly reject. Checking here is a plain
-   * synchronous read.
+   * `localStorage` does not exist during server rendering.
+   *
+   * An earlier version of this comment justified the choice by saying the resulting
+   * "cascading render is the pattern the React lint rules rightly reject". Half of that
+   * was false and was corrected after independent review: `useEffect` + `setState` does
+   * trip `react-hooks/set-state-in-effect`, but `useSyncExternalStore` — React's
+   * supported, hydration-safe API for exactly this read — lints AND typechecks clean,
+   * verified on React 19.2.8.
+   *
+   * The reason that actually holds is a data-integrity one, and it is the reason to keep:
+   * `useSyncExternalStore` can tell the client that an identifier is STORED, not that the
+   * server RECOGNISES it. Suppressing the question optimistically would let a participant
+   * whose identifier has expired press Continue and be enrolled with no screening answer
+   * at all. Resolving at submit time means the server has vouched before any answer is
+   * treated as unnecessary, so the decision to ask is made on confirmed state rather
+   * than on a value the server has not yet checked.
    *
    * The second reason is the important one: a participant who already has an
    * identity and submits this form must NOT get a second one. That would split one
