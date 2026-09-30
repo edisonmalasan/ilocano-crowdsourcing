@@ -16,7 +16,8 @@ import {
   decideResume,
   firstActionFor,
   RESUMED_NOTICE,
-  type OnboardingDecision,
+  submitControlState,
+  type TerminalDecision,
 } from "@/lib/validators/onboarding-flow";
 import {
   ILOCANO_PROFICIENCY_CHOICES,
@@ -66,9 +67,18 @@ export function ScreeningForm() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const submitState = submitControlState(isPending);
 
-  /** Applies a decision. The only place either browser-storage write or navigation happens. */
-  function apply(decision: OnboardingDecision): void {
+  /**
+   * Applies a decision that ends the flow: ready, error, or notice.
+   *
+   * The `enroll-fresh` case is NOT handled here on purpose. It continues the flow
+   * rather than ending it, and it needs the participant's answer plus a second
+   * awaited round trip; `submit` holds both. Routing it through this function with
+   * a fire-and-forget call is how the first version of this file dropped the answer
+   * and left a window where two activations could mint two identities.
+   */
+  function apply(decision: TerminalDecision): void {
     if (decision.kind === "ready") {
       if (decision.validatorId === null) {
         // A resume: the browser already holds this identifier, so there is nothing to
@@ -85,13 +95,6 @@ export function ScreeningForm() {
       return;
     }
 
-    if (decision.kind === "enroll-fresh") {
-      // The stored identifier named nobody. Forgetting it is the only correct move.
-      clearStoredValidatorId();
-      void enroll(decision.answer);
-      return;
-    }
-
     if (decision.kind === "error") {
       setError(decision.message);
       return;
@@ -100,6 +103,14 @@ export function ScreeningForm() {
     setNotice(decision.message);
   }
 
+  /**
+   * Mints a fresh identity and applies the result.
+   *
+   * `await`ed by every caller. An unawaited call here would let `isPending` return
+   * to `false` while the second Server Action round trip was still in flight, and
+   * two activations inside that window would mint two validators with the second
+   * silently overwriting the first in storage.
+   */
   async function enroll(answer: IlocanoProficiency | null): Promise<void> {
     apply(decideEnrollment(await enrollValidatorAction({ ilocanoProficiency: answer })));
   }
@@ -107,13 +118,23 @@ export function ScreeningForm() {
   /**
    * Resolves a stored identity if this browser holds one, and only then enrolls.
    *
-   * The check happens HERE, at submit time, rather than by revealing a resume
-   * affordance when the screen loads. The second reason is the important one: a
-   * participant who already has an identity and submits this form must NOT get a
-   * second one. That would silently split one person's research record in two —
-   * earlier answers under one anonymous validator, everything after this form under
-   * another, with nothing in the stored data able to tell it was the same person.
-   * A load-time banner would not prevent that; it would only make it less likely.
+   * The check happens at SUBMIT time, not by revealing a resume affordance when the
+   * screen loads. A load-time reveal needs a post-hydration `setState`, because
+   * `localStorage` does not exist during server rendering; that cascades a render
+   * and is the pattern the React lint rules rightly reject. Checking here is a plain
+   * synchronous read.
+   *
+   * The second reason is the important one: a participant who already has an
+   * identity and submits this form must NOT get a second one. That would split one
+   * person's research record in two — earlier answers under one anonymous validator,
+   * everything after this form under another, with nothing in the stored data able
+   * to tell it was the same person.
+   *
+   * A RETURNING VALIDATOR DOES SEE THIS QUESTION, and that is a known, recorded
+   * limitation rather than an oversight — see `design.md` D2 and the spec scenario
+   * it constrains. What is guaranteed is that their selection is never stored over
+   * their original answer: the resume path contains no `create` call, so the
+   * original self-reported screening answer survives untouched.
    */
   async function submit(answer: IlocanoProficiency | null): Promise<void> {
     setError(null);
@@ -121,12 +142,29 @@ export function ScreeningForm() {
 
     const stored = readStoredValidatorId();
 
-    if (firstActionFor(stored) === "enroll") {
+    // The `|| stored === null` looks redundant, because `firstActionFor(null)` already
+    // returns "enroll". It is there to narrow `stored` to a non-null identifier on the other
+    // side of the branch, which the compiler cannot infer from the call. The rule itself
+    // stays in `firstActionFor` so that it is one named, tested function rather than a
+    // comparison repeated at its call site.
+    if (firstActionFor(stored) === "enroll" || stored === null) {
       await enroll(answer);
       return;
     }
 
-    apply(decideResume(await resumeValidatorAction({ storedId: stored })));
+    const decision = decideResume(await resumeValidatorAction({ storedId: stored }), answer);
+
+    if (decision.kind !== "enroll-fresh") {
+      apply(decision);
+      return;
+    }
+
+    // The stored identifier named nobody. Forgetting it is the only correct move —
+    // and enrolling now uses `answer`, the selection this participant just made, not a
+    // decline. Recorded as a data-integrity fix; the previous version hardcoded null
+    // here and recorded people as having declined when they had answered.
+    clearStoredValidatorId();
+    await enroll(answer);
   }
 
   function run(answer: IlocanoProficiency | null): void {
@@ -175,15 +213,20 @@ export function ScreeningForm() {
         accident of not having clicked yet.
       */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <Button type="submit" size="lg" disabled={isPending} aria-busy={isPending || undefined}>
-          {isPending ? "Saving…" : "Continue"}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitState.disabled}
+          aria-busy={submitState.ariaBusy}
+        >
+          {submitState.label}
         </Button>
         <Button
           type="button"
           variant="quiet"
           onClick={() => run(null)}
-          disabled={isPending}
-          aria-busy={isPending || undefined}
+          disabled={submitState.disabled}
+          aria-busy={submitState.ariaBusy}
         >
           Skip and continue without answering
         </Button>
@@ -191,7 +234,7 @@ export function ScreeningForm() {
 
       <p className="text-small text-ink-faint">
         If this browser already holds a validator identity, continuing will resume it instead of
-        creating a second one.
+        creating a second one, and the answer above will not be stored over the original.
       </p>
     </form>
   );

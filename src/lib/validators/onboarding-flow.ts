@@ -16,35 +16,44 @@ import type { EnrollActionResult, ResumeActionResult } from "./onboarding-action
  * markup that do not actually prove the decision.
  *
  * As pure functions, every branch is directly assertable with no rendering, no
- * network, and no Supabase credential. The client components below are left with
- * rendering and navigation only.
+ * network, and no Supabase credential. The client component below is left with
+ * rendering, browser-storage writes, and navigation only.
  *
  * ============================================================================
- * THE ONE GUARANTEE THAT MATTERS MOST HERE
+ * THE TWO GUARANTEES THAT MATTER MOST HERE
  * ============================================================================
- * A participant who already holds an identity must NOT be issued a second one.
- * Two identities for one person silently split their research record in two, with
- * nothing in the stored data able to tell that it was the same person. So the
- * stored value is checked BEFORE enrolling, and `resume` short-circuits the
- * enrollment entirely.
+ * 1. A participant who already holds an identity must NOT be issued a second
+ *    one. Two identities for one person silently split their research record in
+ *    two, with nothing in the stored data able to tell that it was the same
+ *    person. So the stored value is resolved BEFORE enrolling.
+ *
+ * 2. A screening answer the participant just gave must never be thrown away.
+ *    This is subtler than it looks and the first version of this file got it
+ *    wrong: `enroll-fresh` carried an `answer` field, the only producer of that
+ *    field hardcoded `null`, and the component forwarded it — so a participant
+ *    who selected "Fluent" and whose stored identifier turned out to be
+ *    unrecognised was enrolled as having DECLINED. Silently recording a
+ *    fabricated research datum is the exact failure this project exists to
+ *    prevent, and it is why every decision below takes the pending answer as an
+ *    explicit parameter instead of carrying a field nothing can populate.
  */
 
-/**
- * What the flow decided to do. A component's whole job is to render one of these.
- *
- * `enroll-fresh` carries the answer, which looks redundant while the only caller
- * happens to pass `null`. It is not: the decision is that the participant proceeds
- * to ENROLL with the answer they chose, and a caller reaching it with a different
- * answer must not have to re-derive the rule. Carrying the answer makes the branch
- * honest for every future caller rather than only the one that exists today.
- */
+/** What the flow decided to do. A component's whole job is to render one of these. */
 export type OnboardingDecision =
-  /** Enrollment or restore succeeded. The identifier, if new, is now known to the browser. */
+  /**
+   * Enrollment or restore succeeded and the participant should see the confirmation.
+   * `validatorId` is non-null only when a NEW identifier was minted and the browser
+   * therefore has something to store; on a resume the browser already holds it, and
+   * re-storing it would be a redundant write.
+   */
   | { readonly kind: "ready"; readonly validatorId: AnonymousValidatorId | null }
   /**
-   * The stored identifier names nobody. Forget it and enroll a fresh identity, because
-   * handing this participant an identity that belongs to no one would be worse than
-   * starting over.
+   * Proceed to a fresh enrollment, carrying the answer the participant chose.
+   *
+   * Reached when a stored identifier names nobody, so it is forgotten and a new
+   * identity is issued. `answer` is passed in rather than derived: on this path the
+   * participant HAS answered the question, and enrolling them as `null` would
+   * record a decline they never chose.
    */
   | { readonly kind: "enroll-fresh"; readonly answer: IlocanoProficiency | null }
   /** Something failed. `message` is plain language and names no technical detail. */
@@ -72,8 +81,14 @@ export const RESUMED_NOTICE = "Continuing as the validator this browser already 
  * A success carries the newly minted identifier so the caller can store it. Any
  * failure carries no identifier at all — `EnrollActionResult` guarantees that — so
  * there is no branch here that could accidentally persist one.
+ *
+ * The return type is `TerminalDecision`, not the full `OnboardingDecision`, because an
+ * enrollment result can never be `enroll-fresh`: that variant exists only for the
+ * stale-identifier fallback, which has already been decided before enrollment runs.
+ * Declaring the narrower type means a caller cannot pass an `enroll-fresh` here and
+ * have it silently fall through both branches.
  */
-export function decideEnrollment(result: EnrollActionResult): OnboardingDecision {
+export function decideEnrollment(result: EnrollActionResult): TerminalDecision {
   if (result.status === "enrolled") {
     return { kind: "ready", validatorId: result.validatorId };
   }
@@ -82,26 +97,47 @@ export function decideEnrollment(result: EnrollActionResult): OnboardingDecision
 }
 
 /**
- * Maps a resume result.
+ * Maps a resume result, carrying the pending answer through the fallback.
+ *
+ * `answer` is a required parameter on purpose. The stale-identifier path is the one
+ * place a participant has already answered the question and would otherwise be
+ * enrolled as having declined, so the answer is threaded in explicitly rather than
+ * reconstructed. A test asserts that `absent` yields the exact answer object passed
+ * in, not a `null` of the decision's own making.
  *
  * `absent` is NOT an error and is deliberately routed to `enroll-fresh` rather than
  * to a message: a stale local-storage value is the most likely thing to go wrong on
  * a returning visit, and it must not present to the participant as a failure they
  * caused or as a broken platform.
  */
-export function decideResume(result: ResumeActionResult): OnboardingDecision {
+export function decideResume(
+  result: ResumeActionResult,
+  answer: IlocanoProficiency | null,
+): OnboardingDecision {
   if (result.status === "restored") {
-    // `validatorId: null` because the browser already holds this value; re-storing it
-    // would be a redundant write, and the caller has nothing new to learn.
+    // `validatorId: null` because the browser already holds this value.
     return { kind: "ready", validatorId: null };
   }
 
   if (result.status === "absent") {
-    return { kind: "enroll-fresh", answer: null };
+    return { kind: "enroll-fresh", answer };
   }
 
   return { kind: "error", message: messageForFailure(result.reason, "resume") };
 }
+
+/**
+ * The decisions that END the flow, as opposed to continuing it.
+ *
+ * A separate named type rather than an inline `Exclude<...>` in the component, because
+ * `Exclude` over a widened return type does not narrow at the call site and had to be
+ * replaced with a discriminant check anyway. Having the type here also documents which
+ * branch of the flow the client is responsible for terminating.
+ */
+export type TerminalDecision =
+  | { readonly kind: "ready"; readonly validatorId: AnonymousValidatorId | null }
+  | { readonly kind: "error"; readonly message: string }
+  | { readonly kind: "notice"; readonly message: string };
 
 /** Which operation failed. The wording differs, because the wrong wording confuses. */
 export type OnboardingSubject = "enrollment" | "resume";
@@ -139,4 +175,29 @@ export function messageForFailure(
   return subject === "enrollment"
     ? "We could not finish signing you up. Nothing was saved. You can try again in a moment."
     : "The saved identity could not be checked just now, and nothing was changed. You can try again in a moment.";
+}
+
+/**
+ * The submit control's state while a Server Action is in flight.
+ *
+ * Extracted purely so it is assertable without a DOM. `renderToStaticMarkup` never runs
+ * a transition, so it can only ever observe `isPending === false` — which means a test
+ * written against the form's markup alone cannot see the pending behaviour at all, and
+ * a form that stopped disabling its controls on submit would pass every markup test.
+ *
+ * `ariaBusy` is `undefined` rather than `false` when idle so the attribute is absent,
+ * which is what assistive technology should see for a control that is simply ready.
+ */
+export interface SubmitControlState {
+  readonly disabled: boolean;
+  readonly ariaBusy: true | undefined;
+  readonly label: string;
+}
+
+export function submitControlState(isPending: boolean): SubmitControlState {
+  return {
+    disabled: isPending,
+    ariaBusy: isPending ? true : undefined,
+    label: isPending ? "Saving…" : "Continue",
+  };
 }

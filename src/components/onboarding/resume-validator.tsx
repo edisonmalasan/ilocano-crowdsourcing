@@ -59,8 +59,11 @@ export function ResumeValidator() {
     startTransition(async () => {
       // The shared decision function, so the landing page and the screening page cannot
       // disagree about what `absent` means. Here `enroll-fresh` is handled as a message
-      // rather than an enrollment, because this route must not create a validator.
-      const decision = decideResume(await resumeValidatorAction({ storedId: stored }));
+      // rather than an enrollment, because this route must not create a validator — and
+      // `null` is the correct answer argument, because this route collects no screening
+      // answer to carry forward. The participant is pointed at the screening page, which
+      // will ask properly.
+      const decision = decideResume(await resumeValidatorAction({ storedId: stored }), null);
 
       if (decision.kind === "ready") {
         router.push("/ready");

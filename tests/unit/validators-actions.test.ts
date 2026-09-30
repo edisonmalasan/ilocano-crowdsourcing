@@ -15,6 +15,9 @@ class FakeConfigurationFailure extends Error {}
 
 function createHarness(options: { findResult?: unknown; createError?: unknown } = {}) {
   const calls: string[] = [];
+  // Every profile handed to `create`, kept so a test can assert the exact stored key set
+  // rather than inferring it from the return value.
+  const stored: Array<Record<string, unknown>> = [];
   let findResult: unknown = options.findResult ?? null;
   let createError: unknown = options.createError ?? null;
 
@@ -22,6 +25,7 @@ function createHarness(options: { findResult?: unknown; createError?: unknown } 
     create: vi.fn(async (profile) => {
       calls.push("create");
       if (createError) throw createError;
+      stored.push({ ...profile });
       return profile;
     }),
     findById: vi.fn(async () => {
@@ -43,6 +47,7 @@ function createHarness(options: { findResult?: unknown; createError?: unknown } 
     deps,
     validators,
     calls,
+    stored,
     set findResult(value: unknown) {
       findResult = value;
     },
@@ -94,6 +99,54 @@ describe("runEnroll", () => {
 
     expect(result).toEqual({ status: "failed", reason: "invalid" });
     expect(harness.calls).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------------------------
+  // The anonymity invariant is the headline of the whole project, so the fields are
+  // named literally rather than proxied by an innocuous extra key. `totalValidations`
+  // proved `strictObject` works; it did not prove that a field called `name` is refused.
+  // A future change that added an `email` column would be caught here and not there.
+  // ---------------------------------------------------------------------------------
+  it.each([
+    "name",
+    "email",
+    "emailAddress",
+    "studentId",
+    "studentNumber",
+    "phone",
+    "phoneNumber",
+    "address",
+    "facebookAccount",
+  ])("refuses a payload carrying a personal field called %s", async (field) => {
+    const harness = createHarness();
+
+    const result = await runEnroll(
+      { ilocanoProficiency: "fluent", [field]: "somebody@example.com" },
+      harness.deps,
+    );
+
+    expect(result).toEqual({ status: "failed", reason: "invalid" });
+    // No write, and critically: nothing persisted that could be read back later.
+    expect(harness.calls).toEqual([]);
+  });
+
+  it("names no personal field anywhere in the stored profile", async () => {
+    // The positive statement, since the negative one only proves rejection at the edge:
+    // the profile that reaches the database must contain only the approved keys.
+    const harness = createHarness();
+
+    await runEnroll({ ilocanoProficiency: "fluent" }, harness.deps);
+
+    expect(harness.stored).toHaveLength(1);
+    const keys = Object.keys(harness.stored[0] ?? {}).sort();
+
+    expect(keys).toEqual([
+      "createdAt",
+      "id",
+      "ilocanoProficiency",
+      "lastActiveAt",
+      "totalValidations",
+    ]);
   });
 
   it("enrolls a visitor who declined the screening question", async () => {

@@ -14,9 +14,11 @@ import { ScreeningForm } from "./screening-form";
  * for this route even though submitting it does need one.
  *
  * The participation and privacy notice is rendered HERE, on the same screen as the
- * question, rather than only on the landing page. A notice a participant can reach
- * without having read the introduction is not a notice; this one is impossible to
- * submit the screening answer without having seen.
+ * question, and ABOVE it. A notice a participant can reach without having read the
+ * introduction is not a notice; a notice they can answer past without reading is not
+ * one either. Position is what makes that true rather than merely intended, and the
+ * order is asserted by a test comparing the byte offset of the notice against the
+ * first submit control.
  */
 export const metadata: Metadata = {
   title: "Screening",
@@ -48,15 +50,16 @@ export default function StartPage() {
             </p>
           </div>
 
-          <Card tone="raised" className="flex flex-col gap-2 p-6">
-            <ScreeningForm />
-          </Card>
-
           {/*
-            Rendered after the form so the question is the first thing read, but still
-            above the fold on a phone. Every statement here is a promise the platform
-            must keep, which is why each one is asserted by a test rather than left as
-            copy that only a reviewer would read.
+            Rendered ABOVE the form, deliberately. An earlier version put the form first
+            and a comment claimed the notice was "impossible to submit without having
+            seen" - which was false, because the Continue button sat above it. A
+            participant could answer and submit having read nothing at all. Moving the
+            notice above the question is what makes the claim true rather than merely
+            intended, and it is why the card is labelled "Before you answer".
+
+            Every statement here is a promise the platform must keep, which is why each
+            one is asserted by a test rather than left as copy that only a reviewer reads.
           */}
           <Card tone="inset" className="flex flex-col gap-4 p-6">
             <p className="label-meta text-accent">Before you answer</p>
@@ -84,12 +87,17 @@ export default function StartPage() {
                   03
                 </span>
                 <span>
-                  Your identity is a random code held only in this browser. Clearing your browser
-                  data ends our ability to recognise you, and we could not use it to identify you
-                  either way.
+                  Your identity is a random code. A copy is kept in this browser so we can recognise
+                  you when you return, and the code is stored in the study database with your
+                  answers, where it cannot be traced back to you either way. Clearing your browser
+                  data ends our ability to recognise you.
                 </span>
               </li>
             </ul>
+          </Card>
+
+          <Card tone="raised" className="flex flex-col gap-2 p-6">
+            <ScreeningForm />
           </Card>
         </section>
       </main>

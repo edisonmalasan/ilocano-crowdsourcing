@@ -77,8 +77,9 @@ export default function ReadyPage() {
                   03
                 </span>
                 <span>
-                  Your answer to the Ilocano question was stored as background information, exactly
-                  as you gave it.
+                  Your answer to the Ilocano question was stored as background information, as you
+                  gave it. If you continued from a browser that already held an identity, the answer
+                  you had given earlier was kept instead.
                 </span>
               </li>
             </ul>
