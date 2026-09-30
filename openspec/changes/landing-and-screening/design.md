@@ -79,9 +79,30 @@ that cost buys a strictly smaller server-side footprint.
 
 **Consequence, and it is the important part.** Because the server cannot read the identifier, the
 landing page cannot know on first paint whether this is a returning visitor. Resume is therefore
-explicit: a "Resume" affordance on the landing page, enabled only after the client finds a
-well-formed stored value. A visitor with a stored identity is never silently resumed, which also
-means a shared device does not hand one person another's session without a visible action.
+explicit: a "Continue as that validator" control on the landing page, rendered unconditionally, which
+reads the stored value only when the participant presses it. A visitor with a stored identity is
+never silently resumed, which also means a shared device does not hand one person another's session
+without a visible action.
+
+> **Amended during Apply.** This paragraph originally said the affordance was "enabled only after the
+> client finds a well-formed stored value". That was the design as proposed and it was not what got
+> built, because it needs a post-hydration `setState` — `localStorage` does not exist during server
+> rendering — which cascades a render and is the pattern the React lint rules exist to reject. The
+> control is rendered always and reveals what it found only after the participant asks. The cost is
+> that a first-time visitor can press a button that turns out to have nothing to resume; the benefit
+> is that the affordance is present for the person who needs it, with no effect, no hydration
+> mismatch, and no control whose existence depends on which machine the code ran. The argument for the
+> change is in the component header of `src/components/onboarding/resume-validator.tsx`.
+
+**What this costs, stated plainly because the spec scenario had to change because of it.** A returning
+participant who navigates directly to `/start` **does see the screening question again.** The server
+cannot know who they are at render time, and the client cannot know without an effect, so there is no
+way to suppress the question on that route. What *is* guaranteed is that their selection is never
+stored over their original answer: the resume path contains no `create` call, so the stored
+self-reported screening answer survives untouched. The original spec scenario demanded the question
+"is not presented again", which is not achievable under D2's storage choice; it has been amended to
+require what is actually true and actually testable — that the original answer is preserved and never
+overwritten. See the spec delta for that amendment.
 
 ### D3 — The server verifies existence; the client is never trusted about it
 
@@ -127,9 +148,34 @@ this as an open question for the thesis team rather than resolving it unilateral
 answer depends on the participation model (a link-shared pilot versus a public deployment) and on
 whether an enumeration rate limit is in scope.
 
-**Interim mitigation, cheap and within scope:** the resume action is the only surface that accepts a
-client-supplied identifier, and it answers a yes/no question with no distinguishing error. It does
-not make guessing materially cheaper, but it means there is no second surface to attack.
+> **Amended during Apply after independent review disagreed with this paragraph.** It originally
+> claimed an interim mitigation: *"the resume action is the only surface that accepts a
+> client-supplied identifier, and it answers a yes/no question with no distinguishing error … it
+> means there is no second surface to attack."* That was wrong in a way worth recording, because
+> the next reader would otherwise inherit a false sense of safety. **The resume action is the
+> enumeration oracle.** It is unauthenticated, unmetered, has no rate limit, and returns a clean
+> boolean over 2^32. "There is no second surface" is a restatement of there being one surface, and
+> one surface is sufficient. A determined party issues ~4.3 billion unauthenticated Server Action
+> calls.
+>
+> The review also pointed out that a *successful* guess is worse than "continue as another
+> participant". Because `ValidatorProfile` carries `ilocanoProficiency`, guessing one identifier
+> discloses another participant's self-reported screening answer — a second, smaller leak that the
+> original text did not mention at all.
+>
+> **The deferral stands.** Widening the format belongs in its own change with thesis input, and
+> adding a rate limiter belongs to a later phase. What was wrong was the description of the
+> mitigation, not the decision. Three cheaper, schema-free options are available if the thesis team
+> wants the exposure reduced before Phase 11:
+>
+> 1. Rate-limit or throttle `resumeValidatorAction`. Enumeration resistance is a security property
+>    of the surface *this* change introduced, not a Phase 9 nicety.
+> 2. Make a failed resume indistinguishable from a successful one to an unauthenticated caller. The
+>    `not_configured` / `absent` / `invalid` / `persistence` split is good UX for a real participant
+>    and a free environment-state oracle for an attacker, though it does not accelerate 2^32
+>    enumeration, so it ranks below option 1.
+> 3. Do nothing until the participation model is decided, which is the current state and is an
+>    honest answer rather than an oversight.
 
 ### D6 — Screening reuses `AnswerGroup` verbatim
 

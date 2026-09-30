@@ -11,13 +11,13 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase | Phase 3 — Landing and Screening — **implementing**. The Propose stage is merged (PR #11, `d111a9d`) and the Apply stage is in progress on `feat/landing-and-screening`. Sync and Archive have not run |
+| Current roadmap phase | Phase 3 — Landing and Screening — **verifying**. The Propose stage is merged (PR #11, `d111a9d`); the Apply stage is complete on `feat/landing-and-screening` and has been through one round of independent verification and repair. Sync and Archive have not run |
 | Current OpenSpec change | `landing-and-screening`, unarchived in `openspec/changes/`. All 4 planning artifacts complete; `openspec validate landing-and-screening --strict` exits 0 |
-| Lifecycle state | `implementing` — Apply in progress on `feat/landing-and-screening`. Independent verification has NOT yet run. This change is not verified and not archived |
+| Lifecycle state | `verifying` — independent verification **ran and returned FAIL**; the 2 CRITICAL and 9 WARNING findings it raised have all been repaired and re-verified on the same branch, and a second review is required before this change may be called verified. Not archived. The full gate is green on the repairs: lint 0, format 0, typecheck 0, 22 files / 497 unit tests, 4 files / 69 integration tests, build "Compiled successfully" |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`) |
 | Last merged OpenSpec stage | #11 — `Merge pull request #11 from edisonmalasan/docs/landing-and-screening-proposal` (`d111a9d`), the `landing-and-screening` Propose stage. This field tracks the last merged **OpenSpec stage**, deliberately *not* the newest commit on `main` — see the note below the table |
 | Doc-only PRs since that stage | #9 (`c6c743c`, merged `1736b0b`) and #10 (`35cee22`, merged `3518514`) — both reconciled this block against its own merge. No code, spec, or test change. Any further documentation-only PR appends one line here and changes nothing else |
-| Next eligible objective | Finish the `landing-and-screening` Apply stage: independent verification, PR, merge commit, then Sync + Archive. Phase 4 (`coverage-aware-allocation`) becomes eligible only once this change is archived |
+| Next eligible objective | Re-verify the `landing-and-screening` Apply stage after the review repairs, then PR, merge commit, then Sync + Archive. Phase 4 (`coverage-aware-allocation`) becomes eligible only once this change is archived |
 | Blockers | **No Supabase project credentials** — all three of `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are absent, so `getServerEnv()` throws `ServerEnvError` on every real request and no Supabase client has ever been constructed. See "Active Blockers" below. **Plus one new open decision needing thesis-team input: the anonymous identifier carries 32 bits of entropy** (see "Open Decisions") |
 
 > **Why this block splits "OpenSpec stage" from "PR".** A block that names "the last merged PR"
@@ -324,7 +324,8 @@ assumptions and must be confirmed before production crowdsourcing (Phase 11):
   link-shared pilot versus a public deployment) and on whether an enumeration rate limit is in
   scope, neither of which this repository can decide. Interim mitigation, in place since Phase 3:
   resume is the only surface that accepts a client-supplied identifier, and it answers a
-  yes/no question with no distinguishing error;- whether optional translations enter the final dataset;
+  yes/no question with no distinguishing error;
+- whether optional translations enter the final dataset;
 - whether any demographic data is academically required;
 - whether ethics/consent language is required before participation.
 
@@ -407,6 +408,51 @@ A residue check confirmed all nine probed files were byte-identical afterwards.
   is a plain synchronous read and also closes a real hole: a participant who already holds an
   identity and submits the screening form must not be issued a second one, because that would
   split one person's research record in two with nothing in the stored data able to tell.
+
+#### Phase 3 independent verification: what it found, and what it cost
+
+Verification ran adversarially against the spec and returned **FAIL**, with 2 CRITICAL and 9
+WARNING findings. All were repaired before merge. Two are worth recording here rather than only in
+the change's `tasks.md`, because both are about the *evidence* rather than the code, and both are
+the kind of thing that repeats.
+
+**A collected screening answer was being silently discarded.** The stale-identifier fallback in
+`onboarding-flow.ts` returned a hardcoded `answer: null`, and the component forwarded it into the
+enrollment. A participant who selected "Fluent" and whose stored identifier had expired was
+enrolled as having **declined** — a research datum silently replaced by a different one. The unit
+tests were all green, because they were green about the decision function and silent about the call
+site. The bug survived a comment that explained the `answer` field existed "so a caller reaching it
+with a different answer must not have to re-derive the rule", while the only producer of the field
+hardcoded `null`. A field that is always `null` reads as though something is using it. Fixed by
+threading the answer through as an explicit parameter, with a regression test over all five
+approved values.
+
+**The neutrality claim had no executable evidence, and the record claimed it did.** The test
+asserting "screening options are no more weighted than validation options" compared
+`answerOptionClasses({selected:false})` to itself. The reviewer proved it empty by replacing the
+screening form's `AnswerGroup` with a bespoke group that accented one *unselected* option, and by
+deleting the pending state and all error rendering: **the entire 445-test suite stayed green.** The
+replaced assertion now reads the *rendered* `class` attribute of every `role="radio"` and compares
+it to the shared constant, and the reviewer's exact bypass now goes red.
+
+**The general lesson, because it is the transferable part.** A probe table reporting a high red
+ratio invites the reader to assume the remaining behaviours are guarded. Three were not, and no
+table can tell you which three. A task file that ends "no requirement is left without executable
+evidence" is making a claim about the *whole* suite from evidence about *part* of it, and the
+`landing-and-screening` record did exactly that and has retracted it.
+
+Two further honesty notes, because they are the kind that get lost:
+
+- **The review damaged the working tree.** It ran probes in a throwaway `%TEMP%` copy, and all 13
+  dependency junctions in the real `node_modules` ended up pointing into it. Deleting the copy left
+  them dangling, and `pnpm run typecheck` failed with `Cannot find module
+  node_modules/typescript/bin/tsc` — a failure that reads exactly like a code problem and was not
+  one. Repaired with `pnpm install --frozen-lockfile`; `git status` and the dataset hash confirmed
+  the source tree was untouched.
+- **One of my own probe harnesses reported real failures as passes**, because its ANSI-stripping
+  regex omitted the escape character so the `Tests … failed` pattern never matched. It was caught
+  only by re-checking one probe by hand. A harness that reports "no failures" is
+  indistinguishable from one that cannot detect failures.
 
 ## 1. Project Goal
 
