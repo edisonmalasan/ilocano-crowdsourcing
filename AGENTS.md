@@ -220,21 +220,41 @@ green checkmark. The dataset-guard job was read back too: it ran the literal com
 vitest run --project integration tests/integration/immutable-dataset.test.ts` and reported
 `1 file / 7 tests`, naming only that one file.
 
-**Run 36686768916 (PR #12, `7647179`, 2026-09-30) passed on `ubuntu-latest`**, and is the run
-current at merge: `22 files / 514 tests` unit, `4 files / 69 tests` integration — matching the local
-counts of the same commit — "All matched files use Prettier code style!", "Compiled successfully",
-and the dataset-guard job again scoped to `1 file / 7 tests`. All six numbers were read back off the
-run log by a reader that **exits non-zero rather than printing a partial answer**, and it checked
-that the log actually mentions the expected commit before reporting anything, because a count
-belonging to a different run is worse than no count.
+**Run 36686768916 (PR #12, `7647179`, 2026-09-30) passed on `ubuntu-latest`**: `22 files / 514
+tests` unit, `4 files / 69 tests` integration, "All matched files use Prettier code style!",
+"Compiled successfully", and the dataset-guard job scoped to `1 file / 7 tests`. The unit count is
+**514 and not 510** even though the run before it read 510, because `7647179` is the sixth-round
+repair commit and carries the four tests added by it. That distinction was not obvious and was
+settled by tooling rather than by inference — see the reader below.
 
-That reader's existence is the point. Reading CI output has now failed silently five separate
-times in this project, each a distinct cause: a UTF-16LE BOM that made every regex match nothing;
-`gh run view --log` rendering ESC as the literal `^[` rather than 0x1b; per-line job-name and
-ISO-timestamp prefixes that made `^\s*Tests` match nothing; an empty capture being written into
-this ledger as a measurement; and a transcribed dash. The three silent empty matches in one read
-is the worst of them, because **an empty capture is indistinguishable from a run that reported
-nothing** — which is exactly the failure mode that once wrote a blank into the test-count row.
+**Run 36687010926 (PR #12, `e0f93d2`, 2026-09-30) passed on `ubuntu-latest`** and is the run
+current at the merge of this change: the same six figures, `22 files / 514 tests` unit and `4 files
+/ 69 tests` integration with the guard job at `1 file / 7 tests`, read back off the log by a reader
+that **exits non-zero rather than printing a partial answer**.
+
+That reader has itself been wrong three times, and each failure is documented in its own header
+because a reader that silently mislabels a number is worse than no reader. It first read vitest's
+summaries **positionally**, assuming the order unit, integration, guard; nothing orders the jobs,
+and on `36687010926` the guard job printed first, so the reader refused rather than mislabelling
+the numbers. It then assumed multiple spaces between the job, step, and timestamp fields when
+`gh run view --log` separates them with **tabs**, and it looked for `Test Files` and `Tests` on one
+line when vitest prints them on **separate** lines. Each of those three would have produced a
+confident wrong number, and only the first was caught, because the second and third reported
+"nothing found" rather than something plausible.
+
+The rule this establishes, and the reason the reader attributes counts by **step name** and only
+then checks the numbers: matching on the expected numbers and declaring success would be circular.
+The step name is the independent evidence; the number is what is checked against it. Every summary
+line in the log must be accounted for, or the reader refuses — something it did not understand is
+exactly the condition under which it must not report.
+
+Reading CI output has failed silently here in five further ways, all still guarded: a UTF-16LE
+BOM that makes every regex match nothing; `gh run view --log` rendering ESC as the literal `^[`
+rather than 0x1b; per-line job and ISO-timestamp prefixes that make `^\s*Tests` match nothing; an
+empty capture being written into this ledger as a measurement; and a transcribed dash. The three
+silent empty matches in one read are the worst of them, because **an empty capture is
+indistinguishable from a run that reported nothing** — which is exactly the failure mode that once
+wrote a blank into the test-count row.
 
 **Reading that log back took three attempts, each of which failed silently rather than loudly,
 and the pattern is worth keeping.** The first returned an empty match because the log had been
