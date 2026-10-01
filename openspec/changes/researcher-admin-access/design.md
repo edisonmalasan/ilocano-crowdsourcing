@@ -80,21 +80,52 @@ documented variables are easier to rotate independently and easier to reason abo
 
 ### D3 — The session carries a non-secret key identifier, so one operator can be revoked without killing every session
 
-The session payload is an issued-at instant, an expiry, and a **key identifier**: the 1-based ordinal
-of the operator credential that established it. The ordinal is configuration position, not anything
-derived from the credential, so publishing it in a cookie discloses no secret material. Verification
-resolves the ordinal against the currently configured set and refuses if that ordinal is gone.
+The session payload is an issued-at instant, an expiry, a format version, and a **key identifier** with
+two parts:
 
-The alternative — a session that references no operator — means **removing an operator credential
-does not revoke the sessions it already established**, and the only way to revoke them is to rotate
-the session secret and sign out the entire team. That is a real operational weakness for a research
-team where one member leaving should not require re-authenticating everyone.
+- `k` — the 1-based ordinal of the operator credential that established the session. Configuration
+  position, not anything derived from the credential, so publishing it in a cookie discloses no
+  secret material.
+- `b` — a **binding**: `base64url(HMAC-SHA256(sessionSecret, "v1\x1f" + ordinal + "\x1f" + credential))[0..16]`,
+  always 22 base64url characters.
 
-Accepted cost: **reordering the credential set invalidates outstanding sessions**, because ordinals
-are positions. Documented at the variable, because it is surprising. The alternative that avoids it —
-a random public identifier per operator, as in `kid:token` pairs — buys stability at the cost of a
-more complex variable format; deferred, and recorded here so the trade is visible rather than
-rediscovered.
+Verification resolves `k` against the currently configured set, refuses if that ordinal is gone, and
+recomputes `b` from the credential *currently* at that position, refusing on mismatch.
+
+##### Why the binding was added after the ordinal proved insufficient — a defect a test found, not a review
+
+This subsection records a correction rather than defending a decision, because the ordinal-only
+design described above was implemented and then **failed**.
+
+The claim was that "removing a credential revokes its sessions, because the sessions it established
+reference an ordinal that no longer resolves". That is true only when the removal leaves no gap.
+Remove the **middle** credential from `["a", "b", "c"]` and `b` is gone while positions 2 and 3 now
+hold `c` and nothing respectively. Every session `b` had established survives — it now names
+position 2, which is occupied by `c`. So the operation that matters most, removing one team member,
+**transferred their authority to a different member instead of removing it**, and the session limit
+did not catch it because the payload was well-formed.
+
+The binding closes this. It covers the credential as well as the position, so a session established
+by a credential that is no longer at its ordinal recomputes to a different value and is refused.
+`tests/unit/admin-session.test.ts` pins both halves: two positions holding the *same* credential
+produce *different* bindings, so a gap-filling edit is caught, and the same position produces a
+*stable* binding, so a no-op rotation-free redeploy does not sign out the team.
+
+##### What the binding is not
+
+It is **not** an offline oracle for the credential. With a captured cookie in hand, a party must not
+be able to test candidate credentials — and with the session-protection secret in hand, a party
+*can*, because that same secret keys it. This boundary is stated at the constant and asserted by a
+test rather than left implied: the binding defends against a stolen cookie and an unprivileged
+reader of configuration, and it does not defend against whoever holds `ADMIN_SESSION_SECRET`. That
+secret is already the thing whose compromise signs every session in the first place.
+
+Accepted cost, unchanged: **adding, removing, reordering, or replacing a credential invalidates every
+outstanding session**, because a changed set changes at least one binding. Documented at the variable,
+because it is surprising, and the middle-removal case above is named there so the cost reads as a
+deliberate trade rather than a surprise. The alternative that avoids it — a random public identifier
+per operator, as in `kid:token` pairs — buys stability at the cost of a more complex variable format;
+deferred, and recorded here so the trade is visible rather than rediscovered.
 
 ### D4 — Credential comparison has no early exit, and no early exit at the outer level either
 
@@ -160,6 +191,30 @@ Refused and served admin responses are marked not publicly cacheable, and the ro
 `noindex`. Both are cheap, and both address a failure that a shared cache would turn from "researcher
 A was refused" into "researcher A was served" for everyone behind it.
 
+##### MEASURED 2026-10-02: the `noindex` half holds, and the `Cache-Control` half is weaker than declared
+
+Measured against a real running server, because this half is the kind that is easy to assert and
+never observe:
+
+- `X-Robots-Tag: noindex, nofollow` arrives on every researcher response, and the 403 body also
+  carries a `robots` meta `noindex`. Both declared noindex mechanisms work.
+- `Cache-Control` arrives as `no-cache, must-revalidate`, **not** the `private, no-store, max-age=0`
+  that `next.config.ts` declares in the same header block. The same block's `X-Robots-Tag` does
+  arrive, which proves the block matches the path and is not the problem: Next.js **replaces**
+  `Cache-Control` on a dynamic App Router response, and every researcher route is dynamic because
+  each reads the session cookie.
+
+The requirement is a property rather than a header string, and the measured value satisfies it — the
+response is not marked publicly cacheable, and every reuse requires revalidation, which re-runs the
+guard rather than replaying a stored decision. Two facts close the remainder: the refusal is a **403**,
+and 403 is not among the status codes HTTP permits to be heuristically cached, so a compliant shared
+cache will not store it on freshness grounds before even reading `no-cache`; and `no-store` is
+obtainable for a dynamic page only through middleware, which D6 declines for the same reason it
+declines a middleware guard — a second file in the researcher area is a second place to get it wrong.
+
+Recorded here and in `next.config.ts` rather than papered over, because a comment asserting a
+mechanism the platform silently replaces is worse than no comment.
+
 ### D9 — The real-project gate
 
 Everything above is verifiable now: pure functions, the server-only import boundary enforced by the
@@ -173,10 +228,41 @@ defect are precisely the ones this project has never exercised:
 3. Row Level Security confirmed as enforced by the Supabase API gateway rather than by the database
    engine, which PGlite cannot reproduce and which this project's deny-all posture depends on.
 
+##### STATUS, measured 2026-10-02: item 1 SATISFIED, items 2 and 3 BLOCKED
+
+**Item 1 is satisfied, by observation.** `pnpm run dev` was run against the real `.env.local` and a
+real `GET /researcher` was issued. It returns a genuine HTTP **403** — not a redirect to sign-in and
+not a 500 — which is what proves the guard is reached and that `forbidden()` is in effect. The
+response carries `X-Robots-Tag: noindex, nofollow` and a `robots` meta noindex; it is byte-identical
+across repeat requests once Next.js's per-request RSC id is normalised; it discloses no reason, no
+credential name, and no fact about whether the deployment is configured; `/researcher/sign-in` is
+reachable without a session, and no session cookie is set for an unauthenticated requester; and
+`/`, `/start`, and `/ready` are served 200 with exactly one `h1` each, which is the load-bearing
+consequence of validating the admin variables separately (D1). The dev server's own log independently
+records `GET /researcher 403` on every such request.
+
+Two things that probe could **not** establish, recorded so a reader does not over-read it:
+
+- **It is not browser verification.** No desktop browser is connected to this session, so the screen
+  has still never been rendered by anything that lays it out. The evidence is HTTP status, headers,
+  and served HTML — not appearance.
+- **It never reached a database read.** The guard refuses before any read, so this exercises
+  authorization and nothing else. Items 2 and 3 remain unobserved.
+
+**Items 2 and 3 are blocked on a manual Supabase action, not on code.** The project exists and is
+reachable — `/auth/v1/health` returns 200 and the seven `.env.local` variables are present and
+non-blank — but the hosted schema is **empty**: PostgREST's OpenAPI root exposes **zero** relation
+paths. Applying the migrations requires SQL, and this machine has no Supabase PAT, no linked
+`supabase` CLI, no `psql`, no `docker`, and PostgREST exposes no SQL-executing function. The five
+production migrations have been bundled into one pasteable file and handed to the operator; nothing
+in this repository can execute it. Until it is applied, the researcher area's privileged reads have
+never run and gate items 2 through 5 stay open.
+
 The gate is an **entry condition on the Apply**, not a task inside it: no implementation in this
 change merges until a real Supabase project exists and all three have been observed. Until then the
-change's own status is "implemented and unit-tested, never exercised against a real authorization
-boundary", and the ledger must say that rather than imply otherwise.
+change's own status is "implemented and unit-tested, refused correctly by a real server, and never
+exercised against a real authorization boundary or a real database", and the ledger must say that
+rather than imply otherwise.
 
 ### D10 — The documented admin variables ship empty, not filled with sample text
 

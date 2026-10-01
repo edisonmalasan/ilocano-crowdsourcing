@@ -4,6 +4,7 @@ import type {
   BatchesRepository,
   DatasetEntriesRepository,
   RepositoryOperation,
+  SignInAttemptsRepository,
   ValidationsRepository,
   ValidatorsRepository,
 } from "@/lib/repositories";
@@ -108,3 +109,20 @@ export const BATCHES_OPERATIONS = {
   // FOURTH locally reasonable convention in a union that is meant to have one.
   listForRecovery: "validation_batches.listForRecovery",
 } as const satisfies Record<keyof BatchesRepository, RepositoryOperation>;
+
+/**
+ * The FOUR divergences are above, and this map has none. `recordAttempt` and `clear` are named
+ * after the DOMAIN verb in the interface and the PERSISTENCE verb in the union, and here they happen
+ * to read the same way.
+ *
+ * `clear` is `researcher_signin_attempts.clear` in both places even though it is a DELETE and the
+ * union's other entries describe the statement (`insert`, `list`, `findById`). That is a deliberate
+ * choice rather than an oversight, and the reason is that both methods of this interface are reached
+ * through a Postgres FUNCTION, so "what statement is this" has no honest answer at the seam. Naming
+ * them after what the caller asked for keeps the union readable, and both names are still
+ * greppable back to a function in the migration.
+ */
+export const SIGN_IN_ATTEMPTS_OPERATIONS = {
+  recordAttempt: "researcher_signin_attempts.recordAttempt",
+  clear: "researcher_signin_attempts.clear",
+} as const satisfies Record<keyof SignInAttemptsRepository, RepositoryOperation>;

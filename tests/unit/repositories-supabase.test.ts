@@ -212,7 +212,22 @@ function createFakeClient() {
     },
   });
 
-  const client: SupabaseClientLike = { from };
+  const client: SupabaseClientLike = {
+    from,
+    // Present but NOT SCRIPTED, deliberately. `rpc` arrived with the researcher sign-in attempt
+    // limit, and this fake's scripted outcomes are shaped like table-operation rows (`data` as an
+    // array) while a function returns a scalar. A fake that quietly returned a table-shaped envelope
+    // from `rpc` would let the sign-in-attempts repository's own shape checks pass without the shape
+    // ever being exercised, so the honest fake refuses instead. `tests/unit/repositories-sign-in-
+    // attempts.test.ts` supplies a function-shaped fake and asserts the translation.
+    rpc() {
+      throw new Error(
+        "This fake does not script `rpc`. Use the function-shaped fake in " +
+          "tests/unit/repositories-sign-in-attempts.test.ts, which asserts what the sign-in " +
+          "attempt repository sends and how it reads the answer.",
+      );
+    },
+  };
 
   return {
     client,

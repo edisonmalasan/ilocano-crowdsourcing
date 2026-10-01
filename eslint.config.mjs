@@ -29,6 +29,26 @@ const PRIVILEGED_SPECIFIERS = [
   "@/lib/supabase/server",
   // Server environment parsing, which reads the service-role credential.
   "@/lib/env/server",
+  // The researcher area's environment contract, which reads the operator credential and the
+  // session-protection secret. Listed separately from `@/lib/env/server` because it is a DIFFERENT
+  // schema with a different failure mode (it refuses rather than throwing), and because the two
+  // must be able to diverge in the privileged list without anyone having to notice they are
+  // unrelated contracts that happen to both read secrets.
+  "@/lib/admin/env",
+  // Credential comparison and session signing/verification. Both are `server-only` and both take a
+  // secret as an argument, so a client import would be bundling the code that processes it.
+  "@/lib/admin/credentials",
+  "@/lib/admin/session",
+  // The route guard and the cookie helpers, which pull `next/headers` and the env contract.
+  "@/lib/admin/guard",
+  "@/lib/admin/cookie",
+  // The sign-in DECISION. Server-side because it reads the environment and constructs no client of
+  // its own — `actions.ts` is the only module allowed to pass it a repository.
+  //
+  // NOTE: `@/lib/admin/actions` is deliberately ABSENT from this list. It is the Server Action
+  // boundary, and a client component importing it is the supported and intended shape — that is how
+  // the sign-in form reaches a decision it is not allowed to make. Listing it would make the
+  // boundary unimplementable, and the rule's purpose is to keep the DECISION off the browser.
   // Direct persistence access from the browser.
   "@supabase/supabase-js",
   "@supabase/ssr",

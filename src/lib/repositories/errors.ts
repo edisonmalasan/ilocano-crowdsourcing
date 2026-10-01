@@ -46,7 +46,9 @@ export type RepositoryOperation =
   | "validations.countForValidator"
   | "validation_batches.insert"
   | "validation_batches.findById"
-  | "validation_batches.listForRecovery";
+  | "validation_batches.listForRecovery"
+  | "researcher_signin_attempts.recordAttempt"
+  | "researcher_signin_attempts.clear";
 
 export interface RepositoryErrorOptions {
   /** The original failure, preserved for diagnostics. Never re-wrapped into a bare message. */

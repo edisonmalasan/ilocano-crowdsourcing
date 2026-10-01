@@ -14,21 +14,29 @@ import "server-only";
  */
 export type {
   FilterHandleLike,
+  OrderOptionsLike,
   PostgrestErrorLike,
   PostgrestResultLike,
   SelectOptionsLike,
   SupabaseClientLike,
+  SupabaseRpcResultLike,
   TableHandleLike,
 } from "./client";
 
 export { SupabaseBatchesRepository } from "./batches";
 export { SupabaseDatasetEntriesRepository } from "./dataset-entries";
+export { SupabaseSignInAttemptsRepository } from "./sign-in-attempts";
 export { SupabaseValidatorsRepository } from "./validators";
 export { SupabaseValidationsRepository } from "./validations";
-export { createSupabaseRepositories, type SupabaseRepositories } from "./factory";
+export {
+  createSignInAttemptsRepository,
+  createSupabaseRepositories,
+  type SupabaseRepositories,
+} from "./factory";
 export {
   BATCHES_OPERATIONS,
   DATASET_ENTRIES_OPERATIONS,
+  SIGN_IN_ATTEMPTS_OPERATIONS,
   VALIDATIONS_OPERATIONS,
   VALIDATORS_OPERATIONS,
 } from "./operations";

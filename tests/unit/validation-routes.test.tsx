@@ -1209,12 +1209,54 @@ describe("the two figures the finished screen reports", () => {
       )
       .sort();
 
-    expect(routes).toEqual(["", "ready", "start", "validate", "validate/[batchId]"]);
+    expect(routes).toEqual([
+      "",
+      "ready",
+      "researcher/(protected)",
+      "researcher/sign-in",
+      "start",
+      "validate",
+      "validate/[batchId]",
+    ]);
+
+    // =============================================================================================
+    // WHY TWO ROUTES ARE ENUMERATED BUT NOT RENDERED, AND WHY THAT IS NOT A SILENT SKIP
+    // =============================================================================================
+    // The two `researcher/**` routes are behind an authenticated boundary, they are not part of the
+    // PUBLIC validator experience, and this file's mocks do not stand in for them — rendering them
+    // here would mean either mocking a cookie and a privileged client into a validation-route test,
+    // or letting the render fail on a missing request scope. Neither belongs in this file.
+    //
+    // The important property is that they are still ENUMERATED, and that the partition below is
+    // asserted to account for every route found. Without that, "skip the researcher routes" would be
+    // a loophole that any future route could be routed through by containing the substring
+    // `researcher`, and the claim would quietly cover less than it says. So:
+    //
+    //   - the full list above is asserted exactly, so a ninth route fails here by name;
+    //   - every route is assigned to exactly one of the two groups below; and
+    //   - the researcher group is asserted to be covered by a test file that DOES render it.
+    const AUTHENTICATED_ROUTES = ["researcher/(protected)", "researcher/sign-in"];
+    const validatorRoutes = routes.filter((route) => !AUTHENTICATED_ROUTES.includes(route));
+    const skippedRoutes = routes.filter((route) => AUTHENTICATED_ROUTES.includes(route));
+
+    // The partition is total and disjoint, which is what makes the exclusion an assertion rather than
+    // a filter. If a route were in neither list it would simply not be rendered or counted.
+    expect([...validatorRoutes, ...skippedRoutes].sort()).toEqual(routes);
+    expect(validatorRoutes).toEqual(["", "ready", "start", "validate", "validate/[batchId]"]);
+    expect(skippedRoutes).toEqual(AUTHENTICATED_ROUTES);
+
+    // And the handover is real rather than asserted in prose: the file that renders those two
+    // routes' markup exists. A missing file would make the exclusion unmonitored.
+    const { existsSync } = await import("node:fs");
+    expect(
+      existsSync(join(process.cwd(), "tests", "unit", "admin-routes.test.tsx")),
+      "the researcher routes are excluded from this enumeration, so some test must render them",
+    ).toBe(true);
 
     const lifetimeLabel = EN("validate.finished.lifetimeFigureLabel");
     const screensWithALifetimeTotal: string[] = [];
 
-    for (const route of routes) {
+    for (const route of validatorRoutes) {
       const specifier = `@/app/${route === "" ? "page" : `${route}/page`}`;
       // Named `routeModule`, not `module`: the next lint rule in this project treats a binding
       // called `module` as the CommonJS module object and refuses the assignment outright
