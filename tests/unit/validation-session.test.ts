@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   resolveSessionEntry,
   validationSessionRequestSchema,
+  type FinishedOutcomeKeysAreExactlyTheseFive,
   type SessionOrderingKeyIsPositionOnly,
+  type ValidationSessionOutcome,
   type ValidationSessionRequest,
 } from "@/lib/validation/session";
 import { batchEntryPlacementSchema, type BatchEntryPlacement } from "@/schemas/batch";
@@ -121,6 +123,97 @@ describe("a validation session request carries a batch and a position, and nothi
 
     expect([...fromSchema].sort()).toEqual([...namedHere].sort());
     expect(fromSchema).toHaveLength(2);
+  });
+});
+
+describe("the finished outcome is a closed set of figures, and nothing else", () => {
+  it("pins at the type layer that no sixth key exists, whatever it is called", () => {
+    // THE SECOND PIN, and it is the same argument as the one above applied to the finished screen
+    // rather than to the request. The requirement it serves is "progress figures come from validation
+    // records, not from the profile", and the reason it needs a TYPE is that a profile counter is
+    // indistinguishable from a response-derived one at runtime: both are numbers. The type can see a
+    // key that does not exist yet, so the guarantee lives in a closed set of NAMES.
+    //
+    // `validators.total_validations` exists in the schema, is set to `0` at enrolment, and is never
+    // incremented. A figure read from it would be permanently `0` — so the failure this pin prevents
+    // is not a subtly wrong number but a screen telling a validator who has answered forty sentences
+    // that they have answered none. The exclusion list is deliberately NOT "keys that look like
+    // profile fields": it is every key the finished outcome is allowed to have, so any sixth name at
+    // all is caught, including one nobody thought to forbid.
+    const pin: FinishedOutcomeKeysAreExactlyTheseFive = true;
+    expect(pin).toBe(true);
+
+    // WHAT `keyof` MEANS ON A UNION, because this is where the first draft of this test was wrong in
+    // a way typecheck caught rather than a reader. `keyof` of a UNION is the set of keys COMMON TO
+    // EVERY variant — and these four variants have exactly one key in common, `status`. So
+    // `satisfies ReadonlyArray<keyof ValidationSessionOutcome>` resolves every element to `"status"`
+    // and rejects the other four with
+    // `TS2322: Type '"batchId"' is not assignable to type '"status"'`. That annotation was silently
+    // describing the wrong type: it would have been right for one variant's *own* keys and
+    // impossible for the finished variant's. The type the key set is actually about is the EXTRACTED
+    // variant, and `keyof` on that is per-variant.
+    type Finished = Extract<ValidationSessionOutcome, { status: "finished" }>;
+    type FinishedKeys = keyof Finished;
+
+    // Each name is annotated against the variant's own key set, so a name that does not exist on the
+    // finished outcome fails `pnpm run typecheck` here as well as in the pin above. This is the
+    // positive half of the pin: it says the five names ARE keys, and the pin says there are no others.
+    const allowed = [
+      "batchId",
+      "completedCount",
+      "lifetimeAnsweredCount",
+      "status",
+      "total",
+    ] as const satisfies ReadonlyArray<FinishedKeys>;
+
+    // Compared as SORTED COPIES, because `.sort()` mutates and the literal is `readonly` — the same
+    // constraint the request pin above documents.
+    const expected: readonly FinishedKeys[] = [
+      "status",
+      "batchId",
+      "completedCount",
+      "total",
+      "lifetimeAnsweredCount",
+    ];
+    expect([...allowed].sort()).toEqual([...expected].sort());
+    expect(allowed).toHaveLength(5);
+  });
+
+  it("names the two figures as DISTINCT members, so one number cannot stand for both", () => {
+    // `design.md` D5's requirement is that a reader can tell the batch figure from the lifetime one.
+    // A single field holding both, or a lifetime figure aliased onto `completedCount`, would satisfy a
+    // test that only checked "a number is rendered" — and this is the assertion that names the two
+    // separately, so an alias fails here even if every rendered-markup test still passed.
+    // Extracted from the union, not `ValidationSessionOutcome` itself: the pin above spells out why
+    // `keyof` on this union means only `status`. Declared here rather than at file scope so this
+    // block's fixture is annotated against a type this block can see being derived.
+    type Finished = Extract<ValidationSessionOutcome, { status: "finished" }>;
+
+    // The fixture is a REAL finished outcome, not two loose numbers and not an empty object cast to
+    // the type. The earlier draft of this assertion asked `"completedCount" in ({} as Finished)` and
+    // got `false` — vacuously, because an empty object has neither key, so it would also have passed
+    // against a type where BOTH figures had been collapsed onto one field. Asking the question of the
+    // shape that actually occurs is the only form of the question that can fail.
+    const finished: Finished = {
+      status: "finished",
+      batchId: "VAL_a81d92c1-2026-09-30T20:14:03.117Z",
+      completedCount: 10,
+      total: 10,
+      lifetimeAnsweredCount: 10,
+    };
+
+    // Same value in both figures, so the two must be distinguishable by WHERE they come from rather
+    // than by their contents — and both must survive as SEPARATE keys on the object a screen reads.
+    expect(finished.completedCount).toBe(finished.lifetimeAnsweredCount);
+    expect(finished.completedCount).toBe(10);
+    expect(finished.lifetimeAnsweredCount).toBe(10);
+
+    // The key-set comparison is the load-bearing half: aliasing the lifetime figure onto
+    // `completedCount` (or dropping one of them) changes this list and nothing above.
+    expect(Object.keys(finished).sort()).toEqual(
+      ["batchId", "completedCount", "lifetimeAnsweredCount", "status", "total"].sort(),
+    );
+    expect(Object.keys(finished)).toHaveLength(5);
   });
 });
 

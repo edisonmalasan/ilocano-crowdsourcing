@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import type { AllocationRequest } from "@/lib/allocation/allocate-batch";
+/**
+ * TYPE-ONLY, and the `type` keyword is load-bearing rather than stylistic.
+ *
+ * `allocation-actions-core.ts` begins with `import "server-only"`, which Vitest cannot resolve — the
+ * project's own notes record that a value import of that module fails to collect, and "Failed Suites
+ * with no tests" is the shape that reads as a pass when only an exit code is read. `import type` is
+ * erased before the module graph is walked, so the two exported NAMES below are available to the
+ * compiler and nothing is loaded at run time.
+ */
+import type {
+  AllocationIntent,
+  AllocationIntentKeysAreIdentifierAndSizeOnly,
+} from "@/lib/allocation/allocation-actions-core";
 import { selectBatchEntries, type AllocationCandidate } from "@/lib/domain/allocation";
 import type { AllocatedEntry } from "@/schemas/batch";
 import type { DatasetEntry, DatasetEntryInput } from "@/schemas/dataset";
@@ -363,6 +376,117 @@ describe("the allocation request exposes no client-authoritative field", () => {
     expect(typeof withOrder).toBe("object");
     expect(typeof withPositions).toBe("object");
     expect(typeof withTarget).toBe("object");
+  });
+});
+
+/**
+ * =================================================================================================
+ * THE CONTINUE INTENT EXPOSES NO COMPLETION FIELD, and the pin is duplicated here on purpose
+ * =================================================================================================
+ * `tasks.md` 6.1 requires an exact key-set assertion on the intent the CONTINUE control sends, so that
+ * "supplying a completion status, an answered count, or a remaining count changes nothing" is pinned
+ * by something other than today's field list.
+ *
+ * WHY A SECOND PIN AND NOT A REFERENCE to the one in `allocation-actions-core.ts`. The exported alias
+ * `AllocationIntentKeysAreIdentifierAndSizeOnly` IS declared in that module and IS asserted below —
+ * the positive control uses it, so it cannot rot. What this file adds is the layer the alias cannot
+ * reach from there: the `AllocationIntent` type itself, which is the name a caller actually writes.
+ * The alias is checked against the same two keys by construction, so this block is not duplicating a
+ * claim; it is checking the two claims from opposite sides, which is what makes "the interface a
+ * caller writes" and "the guard in the module" fail TOGETHER if either is widened.
+ *
+ * MEASURED, and the measurement is what justifies the mechanism: adding
+ * `clientOrder: z.array(z.number()).optional()` to `allocationIntentSchema` turns
+ * `pnpm run typecheck` red at `TS2322: Type 'true' is not assignable to type 'never'`, exit 2, with the
+ * control (unmutated) at exit 0 and 0 errors. See the probe recorded in `AGENTS.md` ->
+ * *Repository tooling notes* for the classification rule that exit code has to be read against:
+ * `tsc` exits 2 on a type error, so the discriminator is whether the process ran at all.
+ *
+ * `import type` is load-bearing and not stylistic: the module this imports from is marked
+ * `"use server"`-adjacent `server-only`, which Vitest cannot import. A value import would make this
+ * whole file fail to collect, which is the "Failed Suites / no tests" shape that is indistinguishable
+ * from a pass when only the exit code is read.
+ */
+describe("the continue intent exposes no client-asserted completion field", () => {
+  it("has exactly the identifier and a size preference, and no third key", () => {
+    // Checked against the module's OWN exported alias, so the name a consumer would use is the name
+    // that is pinned. This runtime expectation cannot fail on its own; the declaration is the
+    // assertion, and this line is what makes the compiler evaluate it.
+    const assertion: AllocationIntentKeysAreIdentifierAndSizeOnly = true;
+    expect(assertion).toBe(true);
+
+    // And independently, through this file's own helper rather than the module's. Two spellings of the
+    // same check, agreeing by construction — the point is that a widening of EITHER the type or the
+    // alias is caught, and one of them being quietly weakened would otherwise go unnoticed.
+    const viaThisFile: KeySetIsExactly<AllocationIntent, "validatorId" | "requestedSize"> = true;
+    expect(viaThisFile).toBe(true);
+  });
+
+  it("rejects a completion status, an answered count, and a remaining count at the type layer", () => {
+    // THE FOUR KEYS THE SPEC SCENARIO NAMES, in its own words: "a completion status, a count of
+    // answered entries, or a count of remaining entries". The first is the interesting one — it is the
+    // only one that would let a client DECLARE the batch finished, which is the requirement
+    // *A finished batch is recognised from the absence of work, never from an assertion* — and it is
+    // a boolean rather than a number, so it is a different mistake from the other three and gets its
+    // own directive.
+    //
+    // Every directive goes DIRECTLY ABOVE the offending property, for the reason the submit-intent
+    // block records at length: TypeScript reports an excess-property error on the property's line and
+    // not on the declaration, so a directive above the `const` is reported as an unused directive
+    // while the real error sits below it.
+    const withStatus: AllocationIntent = {
+      validatorId: "VAL_a81d92c1",
+      // @ts-expect-error — a client may not declare a batch finished; the server derives it.
+      completed: true,
+    };
+    const withCompletedCount: AllocationIntent = {
+      validatorId: "VAL_a81d92c1",
+      // @ts-expect-error — an answered count comes from persisted responses, not from the request.
+      completedCount: 10,
+    };
+    const withAnsweredCount: AllocationIntent = {
+      validatorId: "VAL_a81d92c1",
+      // @ts-expect-error — nor may the client report its own lifetime total.
+      answeredCount: 27,
+    };
+    const withRemainingCount: AllocationIntent = {
+      validatorId: "VAL_a81d92c1",
+      // @ts-expect-error — nor how much of the dataset it believes is left.
+      remainingCount: 590,
+    };
+
+    expect(typeof withStatus).toBe("object");
+    expect(typeof withCompletedCount).toBe("object");
+    expect(typeof withAnsweredCount).toBe("object");
+    expect(typeof withRemainingCount).toBe("object");
+  });
+
+  it("keeps `requestedSize` a PREFERENCE, so a completion field cannot be smuggled in as a size", () => {
+    // The one key that is not an identity, and the reason it cannot become a completion claim: it is
+    // `number | undefined`, capped by `resolveBatchSize` against the server's configuration, and it is
+    // the ONLY optional key. So there is no shape of this interface in which a caller states a fact
+    // rather than a preference.
+    //
+    // Asserted as a type, because that is the only layer that can say it: at runtime a caller can send
+    // anything and `allocation-actions.test.ts` proves what the boundary does with it.
+    type SizeIsAPreference = AllocationIntent extends { requestedSize?: infer T } ? T : "absent";
+    const size: SizeIsAPreference = 4;
+    expect(size).toBe(4);
+    // And a boolean cannot inhabit it, which is the whole claim in one line. If `requestedSize` ever
+    // widened to `boolean | number`, this fails — and a `completed` field hidden inside a boolean
+    // preference would fail with it.
+    // @ts-expect-error — a size preference is a number, never a completion flag.
+    const flagAsSize: SizeIsAPreference = true;
+    expect(typeof flagAsSize).toBe("boolean");
+  });
+
+  it("requires the identifier, so no anonymous request can be assembled", () => {
+    // The other direction. A MISSING property is reported on the declaration, so this directive DOES
+    // go above the `const` — the asymmetry with the block above is the point and is recorded there.
+    // @ts-expect-error — `validatorId` is required; a batch is always somebody's.
+    const anonymous: AllocationIntent = { requestedSize: 4 };
+
+    expect(typeof anonymous).toBe("object");
   });
 });
 

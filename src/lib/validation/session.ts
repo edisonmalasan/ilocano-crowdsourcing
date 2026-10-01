@@ -80,6 +80,36 @@ export type ValidationSessionRequest = z.infer<typeof validationSessionRequestSc
 export type SessionOrderingKeyIsPositionOnly =
   Exclude<keyof ValidationSessionRequest, "batchId" | "position"> extends never ? true : never;
 
+/**
+ * Type-level pin on the finished outcome's key set (`design.md` D6, and `tasks.md` 0.3).
+ *
+ * The requirement is that the two figures the finished screen reports come from recorded validation
+ * RESPONSES rather than from any counter stored on the validator profile. That cannot be pinned by a
+ * behavioural test, for the reason the pin above exists to explain: a profile counter would be one
+ * more number on the object, and a test can check only that a number is there. What closes the gap is
+ * a CLOSED set of names. `validators.total_validations` exists, is set to `0` at enrolment, and has no
+ * increment method, so any key derived from it would be named after the profile — and a key that does
+ * not match the excluded list below is a key whose SOURCE is unconstrained.
+ *
+ * So the guarantee is the weaker but real one this type can state: the finished presentation carries
+ * figures and nothing else. `Exclude<…, "status" | …>` resolves to `never` the moment a sixth key
+ * appears, whatever it is called, and a consumer declaring
+ * `const pin: FinishedOutcomeKeysAreExactlyTheseFive = true` fails `pnpm run typecheck` with
+ * `TS2322: Type 'true' is not assignable to type 'never'`.
+ *
+ * `batchId` is INCLUDED in the allowed set rather than excluded from the pin: the finished screen
+ * legitimately knows which batch it finished, and a key absent from both lists is what this exists to
+ * catch. A field that leaked in under a name resembling none of these — `proficiency`, `totalValidations`
+ * — resolves to `never` and is caught by the type, which is the point.
+ */
+export type FinishedOutcomeKeysAreExactlyTheseFive =
+  Exclude<
+    keyof Extract<ValidationSessionOutcome, { status: "finished" }>,
+    "status" | "batchId" | "completedCount" | "total" | "lifetimeAnsweredCount"
+  > extends never
+    ? true
+    : never;
+
 /** The one entry a session is presenting, plus the server's figures about the batch around it. */
 export interface ValidationSessionEntry {
   /** The batch this entry belongs to. The route's own parameter; never client-supplied. */
@@ -118,6 +148,22 @@ export type ValidationSessionOutcome =
       readonly batchId: string;
       readonly completedCount: number;
       readonly total: number;
+      /**
+       * How many entries this validator has answered ACROSS EVERY BATCH, ever.
+       *
+       * Deliberately NOT a coverage figure, and that is the property to preserve the next time this
+       * field is edited (`design.md` D2). It counts every recorded response, INCLUDING one recorded as
+       * "cannot confidently evaluate" — the approved method forbids treating a validator's confidence
+       * as a quality score, so a figure that rose only when somebody felt sure would reward confidence
+       * instead of effort. It is therefore also NOT governed by the single shared definition of a
+       * qualifying completed validation that `domain-contracts` requires for allocation, coverage
+       * reporting, and export; the spec says so explicitly so a later reader does not "correct" it.
+       *
+       * Its source is persisted validation RESPONSES, never `validators.total_validations` — a column
+       * that is set to `0` at enrolment and never incremented. Two independent requirements converge
+       * on that choice (D6, and the profile-disclosure requirement), and neither depends on the other.
+       */
+      readonly lifetimeAnsweredCount: number;
     }
   | { readonly status: "absent" }
   | {

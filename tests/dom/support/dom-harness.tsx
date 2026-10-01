@@ -46,6 +46,31 @@ export interface Mounted {
    */
   press(target: Element): void;
   /**
+   * Dispatches `count` clicks inside **ONE** synchronous `act`.
+   *
+   * ── WHY `press` TWICE IS NOT THE SAME EXPERIMENT, AND THIS IS THE POINT OF THE METHOD ────────────────
+   * `press` opens and closes its own `act`, and React commits at the close. So two `press` calls are
+   * two tasks: the first commits `disabled`, and the second press meets a button that is already
+   * `disabled`. Any assertion built on two `press` calls is therefore a test of `disabled` alone.
+   *
+   * That distinction hid a real gap. `finished-batch.tsx` guards its request with BOTH `disabled`
+   * (what the participant sees) and a synchronous ref latch (what makes the guarantee), and the
+   * finished screen's DOM test used two `press` calls to claim it covered the same-task case. It did
+   * not: **deleting the latch outright left the whole DOM suite green**, because the second press was
+   * always stopped by `disabled` and never by the latch. A guard with no failing mutation is not a
+   * guard, and this repository has a documented rule that a check which cannot fail must not be
+   * reported as coverage.
+   *
+   * `pressMany` reproduces what a browser actually does when a participant double-clicks: both clicks
+   * are dispatched before React has committed anything, so both handlers run and both read the same
+   * committed state. In a real browser that is exactly the race the latch exists to win. With the
+   * clicks inside one `act` the latch becomes observable here, and its removal turns this red.
+   *
+   * The count must be at least 1 — a zero-count call would be a no-op that silently proves nothing,
+   * which is the same defect in a smaller size.
+   */
+  pressMany(target: Element, count: number): void;
+  /**
    * Flushes pending microtasks inside `act`, letting React commit async state changes.
    *
    * Takes an optional callback that runs INSIDE that same `act`, which is how a state change with no
@@ -113,6 +138,21 @@ export function mount(element: ReactElement): Mounted {
     press(target: Element): void {
       act(() => {
         target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+    },
+    pressMany(target: Element, count: number): void {
+      // Refused rather than accepted: `pressMany(el, 0)` would assert nothing while looking like
+      // a test of something, and `pressMany(el, -1)` would silently dispatch nothing at all.
+      if (!Number.isInteger(count) || count < 1) {
+        throw new Error(
+          `pressMany requires a positive integer count, got ${String(count)}. ` +
+            `A zero or negative count would dispatch nothing and pass while testing nothing.`,
+        );
+      }
+      act(() => {
+        for (let i = 0; i < count; i += 1) {
+          target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+        }
       });
     },
     async settle(run?: () => void): Promise<void> {
