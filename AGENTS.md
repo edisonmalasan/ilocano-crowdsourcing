@@ -263,6 +263,19 @@ silent empty matches in one read are the worst of them, because **an empty captu
 indistinguishable from a run that reported nothing** — which is exactly the failure mode that once
 wrote a blank into the test-count row.
 
+**A sixth, and it is the general one: an EMPTY STRING ARGUMENT under `shell: true` does not pass an
+empty value, it deletes a token.** A ledger verifier asked `gh run list --branch <name>`; `gh pr view`
+had returned no `headRefName` for that field list, so the argument was `""`, and Windows argv
+concatenation produced a command line in which `--limit` lost its value and **`5` became a
+subcommand** — `gh: unknown command "5"`. Nothing about the CI runs was wrong, and a checker that had
+folded the failure into a pass would have written two unverified run ids into the roadmap as though
+they had been confirmed. The fix is not a better regex: **query the thing by its own identifier**
+(`gh run view <id>`) so there is no derived string to lose. Two details make the outcome acceptable
+rather than merely lucky: the run-existence check is now **run-id-keyed and head-SHA-matched** rather
+than merely present, and the instrument printed `?? UNVERIFIED` as a line distinct from `OK`/`FAIL`
+instead of counting the failure as a pass — **a broken check must be able to say "I did not measure
+this" in a way a reader cannot mistake for a result.**
+
 **Reading that log back took three attempts, each of which failed silently rather than loudly,
 and the pattern is worth keeping.** The first returned an empty match because the log had been
 captured with PowerShell's `>` redirection, which writes UTF-16LE with a BOM — read as UTF-8, every
