@@ -179,6 +179,20 @@ async function renderRoute(
   );
 }
 
+/**
+ * Renders the FINISHED screen — the route, driven with the `finished` fixture.
+ *
+ * At module scope rather than inside one `describe`, because two blocks reach for it: the figures
+ * block that first needed it, and the two-controls block this change added. A second local copy would
+ * have been two ways to render one screen, and the two would have drifted the moment either gained an
+ * argument.
+ */
+async function renderFinished(over: Parameters<typeof finished>[0] = {}): Promise<string> {
+  const { default: Page } = await loadSessionPage();
+  openValidationSession.mockResolvedValue(finished(over));
+  return renderRoute(Page as never);
+}
+
 const EN = translatorFor("en");
 
 /** The page modules are imported lazily so the mocks above are registered first. */
@@ -1064,12 +1078,6 @@ describe("the two figures the finished screen reports", () => {
     return figures;
   }
 
-  async function renderFinished(over: Parameters<typeof finished>[0] = {}): Promise<string> {
-    const { default: Page } = await loadSessionPage();
-    openValidationSession.mockResolvedValue(finished(over));
-    return renderRoute(Page as never);
-  }
-
   it("renders BOTH figures, each bound to its own label and its own value", async () => {
     // `tasks.md` 1.1 and 1.4, and the half of 1.4 that matters: not "two numbers appear" but "each
     // number sits with the label that says which figure it is". Asserting the presence of `10` and
@@ -1332,6 +1340,206 @@ describe("the two figures the finished screen reports", () => {
     ] as const) {
       expect(fil(key), `${key} fell back to English`).not.toBe(EN(key));
     }
+  });
+});
+
+describe("the finished screen's two controls", () => {
+  /**
+   * ==============================================================================================
+   * WHY THE COUNTS ARE ASSERTED HERE AND WHY THEY ARE COUNTS
+   * ==============================================================================================
+   * `tasks.md` 2.2 requires "exactly one" continue control and "exactly one" finish control, asserted
+   * **by counting occurrences rather than by asserting a second is absent**, and its verification
+   * requires that the counts be able to fail: "a count of `1` that was never observed at `2` is an
+   * assertion that cannot fail."
+   *
+   * That is why the last test in this block renders the controls TWICE through the real component and
+   * asserts the same counter then reports 2. It is the negative control the requirement asks for, and
+   * it is run through the identical code path — the same `countOccurrences`, the same component, the
+   * same markup shape — so a counter that cannot reach 2 fails there rather than silently making the
+   * three real assertions decorative.
+   *
+   * WHY THE REAL ROUTE AND NOT JUST THE COMPONENT for the three counting assertions: the requirement is
+   * about what the finished PRESENTATION offers, and the presentation is the route's branch. A screen
+   * that rendered the controls twice — once from the component and once as route markup, say — would
+   * satisfy a component-only count and violate the requirement, so the count has to be over the whole
+   * rendered document. The can-fire control renders the component twice for exactly the same reason.
+   */
+
+  it("offers EXACTLY ONE control that can request another batch, and EXACTLY ONE that stops", async () => {
+    const html = await renderFinished();
+
+    // Both labels, counted. Not `toContain`, because `toContain` is satisfied by one, two, and five.
+    expect(countOccurrences(html, EN("validate.finished.continue")), "continue control").toBe(1);
+    expect(countOccurrences(html, EN("validate.finished.finish")), "finish control").toBe(1);
+    // And counted as ELEMENTS, which is the structural half: one button and one link. If the labels
+    // were rendered in a paragraph as well as on a control, the label count would be 1 each and a
+    // participant would still have nothing to press.
+    expect(countOccurrences(html, "<button"), "buttons on the finished screen").toBe(1);
+    expect((html.match(/<a\b/g) ?? []).length, "links on the finished screen").toBe(1);
+    // And NO form, which is the load-bearing half of `tasks.md` 3.1's verification: "assert the absence
+    // of a write by asserting the control is not a form". A `<form>` anywhere on this screen would
+    // make a press a submission, and there is nothing here to submit.
+    expect(countOccurrences(html, "<form"), "forms on the finished screen").toBe(0);
+    // The two figures are still the only figures, and adding the controls added none. Counted as
+    // `<dd>` rather than through the block's own `renderedFigures` reader, because that reader is
+    // scoped to the figures block and this assertion is about the document rather than about pairing.
+    expect(countOccurrences(html, "<dd"), "labelled figures on the finished screen").toBe(2);
+  });
+
+  it("CAN FIRE: rendering the same control TWICE makes both counts reach 2", async () => {
+    // The control, and it is built from the REAL component rather than a hand-written fragment — the
+    // same reasoning the `disabled`-count control in this file uses. A literal `<button>` in the test
+    // would prove `countOccurrences` can return 2; it would not prove that this component's markup,
+    // with its own class strings and its `data-` attributes, is what the counter sees.
+    const { FinishedBatch } = await import("@/app/validate/[batchId]/finished-batch");
+
+    const once = renderToStaticMarkup(<FinishedBatch locale="en" />);
+    const twice = renderToStaticMarkup(
+      <div>
+        <FinishedBatch locale="en" />
+        <FinishedBatch locale="en" />
+      </div>,
+    );
+
+    // THE CONTROL, GREEN FIRST. One render must give exactly the counts the real assertion above
+    // makes, or the whole comparison is against a number that never held.
+    expect(countOccurrences(once, EN("validate.finished.continue"))).toBe(1);
+    expect(countOccurrences(once, EN("validate.finished.finish"))).toBe(1);
+    expect(countOccurrences(once, "<button")).toBe(1);
+    expect((once.match(/<a\b/g) ?? []).length).toBe(1);
+
+    // AND THEN RED: two renders must give 2, which is the value the real assertions forbid. If any of
+    // these stayed at 1, the counter is not reading what the screen renders and the three assertions in
+    // this block are reporting coverage they do not have.
+    expect(countOccurrences(twice, EN("validate.finished.continue"))).toBe(2);
+    expect(countOccurrences(twice, EN("validate.finished.finish"))).toBe(2);
+    expect(countOccurrences(twice, "<button")).toBe(2);
+    expect((twice.match(/<a\b/g) ?? []).length).toBe(2);
+    // And the exact shape the real route test forbids for the form element: two renders, still zero,
+    // because this component has no form in it at all. That is the difference between "there is no
+    // form" and "a form was counted and found to be one".
+    expect(countOccurrences(twice, "<form")).toBe(0);
+  });
+
+  it("makes the finish control a LINK to the landing page, with an internal href", async () => {
+    // `tasks.md` 3.1. The href is asserted against the component's own exported constant rather than a
+    // literal repeated here, so a change to the destination cannot leave this test agreeing with a
+    // stale copy of it. And the href is read out of the rendered markup, not out of the component's
+    // props, because the claim is that the participant's browser is told where to go.
+    const { FINISH_HREF } = await import("@/app/validate/[batchId]/finished-batch");
+    const html = await renderFinished();
+
+    expect(FINISH_HREF).toBe("/");
+    expect(html).toContain(`href="${FINISH_HREF}"`);
+    // INTERNAL, and only internal: an absolute URL or a protocol-relative one would take a participant
+    // off this deployment, which is a link this project cannot vouch for. Checked over every href in
+    // the document rather than only the finish one, so a second link could not introduce one either.
+    const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1] ?? "");
+    expect(hrefs).toContain(FINISH_HREF);
+    for (const href of hrefs) {
+      expect(href, "every link on the finished screen must stay inside this study").toMatch(/^\//);
+      expect(href).not.toMatch(/^[a-z][a-z0-9+.-]*:/i);
+      expect(href).not.toMatch(/^\/\//);
+    }
+    // And it is a LINK, not a button: the continue control is the only `<button>`, which the count
+    // above established and which this line pins to the element that carries the finish label.
+    expect(html).toMatch(
+      new RegExp(
+        `<a[^>]*href="${FINISH_HREF}"[^>]*>\\s*${escapeForRegExp(EN("validate.finished.finish"))}`,
+      ),
+    );
+  });
+
+  it("labels both controls in the FILIPINO catalog too, and neither falls back to English", async () => {
+    // `tasks.md` 5.1's scenario "both controls are present in both language catalogs", at the level of
+    // the RENDERED screen. Every other test in this file renders with no locale cookie, which resolves
+    // to English, so a missing Filipino label would be invisible to all of them — the half a
+    // catalog-level key-set test cannot see, because a key can exist and never be rendered.
+    localeCookie.value = "fil";
+    const fil = translatorFor("fil");
+    const html = await renderFinished();
+
+    // Counted for the same reason as in English: a presence check cannot see a second copy.
+    expect(countOccurrences(html, fil("validate.finished.continue"))).toBe(1);
+    expect(countOccurrences(html, fil("validate.finished.finish"))).toBe(1);
+    expect(countOccurrences(html, "<button")).toBe(1);
+    expect((html.match(/<a\b/g) ?? []).length).toBe(1);
+    // The two Filipino labels are genuinely different strings from each other AND from the English
+    // ones. The second check is the one that matters: a component that read the translator from a
+    // module-level default would render English here and pass a `toContain(fil(...))` never.
+    for (const key of [
+      "validate.finished.continue",
+      "validate.finished.finish",
+      "validate.finished.finishNote",
+    ] as const) {
+      expect(fil(key), `${key} fell back to English`).not.toBe(EN(key));
+    }
+    expect(fil("validate.finished.continue")).not.toBe(fil("validate.finished.finish"));
+    // And the English labels really are absent from the Filipino document, which is the unambiguous
+    // form of "did not fall back".
+    expect(html).not.toContain(EN("validate.finished.continue"));
+    expect(html).not.toContain(EN("validate.finished.finish"));
+  });
+
+  it("offers no control on the finished screen that can SKIP, defer, or postpone research data", async () => {
+    // The finished screen's own enumeration, and the reason it is separate from the presenting
+    // screen's block above. The finished screen is where a "skip" affordance would be least excusable:
+    // everything the participant has to do is already done, so nothing on this screen could mean
+    // "come back to this later".
+    //
+    // Both patterns are run, because the two catalogs share no root — `mamaya` and `ipaliban` have
+    // nothing in common with `later` and `defer`.
+    const english = interactiveControls(await renderFinished());
+
+    expect(english.length, "the enumeration must find controls, not run over an empty set").toBe(2);
+    expect(
+      english.every((control) => control.text !== null),
+      "every control must be labellable",
+    ).toBe(true);
+    const offendersEn = english.filter((control) => SKIP_AFFORDANCE.test(control.label));
+    expect(
+      offendersEn,
+      `a control that could skip required research data: ${offendersEn.map((c) => c.label).join(" | ")}`,
+    ).toEqual([]);
+
+    localeCookie.value = "fil";
+    const fil = translatorFor("fil");
+    const filipino = interactiveControls(await renderFinished());
+
+    expect(filipino.length).toBe(2);
+    const offendersFil = filipino.filter((control) => SKIP_AFFORDANCE_FIL.test(control.label));
+    expect(
+      offendersFil,
+      `a control that could skip required research data: ${offendersFil.map((c) => c.label).join(" | ")}`,
+    ).toEqual([]);
+
+    // AND THE TWO LABELS ARE NAMED, so a future reader can see what was judged rather than inferring
+    // it from a count of zero. The continue label asks for MORE work, which is the opposite of a skip
+    // affordance, and the finish label's reassurance sentence is not on a control at all — it is a
+    // paragraph, and a paragraph cannot be pressed.
+    expect(english.map((control) => control.label).sort()).toEqual(
+      [EN("validate.finished.continue"), EN("validate.finished.finish")].sort(),
+    );
+    expect(filipino.map((control) => control.label).sort()).toEqual(
+      [fil("validate.finished.continue"), fil("validate.finished.finish")].sort(),
+    );
+    // And the skip pattern still fires, so the absence above is a measurement. The control string is
+    // the one this file's own classifier has always used.
+    expect(SKIP_AFFORDANCE.test("Skip translation for now")).toBe(true);
+    expect(SKIP_AFFORDANCE_FIL.test("I-skip ang pagsasalin")).toBe(true);
+  });
+
+  it("shows the finished screen's own identifier guard still holds after the controls were added", async () => {
+    // Not a new requirement — the two figures block asserts this over the same screen — and it is
+    // restated here for one reason: the finish control is the FIRST thing this change put on the
+    // screen that could plausibly carry an identifier, because a link is somewhere an id could be put.
+    // `FINISH_HREF` is `/` and the component receives no id, so nothing should now be there.
+    const html = await renderFinished();
+
+    expect(identifiersIn(html)).toEqual([]);
+    expect(html).not.toContain(finished().batchId);
+    expect(html).not.toMatch(/href="[^"]*VAL_/);
   });
 });
 

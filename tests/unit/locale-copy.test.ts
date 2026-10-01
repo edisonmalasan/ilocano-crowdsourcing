@@ -248,16 +248,82 @@ const COVERAGE_CLAIM: readonly RegExp[] = [
 ];
 
 /**
- * Promises about a FURTHER batch that the finished screen must not make while the continue control
- * does not exist.
+ * The finished screen's copy must not ENCOURAGE more batches, CONDITION the participant's
+ * contribution on how many batches they complete, or make a claim about the pool that the server
+ * cannot keep.
  *
- * `tasks.md` 5.2 requires the stale "not part of this part of the study yet" claim to be removed, and
- * a repair that swapped it for "you can ask for another batch" would satisfy the requirement's letter
- * while stating a fact about the product that is not yet true. These are the shapes such a swap takes,
- * enumerated so the check covers the space rather than one guessed sentence — and the Filipino set is
- * separate for the same reason as `COVERAGE_CLAIM`.
+ * =================================================================================================
+ * THIS LIST REPLACED `UNFULFILLED_PROMISE_EN` / `_FIL`, AND THE PREMISE OF THAT ONE IS NOW FALSE
+ * =================================================================================================
+ * The earlier guard was scoped to promises "that the finished screen must not make WHILE THE CONTINUE
+ * CONTROL DOES NOT EXIST", and its own first sentence said why: it forbade the shape a swap of the
+ * retired sentence would take, because "you can ask for another batch" is a promise the product
+ * cannot keep *until a control keeps it*. The control now exists, so the premise is false and a guard
+ * that keeps its old title is a guard whose reader is being told something untrue.
+ *
+ * It did not become useless, though, and this is why the shapes survive with a new name. Three of
+ * the requirements still forbid them, for reasons that have nothing to do with the control's absence:
+ *
+ *   1. THE POOL IS NOT UNLIMITED. "You can ask for another batch whenever you like", "ready for
+ *      another?", and "handa ka na para sa…?" are open-ended claims about a pool that runs out, so
+ *      they are promises the server still cannot keep — now for a better reason than before.
+ *   2. REQUIREMENT *The finished presentation is localized in both interface languages* forbids
+ *      stating or implying that a validator's contribution depends on how many batches they
+ *      complete. A target, a milestone, a rank, a comparison, and a streak are all that implication.
+ *   3. `design.md` D7 forbids exactly that on the screen that shows the lifetime figure, and the
+ *      figure's own justification is that it is a RECORD rather than a running total.
+ *
+ * And the OBVIOUS REPAIR of the old guard would now fail the new one: the honest way to revise the
+ * paragraph is to put the offer on the control's label — "Answer another batch" — and that label
+ * IS a request for another batch. So the not-fire half is now load-bearing in a way it was not: the
+ * control's own label must survive a guard about asking for further batches. `CAN FIRE` and
+ * `does not fire on the control's own labels` are both asserted below, and the can-fire probe uses
+ * the real label strings rather than a paraphrase of them.
+ *
+ * EVERY phrase here was MEASURED against all 310 catalog entries (155 English + 155 Filipino, read
+ * off the real catalogs rather than counted by hand) and collides with NONE of them, which is what
+ * lets the `MEASURED:` test below be a measurement instead of an assumption. Four candidates were
+ * dropped for the opposite reason and the reasons are worth keeping, because three of the four are
+ * ordinary words on this very screen:
+ *
+ *   `thank you` / `salamat` — `validate.finished.exhausted` ends "Thank you." in BOTH catalogs. Gratitude
+ *                       for work already done is not encouragement to do more, and a guard that
+ *                       flagged it would be flagging the sentence this screen most needs.
+ *   `habang`             — matches `validate.finished.body`'s own Filipino ("habang ginagawa mo",
+ *                       "as you went"), which means something entirely different.
+ *   `sapat`              — matches `validation.evaluation.cannot_evaluate`'s own clarifier, "Hindi ka
+ *                       sapat ang kumpiyansa" ("you are not confident enough"), the OPPOSITE of a
+ *                       claim of sufficiency.
+ *   `kung gusto`         — matches `ready.stop.label`, a legitimate control elsewhere in the product.
  */
-const UNFULFILLED_PROMISE_EN: readonly RegExp[] = [
+const ENCOURAGEMENT_EN: readonly RegExp[] = [
+  // ENCOURAGEMENT — a nudge to keep working.
+  /\bkeep going\b/,
+  /\bkeep (?:doing|answering|working|at it)\b/,
+  /\bdo more\b/,
+  /\bas many (?:batches|sentences|entries|items) as you (?:can|like|want)\b/,
+  /\banswer more\b/,
+  /\banswer as many\b/,
+  /\b(?:you'?re|you are) not (?:done|finished)\b/,
+  // A CONTRIBUTION CONDITIONED ON VOLUME: "the more you answer, the more it counts".
+  /\bthe more you\b/,
+  /\beach batch (?:counts|matters|helps|brings|adds)\b/,
+  /\bevery batch helps\b/,
+  /\bfor every batch\b/,
+  // A TARGET, MILESTONE, RANK, or COMPARISON — the vocabulary D7's own sentence names.
+  /\btarget\b/,
+  /\bmilestone\b/,
+  /\bstreak\b/,
+  /\bleaderboard\b/,
+  /\brank(?:ed|s)?\b/,
+  /\btop (?:contributor|validator|participant)\b/,
+  /\bbest (?:validator|participant)\b/,
+  /\bcompare[ds]?\b/,
+  /\bfewer than\b/,
+  // AN OPEN-ENDED CLAIM ABOUT THE POOL, which is what the old guard was really after.
+  /\bunlimited\b/,
+  /\bno (?:limit|cap|maximum)\b/,
+  /\bwhenever you (?:like|want|wish)\b/,
   /\b(?:you can|you may|feel free to) (?:ask for|request|start|begin)\b/,
   /\bready for (?:another|a further|one more)\b/,
   /\bcontinue (?:when|whenever|if)\b/,
@@ -265,16 +331,83 @@ const UNFULFILLED_PROMISE_EN: readonly RegExp[] = [
   /\bask for another batch\b/,
 ];
 
-const UNFULFILLED_PROMISE_FIL: readonly RegExp[] = [
-  // `kang` is listed explicitly rather than folded into a `k(?:a|ing)` alternation: the FIRST draft
-  // wrote that alternation, and the can-fire control below caught "Maaari kang humiling…" going
-  // unflagged. A control built from the pattern's own author would have repeated the mistake.
+const ENCOURAGEMENT_FIL: readonly RegExp[] = [
+  // ENCOURAGEMENT.
+  /\bpatuloy\b/,
+  /\bmagpatuloy k(?:a|ang|ing) (?:kapag|noon)\b/,
+  /\blaimang\b/,
+  /\bmas marami\b/,
+  /\btutulong\b/,
+  /\b(?:kayan mo|kaya mo|ipagpatuloy mo)\b/,
+  // CONTRIBUTION CONDITIONED ON VOLUME. `bawat batch` covers "for every batch", and `mas marami`
+  // covers "the more you finish" — both MEASURED to collide with nothing in either catalog. A third
+  // candidate for this family was written and then REMOVED rather than shipped unmeasured, because an
+  // unmeasured pattern in a guard is a marker that has not been shown to match anything at all.
+  /\bbawat batch\b/,
+  // A TARGET, MILESTONE, RANK, or COMPARISON.
+  /\b(?:target|marka|benchmark)\b/,
+  /\bstreak\b/,
+  /\bleaderboard\b/,
+  /\branking\b/,
+  /\bpinakamataas\b/,
+  // AN OPEN-ENDED CLAIM ABOUT THE POOL.
+  /\bwalang (?:limitasyon|hangganan|pinakamalaking)\b/,
+  // `kang` is listed explicitly rather than folded into a `k(?:a|ing)` alternation: the FIRST draft of
+  // the predecessor wrote that alternation, and its can-fire control caught "Maaari kang humiling…"
+  // going unflagged. A control built from the pattern's own author would have repeated the mistake,
+  // so the can-fire control below still uses that exact sentence.
   /\bmaaari k(?:a|ang|ing) (?:humiling|mag-request)/,
   /\bhanda k(?:a|ang|ing) na\b/,
-  /\bpatuloy na\b/,
-  /\bmagpatuloy k(?:a|ang|ing) (?:kapag|noon)\b/,
   /\bhumiling ng (?:pangalawa|pambagong|isa pang) batch\b/,
 ];
+
+/** Every phrase, both languages, for the "does it catch all of these" probes. */
+const ENCOURAGEMENT_ALL: readonly RegExp[] = [...ENCOURAGEMENT_EN, ...ENCOURAGEMENT_FIL];
+
+/**
+ * The eight catalog keys this continuation work adds, named rather than derived.
+ *
+ * NAMED, and that is a deliberate exception to the "derive, never list" rule this file follows
+ * elsewhere. The rule exists so a guard keeps COVERING a namespace as it grows; here the claim is the
+ * opposite one — that a specific set of keys exists in both catalogs — and a derived set would make
+ * the assertion vacuous, because deriving from the English catalog and requiring the Filipino catalog
+ * to match is exactly what the file's own key-set-parity check already does at the type level. So
+ * the names are written down here, and the count is asserted, which is what stops a name being added
+ * to the list without the corresponding key existing in both catalogs.
+ *
+ * All eight are asserted for: presence in both catalogs, non-empty, and genuinely translated. The
+ * key-set parity over the whole `validate.finished.` namespace is asserted separately, so a ninth
+ * key added later is still covered by THAT even though this list does not name it.
+ */
+const CONTINUATION_KEYS = [
+  "validate.finished.continue",
+  "validate.finished.continue.working",
+  "validate.finished.finish",
+  "validate.finished.finishNote",
+  "validate.finished.exhausted",
+  "validate.finished.failure.notConfigured",
+  "validate.finished.failure.invalid",
+  "validate.finished.failure.persistence",
+] as const satisfies readonly CopyKey[];
+
+/**
+ * How many sentences a copy string carries, used as a MEASURABLE proxy for "the localized version is
+ * not a shorter rendering of the other".
+ *
+ * The requirement asks for the two versions to "carry the same meaning rather than one being a looser
+ * or shorter rendering of the other", and MEANING is not mechanically decidable — a reviewer reads
+ * the pair. What IS decidable is the part the requirement names second: a shorter rendering. Sentence
+ * count is the coarsest honest proxy for it, and it is coarse on purpose, because a proxy that
+ * pretended to be a semantic check would be worse than none.
+ *
+ * MEASURED before use: all twelve `validate.finished.*` values currently agree between the catalogs
+ * on this count, so the assertion below is a real baseline rather than a threshold invented to pass.
+ * The splitter ends a sentence on `.`, `!`, `?`, or `…` followed by whitespace, and drops empty parts,
+ * so an ellipsis in "Preparing your sentences…" does not read as two sentences.
+ */
+function sentenceCount(value: string): number {
+  return value.split(/[.!?…]+\s*/u).filter((part) => part.trim().length > 0).length;
+}
 
 /**
  * True when `fragment` occurs in `haystack` bounded by non-letter characters on both sides.
@@ -720,7 +853,10 @@ describe("the finished screen's own copy", () => {
     // Why the guard is SCOPED rather than applied to every string, measured rather than asserted.
     //
     // Three candidate words were measured against all 147 strings in both catalogs and were DISCARDED
-    // for colliding with legitimate copy elsewhere, not because the finished screen uses them:
+    // for colliding with legitimate copy elsewhere, not because the finished screen uses them. (The
+    // 147 is what that measurement actually read; both catalogs now hold 155 entries each, and
+    // `ENCOURAGEMENT`'s own `MEASURED:` test re-runs the same collision measurement over the current
+    // values, so the figure is re-derived there rather than carried forward here.)
     //
     //   `score`     — 2 English hits: `landing.panel.ask.body` and `start.lead`, both of which
     //                  describe the SCREENING question as "background information for the research
@@ -812,49 +948,219 @@ describe("the finished screen's own copy", () => {
     );
   });
 
-  it("promises no further batch in either catalog, because the control that would keep it is not here yet", () => {
-    // The other half of task 5.2, and the half a "just delete the sentence" repair would miss. The
-    // requirement only forbids telling a validator that continuing is UNAVAILABLE. Replacing that
-    // claim with "you can ask for another batch" would satisfy the letter of it and be a promise the
-    // product cannot keep until the continue control exists — the same class of defect in the
-    // opposite direction.
+  it("encourages no further work, conditions no contribution on batch count, and promises an unlimited pool — in EITHER catalog", () => {
+    // `tasks.md` 5.2's second half and `design.md` D7, over the whole `validate.finished.*` namespace
+    // and now covering the eight continuation strings rather than the two body paragraphs.
     //
-    // Enumerated promises rather than a keyword, and the Filipino half is a separate set because it
-    // shares no root with the English one.
+    // The title is the requirement's own vocabulary rather than the old one's. The old test forbade
+    // promises "that the product cannot keep until the continue control exists", and the control now
+    // exists, so that framing was false; what the requirement actually forbids is a CONTRIBUTION
+    // DEPENDING ON HOW MANY BATCHES a validator completes, which is an encouragement, a target, or a
+    // claim that the pool never runs out. See `ENCOURAGEMENT_EN` for the full account.
+    //
+    // Two catalogs, two separate vocabularies, because `patuloy`/`kayan mo` and `keep going` share no
+    // root — a single list would silently cover one language and call it both.
     for (const [key, value] of finishedStrings("English")) {
-      for (const promise of UNFULFILLED_PROMISE_EN) {
+      for (const phrase of ENCOURAGEMENT_EN) {
         expect(
           value.toLowerCase(),
-          `${key} promises a further batch that does not exist yet: ${JSON.stringify(value)}`,
-        ).not.toMatch(promise);
+          `English "${key}" encourages, targets, or over-promises: ${JSON.stringify(value)}`,
+        ).not.toMatch(phrase);
       }
     }
     for (const [key, value] of finishedStrings("Filipino")) {
-      for (const promise of UNFULFILLED_PROMISE_FIL) {
+      for (const phrase of ENCOURAGEMENT_FIL) {
         expect(
           value.toLowerCase(),
-          `${key} promises a further batch that does not exist yet: ${JSON.stringify(value)}`,
-        ).not.toMatch(promise);
+          `Filipino "${key}" encourages, targets, or over-promises: ${JSON.stringify(value)}`,
+        ).not.toMatch(phrase);
       }
     }
   });
 
-  it("CAN FIRE: the unfulfilled-promise check rejects a sentence that makes one", () => {
+  it("CAN FIRE: the encouragement guard rejects each shape it is meant to reject", () => {
+    // The control, and the reason the list above is a guard rather than a decoration. One sentence per
+    // family, in the wording a copywriter reaches for, and every one must be caught.
+    //
+    // "Maaari kang humiling ng pangalawang batch." is the FIRST draft of the predecessor's own
+    // control that went UNFLAGGED, because that draft folded `kang` into a `k(?:a|ing)` alternation.
+    // It is kept here in that exact form, because a control rewritten to suit a rewritten pattern
+    // would not be testing the mistake.
     const plausible = [
+      "Keep going — you have answered 27 entries so far.",
+      "Answer more batches to reach 50 entries answered.",
+      "The more you answer, the more it counts.",
+      "Each batch counts toward your total.",
+      "Your next milestone is 50 entries answered.",
+      "Keep your streak alive by answering another batch.",
+      "You are not done yet: 23 entries to your target of 50.",
+      "There is no limit to how many batches you can answer.",
       "You can ask for another batch whenever you like.",
       "Ready for another batch?",
       "Continue when you are ready.",
+      "Patuloy ka para makarating sa 50.",
+      "Kaya mo pa bang umabot sa 50?",
       "Maaari kang humiling ng pangalawang batch.",
       "Handa ka na para sa susunod na batch?",
+      "Walang limitasyon ang bilang ng batch.",
+      "Bawat batch ay tumutulong sa iyong kabuuan.",
+      "Leaderboard: ikaw ang numero uno.",
     ];
 
+    expect(plausible.length).toBeGreaterThan(0);
     const missed = plausible.filter(
-      (value) =>
-        ![...UNFULFILLED_PROMISE_EN, ...UNFULFILLED_PROMISE_FIL].some((p) =>
-          p.test(value.toLowerCase()),
-        ),
+      (value) => !ENCOURAGEMENT_ALL.some((p) => p.test(value.toLowerCase())),
     );
-    expect(missed, `the promise guard does not catch: ${missed.join(" | ")}`).toEqual([]);
+    expect(missed, `the encouragement guard does not catch: ${missed.join(" | ")}`).toEqual([]);
+  });
+
+  it("does NOT fire on the control's own labels, which legitimately ask for another batch", () => {
+    // The half that became load-bearing when the continue control landed, and the one whose absence
+    // would have made the guard above a reason to delete the feature.
+    //
+    // `validate.finished.continue` IS "Answer another batch": a request for a further batch, in
+    // imperative mood, on a control the participant presses. The old guard forbade `ask for another
+    // batch` and would have flagged an honest label — so a repair under the old rules would have been
+    // to soften the label ("You can answer another batch"), which is both the promise the pool cannot
+    // keep AND the encouragement the requirement forbids. The two obligations only coexist because
+    // the label is a COMMAND and the guard forbids PROMISES, and this test is what pins that
+    // distinction rather than leaving it to a reader to notice.
+    //
+    // Every real finished-screen label in BOTH catalogs is checked, not just the continue one, so a
+    // reworded finish label or reassurance sentence cannot quietly start matching either.
+    for (const [key, value] of finishedStrings("English")) {
+      const fired = ENCOURAGEMENT_EN.filter((phrase) => phrase.test(value.toLowerCase()));
+      expect(
+        fired,
+        `the real English label "${key}" matches the guard: ${fired.join(" | ")}`,
+      ).toEqual([]);
+    }
+    for (const [key, value] of finishedStrings("Filipino")) {
+      const fired = ENCOURAGEMENT_FIL.filter((phrase) => phrase.test(value.toLowerCase()));
+      expect(
+        fired,
+        `the real Filipino label "${key}" matches the guard: ${fired.join(" | ")}`,
+      ).toEqual([]);
+    }
+    // Named explicitly as well, because the loop above is only meaningful if the continue label is
+    // among the strings it walks — and it is the one most likely to be edited away.
+    expect(ENGLISH_COPY["validate.finished.continue"]).toBe("Answer another batch");
+    expect(FILIPINO_COPY["validate.finished.continue"]).toBe("Sagutin ang isa pang batch");
+  });
+
+  it("MEASURED: the encouragement vocabulary collides with nothing in either catalog", () => {
+    // Why the list above is scoped to the finished namespace rather than applied everywhere, stated
+    // as a measurement rather than as trust. Every phrase in both sets was run over every entry of
+    // both catalogs; the guard survives only if the count of collisions is zero, so a future copy
+    // addition that would make the guard cry wolf fails HERE rather than silently narrowing it.
+    //
+    // This is the same shape as the `MEASURED:` test the coverage-claim list carries, and it exists
+    // because that one has already been the difference between a guard and a decoration once.
+    const collisions: string[] = [];
+
+    for (const phrase of ENCOURAGEMENT_ALL) {
+      for (const [language, catalog] of [
+        ["English", ENGLISH_COPY],
+        ["Filipino", FILIPINO_COPY],
+      ] as const) {
+        for (const [key, value] of Object.entries(catalog)) {
+          if (phrase.test(value.toLowerCase())) {
+            collisions.push(`${language} "${key}" = ${JSON.stringify(value)}`);
+          }
+        }
+      }
+    }
+
+    // The two list lengths are asserted SEPARATELY, and separately rather than as one total on
+    // purpose: the failure a lost entry produces is "the guard now covers less", and a single summed
+    // figure cannot say WHICH list lost it. The numbers were MEASURED off the two arrays (28 English,
+    // 16 Filipino — 44 together) after a first draft of this assertion wrote `40` from a guess and
+    // failed with `expected 44 to be 40`, which is the "expected value written down rather than
+    // measured" error this repository has now recorded seven times.
+    expect(ENCOURAGEMENT_EN).toHaveLength(28);
+    expect(ENCOURAGEMENT_FIL).toHaveLength(16);
+    expect(ENCOURAGEMENT_ALL).toHaveLength(44);
+    expect(
+      collisions,
+      "the encouragement vocabulary must be free of collisions in BOTH catalogs",
+    ).toEqual([]);
+  });
+
+  it("supplies all eight continuation strings in BOTH catalogs, and the catalogs agree on the key set", () => {
+    // `tasks.md` 5.1, for the strings this half of the change adds. Key-set parity over the whole
+    // `validate.finished.` namespace is asserted here too rather than left to the file's top-level
+    // annotation, because the annotation proves the two objects have the same TYPE and this proves
+    // the same thing about the VALUES actually shipped.
+    expect(CONTINUATION_KEYS).toHaveLength(8);
+    for (const key of CONTINUATION_KEYS) {
+      expect(ENGLISH_COPY[key], `${key} is missing from the English catalog`).toBeTruthy();
+      expect(FILIPINO_COPY[key], `${key} is missing from the Filipino catalog`).toBeTruthy();
+      expect(ENGLISH_COPY[key].trim().length).toBeGreaterThan(0);
+      expect(FILIPINO_COPY[key].trim().length).toBeGreaterThan(0);
+      // Genuinely translated, not an English fallback — named so a failure says which of the eight.
+      expect(FILIPINO_COPY[key], `${key} fell back to English`).not.toBe(ENGLISH_COPY[key]);
+    }
+
+    // PARITY, derived from the English catalog exactly as `tasks.md` 5.1 requires rather than from a
+    // list written beside it. A hand-written expectation list would prove that the eight keys above
+    // exist twice; this proves the Filipino namespace is the SAME namespace.
+    const finishedEnglish = Object.keys(ENGLISH_COPY).filter((key) =>
+      key.startsWith(FINISHED_NAMESPACE),
+    );
+    const finishedFilipino = Object.keys(FILIPINO_COPY).filter((key) =>
+      key.startsWith(FINISHED_NAMESPACE),
+    );
+
+    expect(finishedEnglish.length).toBeGreaterThan(CONTINUATION_KEYS.length);
+    expect(finishedFilipino).toEqual(finishedEnglish);
+  });
+
+  it("does not let either catalog be the SHORTER rendering of the other", () => {
+    // Requirement *The finished presentation is localized in both interface languages* requires the two
+    // versions to "carry the same meaning rather than one being a looser or shorter rendering of the
+    // other".
+    //
+    // WHAT THIS DOES NOT DO, stated plainly because it is the limit worth naming: it does not compare
+    // MEANING. Meaning is not mechanically decidable and no assertion here pretends otherwise — a
+    // reviewer reads the pair. What is decidable is the second half of the requirement's own wording,
+    // "shorter rendering", and sentence count is the coarsest honest proxy for it.
+    //
+    // Both directions are checked, because "shorter" is symmetric in the requirement and an assertion
+    // that only ran one way would permit a translation cut in half as long as it kept every sentence.
+    const mismatched: string[] = [];
+
+    for (const key of Object.keys(ENGLISH_COPY).filter((key) =>
+      key.startsWith(FINISHED_NAMESPACE),
+    )) {
+      const english = sentenceCount(ENGLISH_COPY[key as CopyKey]);
+      const filipino = sentenceCount(FILIPINO_COPY[key as CopyKey]);
+      if (english !== filipino) {
+        mismatched.push(`${key}: EN ${english} sentence(s), FIL ${filipino}`);
+      }
+    }
+
+    expect(
+      mismatched,
+      `the two catalogs carry a different number of sentences: ${mismatched.join(" | ")}`,
+    ).toEqual([]);
+  });
+
+  it("CAN FIRE: the sentence counter counts sentences in both catalogs' own strings", () => {
+    // The control for the assertion above. Two real catalog values, one of them the three-sentence
+    // exhausted message and one of them a single label, so the comparison is between numbers that
+    // actually differ rather than between two copies of the same shape.
+    expect(sentenceCount(ENGLISH_COPY["validate.finished.exhausted"])).toBe(3);
+    expect(sentenceCount(FILIPINO_COPY["validate.finished.exhausted"])).toBe(3);
+    expect(sentenceCount(ENGLISH_COPY["validate.finished.continue"])).toBe(1);
+    expect(sentenceCount(FILIPINO_COPY["validate.finished.continue"])).toBe(1);
+    // And an ellipsis is not a sentence break — "Preparing your sentences…" is one label, and the
+    // splitter counting it as two would make the parity assertion above fail for the wrong reason.
+    expect(sentenceCount(ENGLISH_COPY["validate.finished.continue.working"])).toBe(1);
+    // Which is the difference between the two: a value that really did lose a sentence is caught.
+    const shortened = ENGLISH_COPY["validate.finished.exhausted"].split(". ")[0] ?? "";
+    expect(sentenceCount(shortened)).toBeLessThan(
+      sentenceCount(ENGLISH_COPY["validate.finished.exhausted"]),
+    );
   });
 });
 
