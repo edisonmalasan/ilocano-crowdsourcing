@@ -437,6 +437,46 @@ describe("every outcome that is NOT an entry", () => {
     expect(deps.calls).toContain(`validations.countForValidator:${VALIDATOR_ID}`);
   });
 
+  it("gives the `finished` outcome EXACTLY the keys the finished screen may render", async () => {
+    // `tasks.md` 0.3, at the layer that can see a key which does not exist yet.
+    //
+    // The requirement the figure has to satisfy is "those figures are derived from recorded validation
+    // responses rather than from any counter stored on the validator profile". A behavioural test
+    // cannot establish that, because a profile counter would simply be another number on the object
+    // and a test can only check that a number is there. What closes it is the CLOSED KEY SET: this
+    // outcome has five keys, none of which is a profile field, and the route can render no figure
+    // that is not one of them. A `totalValidations` or a `proficiency` key added here would have to be
+    // rendered, and `pnpm run typecheck` fails the moment it appears.
+    //
+    // `Object.keys` on the value, not on the type: the type layer's own version of this is the
+    // `FinishedOutcomeKeysAreExactly` pin in `session.ts`, and a runtime key-set is what catches a
+    // field that reached the object by some route the type did not see.
+    const { openValidationSession } = await loadService();
+
+    const outcome = await openValidationSession(
+      { batchId: "batch-1" },
+      createRecording({
+        completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"],
+        lifetimeAnsweredCount: 27,
+      }),
+    );
+
+    expect(Object.keys(outcome).sort()).toEqual([
+      "batchId",
+      "completedCount",
+      "lifetimeAnsweredCount",
+      "status",
+      "total",
+    ]);
+    // The two figures are DISTINCT members, so "both are shown" cannot be satisfied by one number
+    // standing in for both — and neither is named after anything on the `ValidatorProfile` row.
+    for (const key of Object.keys(outcome)) {
+      expect(key, `"${key}" is not a field of the anonymous validator profile`).not.toMatch(
+        /proficiency|created|active|profile|validatorId/i,
+      );
+    }
+  });
+
   it("does NOT report `finished` for a stale position when entries remain", async () => {
     // The read-side twin of the pure decision's most important assertion. A URL must never be able to
     // declare a validator's work finished, and this is the path a real request takes.

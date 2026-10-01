@@ -80,6 +80,36 @@ export type ValidationSessionRequest = z.infer<typeof validationSessionRequestSc
 export type SessionOrderingKeyIsPositionOnly =
   Exclude<keyof ValidationSessionRequest, "batchId" | "position"> extends never ? true : never;
 
+/**
+ * Type-level pin on the finished outcome's key set (`design.md` D6, and `tasks.md` 0.3).
+ *
+ * The requirement is that the two figures the finished screen reports come from recorded validation
+ * RESPONSES rather than from any counter stored on the validator profile. That cannot be pinned by a
+ * behavioural test, for the reason the pin above exists to explain: a profile counter would be one
+ * more number on the object, and a test can check only that a number is there. What closes the gap is
+ * a CLOSED set of names. `validators.total_validations` exists, is set to `0` at enrolment, and has no
+ * increment method, so any key derived from it would be named after the profile — and a key that does
+ * not match the excluded list below is a key whose SOURCE is unconstrained.
+ *
+ * So the guarantee is the weaker but real one this type can state: the finished presentation carries
+ * figures and nothing else. `Exclude<…, "status" | …>` resolves to `never` the moment a sixth key
+ * appears, whatever it is called, and a consumer declaring
+ * `const pin: FinishedOutcomeKeysAreExactlyTheseFive = true` fails `pnpm run typecheck` with
+ * `TS2322: Type 'true' is not assignable to type 'never'`.
+ *
+ * `batchId` is INCLUDED in the allowed set rather than excluded from the pin: the finished screen
+ * legitimately knows which batch it finished, and a key absent from both lists is what this exists to
+ * catch. A field that leaked in under a name resembling none of these — `proficiency`, `totalValidations`
+ * — resolves to `never` and is caught by the type, which is the point.
+ */
+export type FinishedOutcomeKeysAreExactlyTheseFive =
+  Exclude<
+    keyof Extract<ValidationSessionOutcome, { status: "finished" }>,
+    "status" | "batchId" | "completedCount" | "total" | "lifetimeAnsweredCount"
+  > extends never
+    ? true
+    : never;
+
 /** The one entry a session is presenting, plus the server's figures about the batch around it. */
 export interface ValidationSessionEntry {
   /** The batch this entry belongs to. The route's own parameter; never client-supplied. */
