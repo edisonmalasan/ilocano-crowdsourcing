@@ -654,21 +654,36 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
 
     // What the server resolves that request to, using the real resolver.
     //
-    // The completed set is MEASURED, not assumed, and it includes the entry just answered because the
-    // write is what completed it — the server reads the completed set from storage, and the form
-    // navigated only after the insert resolved. The first draft of this test passed an EMPTY set plus
-    // the entry just answered to a function that added it internally, and got `OD_0005` — the FIRST
-    // remaining placement, because with only OD_0007 marked done, placements 1 and 2 are still
-    // outstanding. That is the resolver behaving correctly and the expectation being wrong: an
-    // expected value written down rather than measured is the fifth time that has happened in this
-    // session, and it is worth recording that the failure looks like a defect in the code under test.
-    const completed = new Set(["OD_0005", "OD_0006", "OD_0007"]);
+    // THE COMPLETED SET IS CHOSEN SO THE REQUESTED POSITION IS LOAD-BEARING, and getting that wrong is
+    // the second time this fixture's shape has cost a test its meaning. Positions 1 and 3 are
+    // complete, 2 and 4 are not — the state a validator is in after reaching `?position=3` by a link
+    // and answering while position 2 is still outstanding. So after the write completes OD_0007, TWO
+    // placements remain and the requested position genuinely chooses between them.
+    //
+    // The first draft marked positions 1, 2 and 3 complete, leaving exactly ONE remaining placement.
+    // Every requested position then resolved to that one entry — `4`, `1` and `999` alike — so
+    // reading the position out of the pushed URL was **decoration**: the test passed identically with
+    // the resolver ignoring its `requestedPosition` argument altogether, and also with the form
+    // pushing `position + 2`. The re-verification pass measured both, green at 1214/1214. A fixture
+    // that cannot discriminate makes a real read look like a real dependency, which is the most
+    // expensive kind of vacuous test because it documents an intention it does not check.
+    const completed = new Set(["OD_0005", "OD_0007"]);
     const next = resolveSessionEntry(PLACEMENTS, completed, requestedPosition);
     expect(next).not.toBeNull();
+    // The answered entry is not re-presented.
     expect(next?.placement.datasetEntryId).not.toBe("OD_0007");
+    // And the requested position is what selected it, not the fallback: the first REMAINING placement
+    // is OD_0006, so a resolver that ignored its argument would answer differently and go red here.
+    expect(next?.placement.datasetEntryId).not.toBe("OD_0006");
     expect(next?.placement.datasetEntryId).toBe("OD_0008");
-    // And the advance goes FORWARD, which is the property the push-then-reload sequence rests on.
+    // The advance goes FORWARD from the placement just answered, which is what the push-then-reload
+    // sequence rests on — and note it advances PAST an outstanding earlier entry rather than back to
+    // it, because the server resolves against the requested position.
     expect(next?.placement.position ?? 0).toBeGreaterThan(3);
+    // Stated so a reader can see the fixture is not accidentally satisfiable another way: TWO
+    // placements are outstanding at the moment of resolution, and the request picks the later one.
+    const remaining = PLACEMENTS.filter((p) => !completed.has(p.datasetEntryId));
+    expect(remaining).toHaveLength(2);
 
     // The re-mount: the same component, at the position the push named, presenting the entry the real
     // resolver chose. A different `datasetEntryId` means a different sentence is on screen.
@@ -700,8 +715,16 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
     // to the test above, and the sibling test that asserts the exact URL string is what catches it.
     //
     // This test pins the missing half: two DIFFERENT in-range positions must give two DIFFERENT
-    // entries, which is what makes reading the position out of the URL worth anything. Without it, the
-    // re-mount's use of `requestedPosition` would be decoration.
+    // entries, which is what makes reading the position out of the URL worth anything.
+    //
+    // It is a SEPARATE test with its OWN fixture, and an earlier version of its comment claimed that
+    // adding it made the re-mount test's `requestedPosition` load-bearing. That was wrong, and the
+    // re-verification pass measured why: a control in a different test cannot fix a fixture in another,
+    // so the re-mount test kept resolving to a single remaining placement regardless of the position
+    // it was given. **The re-mount test's own fixture is now discriminating** — see its comment — and
+    // this control remains because the two witness different things: the re-mount test witnesses the
+    // end-to-end chain for one position, this one witnesses that the resolver's argument is not
+    // ignored across a range.
     const PLACEMENTS = [
       { datasetEntryId: "OD_0005", position: 1 },
       { datasetEntryId: "OD_0006", position: 2 },

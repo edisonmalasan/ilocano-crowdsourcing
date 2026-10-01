@@ -49,7 +49,16 @@ import {
  *     clock, for the same reason `enrollValidator` mints its own.
  *   - No `position`, no entry list, no order. The order is `batch_entries.position`, which this
  *     module only checks membership against — it never chooses what comes next. What comes next is
- *     decided by `resolveNextSessionEntry` from the server's own record.
+ *     decided when the NEXT REQUEST is served: the client navigates to
+ *     `?position=<placement position + 1>`, and `resolveSessionEntry` answers from the server's own
+ *     record. This paragraph previously named `resolveNextSessionEntry` as that decider. That export
+ *     had no production caller, was deleted, and was in any case **wrong for the real path** — it
+ *     resolved `requestedPosition: undefined`, which is the first *remaining* entry, where the route
+ *     asks for the first remaining entry **at or after** the requested position. The two differ
+ *     exactly when a participant resumes part-way through a batch. Recording it here because a
+ *     comment naming the wrong mechanism is the same defect the Phase 5 verification pass raised
+ *     against `/ready`, and fixing it in one place while leaving it in another would be fixing the
+ *     symptom.
  *
  * `strictObject`, so an attempt to add any of the above is REFUSED with nothing read and nothing
  * written. A stripped extra field would look, from the outside, exactly like a successful request

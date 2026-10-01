@@ -178,6 +178,23 @@ modify a capability this change declares it does not touch. Recorded here so the
 the decision instead of discovering an omission, and so a reviewer who disagrees has the argument in
 front of them rather than a silent gap. It also gives `RV-4` the behavioural home it has been missing.
 
+**No scenario specifies what happens when a validator answers an entry OUT OF ORDER.** The session
+advances by the placement position, so a validator who reached `?position=7` is next sent to
+`?position=8`, leaving position 1 outstanding. Nothing is lost — the resolver falls back to the first
+remaining entry once the requested position passes the end, so an earlier entry is never permanently
+skipped and can still reach its coverage target. But "the next entry in the order the server allocated"
+is satisfied by two different rules, and they only diverge on this path: advance to the next POSITION, or
+return to the first entry still needing an answer. They coincide whenever a validator answers in order,
+which is the only way the session is meant to be driven.
+
+**Raised here rather than decided here.** The question surfaced during verification: a deleted unit test
+asserted the second rule, and deleting it removed an assertion nobody had noticed was asserting
+*anything*. Deciding it would mean specifying behaviour for a case no requirement reaches, and the
+wording of the requirement that does exist genuinely admits both readings — so this is a
+methodology-adjacent judgement about session semantics, not an implementation detail. Recorded so the
+Sync stage picks a rule deliberately. The three surviving production links are witnessed regardless of
+which rule is chosen, since both read `batch_entries.position` and the completed set.
+
 **Environment:** unchanged. There are still **no Supabase credentials**, so no Supabase client has ever
 been constructed and none will be by this change. The flow's persistence is exercised through the
 repository seam and PGlite, not a hosted database.

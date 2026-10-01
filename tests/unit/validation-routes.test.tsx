@@ -767,7 +767,22 @@ describe("no control on the validation screen can skip, defer, or postpone the r
 
     // The enumeration is non-empty, and the control's own shape is the reason this is meaningful.
     expect(controls.length).toBeGreaterThan(0);
-    expect(controls.every((control) => control.text !== null)).toBe(true);
+    // EVERY control must be labellable, because a control the enumerator cannot read a label from is
+    // invisible to `SKIP_AFFORDANCE` below — it would be reported as a control with no text rather
+    // than as a control to be judged.
+    //
+    // This assertion became REACHABLE when the void-element repair landed: before it, the enumerator
+    // could not see an `<input>` at all, so a labelless one was never in `controls` to fail here. The
+    // first draft of this line had no message, and a re-verification probe that added a bare
+    // `<input type="checkbox" />` produced `expected false to be true` with nothing naming the control
+    // or the cause — the next reader would have been looking at a skip-affordance guard while the
+    // actual problem was a missing `aria-label`. The offending controls are named instead.
+    const unlabelled = controls.filter((control) => control.text === null);
+    expect(
+      unlabelled,
+      `every control must carry a label a participant would read, since an unlabelled one cannot be ` +
+        `judged by the pattern below: ${unlabelled.map((c) => `<${c.tag}> "${c.label}"`).join(" | ")}`,
+    ).toEqual([]);
 
     const offenders = controls.filter((control) => SKIP_AFFORDANCE.test(control.label));
 

@@ -368,7 +368,7 @@ restore**. A green suite cannot show that a guard fires, so these are the eviden
 | Probe | Mutation | Result | Named failures |
 | --- | --- | --- | --- |
 | P6 (W1) | a real `<input type="checkbox" aria-label="Skip translation for now">` on the screen | RED | **2** tests, incl. `a control that can skip required research data: Skip translation for now` |
-| P7 (W2) | the stale *"Allocation is Phase 4"* sentence asserted as current | RED | **0** lines assert it; only the retraction quotes it |
+| P7 (W2) | the stale *"Allocation is Phase 4"* sentence asserted as current | **PASS — a source scan, not a test** | **0** lines assert it; only the retraction quotes it |
 | P8 (W3) | the progress line rendering `completedCount + 1` instead of the placement position | RED | **1**, `expected '…' to contain 'Sentence 4 of 10'` |
 | P9 (W3) | the form advancing by `position + 2` | RED | **4**, all in VF-6 |
 
@@ -387,6 +387,56 @@ glossed, because the question "what would have to be true for this assertion to 
 finds vacuous guards, and the honest answer here is "break the prop wiring". Closing it properly needs a
 real server render plus a real navigation, which needs a browser and a Supabase project; **neither
 exists**.
+
+### The re-verification of the repairs found THREE MORE, and one of them was in my own new test
+
+The repairs were re-verified by a second independent pass, which returned **YES** for W1, W2 and W4 and
+**YES for W3's substance** with three reservations. All three were confirmed by re-derivation and
+repaired. Two are worth reading in full, because both are the failure this repository's ledger exists to
+catch and **one of them was in a test I had just written to fix a different instance of it**.
+
+| Probe | Mutation | Result | Named failures |
+| --- | --- | --- | --- |
+| P10 (W-1) | the route resolving the session with `position: undefined` | RED | **3** |
+| P11 (W-2) | the resolver **ignoring** `requestedPosition` entirely (`remaining[0]`) | RED | **6**, incl. the re-mount test |
+| P11b (W-2) | the form pushing `position + 2` | RED | **5**, incl. the re-mount test |
+| P12 (W-3) | a labelless `<input type="checkbox" />` | RED | **2**, message names `<input> ""` |
+
+**WARNING 2 is the one worth reading: my repaired re-mount test was STILL VACUOUS, in the same way, one
+test after I fixed it.** Its fixture marked positions 1, 2 and 3 complete, leaving exactly **one**
+remaining placement. Every requested position then resolved to that one entry — `4`, `1` and `999`
+alike — so reading the position out of the pushed URL was **decoration**: the test passed identically
+with the resolver ignoring its argument, and identically with the form pushing `position + 2`. Measured,
+not reasoned: P11 and P11b both left this test **green** before the fix and go **red** after it. The
+fixture now marks positions 1 and 3 complete, leaving **two** outstanding, so the request genuinely
+chooses between them, and the test asserts the first remaining (`OD_0006`) is **not** the answer.
+
+The can-fire control I added in the previous commit had a comment claiming it made the re-mount's
+`requestedPosition` load-bearing. **That claim was false, and the reason is general: a control in a
+different test with a different fixture cannot repair a fixture in another test.** Both comments now
+state what each test actually witnesses. This is also the **third** time this session that a fixture
+leaving a single candidate made a real read look like a real dependency — the same trap, in the
+`interactiveControls` control, then in the can-fire control's own first draft, then here.
+
+**WARNING 1** was a production comment in `validation-actions-core.ts:50-52` still naming the deleted
+`resolveNextSessionEntry` as the mechanism that decides what comes next — the same defect class as W2,
+left standing in `src/` while the deletion was recorded in two other files. It is now the real
+mechanism, with the wrongness of the old claim recorded.
+
+**WARNING 3** was an assertion that became *newly reachable* when the void-element repair landed: a
+labelless `<input>` is invisible to the skip-affordance pattern, and the failure message was
+`expected false to be true`, naming neither the control nor the cause. The next reader would have been
+looking at a skip-affordance guard while the actual problem was a missing `aria-label`. The offending
+controls are now named. P12 measures it.
+
+**NOTE 2 was also fixed**: the out-of-order advance question was recorded in `tasks.md` and
+`session.ts` but **not** in the `proposal.md` open questions, so a reader consulting the proposal alone
+would not have seen it. It is now in the proposal, which is where a Sync-stage decision gets made.
+
+**NOTE 1 was fixed too**: the P7 row in the table above sat in a column where P6/P8/P9 mean "a test went
+red", when it is a **source scan** and no test asserts that sentence's absence. It now reads
+**PASS — a source scan, not a test**, because a table that mixes a grep with four mutation probes reads
+as four green-backed guarantees when one is a string match.
 
 ### The repair probe harness was wrong twice before it was right, and both errors are instructive
 
