@@ -187,10 +187,27 @@ export function submitControlState(isPending: boolean, t: Translate): SubmitCont
 /**
  * The sentence a participant reads when a submission does not succeed.
  *
- * Four reasons, four sentences, and none of them is interchangeable with another. The word "Nothing
- * was saved" appears in all of them deliberately: a participant who is told a write failed and not
- * told what survived has no way to know whether to retype an answer they already gave up on, and
- * the honest answer is always that nothing was.
+ * FIVE reasons, THREE sentences — and that grouping is a decision rather than an omission, so it is
+ * worth stating because the earlier version of this comment claimed "four reasons, four sentences" and
+ * was wrong twice over: there are five reasons, and four distinct sentences would have meant telling a
+ * participant something about the inside of the system they cannot act on.
+ *
+ *   `invalid`          → they can FIX it. The only reason worth a sentence of its own, because it is
+ *                        the only one where the next action differs.
+ *   `not_configured`   → the study is not open. Distinct because "come back later" is true and
+ *                        "try again" would be a lie — retrying cannot succeed until a human deploys.
+ *   everything else    → `unknown_batch`, `not_in_batch`, and `persistence` all resolve to one
+ *                        sentence, and deliberately so. A stale link, an entry that is not in the batch,
+ *                        and an unreachable table are three different faults with one participant-
+ *                        visible consequence: the answer is not stored and there is nothing the
+ *                        participant can do about which of the three it was. Splitting them would
+ *                        produce three sentences that differ only in a fact nobody reading them can
+ *                        check, and the differences are already available where they belong — in the
+ *                        operator log and in the three distinct result reasons this function receives.
+ *
+ * The word "Nothing was saved" appears in all of them deliberately: a participant who is told a write
+ * failed and not told what survived has no way to know whether to retype an answer they already gave
+ * up on, and the honest answer is always that nothing was.
  */
 export function failureMessageFor(reason: SubmitValidationFailureReason, t: Translate): string {
   switch (reason) {

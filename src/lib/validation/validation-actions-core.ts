@@ -20,12 +20,20 @@ import {
  * ============================================================================
  * THE VALIDATION SERVER ACTION'S CORE — the testable half
  * ============================================================================
- * No `import "server-only"` in this file, and that is deliberate rather than an oversight. The
+ * No `import "server-only"` in THIS file, and that is deliberate rather than an oversight. The
  * decisions here — is this payload acceptable, whose response is this, is this refusal a duplicate
  * or a fault — are pure reasoning over injected repositories, so a unit test can reach every branch
- * of them with no credential, no network, and no stub of the module marker. The `"use server"`
- * wrapper in `actions.ts` owns the privileged client and the environment check, and does nothing
- * else.
+ * of them with no credential and no network. The `"use server"` wrapper in `actions.ts` owns the
+ * privileged client and the environment check, and does nothing else.
+ *
+ * A CORRECTION to an earlier version of this comment, which claimed a unit test needs no stub of the
+ * module marker at all. That was measured and it was wrong: this module imports `parseWriteIntent`
+ * from `@/lib/server/write-intake`, which carries the marker in its own right — correctly, since it is
+ * the write-intake boundary. So `tests/unit/validation-actions.test.ts` does stub it, exactly as
+ * `allocation-actions.test.ts` does. The distinction that remains real is narrower than the original
+ * claim: this file does not ADD a marker, it INHERITS one, and the difference is visible in that
+ * `validation-actions-core` can be imported by a plain unit test while
+ * `validation/actions.ts` cannot be without a credential.
  *
  * ============================================================================
  * THE PAYLOAD IS THREE KEYS, AND TWO OF THE FACTS EVERYONE EXPECTS IN IT ARE NOT
