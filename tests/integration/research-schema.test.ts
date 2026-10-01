@@ -31,6 +31,21 @@ import {
 
 // As PostgreSQL's default collation orders them. `validation_batches`, `validation_sessions` and
 // `validations` all precede `validators` because `i` sorts before `o` at the diverging position.
+/**
+ * The six RESEARCH tables, and only those.
+ *
+ * `researcher_signin_attempts` is deliberately absent, and the reason is the point of this constant
+ * rather than an oversight. It arrived with researcher-admin-access and it is a real table in the
+ * same schema, but it holds no validator response, no dataset entry, and no proficiency answer: it is
+ * an operational rate-limit counter keyed by origin. The research boundary this list protects is
+ * "the research data lives in exactly these six tables", and admitting an operational table would
+ * weaken the claim without strengthening it.
+ *
+ * So the guard is split rather than loosened. This list still asserts the six research tables are
+ * present, AND `tests/integration/researcher-signin-attempts.test.ts` asserts the counter table
+ * exists, references none of the six by foreign key, and denies `anon` — so "nothing else in this
+ * schema" is covered from both sides rather than being given up.
+ */
 const EXPECTED_TABLES = [
   "batch_entries",
   "dataset_entries",
@@ -40,15 +55,28 @@ const EXPECTED_TABLES = [
   "validators",
 ];
 
+/**
+ * Every table in the `public` schema that is NOT one of the six research tables.
+ *
+ * Held as a CLOSED list for the same reason {@link EXPECTED_TABLES} is: a new table added and not
+ * listed here fails, rather than being silently absorbed. An open "anything else is fine" check would
+ * pass on a seventh research table, which is precisely the mistake this file exists to prevent.
+ */
+const EXPECTED_NON_RESEARCH_TABLES = ["researcher_signin_attempts"];
+
 const EXPECTED_MIGRATIONS = [
   "20260930120000_research_schema.sql",
   "20260930160000_required_bilingual_translations.sql",
   "20260930190000_allocation_batch_positions.sql",
   // Arrived with interrupted-batch recovery, for one reason: "the most recently created interrupted
   // batch" needs an age the table did not have. Listed here rather than derived from the directory,
-  // which is the point of this constant — a migration added and not listed here fails rather than
+  // which is the point of this constant - a migration added and not listed here fails rather than
   // being silently absorbed, which is the only way a CLOSED list stays closed.
   "20261001120000_validation_batches_created_at.sql",
+  // Arrived with researcher-admin-access: the durable sign-in attempt counter, plus the two functions
+  // that make its increment atomic and unreachable by `anon`. Same reason as the one above — a
+  // migration the list does not name must FAIL here.
+  "20261002120000_researcher_signin_attempts.sql",
 ] as const;
 
 /**
@@ -146,12 +174,45 @@ describe("research schema migrations", () => {
   });
 
   describe("tables", () => {
-    it("creates the six research tables and nothing else", async () => {
+    it("creates the six research tables, and every other table is one this file names", async () => {
       const tables = await query<{ table_name: string }>(
         db,
         "select table_name from information_schema.tables where table_schema = 'public' order by table_name",
       );
-      expect(tables.map((row) => row.table_name)).toEqual(EXPECTED_TABLES);
+      const found = tables.map((row) => row.table_name);
+
+      // TWO CLOSED LISTS whose union must equal what is in the schema, rather than one list and an
+      // open "and nothing else". The single-list form stopped being true when the operational
+      // sign-in counter arrived, and the two available repairs were both bad: dropping the guard, or
+      // adding an operational table to a list named for RESEARCH tables.
+      //
+      // This keeps the original claim intact and adds the one that was actually missing — that a new
+      // table has to be classified. A seventh table fails here unless someone has decided, in writing,
+      // whether it is research data or operational state.
+      expect(found.filter((name) => EXPECTED_TABLES.includes(name))).toEqual(EXPECTED_TABLES);
+      expect(found.filter((name) => !EXPECTED_TABLES.includes(name))).toEqual(
+        EXPECTED_NON_RESEARCH_TABLES,
+      );
+      // And the partition is total, so a table cannot slip through by being in neither list.
+      expect([...EXPECTED_TABLES, ...EXPECTED_NON_RESEARCH_TABLES].sort()).toEqual(found);
+    });
+
+    it("keeps the operational counter out of the research tables by construction", async () => {
+      // The reason the split above is legitimate rather than a loosening. If the counter held research
+      // data by reference — a foreign key into `validators`, say — then calling it "operational" would
+      // be a naming decision contradicting the schema, and putting it in a separate list would have
+      // moved real research data out of the set the research guard watches.
+      const rows = await query<{ count: number }>(
+        db,
+        `select count(*)::int as count
+           from pg_constraint c
+           join pg_class t on t.oid = c.conrelid
+           join pg_namespace n on n.oid = t.relnamespace
+          where n.nspname = 'public'
+            and t.relname = 'researcher_signin_attempts'
+            and c.contype = 'f'`,
+      );
+      expect(rows[0]?.count).toBe(0);
     });
 
     it("keys dataset entries by the source identifier, not a uuid surrogate", async () => {

@@ -1,10 +1,12 @@
 import "server-only";
 
+import type { SignInAttemptsRepository } from "@/lib/repositories";
 import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
 
 import type { FilterHandleLike, SupabaseClientLike, TableHandleLike } from "./client";
 import { SupabaseBatchesRepository } from "./batches";
 import { SupabaseDatasetEntriesRepository } from "./dataset-entries";
+import { SupabaseSignInAttemptsRepository } from "./sign-in-attempts";
 import { SupabaseValidationsRepository } from "./validations";
 import { SupabaseValidatorsRepository } from "./validators";
 
@@ -55,6 +57,7 @@ import { SupabaseValidatorsRepository } from "./validators";
  */
 type RealTableHandle = ReturnType<AdminSupabaseClient["from"]>;
 type RealFilterHandle = ReturnType<RealTableHandle["select"]>;
+type RealClientMembers = keyof AdminSupabaseClient;
 
 /**
  * Compile-time compatibility check: every member the narrow client interface declares must exist
@@ -76,9 +79,22 @@ type FilterMembersArePresent = [Exclude<keyof FilterHandleLike, keyof RealFilter
   ? true
   : Exclude<keyof FilterHandleLike, keyof RealFilterHandle>;
 
-// The two assertions are consumed here, so a drift in `@supabase/postgrest-js` fails typecheck.
+/**
+ * The same name-level check for `rpc`, which is a member of the CLIENT rather than of a builder.
+ *
+ * It needs its own assertion because the two above compare against `from(...)`'s return type, and
+ * `rpc` is not on that. `researcher-admin-access` added `rpc` to `SupabaseClientLike` for the
+ * attempt counter's atomic increment, so the check that guards this directory's compatibility with
+ * the real client has to cover it or it would be narrower than the interface it is checking.
+ */
+type RpcMembersArePresent = [Exclude<keyof SupabaseClientLike, RealClientMembers>] extends [never]
+  ? true
+  : Exclude<keyof SupabaseClientLike, RealClientMembers>;
+
+// The assertions are consumed here, so a drift in `@supabase/postgrest-js` fails typecheck.
 const TABLE_MEMBERS_ARE_PRESENT: TableMembersArePresent = true;
 const FILTER_MEMBERS_ARE_PRESENT: FilterMembersArePresent = true;
+const RPC_MEMBERS_ARE_PRESENT: RpcMembersArePresent = true;
 
 /**
  * Presents the real privileged client as the narrow interface the repositories are written
@@ -98,10 +114,24 @@ const FILTER_MEMBERS_ARE_PRESENT: FilterMembersArePresent = true;
 function asNarrowClient(admin: AdminSupabaseClient): SupabaseClientLike {
   void TABLE_MEMBERS_ARE_PRESENT;
   void FILTER_MEMBERS_ARE_PRESENT;
+  void RPC_MEMBERS_ARE_PRESENT;
   return admin as unknown as SupabaseClientLike;
 }
 
-/** Builds all four repositories over one privileged client. */
+/**
+ * Builds the repositories over one privileged client.
+ *
+ * The first four are the research repositories, and they are the ONLY ones any public validator
+ * request may construct. `signInAttempts` is separated here for the same reason the admin
+ * environment contract is separated in `@/lib/admin/env.ts`: it belongs to a path whose authority
+ * comes from a request an unauthenticated party can send, and grouping it with the four would make
+ * "construct the repositories for a validation submission" quietly also construct the one repository
+ * a validation submission has no business holding.
+ *
+ * The separation is a property of this function's RETURN SHAPE rather than of a convention. A caller
+ * destructures what it needs, so a public path that asks for `{ validations }` cannot reach the
+ * counter even by accident.
+ */
 export function createSupabaseRepositories(
   admin: AdminSupabaseClient = createAdminSupabaseClient(),
 ) {
@@ -112,6 +142,20 @@ export function createSupabaseRepositories(
     validations: new SupabaseValidationsRepository(client),
     batches: new SupabaseBatchesRepository(client),
   };
+}
+
+/**
+ * The repository the researcher sign-in surface uses, and nothing else.
+ *
+ * A separate constructor rather than a fifth member of {@link createSupabaseRepositories}, so that
+ * reading a research repository's return type does not also tell you the counter exists. The reason
+ * is not tidiness: the counter is the one repository reachable from an unauthenticated request, and
+ * the strongest thing this codebase can say about that is that no other request can name it.
+ */
+export function createSignInAttemptsRepository(
+  admin: AdminSupabaseClient = createAdminSupabaseClient(),
+): SignInAttemptsRepository {
+  return new SupabaseSignInAttemptsRepository(asNarrowClient(admin));
 }
 
 export type SupabaseRepositories = ReturnType<typeof createSupabaseRepositories>;

@@ -109,11 +109,21 @@ export function expectNoError(
  * Only the query itself is wrapped. Translation happens outside this helper, so a bug in the
  * mapping is not misreported as a persistence failure.
  */
-export async function awaitQuery(
+/**
+ * Awaits a PostgREST call and converts a REJECTION into a `RepositoryError`.
+ *
+ * GENERIC over the envelope rather than fixed to `PostgrestResultLike`, because the repository
+ * client has two shapes: a table operation returns `{ data, error, count }` and an `rpc` call
+ * returns `{ data, error }` with no count to report. The one thing they share is the field this
+ * function actually reads, and the constraint names exactly that field — so a shape is accepted
+ * precisely when it can carry an error, and there is still only ONE place that turns a rejection
+ * into a typed failure.
+ */
+export async function awaitQuery<T extends { readonly error: PostgrestErrorLike | null }>(
   operation: RepositoryOperation,
   context: string,
-  query: () => PromiseLike<PostgrestResultLike>,
-): Promise<PostgrestResultLike> {
+  query: () => PromiseLike<T>,
+): Promise<T> {
   try {
     return await query();
   } catch (cause) {

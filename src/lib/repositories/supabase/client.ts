@@ -41,6 +41,20 @@ import "server-only";
  * rather than quietly overwrite, and leaving `upsert` out of the type means the requirement is
  * enforced by the compiler for the fake and by review for the real client, instead of resting on
  * remembering not to call it.
+ *
+ * `rpc` arrived with the researcher sign-in attempt limit, and the reasoning is recorded here
+ * because "we removed upsert on purpose" and "we added rpc on purpose" would otherwise look like an
+ * inconsistency. The sign-in counter must be incremented atomically: a read-modify-write from the
+ * application loses updates when two requests race, and a lost update means the stored count
+ * under-reports and a determined party never reaches the limit. PostgREST cannot express
+ * `INSERT ... ON CONFLICT DO UPDATE SET attempt_count = attempt_count + 1` as a table operation —
+ * `upsert` REPLACES the named columns rather than incrementing them — so the only way to have the
+ * database perform the atomic statement is to let the database own it. That is a function, and a
+ * function is reached through `rpc`.
+ *
+ * It is narrower than it looks: the client cannot name an arbitrary function at a call site in this
+ * directory, because the only two callers pass constants declared beside them, and `revoke` in
+ * `20261002120000_researcher_signin_attempts.sql` means no other role can execute either one.
  */
 
 /** The PostgREST error fields this code reads. `code` is the only one it branches on. */
@@ -132,7 +146,21 @@ export interface FilterHandleLike extends PromiseLike<PostgrestResultLike> {
   maybeSingle(): PromiseLike<PostgrestResultLike>;
 }
 
-/** The only client member used: a table handle. */
+/**
+ * `client.rpc(function, args)` — a single-row scalar function call.
+ *
+ * A plain `PromiseLike` rather than a chainable builder, because a function's return value is
+ * whatever the function returns and there is nothing further to filter. `SupabaseRpcResultLike` is
+ * the same two-field envelope every other call returns, so `expectNoError` and
+ * `persistenceFailure` apply unchanged and no new error-handling path is introduced.
+ */
+export interface SupabaseRpcResultLike {
+  data: unknown;
+  error: PostgrestErrorLike | null;
+}
+
+/** The only client members used: a table handle, and a scalar function call. */
 export interface SupabaseClientLike {
   from(table: string): TableHandleLike;
+  rpc(fn: string, args: Record<string, unknown>): PromiseLike<SupabaseRpcResultLike>;
 }

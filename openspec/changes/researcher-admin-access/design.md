@@ -80,21 +80,52 @@ documented variables are easier to rotate independently and easier to reason abo
 
 ### D3 — The session carries a non-secret key identifier, so one operator can be revoked without killing every session
 
-The session payload is an issued-at instant, an expiry, and a **key identifier**: the 1-based ordinal
-of the operator credential that established it. The ordinal is configuration position, not anything
-derived from the credential, so publishing it in a cookie discloses no secret material. Verification
-resolves the ordinal against the currently configured set and refuses if that ordinal is gone.
+The session payload is an issued-at instant, an expiry, a format version, and a **key identifier** with
+two parts:
 
-The alternative — a session that references no operator — means **removing an operator credential
-does not revoke the sessions it already established**, and the only way to revoke them is to rotate
-the session secret and sign out the entire team. That is a real operational weakness for a research
-team where one member leaving should not require re-authenticating everyone.
+- `k` — the 1-based ordinal of the operator credential that established the session. Configuration
+  position, not anything derived from the credential, so publishing it in a cookie discloses no
+  secret material.
+- `b` — a **binding**: `base64url(HMAC-SHA256(sessionSecret, "v1\x1f" + ordinal + "\x1f" + credential))[0..16]`,
+  always 22 base64url characters.
 
-Accepted cost: **reordering the credential set invalidates outstanding sessions**, because ordinals
-are positions. Documented at the variable, because it is surprising. The alternative that avoids it —
-a random public identifier per operator, as in `kid:token` pairs — buys stability at the cost of a
-more complex variable format; deferred, and recorded here so the trade is visible rather than
-rediscovered.
+Verification resolves `k` against the currently configured set, refuses if that ordinal is gone, and
+recomputes `b` from the credential *currently* at that position, refusing on mismatch.
+
+##### Why the binding was added after the ordinal proved insufficient — a defect a test found, not a review
+
+This subsection records a correction rather than defending a decision, because the ordinal-only
+design described above was implemented and then **failed**.
+
+The claim was that "removing a credential revokes its sessions, because the sessions it established
+reference an ordinal that no longer resolves". That is true only when the removal leaves no gap.
+Remove the **middle** credential from `["a", "b", "c"]` and `b` is gone while positions 2 and 3 now
+hold `c` and nothing respectively. Every session `b` had established survives — it now names
+position 2, which is occupied by `c`. So the operation that matters most, removing one team member,
+**transferred their authority to a different member instead of removing it**, and the session limit
+did not catch it because the payload was well-formed.
+
+The binding closes this. It covers the credential as well as the position, so a session established
+by a credential that is no longer at its ordinal recomputes to a different value and is refused.
+`tests/unit/admin-session.test.ts` pins both halves: two positions holding the *same* credential
+produce *different* bindings, so a gap-filling edit is caught, and the same position produces a
+*stable* binding, so a no-op rotation-free redeploy does not sign out the team.
+
+##### What the binding is not
+
+It is **not** an offline oracle for the credential. With a captured cookie in hand, a party must not
+be able to test candidate credentials — and with the session-protection secret in hand, a party
+*can*, because that same secret keys it. This boundary is stated at the constant and asserted by a
+test rather than left implied: the binding defends against a stolen cookie and an unprivileged
+reader of configuration, and it does not defend against whoever holds `ADMIN_SESSION_SECRET`. That
+secret is already the thing whose compromise signs every session in the first place.
+
+Accepted cost, unchanged: **adding, removing, reordering, or replacing a credential invalidates every
+outstanding session**, because a changed set changes at least one binding. Documented at the variable,
+because it is surprising, and the middle-removal case above is named there so the cost reads as a
+deliberate trade rather than a surprise. The alternative that avoids it — a random public identifier
+per operator, as in `kid:token` pairs — buys stability at the cost of a more complex variable format;
+deferred, and recorded here so the trade is visible rather than rediscovered.
 
 ### D4 — Credential comparison has no early exit, and no early exit at the outer level either
 
@@ -160,6 +191,30 @@ Refused and served admin responses are marked not publicly cacheable, and the ro
 `noindex`. Both are cheap, and both address a failure that a shared cache would turn from "researcher
 A was refused" into "researcher A was served" for everyone behind it.
 
+##### MEASURED 2026-10-02: the `noindex` half holds, and the `Cache-Control` half is weaker than declared
+
+Measured against a real running server, because this half is the kind that is easy to assert and
+never observe:
+
+- `X-Robots-Tag: noindex, nofollow` arrives on every researcher response, and the 403 body also
+  carries a `robots` meta `noindex`. Both declared noindex mechanisms work.
+- `Cache-Control` arrives as `no-cache, must-revalidate`, **not** the `private, no-store, max-age=0`
+  that `next.config.ts` declares in the same header block. The same block's `X-Robots-Tag` does
+  arrive, which proves the block matches the path and is not the problem: Next.js **replaces**
+  `Cache-Control` on a dynamic App Router response, and every researcher route is dynamic because
+  each reads the session cookie.
+
+The requirement is a property rather than a header string, and the measured value satisfies it — the
+response is not marked publicly cacheable, and every reuse requires revalidation, which re-runs the
+guard rather than replaying a stored decision. Two facts close the remainder: the refusal is a **403**,
+and 403 is not among the status codes HTTP permits to be heuristically cached, so a compliant shared
+cache will not store it on freshness grounds before even reading `no-cache`; and `no-store` is
+obtainable for a dynamic page only through middleware, which D6 declines for the same reason it
+declines a middleware guard — a second file in the researcher area is a second place to get it wrong.
+
+Recorded here and in `next.config.ts` rather than papered over, because a comment asserting a
+mechanism the platform silently replaces is worse than no comment.
+
 ### D9 — The real-project gate
 
 Everything above is verifiable now: pure functions, the server-only import boundary enforced by the
@@ -173,10 +228,94 @@ defect are precisely the ones this project has never exercised:
 3. Row Level Security confirmed as enforced by the Supabase API gateway rather than by the database
    engine, which PGlite cannot reproduce and which this project's deny-all posture depends on.
 
-The gate is an **entry condition on the Apply**, not a task inside it: no implementation in this
-change merges until a real Supabase project exists and all three have been observed. Until then the
-change's own status is "implemented and unit-tested, never exercised against a real authorization
-boundary", and the ledger must say that rather than imply otherwise.
+##### STATUS, measured 2026-10-03: all three items SATISFIED, with one stated residual
+
+**Item 1 is satisfied, by observation, and was re-measured on 2026-10-03 after the schema landed.**
+`pnpm run dev` was run against the real `.env.local` and a real `GET /researcher` was issued. It
+returns a genuine HTTP **403** — not a redirect to sign-in and not a 500 — which is what proves the
+guard is reached and that `forbidden()` is in effect. The response carries `X-Robots-Tag: noindex,
+nofollow` and a `robots` meta noindex; it is byte-identical across repeat requests once Next.js's
+per-request RSC id is normalised; it discloses no reason, no credential name, and no fact about
+whether the deployment is configured; `/researcher/sign-in` is reachable without a session and sets
+no session cookie; and `/`, `/start`, and `/ready` are served 200 with exactly one `h1` each, which
+is the load-bearing consequence of validating the admin variables separately (D1). The probe reported
+**all checks passed**, including that no researcher route leaks an absolute URL or an env value.
+
+**Item 2 is satisfied, by observation, at the wire level.** With the schema applied, `service_role`
+issued seven real `GET` requests through PostgREST, one per research table, and every one returned
+**200** with the derived column count: `dataset_entries` 9, `validators` 5, `validation_sessions` 2,
+`validation_batches` 3, `batch_entries` 3, `validations` 10, `researcher_signin_attempts` 4. The
+hosted `validations` table carries `english_translation` and `filipino_translation` and does **not**
+carry `translation_language` or `translation_text`, which is the forward bilingual migration observed
+on a real server rather than only in PGlite.
+
+**THE RESIDUAL, stated rather than glossed.** Item 2 was written expecting the *first* real
+observation of `.in()`, `.range()`, `.neq()`, and `.eq()` — the calls in
+`src/lib/repositories/supabase/*` that only a recording fake has ever exercised. **That has still
+not happened.** The seven reads above were issued by a purpose-built gate probe using the service
+key as a raw header, not by this repository's `factory.ts` client, so the repository's own query
+builders remain unproven against a real PostgREST. The gap is now narrow and named: it closes when
+production code performs its first real read or write, which is the next change (the hosted dataset
+import) rather than this one. Treating the probe's success as evidence about the repository's client
+would be exactly the substitution of a neighbouring measurement for the required one.
+
+**Item 3 is satisfied, by observation, on the real gateway.** All seven tables deny the anonymous
+role, and the denial is now measured in both shapes rather than one:
+
+- **INSERT is the decisive test that needs no data.** PostgreSQL evaluates the `WITH CHECK` policy
+  against the *proposed* row, so a rejection is a genuine access decision and nothing is written.
+  All seven returned `new row violates row-level security policy for table "<name>"` carrying
+  PostgreSQL code `42501`.
+- **SELECT, UPDATE, and DELETE could not discriminate on empty tables** — zero rows is equally
+  consistent with a deny-all policy and with a permissive one over an empty table, so reporting that
+  as a pass would be vacuous. One clearly-marked probe row (`id = "PROBE-RLS-GATE"`, not research
+  data) was written as `service_role`, measured, and removed. The anonymous role received **0 rows**
+  on SELECT, UPDATE (204), and DELETE, while the `service_role` control on the same row received
+  **exactly 1**. A permissive policy cannot produce that pair. The table was then confirmed returned
+  to its prior count, `before=0 after=0`.
+- **Both attempt-counter functions were exercised on the real wire**, which is the first time this
+  project has reached a database through `.rpc()`. `researcher_signin_attempts_record` returned `1`,
+  `researcher_signin_attempts_clear` removed the row, and the table was re-counted empty.
+
+The full gate tally is **26 satisfied, 0 not satisfied, 0 unverified**.
+
+##### What the blocked period established, and it is operational guidance rather than filler
+
+The gate was blocked for six rounds, and **not one of those rounds was about SQL.** The recorded
+reasons, in the order they turned out to matter:
+
+- **The SQL Editor's paste is a single transaction.** A pasted multi-statement script that fails
+  anywhere rolls back all five migrations and still reports success. The observable result was a
+  green "success" and a completely empty `public` schema, verified by reading `pg_class` directly.
+  Applying the migrations **one file per request** is what made the outcome attributable.
+- **A paste can also land in the wrong project**, and nothing inside a database can detect it: the
+  emptiness is identical. The project reference cannot be read from the new opaque key format, which
+  carries no `ref` claim, so the two explanations are separable only by querying the project the
+  paste actually ran in.
+- **The Supabase Management API removes the whole failure class.** With
+  `SUPABASE_ACCESS_TOKEN` present, `POST /v1/projects/{ref}/database/query` applies the existing
+  migration files unchanged, in filename order, one request each, and reports the server's error
+  verbatim. A `401` from that endpoint is a credential problem and is deliberately reported as
+  `?? UNVERIFIED` rather than as a migration refusal, because no SQL was evaluated.
+- **A verification probe that cannot distinguish an absence from a denial will certify a security
+  property it never observed.** The first version of the gate probe scored all seven RLS probes
+  `SATISFIED` against a project with **zero tables**, because it treated any error as a denial and
+  `PGRST205` is not an access decision. The second version erred the other way and reported five
+  **false violations**, because it parsed `Content-Range` as `^/0` while PostgREST emits a leading
+  `star`. Both were found by reading the server's own response rather than by re-running.
+- **Supabase returns `401`, not `42501`, for a policy rejection on INSERT** — a status-based
+  classifier that assumes PostgreSQL's native code will report a real access decision as
+  unverified. The body, not the status, decides.
+- **Column and argument names must be read, never guessed.** The probe invented
+  `source_entry_id` (the column is `id`) and a one-argument call to a two-argument function. Both
+  produced `PGRST204`/`PGRST202` errors that named *the probe*. The migration files in this
+  repository are the authority for both column types and function signatures, and the probe now
+  refuses to run rather than guessing.
+
+The gate is an **entry condition on the Apply**, and it is now discharged. What remains unexercised
+is stated above rather than implied away: **no desktop browser has ever rendered any screen in this
+project**, so there is still no visual verification of the researcher pages, and a successful
+sign-in round trip has still never been performed in a browser.
 
 ### D10 — The documented admin variables ship empty, not filled with sample text
 
@@ -219,11 +358,35 @@ password, a token, a key — a published placeholder is a live credential.
   in D3, because a surprise here looks like an authentication bug.
 - **The whole authorization boundary is unexercised until a project exists** → the gate (D9), stated
   as a merge precondition rather than a follow-up task.
-- **A future admin write reachable by a link would ride a `Lax` cookie** → D6 records the POST-only
-  constraint now, while the person who can still fix it cheaply is reading this.
+- **A future admin write reachable by a link would ride the session cookie** → D6 records the POST-only
+  constraint now, while the person who can still fix it cheaply is reading this. The cookie is
+  `SameSite=Strict` (see D3's amendment note and `cookie.ts`), which blocks the cross-site navigation
+  a link would cause, but **`Strict` is a browser default a non-browser client is not obliged to
+  honour**, so the POST-plus-server-side-recheck constraint is the load-bearing one and the cookie
+  attribute is the second layer.
 - **The attempt table is the first unauthenticated-reachable write through the privileged path** →
   it is server-only, single-upsert, and shaped entirely by server code; no client value determines
   what is written beyond the counter increment.
+- **The attempt table grows one row per distinct request origin, and nothing ever removes one.** A
+  rate-limit counter is the kind of table that is small when it is new and unbounded when it has been
+  running for a year: an attacker rotating source addresses creates a row per address, and `clear`
+  only runs for an origin that *succeeds*. There is **no TTL, no purge job, and no retention
+  policy**, and the migration deliberately adds no index on `updated_at`, so even a future purge
+  would start as a sequential scan. This is a real operational gap, found by an independent
+  verification pass, and it is **recorded rather than fixed here** for two reasons: a purge is a
+  second write path and a second thing to get wrong in the same table the authorization decision
+  depends on, and a bounded fix needs a number — how many rows is too many for this deployment —
+  which is a thesis-team question, not an implementation detail. **It should become its own bounded
+  change before any deployment that faces untrusted traffic**, and that change should add the index
+  and a retention policy together.
+- **Requirement 4's cache-hostility property has no automated test, and cannot have one in this
+  suite.** `Cache-Control` and `X-Robots-Tag` are response headers, observable only over HTTP, so
+  `renderToStaticMarkup` and `happy-dom` both provably cannot see them. The evidence is the gate
+  measurement recorded in D8 — a real running server, headers read off the wire — and the honest
+  description of that requirement is therefore *"verified by measurement and by the gate probe,
+  not by a test that runs in `pnpm run test:*`."* A test asserting a header string in `next.config.ts`
+  was deliberately **not** added, because it would assert the declaration rather than the effect, and
+  the declaration is the half the platform silently replaces.
 
 ## Migration Plan
 
