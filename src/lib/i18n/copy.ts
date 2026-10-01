@@ -320,8 +320,14 @@ export const ENGLISH_COPY = {
   // oversight. `design.md` D4 models *none* and *unavailable* as different outcomes and requires the
   // screen to render them identically, so a sentence for one and not the other would be a research
   // statement about our infrastructure, in the middle of a volunteer task, that a participant cannot
-  // verify and cannot act on. `recovery-flow.test.ts` enforces this mechanically: the translator it
-  // passes THROWS on any lookup, so a branch that grew a sentence fails the suite.
+  // verify and cannot act on. `recovery-flow.test.ts` is what enforces it, and the enforcement is a
+  // TEXTUAL SCAN rather than a behavioural check, so the honest description is: that test reads this
+  // module's source text and asserts no branch of it can acquire a sentence. It proves a string is or is
+  // not present, which is why it is defeated by a rename and cannot observe a runtime lookup — an earlier
+  // version of this comment claimed a throwing translator enforced it, and there is no such translator:
+  // the parameter was DELETED, because an unused one was an ESLint warning and because the shape of a
+  // requirement should not be talked around. Stated here rather than left to be discovered, since a
+  // production comment that overstates its own test is how a guarantee quietly stops existing.
   //
   // And there is no string offering reassurance about how many batches a participant ought to do, nor
   // about any total. The only figure is what is left of THIS batch, which is work they have already
@@ -756,14 +762,14 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "mong subukan muli sa lalong madaling panahon.",
 
   // -- Pagpapatuloy ng naputol na batch ---------------------------------------
-  // Ang tanging teksto sa katalogong ito na naglalarawan sa GINAWA na ng kag contribute, hindi sa
+  // Ang tanging teksto sa katalogong ito na naglalarawan sa GINAWA na ng kontribusyon, hindi sa
   // gagawin. Lahat ng string dito ay tungkol sa sarili mong hindi pa tapos na trabaho.
   //
   // WALA RITO NG TEKSTO PARA SA BIGO NA PAGKAMALI — ang kawalan ay kailangan, hindi pagkakamali. Ang
   // `design.md` D4 ay naglalarawan ng *none* at *unavailable* bilang magkaibang resulta at hinihingi
   // na magkatugma ang mga itinatampok ng screen, kaya ang isang pangungusap para sa isa at wala para sa
   // isa ay pahayagang pananaliksik tungkol sa aming imprastrukturang, nasa gitna ng gawain ng boluntaryo,
-  // na hindi mabibeberipika o maisasagawa ng kag Contribute.
+  // na hindi mabibeberipika o maisasagawa ng kontribusyon.
   //
   // At walang string na nag-aanyaya ng kumpirensya kung ilang batch ang dapat gawin ng isang tao, at
   // walang kabuuan. Ang tanging bilang ay natitira sa batch na ito — trabahong ibinigay na sa iyo.

@@ -102,6 +102,58 @@ export async function applyMigrationsUntil(
   return { applied: applicable.map((migration) => migration.filename) };
 }
 
+/**
+ * Applies EXACTLY ONE migration file, by name, to an already-migrated database.
+ *
+ * ── WHY THIS EXISTS, AND WHY IT IS NOT A LOOP HOLE ────────────────────────────────────────────────────
+ * `applyMigrationsUntil` always applies from the first migration, so it cannot be used to advance a
+ * database that already holds its predecessors — doing so re-runs `create table public.dataset_entries`
+ * and dies with `42P07 relation already exists`. That failure is informative rather than mysterious, but
+ * it leaves a test unable to exercise a migration against a database it genuinely needs to be pre-migrated.
+ *
+ * The temptation this function is deliberately shaped against is `for (const m of migrations) await exec(m)`
+ * with the boundary applied inline — a test that applies "the migrations up to the one under test" will
+ * quietly apply the *whole* directory if the boundary is ever computed wrongly, and a test that applies
+ * the wrong migration passes for the same reason a test that applies none does.
+ *
+ * So this takes a NAME, refuses an unknown name with the same message `applyMigrationsUntil` uses, and
+ * applies the single file whose filename equals it. There is no boundary to get wrong because there is no
+ * boundary: a typo throws rather than degrading into a different migration's test.
+ */
+export async function applyMigrationByName(
+  db: TestDatabase,
+  filename: string,
+  directory = MIGRATIONS_DIR,
+): Promise<MigrationFile> {
+  const migrations = await readMigrations(directory);
+  const found = migrations.find((migration) => migration.filename === filename);
+
+  if (found === undefined) {
+    // The same refusal as `applyMigrationsUntil`, for the same reason: a name that does not match must
+    // not fall back to "apply the one that looks closest".
+    throw new Error(
+      `applyMigrationByName: ${filename} is not in ${directory}. Refusing to apply anything, ` +
+        "because a typo in the name would silently turn a test of one migration into a test of " +
+        "whatever migration happened to sort next to it.",
+    );
+  }
+
+  await db.transaction(async (tx) => {
+    try {
+      await tx.exec(found.sql);
+    } catch (cause) {
+      throw new Error(
+        `PGlite failed applying migration ${found.filename}: ${(cause as Error).message}`,
+        {
+          cause,
+        },
+      );
+    }
+  });
+
+  return found;
+}
+
 /** Applies each migration in its own transaction, naming the file that failed. */
 async function applyEach(db: TestDatabase, migrations: MigrationFile[]): Promise<void> {
   for (const migration of migrations) {

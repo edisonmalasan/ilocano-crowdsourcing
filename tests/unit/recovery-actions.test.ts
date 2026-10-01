@@ -2,8 +2,63 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   runRecoveryLookup,
+  recoveryIntentSchema,
+  RecoveryIntentKeysAreIdentifierOnly,
   type RecoveryActionDependencies,
+  type RecoveryIntent,
 } from "@/lib/validation/recovery-actions-core";
+
+/**
+ * The recovery intent's key set is closed at the TYPE layer, and this line is what closes it.
+ *
+ * ── WHY THE ASSERTION SITE IS HERE AND NOT IN `src/` ────────────────────────────────────────────────────
+ * `RecoveryIntentKeysAreIdentifierOnly` is an exported alias in `recovery-actions-core.ts` and it
+ * constrained **nothing**. An alias with no assertion site is never evaluated by the compiler: TypeScript
+ * only checks a conditional type where it is *used*, so a declaration nobody names is decoration. Measured
+ * before this repair: adding a Zod optional key to `recoveryIntentSchema` left `tsc --noEmit` at **exit
+ * 0**, and deleting the alias changed nothing, so the alias and its absence were indistinguishable.
+ *
+ * Two ledgers advertised the opposite — `docs/ROADMAP.md`'s Lifecycle-state row and the `test:unit` row of
+ * `AGENTS.md` both claimed these pins "make a fourth offer field or a second recovery-intent key fail
+ * `typecheck`". **A claim of enforcement that does not enforce is worse than no claim**, because a reader
+ * weighs `typecheck` as evidence. So the pin is given an assertion site here, and this is the comment that
+ * says what it is worth.
+ *
+ * ── WHAT IT IS WORTH, STATED PLAINLY ───────────────────────────────────────────────────────────────────
+ * A tripwire, not a guarantee. `const pin: SomeNeverType = true` is defeated by a deliberate edit that
+ * widens the excluded list in the very same change, and no test will notice that edit. The runtime half —
+ * that the schema is a `strictObject` and therefore rejects an unexpected key — is in the refusals block
+ * below, and the two halves catch different edits: the runtime one catches a schema that forgot to be
+ * strict, the type one catches an interface widened on purpose.
+ *
+ * The mutation that proved this fires is a Zod optional key (`z.string().optional()`), because an
+ * optional key is the only shape that widens the inferred output type WITHOUT breaking every object
+ * literal — a *required* key produces `TS2741` at each literal and the pin is never reached, which is
+ * how the first attempt at this probe measured nothing at all.
+ */
+describe("the recovery intent exposes no client-asserted field", () => {
+  it("carries exactly the identifier and no second key", () => {
+    // Checked against the module's OWN exported alias, so the name a consumer would use is the name that
+    // is pinned. This runtime expectation cannot fail on its own — the declaration is the assertion, and
+    // this line is what makes the compiler evaluate it.
+    const assertion: RecoveryIntentKeysAreIdentifierOnly = true;
+    expect(assertion).toBe(true);
+
+    // And independently, through a spelling that lives HERE rather than in the module. Two spellings of
+    // the same check, agreeing by construction: the point is that a widening of EITHER the interface or
+    // the alias is caught, so one of them quietly weakening would otherwise go unnoticed.
+    type IntentKeys = keyof RecoveryIntent;
+    const viaThisFile: Record<Exclude<IntentKeys, "validatorId">, never> &
+      Record<Exclude<"validatorId", IntentKeys>, never> = true;
+    expect(viaThisFile).toBe(true);
+
+    // The half that is NOT a type pin, and is what makes the first half worth having: the schema is
+    // strict, so an unexpected key is refused at parse time rather than silently dropped.
+    expect(() =>
+      recoveryIntentSchema.parse({ validatorId: VALIDATOR, batchId: "batch_01" }),
+    ).toThrow();
+  });
+});
 
 /**
  * `runRecoveryLookup` — the Server Action's core, driven with injected fakes.

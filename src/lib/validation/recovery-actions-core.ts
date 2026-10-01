@@ -38,7 +38,14 @@ import { z } from "zod";
  * which are answers to a question about an identity that does not exist. The re-check costs one read
  * and is the same one `runAllocateBatch` performs; the refusal is the same refusal.
  */
-const recoveryIntentSchema = z.strictObject({
+/**
+ * Exported so its STRICTNESS is observable. `RecoveryIntent` is the inferred type and a type cannot
+ * refuse anything at runtime; if the schema stayed module-private, the guarantee that an unexpected key is
+ * *rejected* rather than silently stripped would have no witness anywhere — and a schema that was
+ * accidentally loosened to `z.object` would keep the same type in every common case while quietly dropping
+ * a client-supplied field. Exporting it is what lets a test close that half too.
+ */
+export const recoveryIntentSchema = z.strictObject({
   validatorId: anonymousValidatorIdSchema,
 });
 
@@ -67,31 +74,23 @@ export type RecoveryIntentKeysAreIdentifierOnly =
   Equals<KeyUnion<RecoveryIntent>, "validatorId"> extends true ? true : never;
 
 /**
- * Type-level pin on the OFFER's key set (`tasks.md` 6.1, second half).
+ * A former export, DELETED rather than given an assertion site.
  *
- * `InterruptedBatchOffer`'s own documentation names this export as the enforcement, so it lives here
- * rather than in the domain module: the pin is only load-bearing if it sits BESIDE the action that
- * returns the offer, because that is where a fourth field would be added — to the outcome type or to
- * the object literal that builds it.
+ * `InterruptedBatchOfferKeysAreBatchIdRemainingAndTotalOnly` was a type-level pin on the offer's key set,
+ * and `InterruptedBatchOffer`'s own documentation named it as the enforcement — a false claim, because an
+ * alias with no assertion site is never evaluated by the compiler.
  *
- * A fourth field fails `pnpm run typecheck` with `TS2322: Type 'true' is not assignable to type
- * 'never'`, whatever it is called. The behavioural half of the same requirement is in
- * `recovery-actions.test.ts`, which asserts the runtime key set, and the two halves are not
- * interchangeable:
+ * Measured, with a control: adding an **optional** fourth field to the interface fails `tsc` identically
+ * with the alias present and with it deleted, and the failure names `tests/unit/batch-recovery.test.ts`.
+ * That is the whole reason this is a deletion and not a repair — the guarantee is enforced there, by an
+ * assertion that closes the key set at the type layer *and* reads it off a real offer at runtime. The
+ * alias was a second spelling of an existing guarantee, and a reader who believed it was the enforcement
+ * would never have found the enforcement that actually held.
  *
- *   - the RUNTIME assertion catches an offer that gains a field at runtime while the type is untouched,
- *     which is what an edit that widens a literal and forgets the interface would produce;
- *   - the TYPE pin catches an edit that widens the interface and the literal together, which is the
- *     edit a reviewer reads least carefully because it looks like a schema change.
- *
- * And the honesty this repository insists on: both are defeatable by an author who widens the union in
- * the same edit. This is a tripwire, not a guarantee, and `tests/unit/recovery-actions.test.ts` says so
- * in the same breath as the assertion it accompanies.
+ * The mutation is worth recording because the obvious one measures nothing: a **required** fourth field
+ * breaks every object literal with `TS2741` and the key-set check is never reached, so the probe appears
+ * to prove the pin fires when it has only proved that the interface widened.
  */
-export type InterruptedBatchOfferKeysAreBatchIdRemainingAndTotalOnly =
-  Equals<KeyUnion<InterruptedBatchOffer>, "batchId" | "remaining" | "total"> extends true
-    ? true
-    : never;
 
 /**
  * Why an offer could not be determined.

@@ -125,9 +125,27 @@ export interface RecoverableBatch {
  *
  * EXACTLY THREE FIELDS, and the closedness is the requirement rather than a description of it: the
  * spec forbids the offer from carrying proficiency, a screening answer, an enrolment state, an
- * activity timestamp, or any hint that another batch exists. `tasks.md` 6.1 pins this key set at
- * the type layer so a fourth field fails `pnpm run typecheck`, and the pin is
- * `InterruptedBatchOfferKeysAreBatchIdRemainingAndTotalOnly` beside the action that returns it.
+ * activity timestamp, or any hint that another batch exists.
+ *
+ * ── WHERE THE CLOSURE ACTUALLY LIVES, CORRECTED ─────────────────────────────────────────────────────────
+ * This comment used to name `InterruptedBatchOfferKeysAreBatchIdRemainingAndTotalOnly` in
+ * `recovery-actions-core.ts` as the pin that makes a fourth field fail `pnpm run typecheck`. **It did
+ * not, and naming it was a claim of enforcement that did not enforce.** Measured: the alias has no
+ * assertion site, so the compiler never evaluates it, and adding an optional fourth field to THIS
+ * interface produced the identical `tsc` failure whether the alias was present or deleted. A type alias
+ * nobody names is decoration.
+ *
+ * The real enforcement is `tests/unit/batch-recovery.test.ts`, which closes the key set at the type
+ * layer with `Record<Exclude<OfferKeys, ...>, never>` AND reads it off a real offer as a runtime closed
+ * set. Two halves rather than one, because they catch different edits: the type half catches an interface
+ * widened on purpose, and the runtime half catches a literal that grew a field while the interface did
+ * not.
+ *
+ * The alias in `recovery-actions-core.ts` has therefore been **deleted** rather than given an assertion
+ * site. It was a second spelling of a guarantee already enforced in a better place, and `AGENTS.md`'s rule
+ * applies — an export nothing requires is dead weight — with the sign reversed for this case: dead weight
+ * that is *believed* to be enforcing something is worse than dead weight, because a reader stops looking
+ * for the enforcement that is actually there.
  *
  * `remaining` is a count of entries still to answer and `total` is the batch's size. Neither is a
  * count of what the participant contributed, and neither is a coverage figure: `cannot_evaluate`

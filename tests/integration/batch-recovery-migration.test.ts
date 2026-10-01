@@ -40,7 +40,12 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { applyMigrations, applyMigrationsUntil, readMigrations } from "./support/migrations";
+import {
+  applyMigrationByName,
+  applyMigrations,
+  applyMigrationsUntil,
+  readMigrations,
+} from "./support/migrations";
 import {
   applySql,
   closeTestDatabase,
@@ -68,6 +73,14 @@ const PRIOR_MIGRATIONS = [
 const REFUSAL_PREFIX = "interrupted-batch-recovery:";
 
 const VALIDATOR = "VAL_0000cafe";
+/**
+ * A second validator, for the negative control that needs its own database.
+ *
+ * Named rather than reusing `VALIDATOR` so a reader can see at a glance that the control does not share
+ * state with the tests around it — the reuse would have worked, and would have been the wrong shape,
+ * because the point of the control is that it CANNOT affect anything else.
+ */
+const CONTROL_VALIDATOR = "VAL_0000beef";
 const OTHER_VALIDATOR = "VAL_0000face";
 const BATCH = "batch_01";
 const SECOND_BATCH = "batch_02";
@@ -345,32 +358,131 @@ describe("the interrupted-batch-recovery migration", () => {
       expect(columns.map((row) => row.column_name)).toEqual(["id", "validator_id"]);
     });
 
-    it("stamps every pre-existing row with one IDENTICAL instant", async () => {
-      // This is the measurement the migration header's second reason rests on. The tie between two
-      // batches of one validator is claimed to be real in the WORLD, not only in a fixture, and
-      // this is what makes that claim checkable: if the backfill used a per-row function or a
-      // per-row clock reading, the two rows would differ and the `id` key in the index would be
-      // decorative.
-      await applySql(
-        populated,
-        `alter table public.validation_batches
-                                  add column created_at timestamptz`,
-        "add column",
-      );
-      await applySql(
-        populated,
-        `update public.validation_batches set created_at = now() where created_at is null`,
-        "backfill",
-      );
+    it("stamps every pre-existing row by running the PRODUCTION migration's own backfill", async () => {
+      // The tie between two pre-existing batches of one validator is claimed to be real in the WORLD, not
+      // only in a fixture, so that the `id` key in the recovery index is not decorative. This is what makes
+      // that claim checkable, because it runs the shipped statement rather than a restatement of it.
+      //
+      // ── WHY THIS APPLIES THE REAL FILE, AND THE FIRST VERSION DID NOT ────────────────────────────────
+      // The earlier version of this test hand-wrote its own
+      //
+      //   alter table public.validation_batches add column created_at timestamptz
+      //   update  public.validation_batches set created_at = now() where created_at is null
+      //
+      // which meant **the migration's own `update` statement had no test running it**. The entire
+      // justification for the `id DESC` tiebreaker — header reason 2, design D2, and `tasks.md` 0.5.2 —
+      // was resting on SQL no test ever executed, and the test was asserting the *test author's* SQL
+      // rather than the shipped SQL. A test that reconstructs a migration's effect instead of applying it
+      // passes identically whether or not the migration is correct, which is the shape `AGENTS.md` already
+      // records against `lifetime-figure.test.ts`.
+      //
+      // So the real file is applied here, through `applyMigrationByName` — which applies exactly one
+      // named migration to the already-migrated database this `beforeAll` built, so the difference
+      // between the control above and this test is precisely one migration file and nothing else.
+      await applyMigrationByName(populated, RECOVERY_MIGRATION);
 
       const rows = await query<{ id: string; created_at: string }>(
         populated,
         "select id, created_at::text as created_at from public.validation_batches order by id",
       );
 
+      // WHAT THIS PROVES, measured rather than asserted: the backfill statement EXISTS AND RUNS, and it
+      // reaches every row. Deleting that statement from the migration goes RED with
+      // `23502 column "created_at" ... contains null values`, because the `NOT NULL` the migration adds
+      // then has nothing to satisfy it. That is the guarantee, and it was the guarantee with no test behind
+      // it before this change.
       expect(rows).toHaveLength(2);
       expect(rows[0]?.created_at).toBeTruthy();
+      expect(rows[1]?.created_at).toBeTruthy();
+
+      // WHAT THIS DOES **NOT** PROVE, and the name used to imply that it did. The earlier title said "one
+      // IDENTICAL instant", which claims this assertion distinguishes a statement-level `now()` from a
+      // per-row clock. **It cannot, and a probe proved it:** rewriting the migration's `now()` as
+      // `clock_timestamp()` leaves this suite GREEN.
+      //
+      // The reason is not a PostgreSQL subtlety about statement stability — it is resolution. Two
+      // `clock_timestamp()` calls inside one statement execute microseconds apart, and `timestamptz::text`
+      // renders milliseconds, so the difference rounds away. Measured at the same time: two such calls in
+      // ONE `insert ... values (...), (...)` both come back as `14:52:30.872+00`. This is the fourth
+      // instance in this file of one lesson — **an assertion built on a quantity too coarse to show the
+      // difference reports the absence of a difference, and that reads as a finding.** The control below
+      // forces a real gap with `pg_sleep` and does observe the difference, so the two together say
+      // something the migration's guarantee actually rests on: a single-statement backfill stamps its rows
+      // identically AT THE PRECISION THIS COLUMN IS READ AT, which is what the recovery read needs and
+      // the only precision at which anyone will ever see it.
+      //
+      // Renaming rather than deleting the assertion is deliberate. The equality here is still worth
+      // pinning — it is what a reader of the data will observe, and a regression to a loop-per-row
+      // backfill would break it — but it is a statement about observed behaviour, not a proof of which
+      // clock function was used.
       expect(rows[0]?.created_at).toBe(rows[1]?.created_at);
+    });
+
+    it("distinguishes a per-row clock from a statement-level one, in its OWN database", async () => {
+      // The negative control for the test above, and it is what makes that test's assertion mean
+      // something. A `now()` read inside one statement is stable in PostgreSQL, so the risk that test
+      // guards against is a backfill written as a per-row clock — `clock_timestamp()`, or a loop — which
+      // would give each row its own instant and make the `id` tiebreaker decorative.
+      //
+      // ── WHY IT GETS ITS OWN DATABASE, AND WHY THAT IS THE POINT ──────────────────────────────────────
+      // The first version of this control ran its `update` against the shared `populated` database, and
+      // it made the NEXT test go red — correctly. That test asserts the refused migration left the rows
+      // untouched, and this control had just rewritten their timestamps, so a control had corrupted the
+      // state the tests after it depend on.
+      //
+      // That is the general form worth keeping: **a control that mutates shared state is not a control,
+      // it is an ordering dependency**, and it produces a failure attributed to whichever test happens to
+      // run next. Here the red landed on `leaves no trace of the refusal` and read as though *that*
+      // assertion were broken, which is the same misattribution `AGENTS.md` records for a probe whose red
+      // came from a neighbouring guard. Isolated state is the fix, not a reordering.
+      const isolated = await createTestDatabase();
+      try {
+        await applyMigrationsUntil(isolated, RECOVERY_MIGRATION);
+        await applyMigrationByName(isolated, RECOVERY_MIGRATION);
+        await seedValidator(isolated, CONTROL_VALIDATOR);
+        // Two SEPARATE statements, with a real gap between them, so the per-row clock demonstrably
+        // advances. A single multi-row `values` list executes both calls inside one statement and they
+        // land in the same millisecond — see the note on the assertion below.
+        await applySql(
+          isolated,
+          `insert into public.validation_batches (id, validator_id, created_at)
+             values ('ctl_a', '${CONTROL_VALIDATOR}', clock_timestamp())`,
+          "first control row",
+        );
+        await applySql(isolated, "select pg_sleep(0.05)", "advance the per-row clock");
+        await applySql(
+          isolated,
+          `insert into public.validation_batches (id, validator_id, created_at)
+             values ('ctl_b', '${CONTROL_VALIDATOR}', clock_timestamp())`,
+          "second control row",
+        );
+
+        const rows = await query<{ created_at: string }>(
+          isolated,
+          "select created_at::text as created_at from public.validation_batches order by id",
+        );
+
+        // Two rows, two `clock_timestamp()` calls, two distinct instants — so the assertion in the test
+        // above ("the two pre-existing rows share one instant") is measuring the backfill's choice of
+        // `now()` and not a property every timestamp happens to have.
+        //
+        // ── WHY THE ROWS ARE INSERTED IN TWO STATEMENTS WITH A SLEEP BETWEEN ───────────────────────────
+        // The first version put both rows in ONE `insert ... values (...), (...)` and asserted they
+        // differed. It failed — both came back as `14:52:30.872+00`, the same millisecond. That is not a
+        // PostgreSQL subtlety about `clock_timestamp()`; two calls inside one statement simply execute
+        // faster than the millisecond resolution of `timestamptz::text`, so the distinction is invisible
+        // at the precision being compared.
+        //
+        // Which makes this a fourth instance of one lesson: **an assertion built on a quantity that
+        // happens to be too coarse to show the difference will report the absence of a difference, and
+        // that reads as a finding.** The fix is not to weaken the assertion — it is to make the clock
+        // actually advance, so the test measures what it claims to measure.
+        expect(rows).toHaveLength(2);
+        expect(rows[0]?.created_at).toBeTruthy();
+        expect(rows[0]?.created_at).not.toBe(rows[1]?.created_at);
+      } finally {
+        await closeTestDatabase(isolated);
+      }
     });
 
     it("refuses the migration, naming the conflict rather than a mechanics failure", async () => {
@@ -386,29 +498,57 @@ describe("the interrupted-batch-recovery migration", () => {
       );
     });
 
-    it("leaves no trace of the refusal, so the database can be resolved and reapplied", async () => {
-      // `applyEach` wraps each file in one transaction, so the `raise` rolls the whole file back —
-      // the index this migration creates must not survive a refused application. Stating it here
-      // means the file cannot be edited to escape its own transaction later without this going red.
-      const indexes = await query<{ indexname: string }>(
-        populated,
-        `select indexname from pg_indexes
-          where schemaname = 'public'
-            and tablename = 'validation_batches'
-            and indexname = 'validation_batches_validator_created_at_idx'`,
+    it("leaves the database exactly as it found it, so it can be resolved and reapplied", async () => {
+      // `applyEach` wraps each file in one transaction, so the `raise` rolls the whole file back. The
+      // index this migration creates must not survive a refused application — but the assertion that
+      // proves it is a COMPARISON, not an emptiness check.
+      //
+      // ── WHY THIS USED TO ASSERT AN EMPTY INDEX LIST, AND WHY THAT WAS VACUOUS ──────────────────────────
+      // The earlier version asserted `expect(indexes).toEqual([])`. That passed for the wrong reason:
+      // the surrounding `beforeAll` only applied the three PRIOR migrations, and this test's neighbours
+      // added the `created_at` column by hand — so the migration's own `create index` had never run and
+      // the index list was empty before the refusal as well as after it. **An assertion that is equally
+      // true before and after the thing under test measures nothing**, and this one was written that way
+      // while the block above it was quietly relying on the hand-written setup.
+      //
+      // Now that the backfill test applies the PRODUCTION migration, the index genuinely exists, so the
+      // honest property is available and is strictly stronger: snapshot before, refuse, snapshot after,
+      // and require them to be IDENTICAL. That catches an index created, a column altered, or a row
+      // touched — everything the emptiness check missed except total absence.
+      const indexQuery = `select indexname from pg_indexes
+          where schemaname = 'public' and tablename = 'validation_batches'
+          order by indexname`;
+      const rowQuery =
+        "select id, validator_id, created_at::text as created_at from public.validation_batches order by id";
+
+      const before = {
+        indexes: await query<{ indexname: string }>(populated, indexQuery),
+        rows: await query(populated, rowQuery),
+      };
+
+      // And the control: the index this migration owns IS present before the refusal. Without this, an
+      // empty-after comparison would pass on a database where nothing had been created in the first place
+      // — which is precisely the vacuity this test used to have.
+      expect(before.indexes.map((row) => row.indexname)).toContain(
+        "validation_batches_validator_created_at_idx",
       );
 
-      expect(indexes).toEqual([]);
+      const error = await reapplyMigration(populated, RECOVERY_MIGRATION);
+      expect(String(error?.message ?? "")).toContain(REFUSAL_PREFIX);
 
-      // And the rows the migration refused to process are still exactly where they were: not
-      // discarded, not modified. Research data survives a failed migration.
-      const rows = await query<{ id: string; validator_id: string }>(
-        populated,
-        "select id, validator_id from public.validation_batches order by id",
-      );
-      expect(rows).toEqual([
-        { id: BATCH, validator_id: VALIDATOR },
-        { id: SECOND_BATCH, validator_id: VALIDATOR },
+      const after = {
+        indexes: await query<{ indexname: string }>(populated, indexQuery),
+        rows: await query(populated, rowQuery),
+      };
+
+      expect(after.indexes).toEqual(before.indexes);
+      // And the rows the migration refused to process are still exactly where they were: not discarded,
+      // not modified — including the stamps the backfill gave them, which a rolled-back second
+      // application could plausibly have overwritten. Research data survives a failed migration.
+      expect(after.rows).toEqual(before.rows);
+      expect(after.rows).toEqual([
+        { id: BATCH, validator_id: VALIDATOR, created_at: expect.any(String) },
+        { id: SECOND_BATCH, validator_id: VALIDATOR, created_at: expect.any(String) },
       ]);
     });
   });

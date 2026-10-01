@@ -135,12 +135,3 @@ it("is importable without the server-only marker, which is what makes it testabl
   vi.resetModules();
   await expect(import("@/lib/validation/recovery-flow")).resolves.toBeDefined();
 });
-
-/**
- * The decision function does not import `server-only`, so this file needs no stub — and asserting
- * that here keeps a future import from making it untestable without anyone noticing.
- */
-it("is importable without the server-only marker, which is what makes it testable", async () => {
-  vi.resetModules();
-  await expect(import("@/lib/validation/recovery-flow")).resolves.toBeDefined();
-});
