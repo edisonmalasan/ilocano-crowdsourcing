@@ -83,6 +83,25 @@ beforeEach(() => {
   openValidationSession.mockResolvedValue(presenting());
 });
 
+/**
+ * A `finished` outcome, built from the session module's own field names.
+ *
+ * `satisfies` rather than a bare annotation, so a change to the variant's key set breaks this file
+ * instead of silently producing an outcome the route cannot render. The lifetime figure is DELIBERATELY
+ * different from `completedCount` — 27 against 10 — because a fixture where the two agreed would
+ * satisfy every "two distinct figures" assertion below while proving nothing about distinguishability.
+ */
+function finished(over: Partial<Extract<ValidationSessionOutcome, { status: "finished" }>> = {}) {
+  return {
+    status: "finished",
+    batchId: BATCH_ID,
+    completedCount: 10,
+    total: 10,
+    lifetimeAnsweredCount: 27,
+    ...over,
+  } satisfies ValidationSessionOutcome;
+}
+
 /** A `presenting` outcome, built from the session module's own field names. */
 function presenting(
   over: Partial<Extract<ValidationSessionOutcome, { status: "presenting" }>["session"]> = {},
@@ -333,12 +352,7 @@ describe("every outcome the session can report produces its own screen", () => {
       forbid: [EN("validate.finished.label")],
     },
     {
-      outcome: {
-        status: "finished",
-        batchId: BATCH_ID,
-        completedCount: 10,
-        total: 10,
-      } satisfies ValidationSessionOutcome,
+      outcome: finished(),
       expect: [EN("validate.finished.label")],
       forbid: [EN("validate.entry.instructionLabel"), EN("validate.failed.label")],
     },

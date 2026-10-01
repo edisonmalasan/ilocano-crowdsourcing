@@ -381,9 +381,29 @@ export const ENGLISH_COPY = {
 
   // -- Session states --------------------------------------------------------
   "validate.finished.label": "This batch is finished",
+  // The stale sentence that used to close this paragraph — "Asking for another batch is not part of
+  // this part of the study yet" — is GONE, in both catalogs, and its removal is the requirement.
+  //
+  // What replaces it is deliberately NOTHING that promises a further batch either. A screen that said
+  // "you can ask for another batch" before the continue control exists would be a promise the product
+  // cannot keep, which is the same class of defect as the sentence it replaced; the control's own
+  // label is the honest place for that promise, and the control is a separate concern from this copy.
+  //
+  // So the paragraph says only what is true: every sentence in this batch has an answer, and each one
+  // was saved as it was given.
   "validate.finished.body":
-    "You have answered every sentence in this batch. Each one was saved as you went. Asking for " +
-    "another batch is not part of this part of the study yet.",
+    "You have answered every sentence in this batch. Each one was saved as you went.",
+  // The two figures, and WHY they are labelled rather than presented as bare numbers (`design.md` D5).
+  // "10" beside "30" is a number and a number; a validator who has just answered ten sentences should
+  // not have to guess whether the pair means ten sentences in this batch or ten in their lifetime.
+  //
+  // The lifetime label says "entries answered" and NOT "contributions", "coverage", or anything that
+  // reads as a credit (`design.md` D2). The figure counts every recorded response including one
+  // recorded as "cannot confidently evaluate", so a wording that implied the study counted it would be
+  // a claim the database does not support. The two labels are deliberately parallel and differ only in
+  // their scope, because that is the only difference there is.
+  "validate.finished.batchFigureLabel": "Entries answered in this batch",
+  "validate.finished.lifetimeFigureLabel": "Entries answered in total",
   "validate.absent.label": "We could not find that batch",
   "validate.absent.body":
     "The address may be incomplete, or the batch may belong to a different browser. Nothing you " +
@@ -726,9 +746,17 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
 
   // -- Mga kalagayan ng session -------------------------------------------------
   "validate.finished.label": "Tapos na ang batch na ito",
+  // The retired sentence, gone here for the same reason and with the same constraint as in the
+  // English catalog: it told the validator that asking for another batch was unavailable, which the
+  // change removes. Nothing replaces it that promises a further batch either, because the control
+  // that would make that true is a separate concern from this paragraph.
   "validate.finished.body":
-    "Sinagot mo na ang bawat pangungusap sa batch na ito. Nase-save ang bawat isa habang ginagawa " +
-    "mo. Hinihingi ng ibang batch ay hindi bahagi pa ng bahaging ito ng pag-aaral.",
+    "Sinagot mo na ang bawat pangungusap sa batch na ito. Nase-save ang bawat isa habang ginagawa mo.",
+  // The two figure labels, carrying the SAME meaning as the English pair rather than being a shorter
+  // or looser rendering of it: what was answered within this batch, and what has been answered in
+  // total. "Mga ambag" is deliberately absent — see `design.md` D2 and the English label's comment.
+  "validate.finished.batchFigureLabel": "Mga entry na sinagot sa batch na ito",
+  "validate.finished.lifetimeFigureLabel": "Mga entry na sinagot sa kabuuan",
   "validate.absent.label": "Hindi namin mahanap ang batch na iyon",
   "validate.absent.body":
     "Maaaring hindi kumpleto ang address, o ibang browser ang may hawak ng batch. Walang " +

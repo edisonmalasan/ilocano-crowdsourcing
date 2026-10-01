@@ -46,7 +46,10 @@ import {
 export interface ValidationSessionDependencies {
   readonly batches: Pick<BatchesRepository, "findById">;
   readonly datasetEntries: Pick<DatasetEntriesRepository, "findById">;
-  readonly validations: Pick<ValidationsRepository, "listEntryIdsForValidator">;
+  readonly validations: Pick<
+    ValidationsRepository,
+    "listEntryIdsForValidator" | "countForValidator"
+  >;
 }
 
 /**
@@ -120,6 +123,35 @@ export async function openValidationSession(
 
     const choice = resolveSessionEntry(batch.entries, completedEntryIds, position);
     if (choice === null) {
+      // THE LIFETIME FIGURE IS READ HERE, AND ONLY HERE, and the placement is the whole argument
+      // (`design.md` D7). A lifetime total that climbs while somebody is answering sentences is a
+      // volume counter competing for attention with the sentence in front of them, which is the
+      // mechanic the existing design-system rule exists to prevent. Reading it on the `presenting`
+      // path would mean the number is one refactor away from a screen that renders it mid-activity —
+      // so the presenting branch never fetches it, and there is nothing there to display.
+      //
+      // The validator is the BATCH's own owner, read from the batch, for the reason the module header
+      // gives: the request carries no identity and the server derives none from the browser.
+      //
+      // WHY ONE READ IN THE SAME REQUEST IS FRESH ENOUGH (this answers `design.md` open question 2).
+      // Every response is persisted by the write that precedes this screen — each entry is saved as it
+      // is answered — and the finished screen is only ever reached by a navigation issued AFTER that
+      // write resolved. So a read taken now is necessarily after the last response this validator
+      // submitted, and the figure shown includes the submit that produced the screen. A second read,
+      // or a read earlier in the request, would return the same number: the validator cannot answer
+      // anything between the write and this render, because they are not holding a screen with a form
+      // on it. Reading it EARLIER would be the version that could actually be stale — a count taken
+      // before the completed-set read could in principle miss a response that the completed set — read
+      // just after it — already saw, and then the two figures on one screen would disagree.
+      //
+      // A failure here propagates to the `RepositoryError` branch below and is reported as
+      // `failed`/`persistence`, deliberately. Substituting `0` for an unreadable count would tell a
+      // validator who has answered forty sentences that they have answered none, which is the same
+      // false statement `countForEntry`'s own comment refuses to make.
+      const lifetimeAnsweredCount = await dependencies.validations.countForValidator(
+        batch.validatorId,
+      );
+
       return {
         status: "finished",
         batchId,
@@ -127,6 +159,7 @@ export async function openValidationSession(
         // from `resolveSessionEntry`, which returns nothing at all in this case by design.
         completedCount: batch.entries.length,
         total: batch.entries.length,
+        lifetimeAnsweredCount,
       };
     }
 

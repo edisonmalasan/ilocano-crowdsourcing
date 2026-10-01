@@ -213,6 +213,70 @@ describe("the two things the type cannot catch", () => {
 const MIN_FRAGMENT_CHARACTERS = 8;
 
 /**
+ * Ways the finished screen's copy could claim the lifetime figure is a COVERAGE figure, a credit, or
+ * a quality score. None of these may appear in any `validate.finished.*` string, in either language.
+ *
+ * WHY AN ENUMERATION OF CLAIMS RATHER THAN ONE FORBIDDEN WORD. `design.md` D2's copy obligation is
+ * that the figure may be described as *entries answered* and may not be described as *contributions
+ * to coverage*. Forbidding the single token "coverage" would forbid far less than that: "contributed",
+ * "counted toward the research", "qualifying", and "credited" all make the same claim and share no
+ * root with it. The list is the obligation, and the Filipino half is a SEPARATE vocabulary because
+ * `ambag`/`kontribusyon`/`kwalipikad` share no root with the English words.
+ *
+ * WHY THESE SPECIFIC PHRASES, and not a broader sweep. Every alternative that looked stronger was
+ * MEASURED against all 147 strings in both catalogs first, and three were dropped for colliding with
+ * legitimate copy elsewhere in the interface — see the `MEASURED:` test in the block below, which
+ * re-measures the collision count of the list that survived. The surviving phrases are the ones with
+ * ZERO collisions in either catalog, which is what lets that test be a measurement rather than an
+ * assumption.
+ */
+const COVERAGE_CLAIM: readonly RegExp[] = [
+  // The claim in its most direct forms, English.
+  /\bcoverage\b/,
+  /\bcontribut(?:ed|es|ing|ion|ions|e|ed)\b/,
+  /\bqualif(?:y|ied|ying|ying)\b/,
+  /\bqualifying\b/,
+  /\bcredited\b/,
+  /\bcredits?\b/,
+  /\bcounted (?:toward|towards|for)\b/,
+  // The claim in its most direct forms, Filipino. "ambag" is the ordinary word for a contribution and
+  // is the one a translator reaches for first; "katumbas" is "equivalent to".
+  /\bambag\b/,
+  /\bkontribusyon\b/,
+  /\bkwalipikad\b/,
+  /\bkatumbas\b/,
+];
+
+/**
+ * Promises about a FURTHER batch that the finished screen must not make while the continue control
+ * does not exist.
+ *
+ * `tasks.md` 5.2 requires the stale "not part of this part of the study yet" claim to be removed, and
+ * a repair that swapped it for "you can ask for another batch" would satisfy the requirement's letter
+ * while stating a fact about the product that is not yet true. These are the shapes such a swap takes,
+ * enumerated so the check covers the space rather than one guessed sentence — and the Filipino set is
+ * separate for the same reason as `COVERAGE_CLAIM`.
+ */
+const UNFULFILLED_PROMISE_EN: readonly RegExp[] = [
+  /\b(?:you can|you may|feel free to) (?:ask for|request|start|begin)\b/,
+  /\bready for (?:another|a further|one more)\b/,
+  /\bcontinue (?:when|whenever|if)\b/,
+  /\bwant (?:another|a further|one more)\b/,
+  /\bask for another batch\b/,
+];
+
+const UNFULFILLED_PROMISE_FIL: readonly RegExp[] = [
+  // `kang` is listed explicitly rather than folded into a `k(?:a|ing)` alternation: the FIRST draft
+  // wrote that alternation, and the can-fire control below caught "Maaari kang humiling…" going
+  // unflagged. A control built from the pattern's own author would have repeated the mistake.
+  /\bmaaari k(?:a|ang|ing) (?:humiling|mag-request)/,
+  /\bhanda k(?:a|ang|ing) na\b/,
+  /\bpatuloy na\b/,
+  /\bmagpatuloy k(?:a|ang|ing) (?:kapag|noon)\b/,
+  /\bhumiling ng (?:pangalawa|pambagong|isa pang) batch\b/,
+];
+
+/**
  * True when `fragment` occurs in `haystack` bounded by non-letter characters on both sides.
  *
  * `\p{L}` rather than `[A-Za-z]` because the haystack is Ilocano, and ASCII-only boundaries would
@@ -532,6 +596,265 @@ describe("the typing of the research material that must never be localized", () 
         FILIPINO_COPY[value as CopyKey],
       );
     }
+  });
+});
+
+/**
+ * Every string the finished presentation renders, in both catalogs.
+ *
+ * DERIVED, never listed. The point of a copy guard is that it keeps covering the namespace when the
+ * namespace grows, and a hand-written list of today's four keys stops covering it the moment a fifth
+ * is added — which is exactly the "enumeration in this project is a claim to be re-derived" lesson
+ * this repository has already paid for once. The prefix also means a `validate.finished.*` key added
+ * by the continuation work later in this change is covered automatically.
+ */
+const FINISHED_NAMESPACE = "validate.finished.";
+
+function finishedStrings(language: "English" | "Filipino"): Array<[CopyKey, string]> {
+  const catalog = language === "English" ? ENGLISH_COPY : FILIPINO_COPY;
+  const found = Object.entries(catalog).filter(([key]) => key.startsWith(FINISHED_NAMESPACE));
+  // Asserted, not assumed. A namespace that matched nothing would make every absence assertion below
+  // pass over an empty set, which is the vacuous-guard defect in its purest form.
+  expect(found.length, `${language} finished-screen strings were found`).toBeGreaterThan(0);
+  return found as Array<[CopyKey, string]>;
+}
+
+describe("the finished screen's own copy", () => {
+  it("supplies both figure labels in BOTH catalogs, and the catalogs agree on the key set", () => {
+    // `tasks.md` 5.1. Key-set parity is the type's job and is asserted as a positive control at the
+    // top of this file, so what is checked HERE is narrower and different: that the two keys this
+    // change adds exist, are reachable, and are non-empty in both languages. A key that existed in
+    // English only would be caught by the annotation; a key that rendered an EMPTY string would not,
+    // and that is the failure worth pinning at this level.
+    const figureKeys = [
+      "validate.finished.batchFigureLabel",
+      "validate.finished.lifetimeFigureLabel",
+    ] as const satisfies readonly CopyKey[];
+
+    expect(figureKeys).toHaveLength(2);
+    for (const key of figureKeys) {
+      expect(ENGLISH_COPY[key], `${key} is missing from the English catalog`).toBeTruthy();
+      expect(FILIPINO_COPY[key], `${key} is missing from the Filipino catalog`).toBeTruthy();
+      expect(ENGLISH_COPY[key].trim().length).toBeGreaterThan(0);
+      expect(FILIPINO_COPY[key].trim().length).toBeGreaterThan(0);
+      // Not a byte-identical string, which the file-level allowlist already covers — repeated here
+      // so a failure names the FIGURE LABEL rather than an anonymous key in a 147-entry diff.
+      expect(FILIPINO_COPY[key], `${key} is untranslated`).not.toBe(ENGLISH_COPY[key]);
+    }
+  });
+
+  it("gives the two figures DIFFERENT labels, in both catalogs, so neither can be read as the other", () => {
+    // `design.md` D5, and the load-bearing half of task 1.4. Asserting that two numbers appear cannot
+    // tell which is which; asserting the two labels are different strings can, and it fails the moment
+    // somebody copies one label over the other — which is the mistake the requirement is about.
+    expect(ENGLISH_COPY["validate.finished.batchFigureLabel"]).not.toBe(
+      ENGLISH_COPY["validate.finished.lifetimeFigureLabel"],
+    );
+    expect(FILIPINO_COPY["validate.finished.batchFigureLabel"]).not.toBe(
+      FILIPINO_COPY["validate.finished.lifetimeFigureLabel"],
+    );
+    // And the pair differs in the SAME WAY in both languages: the batch label names the batch and the
+    // lifetime label does not. Without this, a translator could ship two distinct Filipino strings
+    // that nonetheless fail to say which figure is which, and "not equal" would pass.
+    for (const catalog of [ENGLISH_COPY, FILIPINO_COPY]) {
+      const batch = catalog["validate.finished.batchFigureLabel"];
+      const lifetime = catalog["validate.finished.lifetimeFigureLabel"];
+      expect(batch.toLowerCase(), "the batch label must name the batch").toMatch(
+        /batch|baatch na ito/i,
+      );
+      expect(lifetime.toLowerCase(), "the lifetime label must not name a batch").not.toMatch(
+        /batch/,
+      );
+    }
+  });
+
+  it("describes the lifetime figure as ENTRIES ANSWERED, never as coverage, credit, or a score", () => {
+    // `tasks.md` 5.3 and `design.md` D2, and the reason this enumerates phrasings instead of
+    // forbidding the word "coverage": the figure is NOT a coverage figure, and the honest way to
+    // say that is that the copy must not claim it is. Enumerating the claim rather than banning one
+    // token is what lets the guard cover the Filipino wording too, which shares no root with the
+    // English one.
+    //
+    // SCOPE, stated honestly: this is over the `validate.finished` NAMESPACE, not the whole catalog.
+    // The requirement is about the finished screen, and a whole-catalog sweep would either have to
+    // tolerate legitimate uses elsewhere or would be reporting coverage it does not have — the
+    // measured reason it is scoped is recorded below.
+    for (const language of ["English", "Filipino"] as const) {
+      for (const [key, value] of finishedStrings(language)) {
+        for (const phrase of COVERAGE_CLAIM) {
+          expect(
+            value.toLowerCase(),
+            `${language} "${key}" claims coverage/credit: ${JSON.stringify(value)}`,
+          ).not.toMatch(phrase);
+        }
+      }
+    }
+  });
+
+  it("CAN FIRE: the coverage-claim guard rejects a label that makes the claim", () => {
+    // The control, and the reason the enumeration above is a guard rather than a decoration. Run over
+    // strings the REAL catalog would plausibly have contained — each one is a wording a copywriter
+    // reaches for when describing this figure — and require every one to be caught.
+    const plausible = [
+      "Entries that contributed to the study's coverage",
+      "Qualifying entries answered",
+      "Your coverage so far",
+      "Entries credited toward the research",
+      "Total contributions to the dataset",
+      "Mga ambag sa coverage ng pag-aaral",
+      "Mga kwalipikad na entry na sinagot",
+      "Ang iyong kontribusyon sa pag-aaral",
+    ];
+
+    expect(plausible.length).toBeGreaterThan(0);
+    const missed = plausible.filter(
+      (value) => !COVERAGE_CLAIM.some((phrase) => phrase.test(value.toLowerCase())),
+    );
+    expect(
+      missed,
+      `the guard does not catch: ${missed.join(" | ")} — the enumeration is missing a phrasing`,
+    ).toEqual([]);
+  });
+
+  it("MEASURED: the coverage-claim vocabulary collides with nothing else in either catalog", () => {
+    // Why the guard is SCOPED rather than applied to every string, measured rather than asserted.
+    //
+    // Three candidate words were measured against all 147 strings in both catalogs and were DISCARDED
+    // for colliding with legitimate copy elsewhere, not because the finished screen uses them:
+    //
+    //   `score`     — 2 English hits: `landing.panel.ask.body` and `start.lead`, both of which
+    //                  describe the SCREENING question as "background information for the research
+    //                  record". That is the exact opposite of what a quality score is.
+    //   `best`      — 1 English hit: `validation.evaluation.hint`, "Choose the one that fits best."
+    //   `sapat`     — 2 Filipino hits, one of them `validation.evaluation.cannot_evaluate`'s own
+    //                  clarifier, "Hindi ka sapat ang kumpiyansa" ("you are not confident enough"),
+    //                  which is the OPPOSITE of a claim of sufficiency.
+    //
+    // A whole-catalog sweep would therefore either fire on those three or have to exempt them, and an
+    // exemption list is how a guard starts tolerating what it exists to forbid. The finished namespace
+    // is the scope the requirement actually has, and the vocabulary below is measured to be free of
+    // collisions everywhere — so this test is what lets a reader believe the scope is not hiding
+    // something rather than taking it on trust.
+    const collisions: string[] = [];
+
+    for (const [language, catalog] of [
+      ["English", ENGLISH_COPY],
+      ["Filipino", FILIPINO_COPY],
+    ] as const) {
+      for (const phrase of COVERAGE_CLAIM) {
+        for (const [key, value] of Object.entries(catalog)) {
+          if (phrase.test(value.toLowerCase())) {
+            collisions.push(`${language} "${key}" = ${JSON.stringify(value)}`);
+          }
+        }
+      }
+    }
+
+    expect(
+      collisions,
+      "the coverage vocabulary must be free of collisions in BOTH catalogs",
+    ).toEqual([]);
+  });
+
+  it("removes the stale claim that asking for another batch is unavailable, from BOTH catalogs", () => {
+    // `tasks.md` 5.2. Asserted as the RETIRED SENTENCES rather than as "some new sentence exists",
+    // because a rewrite that kept the old clause and appended a new one would pass a presence check
+    // while still telling a validator the thing the change removed.
+    //
+    // Each retired clause is quoted as it stood in the catalog that held it, so a future reader can
+    // see exactly what was removed rather than having to trust that something was.
+    const retired: ReadonlyArray<{
+      readonly language: "English" | "Filipino";
+      readonly clause: string;
+    }> = [
+      {
+        language: "English",
+        clause: "Asking for another batch is not part of this part of the study",
+      },
+      {
+        language: "Filipino",
+        clause: "Hinihingi ng ibang batch ay hindi bahagi pa ng bahaging ito ng pag-aaral",
+      },
+    ];
+
+    expect(retired).toHaveLength(2);
+    for (const { language, clause } of retired) {
+      for (const [key, value] of finishedStrings(language)) {
+        expect(
+          value,
+          `${language} "${key}" still carries the retired clause: ${JSON.stringify(value)}`,
+        ).not.toContain(clause);
+      }
+    }
+  });
+
+  it("CAN FIRE: the retired-clause check finds that clause when it is present", () => {
+    // The control for the assertion above, and the reason that one is not vacuous. The probe is the
+    // REAL retired string, taken from the clause the assertion names — not a paraphrase, because a
+    // paraphrase would test the paraphrase.
+    const retiredEnglish =
+      "You have answered every sentence in this batch. Each one was saved as you went. Asking for another batch is not part of this part of the study yet.";
+    const retiredFilipino =
+      "Sinagot mo na ang bawat pangungusap sa batch na ito. Nase-save ang bawat isa habang ginagawa mo. Hinihingi ng ibang batch ay hindi bahagi pa ng bahaging ito ng pag-aaral.";
+
+    expect(retiredEnglish).toContain(
+      "Asking for another batch is not part of this part of the study",
+    );
+    expect(retiredFilipino).toContain(
+      "Hinihingi ng ibang batch ay hindi bahagi pa ng bahaging ito ng pag-aaral",
+    );
+    // And the CURRENT strings do not, which is the not-fire half on the real data.
+    expect(ENGLISH_COPY["validate.finished.body"]).not.toContain(
+      "Asking for another batch is not part of this part of the study",
+    );
+    expect(FILIPINO_COPY["validate.finished.body"]).not.toContain(
+      "Hinihingi ng ibang batch ay hindi bahagi pa ng bahaging ito ng pag-aaral",
+    );
+  });
+
+  it("promises no further batch in either catalog, because the control that would keep it is not here yet", () => {
+    // The other half of task 5.2, and the half a "just delete the sentence" repair would miss. The
+    // requirement only forbids telling a validator that continuing is UNAVAILABLE. Replacing that
+    // claim with "you can ask for another batch" would satisfy the letter of it and be a promise the
+    // product cannot keep until the continue control exists — the same class of defect in the
+    // opposite direction.
+    //
+    // Enumerated promises rather than a keyword, and the Filipino half is a separate set because it
+    // shares no root with the English one.
+    for (const [key, value] of finishedStrings("English")) {
+      for (const promise of UNFULFILLED_PROMISE_EN) {
+        expect(
+          value.toLowerCase(),
+          `${key} promises a further batch that does not exist yet: ${JSON.stringify(value)}`,
+        ).not.toMatch(promise);
+      }
+    }
+    for (const [key, value] of finishedStrings("Filipino")) {
+      for (const promise of UNFULFILLED_PROMISE_FIL) {
+        expect(
+          value.toLowerCase(),
+          `${key} promises a further batch that does not exist yet: ${JSON.stringify(value)}`,
+        ).not.toMatch(promise);
+      }
+    }
+  });
+
+  it("CAN FIRE: the unfulfilled-promise check rejects a sentence that makes one", () => {
+    const plausible = [
+      "You can ask for another batch whenever you like.",
+      "Ready for another batch?",
+      "Continue when you are ready.",
+      "Maaari kang humiling ng pangalawang batch.",
+      "Handa ka na para sa susunod na batch?",
+    ];
+
+    const missed = plausible.filter(
+      (value) =>
+        ![...UNFULFILLED_PROMISE_EN, ...UNFULFILLED_PROMISE_FIL].some((p) =>
+          p.test(value.toLowerCase()),
+        ),
+    );
+    expect(missed, `the promise guard does not catch: ${missed.join(" | ")}`).toEqual([]);
   });
 });
 

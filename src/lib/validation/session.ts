@@ -118,6 +118,22 @@ export type ValidationSessionOutcome =
       readonly batchId: string;
       readonly completedCount: number;
       readonly total: number;
+      /**
+       * How many entries this validator has answered ACROSS EVERY BATCH, ever.
+       *
+       * Deliberately NOT a coverage figure, and that is the property to preserve the next time this
+       * field is edited (`design.md` D2). It counts every recorded response, INCLUDING one recorded as
+       * "cannot confidently evaluate" — the approved method forbids treating a validator's confidence
+       * as a quality score, so a figure that rose only when somebody felt sure would reward confidence
+       * instead of effort. It is therefore also NOT governed by the single shared definition of a
+       * qualifying completed validation that `domain-contracts` requires for allocation, coverage
+       * reporting, and export; the spec says so explicitly so a later reader does not "correct" it.
+       *
+       * Its source is persisted validation RESPONSES, never `validators.total_validations` — a column
+       * that is set to `0` at enrolment and never incremented. Two independent requirements converge
+       * on that choice (D6, and the profile-disclosure requirement), and neither depends on the other.
+       */
+      readonly lifetimeAnsweredCount: number;
     }
   | { readonly status: "absent" }
   | {

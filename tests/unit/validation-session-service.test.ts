@@ -42,6 +42,15 @@ interface ServiceOptions {
   readonly datasetFailure?: unknown;
   /** A stored entry that must FAIL `allocatedEntrySchema`, to exercise the projection refusal. */
   readonly unprojectableEntry?: unknown;
+  /**
+   * The lifetime figure the fake `countForValidator` answers with.
+   *
+   * `null` means "fall back to the number of completed ids", which keeps the pre-existing fixtures
+   * that never thought about a lifetime figure reporting the same value they always did.
+   */
+  readonly lifetimeAnsweredCount?: number | null;
+  /** A count read that fails, to prove the figure is never silently replaced by a default. */
+  readonly countFailure?: unknown;
 }
 
 interface Recording extends ValidationSessionDependencies {
@@ -87,6 +96,11 @@ function createRecording(over: ServiceOptions = {}): Recording {
         calls.push(`validations.listEntryIdsForValidator:${validatorId}`);
         if (over.validationsFailure !== undefined) throw over.validationsFailure;
         return [...(over.completedEntryIds ?? [])];
+      },
+      async countForValidator(validatorId: string) {
+        calls.push(`validations.countForValidator:${validatorId}`);
+        if (over.countFailure !== undefined) throw over.countFailure;
+        return over.lifetimeAnsweredCount ?? (over.completedEntryIds ?? []).length;
       },
     },
     datasetEntries: {
@@ -343,7 +357,84 @@ describe("every outcome that is NOT an entry", () => {
       batchId: "batch-1",
       completedCount: 3,
       total: 3,
+      // The figure the fake answers with, which by default mirrors the completed set. Asserted rather
+      // than omitted: `toEqual` is a FULL key-set assertion, so a `finished` outcome that grew a field
+      // and was not updated here would fail rather than pass unnoticed.
+      lifetimeAnsweredCount: 3,
     });
+  });
+
+  it("reads the LIFETIME figure for the BATCH's own validator, and the count is a separate call", async () => {
+    // The source of the figure is the property, and the ORDER is what proves it is read from
+    // validation records rather than derived from the batch: `listEntryIdsForValidator` is
+    // batch-scoped, so a lifetime total can only come from a read whose argument is the validator.
+    const { openValidationSession } = await loadService();
+    const deps = createRecording({
+      completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"],
+      // Deliberately NOT the completed count: a validator who worked through three batches and
+      // finished this one has a lifetime figure nothing like this batch's size.
+      lifetimeAnsweredCount: 27,
+    });
+
+    const outcome = await openValidationSession({ batchId: "batch-1" }, deps);
+
+    expect(outcome).toMatchObject({
+      status: "finished",
+      completedCount: 3,
+      lifetimeAnsweredCount: 27,
+    });
+    expect(deps.calls).toEqual([
+      "batches.findById:batch-1",
+      `validations.listEntryIdsForValidator:${VALIDATOR_ID}`,
+      `validations.countForValidator:${VALIDATOR_ID}`,
+    ]);
+  });
+
+  it("reads the lifetime figure ONLY on the finished path, so no screen can show a rising total", async () => {
+    // `design.md` D7, pinned at the layer that can actually enforce it. A lifetime total is a volume
+    // counter if it climbs while somebody is answering; the cheapest structural guarantee is that the
+    // `presenting` path never fetches it, so there is no number there to render. This is a
+    // COUNT over the recorded calls, not an absence assertion, and the two `presenting` cases below
+    // are the controls proving the counter can be non-zero for that reason.
+    const { openValidationSession } = await loadService();
+    const finished = await openValidationSession(
+      { batchId: "batch-1" },
+      createRecording({ completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"] }),
+    );
+    const presenting = await openValidationSession({ batchId: "batch-1" }, createRecording());
+    const resumed = await openValidationSession(
+      { batchId: "batch-1", position: 2 },
+      createRecording({ completedEntryIds: ["OD_0001"] }),
+    );
+
+    const count = (outcome: unknown) =>
+      (outcome as { status: string }).status === "finished" ? 1 : 0;
+    expect(finished.status).toBe("finished");
+    expect(presenting.status).toBe("presenting");
+    expect(resumed.status).toBe("presenting");
+    // The same classifier, the same fixture, three requests: one finished and two presenting. If the
+    // count were 0/0/0 the finished screen would have no lifetime figure at all, and this block's other
+    // assertions would be passing on nothing.
+    expect([finished, presenting, resumed].map(count)).toEqual([1, 0, 0]);
+  });
+
+  it("reports `failed`/`persistence` when the LIFETIME count read fails, rather than a figure of zero", async () => {
+    // The failure mode worth refusing: a `0` fallback tells a validator who has answered forty
+    // sentences across four batches that they have answered none. That is a false statement about the
+    // participant's research record, produced by a database hiccup, so the honest answer is the same
+    // `failed`/`persistence` the completed-set read already produces for the same reason.
+    const { openValidationSession } = await loadService();
+    const deps = createRecording({
+      completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"],
+      countFailure: new RepositoryError("validations.countForValidator", "unreachable"),
+    });
+
+    expect(await openValidationSession({ batchId: "batch-1" }, deps)).toEqual({
+      status: "failed",
+      reason: "persistence",
+    });
+    // And it did attempt the read, so this is not passing because the figure was never fetched.
+    expect(deps.calls).toContain(`validations.countForValidator:${VALIDATOR_ID}`);
   });
 
   it("does NOT report `finished` for a stale position when entries remain", async () => {
