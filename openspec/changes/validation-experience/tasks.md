@@ -5,7 +5,7 @@
 These are recorded as decisions rather than tasks, because each one is a choice this change made
 deliberately and a later stage should not silently reverse. Each is falsifiable by the check beside it.
 
-- [ ] 0.1 **`RV-4` is NOT fixed here, and the reason is stated rather than implied.** `RV-4` — the
+- [x] 0.1 **`RV-4` is NOT fixed here, and the reason is stated rather than implied.** `RV-4` — the
       failed-resume path in `src/components/onboarding/resume-validator.tsx` — is an **onboarding**
       concern. Fixing it means changing an onboarding component and the onboarding tests, which is a
       different capability, and `AGENTS.md` is explicit that a change must not be broadened because a
@@ -13,150 +13,332 @@ deliberately and a later stage should not silently reverse. Each is falsifiable 
       end of this change, and this decision appears in the change's Proposal, so the Sync stage reviews
       an argued exclusion rather than discovering an omission. `docs/ROADMAP.md` is corrected to say the
       item is still open and now has a worked example of the fix's shape to copy, not a fix.
-- [ ] 0.2 **The `Archived Changes` ledger guard is NOT built here.** Same reasoning: it is a new test
+- [x] 0.2 **The `Archived Changes` ledger guard is NOT built here.** Same reasoning: it is a new test
       class this project has never had and belongs to its own change. **Verify:** the ledger still states
       the absence, and `grep -r ROADMAP tests/` still returns **0** case-sensitively at the end.
-- [ ] 0.3 **The vacuous `design-system` scenario stays vacuous, per `design.md` D5.** **Verify:** no
+- [x] 0.3 **The vacuous `design-system` scenario stays vacuous, per `design.md` D5.** **Verify:** no
       control in this change is rendered `disabled` for unavailability; a check over the new components
       reports **0** such controls, and the scenario remains honestly unwitnessed.
 
+**Evidence, measured on 2026-10-01.**
+
+| Task | Check | Result |
+| --- | --- | --- |
+| 0.1 | `git diff --name-only main -- src/components/onboarding/` | **0** lines |
+| 0.2 | `Get-ChildItem tests -Recurse \| Select-String ROADMAP -CaseSensitive` | **0** matches |
+| 0.2 | `docs/ROADMAP.md` still records the absence | Yes, at the `Archived Changes` note, the `Next eligible objective` row, and the `Blockers` row |
+| 0.3 | `validation-routes.test.tsx` → *"renders ZERO disabled controls while nothing is pending"* | **0** `disabled` attributes in the idle markup, over a screen whose button count is asserted `> 0` |
+| 0.3 | the can-fire control beside it | A real rendered `<button disabled={false}>` counts **0**; the same markup with `disabled=""` spliced in counts **1** |
+| 7.2 | the open question appears in the Proposal | **2** matches for the open-question framing |
+
+**A note on 0.3's can-fire control, because a regex self-test is weak evidence.** The precedent is
+recorded in `AGENTS.md`: the `Object.keys({ en: 1, fil: 1 })` literal built *inside* a test was once
+this repository's sole evidence for a research-integrity scenario. So the control here renders an
+actual React element through `renderToStaticMarkup` and mutates the resulting markup in memory, rather
+than hand-writing a fragment and matching the hand-written fragment — the same rule the copy-catalog
+guard's rewrite followed.
+
 ## 1. The session route, and which entry it presents
 
-- [ ] 1.1 Add `src/app/validate/[batchId]/page.tsx` as a server component that reads the batch, resolves
+- [x] 1.1 Add `src/app/validate/[batchId]/page.tsx` as a server component that reads the batch, resolves
       the requested position **through the batch's own recorded `batch_entries.position`**, and renders
       **one** entry. **Verify:** a route test asserting that for a 10-entry batch the rendered markup
       contains exactly **one** dataset entry id and **nine** do not appear.
-- [ ] 1.2 Show the entry's Ilocano sentence together with its **intended origin** and **intended
+- [x] 1.2 Show the entry's Ilocano sentence together with its **intended origin** and **intended
       destination**, and show **progress** through the active batch derived from the server-allocated
       batch rather than from client bookkeeping. **Verify:** a rendered-markup test asserting both
       endpoints and a progress indicator are present, and a test asserting the progress figure is the
       server's position and not a counter the client could have supplied.
-- [ ] 1.3 Exclude entries this validator has already completed, computed at request time from the
+- [x] 1.3 Exclude entries this validator has already completed, computed at request time from the
       existing `listEntryIdsForValidator` intersected with the batch (`design.md` D2). **Verify:** a test
       seeding completed entries and asserting the completed entry's id is absent from the rendered entry
       and that the request carries no client-supplied completion state.
-- [ ] 1.4 Pin the request's key set exactly (`design.md` D1): a position and nothing else, so a field
+- [x] 1.4 Pin the request's key set exactly (`design.md` D1): a position and nothing else, so a field
       added later that would let a client dictate order fails `pnpm run typecheck`. **Verify:** the
       exact-key-set assertion compiles, and adding a `clientOrder` field to the request type turns
       `pnpm run typecheck` red with `TS2322`.
 
+**Evidence.** 1.1 — `validation-routes.test.tsx` seeds a session outcome carrying **all nine** other
+instructions *and* their nine ids, and asserts each of the eighteen is absent while the presented one is
+counted at exactly **1**. Nine, not three: a partial set is what a scope-limited check reports as
+complete. 1.2 — the origin, destination, and travel mode are asserted present **as labels**, and the
+progress figure is asserted to be `completedCount` (`4`), with the derived `position - 1` value (`1`)
+asserted **absent**, because out-of-order completion and a resumed session make the two diverge.
+1.3 — `validation-session-service.test.ts` seeds `completedEntryIds: ["OD_0001"]` and asserts the
+presented entry is `OD_0002`, that `datasetEntries.findById:OD_0001` is **never called** (it is excluded,
+not fetched and hidden), and that a request carrying `validatorId` is **refused** with
+`{ status: "failed", reason: "invalid" }` and reads nothing. 1.4 — see the probe table below.
+
 ## 2. The four evaluation choices, offered neutrally
 
-- [ ] 2.1 Render the four approved evaluation values through the existing `AnswerGroup`, in both
+- [x] 2.1 Render the four approved evaluation values through the existing `AnswerGroup`, in both
       interface locales. **Verify:** a rendered-markup test asserting **all four** values are present for
       the presented entry.
-- [ ] 2.2 Assert neutrality on the **rendered** class of every option, following the precedent that
+- [x] 2.2 Assert neutrality on the **rendered** class of every option, following the precedent that
       every screening option's rendered class is already asserted equal. **Verify:** a test comparing the
       class attribute of all four rendered options for equality, plus a negative control: promoting one
       option turns the test red.
-- [ ] 2.3 Assert no choice is pre-selected and none is marked as the expected or recommended answer.
+- [x] 2.3 Assert no choice is pre-selected and none is marked as the expected or recommended answer.
       **Verify:** a test asserting no option carries `checked`/`selected`/`aria-checked` on first render,
       and that no rendered string marks a recommendation.
 
+**Evidence.** 2.1 — asserted in **both** locales. Every other test in the file renders with no locale
+cookie, which resolves to English, so a missing Filipino string would have been invisible to all of
+them; the cookie store is therefore a controllable fixture, reset to absent in `beforeEach` after a
+first draft leaked Filipino into four later tests. 2.2 — the comparison is against
+`answerOptionClasses({ selected: false })` read off the **rendered markup**, never the constant against
+itself, and the control is a mutation probe (P2, P3 below). 2.3 — **the scenario's literal wording is
+wrong and the test says so**: `aria-checked` is always rendered, so "no option carries `aria-checked`"
+describes a document that does not exist. The unambiguous form is a **count**: **0** `aria-checked="true"`
+and **4** `aria-checked="false"`, both asserted so a component that stopped rendering the attribute
+fails too. "None is marked as recommended" is asserted as **equality** against the four catalog strings
+derived from `EVALUATION_CHOICES` through `EVALUATION_LABEL_KEYS`/`EVALUATION_DESCRIPTION_KEYS` — **not**
+with a `recommended|best answer|most likely` regex, which would fire on the legitimate label "Correct
+and natural" and become a guard that cries wolf. A marker-based guard in this repository once matched
+**zero** of the 600 real records while reporting coverage for months.
+
 ## 3. The conditional correction
 
-- [ ] 3.1 Render the correction input **only** when the chosen evaluation requires one, deciding that
+- [x] 3.1 Render the correction input **only** when the chosen evaluation requires one, deciding that
       with the existing `isCorrectionRequired` imported from the domain module and not reimplemented
       (`design.md` D3). **Verify:** a test over all four evaluations asserting the input is present for
       *correct but sounds unnatural* and *incorrect* and **absent** for the other two.
-- [ ] 3.2 Require a non-blank corrected sentence before the response can be completed, reusing the
+- [x] 3.2 Require a non-blank corrected sentence before the response can be completed, reusing the
       existing validation schema rather than a local rule. **Verify:** a test asserting a
       whitespace-only correction does not complete the response, and a test asserting the form and the
       schema **agree** across a set of representative responses — the check that a second implementation
       of one rule would eventually fail.
-- [ ] 3.3 Prove 3.1 is not a second rule by mutating the call site to a hardcoded evaluation and
+- [x] 3.3 Prove 3.1 is not a second rule by mutating the call site to a hardcoded evaluation and
       confirming the tests go red. **Verify:** the reversal produces a named failure; a green result means
       the tests do not guard the single-sourcing.
 
+**Evidence.** 3.1 — a `dom` test counts `[name="correctedInstruction"]` at **0** before a choice, **1**
+after `correct_unnatural`, and **0** again after `cannot_evaluate`. **Hidden, not disabled** (D5), and the
+assertion is on **absence** rather than on a `disabled` attribute, because a disabled input is still in
+the DOM, still focusable, and still readable in the markup. 3.2 — `entry-form-flow.test.ts` asserts
+whitespace-only corrections do not complete the response and that `checkEntryForm` **agrees with
+`validationResponseInputSchema`** across all four evaluations. 3.3 — probes P4 and P5 below.
+
 ## 4. Both required research translations, and no skip affordance
 
-- [ ] 4.1 Render an English and a Filipino translation input for every evaluable evaluation, and
+- [x] 4.1 Render an English and a Filipino translation input for every evaluable evaluation, and
       **neither** for *cannot confidently evaluate*, deciding that with the existing
       `requiresBilingualTranslations`. **Verify:** a test over all four evaluations asserting two inputs
       for the three evaluable ones and **zero** for *cannot confidently evaluate*.
-- [ ] 4.2 Assert there is no control that skips, defers, or postpones either translation, by enumerating
+- [x] 4.2 Assert there is no control that skips, defers, or postpones either translation, by enumerating
       the rendered interactive controls rather than by matching a phrase. **Verify:** the enumeration
       finds no such control, **and** the enumeration is proven able to find controls at all — a control
       search that cannot match reports "none" for the same reason a broken predicate reports "no gap".
-- [ ] 4.3 Assert the translations are of the **validated** sentence — the correction where one was
+- [x] 4.3 Assert the translations are of the **validated** sentence — the correction where one was
       required, the original where none was — by asserting the submitted value, not the prompt text.
       **Verify:** a test that submits an *incorrect* response with a correction and asserts the persisted
       translation pair is what the validator typed and that the original instruction is not substituted.
-- [ ] 4.4 Add every new interface string to **both** catalogs, English and Filipino. **Verify:** the
+- [x] 4.4 Add every new interface string to **both** catalogs, English and Filipino. **Verify:** the
       existing copy-catalog guard passes, and it passes for the right reason — it compares all 600 real
       instructions against both catalogs bilaterally, so a real instruction pasted into either catalog
       turns it red. That guard was once a marker set matching **zero** of the 600, which is why its
       mechanism is named here rather than assumed.
 
+**Evidence.** 4.1 — the three-box / zero-box counts are in the same `dom` test as 3.1. 4.2 — the
+interactive controls are **enumerated from the rendered markup by tag** (`button`, `a`, `input`,
+`textarea`, `select`), not matched by phrase, and each one's label is classified. The can-fire control
+runs the **same** classifier over a literal list containing `"Skip translation for now"` and requires it
+to be found, while `"Correct and natural"` and `"Submit answer"` are required **not** to match — a
+pattern that matched all three would also pass the absence assertion. A **Filipino** enumeration runs
+too, with a separate pattern: the two languages share no root, so a reuse would have been vacuous. 4.3 —
+split across the two layers that can see it: the `dom` test asserts the **submitted payload** carries the
+validator's own strings and that no field echoes the dataset's wording, and `validation-actions.test.ts`
+asserts the **inserted row** carries the same three strings byte for byte, that the two translations were
+not swapped for each other, and that the response row's key set is exactly ten fields with **no**
+`instruction`/`sourcePayload`/`text` — so the rule "never overwrite the imported synthetic instruction"
+is enforced by the **absence of a path**, not by a check somebody could forget. 4.4 — the guard's
+mechanism was **rewritten** this change, not merely passed. Its marker set matched **zero** of the 600
+instructions, because the data is Ayta/Itao place-name-first constructions; the replacement compares all
+600 records bilaterally against both catalogs, with `MIN_FRAGMENT_CHARACTERS = 8` plus whole-word
+matching. Both halves of that floor are re-measured by a test in `locale-copy.test.ts`, and its can-fire
+control pastes a **real** record into each catalog.
+
 ## 5. Persisting a completed response, immediately, and advancing
 
-- [ ] 5.1 Add `src/lib/validation/validation-actions-core.ts` as a pure core taking its repositories
+- [x] 5.1 Add `src/lib/validation/validation-actions-core.ts` as a pure core taking its repositories
       injected, and `src/lib/validation/actions.ts` as a thin server-action wrapper going through
       `write-intake`. **Verify:** the core is unit-tested against recording fakes with no database, no
       network, and no `server-only` import, and `pnpm run lint` confirms no client component reaches the
       privileged path.
-- [ ] 5.2 Persist each completed response **as soon as it is complete**, never at batch end. **Verify:**
+- [x] 5.2 Persist each completed response **as soon as it is complete**, never at batch end. **Verify:**
       a test that completes one entry **while other entries in the batch remain unanswered** and asserts
       the insert happened. This is the case a batch-end implementation fails, so it is the assertion that
       gives "immediately" its meaning rather than a comment.
-- [ ] 5.3 Advance to the next entry in the server-allocated order after the write, without depending on
+- [x] 5.3 Advance to the next entry in the server-allocated order after the write, without depending on
       the rest of the batch. **Verify:** a `dom` test driving a real click through `act`, asserting the
       next entry is presented after the write resolves.
-- [ ] 5.4 Make the write single-flight, exposing the pending state on the control that initiated it and
+- [x] 5.4 Make the write single-flight, exposing the pending state on the control that initiated it and
       changing the appearance of controls made inert alongside it **uniformly** (`design.md`, and the
       `design-system` requirement this is the first non-onboarding consumer of). **Verify:** a `dom` test
       asserting `aria-busy` and `disabled` track the pending state **during** the write — which
       `renderToStaticMarkup` provably cannot see, since it never fires a handler — and a test asserting
       a second click produces **one** insert, not two.
-- [ ] 5.5 Treat a duplicate refusal for this validator and entry as the entry being complete, and
+- [x] 5.5 Treat a duplicate refusal for this validator and entry as the entry being complete, and
       advance; report every other failure as a failure (`design.md` D6). **Verify:** a test seeding a
       duplicate and asserting an advance with **no** discard, plus a negative control asserting a
       non-duplicate failure is reported as a failure and does **not** advance.
 
+**Evidence.** 5.1 — `pnpm run lint` exits 0 with **zero warnings**, and the boundary rule
+(`sadino/no-privileged-imports`) covers every client component. **One measured correction to the task's
+wording:** the core file does not import `server-only` **of its own**, but it *inherits* the marker
+through `parseWriteIntent` in `@/lib/server/write-intake`, so `validation-actions.test.ts` **does** stub
+`server-only` — exactly as `allocation-actions.test.ts` does. The file's module comment claimed no stub
+was needed; that was measured wrong and has been corrected in place. 5.2 — the action's call sequence is
+asserted as exactly `["batches.findById:batch-1", "validations.insert"]` with **no** dataset call, and
+the batch in the fixture has two entries of which one is answered. 5.3 — see below. 5.4 — the pending
+state is observed **while the write is open**, and the single-flight latch is exercised by two
+submissions inside **one synchronous `act`** so no render can occur between them; `h.submitted` is
+asserted at length **1**. 5.5 — `already_recorded` advances and the document must not say nothing was
+saved; a `failed` write does not advance and does.
+
+**5.3 required more than a pushed URL, and the reason is worth recording.** Asserting
+`router.push("/validate/<batch>?position=4")` would be satisfied by a form that pushed a URL and a server
+that then showed the **same** entry again — which is the actual participant-facing failure. So the test
+does both halves: it reads the position back **out of the URL the form produced**, unmounts, mounts the
+real component again at that position, and takes the entry from the **real `resolveNextSessionEntry`**
+against a real placement list. No arithmetic appears in the assertion. The completed set had to be
+**measured**: the first draft passed an empty set plus the entry just answered and got `OD_0005`, the
+first *remaining* placement, because with only `OD_0007` done, placements 1 and 2 were still outstanding.
+That was the resolver behaving correctly and the expectation being invented — the fifth time this
+session that an expected value written down rather than measured failed against correct code.
+
 ## 6. Safe navigation, and preventing an invalid submission
 
-- [ ] 6.1 Moving between entries in the active batch preserves completed work and never resubmits a
+- [x] 6.1 Moving between entries in the active batch preserves completed work and never resubmits a
       completed response. **Verify:** a `dom` test that completes an entry, navigates, and asserts the
       persisted row is still there and no second insert occurred.
-- [ ] 6.2 A completed entry is not offered again in the same batch, including after leaving and returning
+- [x] 6.2 A completed entry is not offered again in the same batch, including after leaving and returning
       to the session. **Verify:** a test returning to the session and asserting the completed entry is
       absent from what is offered — the participant-facing counterpart to at-most-once, and a different
       failure from the database refusing the write, since a refusal has already cost the validator their
       typed answer.
-- [ ] 6.3 Prevent an invalid response from being sent, and identify which input is required, **without**
+- [x] 6.3 Prevent an invalid response from being sent, and identify which input is required, **without**
       treating that prevention as the enforcement. **Verify:** a `dom` test asserting no request is made
       while a required input is missing and that the missing input is identified, plus a server-side test
       asserting an invalid response reaching the server is still refused.
 
+**Evidence.** 6.1 — a `dom` test answers `incorrect` with a correction and both translations, submits,
+re-mounts at the next entry, and asserts `h.submitted` is still length **1** and still `toEqual` the
+snapshot taken **after** the first submit. The snapshot is a `structuredClone` taken **after** the
+submit: the first draft took it before, read `h.submitted[-1]`, and compared a real payload against
+`undefined`. 6.2 — two visits to the same batch with the same completed set both present `OD_0002`, the
+completed entry is never read, and the call log shows two identical **read** sequences and no mutation. A
+requested position naming a completed entry resolves **forward** (`OD_0002` completed, position 2 →
+`OD_0003`), measured rather than assumed. 6.3 — the `dom` test asserts `h.submitted` stays at **0** when
+a required input is missing, and the missing input is **named**; the server-side refusal is asserted in
+`validation-actions.test.ts` for six plausible extra keys and three invalid responses, each with
+`deps.calls` and `deps.inserted` both asserted **empty**, so a refused write costs no query.
+
 ## 7. The handoff out of `/ready`
 
-- [ ] 7.1 Replace `/ready`'s honest dead end with the real onward path, correcting the comment that
+- [x] 7.1 Replace `/ready`'s honest dead end with the real onward path, correcting the comment that
       claims *"Allocation is Phase 4, so there is nothing to link to yet"* — false since
       `requestBatchAction` exists. **Verify:** a test asserting `/ready`'s internal hrefs against routes
       that exist, following the precedent that the existing set is asserted **exactly** rather than
       satisfied by having no links at all, which is how that assertion previously passed trivially.
-- [ ] 7.2 Record that **no spec requirement covers this handoff**. It is participant-visible, so a
+- [x] 7.2 Record that **no spec requirement covers this handoff**. It is participant-visible, so a
       reviewer may reasonably want one, but adding a requirement to `validator-onboarding` would modify a
       capability this change declares it does not touch. **Verify:** this item appears in the change's
       Proposal as an open question for the Sync stage, so the decision is reviewed rather than buried.
+
+**Evidence.** 7.1 — the existing `KNOWN_ROUTES` inventory is asserted to **contain** `/start`, `/ready`,
+and `/validate` before the href loop runs, so a `readdirSync` pointed at the wrong path cannot yield an
+empty array and pass every href assertion vacuously. `/validate` is named **explicitly as well as** being
+picked up by the directory scan, because the scan reports a missing directory and the explicit name
+reports the missing route. 7.2 — the Proposal carries the open question; **2** matches.
 
 ## 8. Integration verification
 
 This group is cross-cutting checks only. Every test and every catalog update is owed by the group whose
 work called for it above, so a failure here points at the boundary rather than at a late test.
 
-- [ ] 8.1 `openspec validate validation-experience --strict` and `openspec validate --specs --strict`
+- [x] 8.1 `openspec validate validation-experience --strict` and `openspec validate --specs --strict`
       both exit 0, with the capability count and totals reported from their own output. **Verify:** the
       figures are read out of the command, not inferred; the in-force total must be **9 passed, 0 failed**
       and this change is a delta so it adds no capability directory until Sync.
-- [ ] 8.2 The full gate passes: lint, format:check, typecheck, unit, dom, integration, the **scoped**
+- [x] 8.2 The full gate passes: lint, format:check, typecheck, unit, dom, integration, the **scoped**
       dataset guard, and build. **Verify:** every figure is attributed to a **named step's own** summary
       line by a reader that refuses rather than reporting a partial answer, and the guard is confirmed
       scoped to 1 file and **distinct** from the whole suite.
-- [ ] 8.3 `data/ilocano-synthetic-data.json` is unchanged, and `git diff main --numstat -- supabase/`
+- [x] 8.3 `data/ilocano-synthetic-data.json` is unchanged, and `git diff main --numstat -- supabase/`
       is **empty** because this change writes no migration. **Verify:** the dataset SHA-256 is read
       directly rather than read off a checkmark, and the migration diff is empty.
-- [ ] 8.4 State plainly what was **not** verified: no Supabase client has ever been constructed, PostgREST
+- [x] 8.4 State plainly what was **not** verified: no Supabase client has ever been constructed, PostgREST
       behaviour and API-gateway RLS are unverified, and **no human has looked at any screen**. **Verify:**
       these appear in the change's Proposal and in `docs/ROADMAP.md`, so no later stage reads a passing
       gate as visual or hosted verification.
+
+**Evidence, all figures read out of the commands on 2026-10-01.**
+
+| Check | Result | What it does **not** prove |
+| --- | --- | --- |
+| `pnpm run lint` | exit 0, **0 errors and 0 warnings** | The boundary rule would catch a *new* violation in a file not yet written |
+| `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" | Anything about correctness |
+| `pnpm run typecheck` | exit 0 | Any runtime behaviour |
+| `pnpm run test:unit` | exit 0 — **40 files, 1077 tests** | Anything needing a database, a network, or a browser |
+| `pnpm run test:dom` | exit 0 — **4 files, 39 tests** | Anything about a real browser; `happy-dom` is synthetic |
+| `pnpm run test:integration` | exit 0 — **6 files, 100 tests** | That this is Supabase: PGlite is PostgreSQL compiled to WebAssembly |
+| whole suite (`vitest run`) | exit 0 — **50 files, 1216 tests** | The three projects' counts sum exactly, so nothing failed to collect |
+| `pnpm exec vitest run --project integration tests/integration/immutable-dataset.test.ts` | exit 0 — **1 file, 7 tests** | That it is scoped correctly on CI; a scoped step has been read back from a run log four times this project |
+| `pnpm run build` | exit 0, "Compiled successfully" | That any test passed |
+| `openspec change validate validation-experience --strict` | exit 0, `Change "validation-experience" is valid` | That the implementation matches the change |
+| `openspec validate --specs --strict` | exit 0, `Totals: 9 passed, 0 failed (9 items)` | The same; still 9 capabilities, so this delta adds no directory until Sync |
+| `Get-FileHash data/ilocano-synthetic-data.json` | `39f757e61b70386b87ec1bb9410e881df342027bf580bed9c2f9beeb2f2e8965` | Read directly, not off a checkmark |
+| `git diff main --numstat -- supabase/` | **0** lines | — this change writes no migration |
+
+### Mutation probes
+
+Five probes, each run as a **documented experiment** rather than committed as a permanent test, because
+the question each asks — "what would it take to make this guard fail?" — is answered by a deliberate edit
+to the file the guard protects. Every probe ran a **negative control** first and every working tree was
+restored **byte-identically** (SHA-256 compared after the restore).
+
+| Probe | Mutation performed | Control | Result | Named failures |
+| --- | --- | --- | --- | --- |
+| **P1** (1.4) | added `clientOrder: z.array(z.number()).optional()` to `submitValidationIntentSchema` | typecheck exit 0 | exit **2** | `TS2322: Type 'true' is not assignable to type 'never'` at `domain-types.test.ts:410` |
+| **P2** (2.2) | prefixed `bg-accent ` onto the frozen `UNSELECTED` class | 50 files / 1200 passed | RED | **5**, across 3 files |
+| **P3** (2.2b) | `[...EVALUATION_CHOICES].reverse()` at the `AnswerGroup` call site | 50 / 1200 | RED | **19** |
+| **P4** (3.3) | replaced `requiresBilingualTranslations(evaluation)` with `evaluation !== null` | 50 / 1200 | RED | **8**, including *"AGREES with the domain predicates for every approved evaluation, with no local rule"* |
+| **P5** (3.3b) | hardcoded `evaluation: "correct_natural"` into the submitted payload | 50 / 1200 | RED | **1**, in the `dom` project |
+
+**P4's mutation is the one worth keeping.** It is *right for three of the four evaluations* and wrong for
+`cannot_evaluate` — a uniformly wrong rule would be caught by almost any test, and a half-right one is
+the version that escapes review.
+
+**P5 is why the first draft of the probe harness was discarded, and the lesson generalises.** The first
+run scoped every vitest probe to `--project unit` and scored P5 `RED-EXPECTED-BUT-GREEN` at exit 0 —
+while the real answer was a single named failure in the `dom` project. A probe scoped to a subset reports
+the rest as silent, and this repository has already been bitten by the same shape when a CI step claimed
+to run a subset and was green. Every vitest probe now runs the **whole** suite.
+
+**Three defects in the first harness condemned probes that were reporting on CORRECT code**, and each is
+a shape this project has met before:
+
+1. `applyMutation` **concatenated** the anchor with the replacement instead of replacing it, so every
+   mutation produced a file with a duplicated line. A mutation that corrupts the artefact makes almost
+   any assertion fail, so a red would have been evidence about a syntax error.
+2. The verdict was `RED ? CONFIRMED` with **no requirement that a failure be named**. P2 scored
+   `CONFIRMED` on the line below `failing tests (0)`. This is the ANSI/named-capture defect for the
+   **fourth** time: an empty capture must be refused, never scored.
+3. A collect failure read as a pass. P2 reported `898 passed (898)` against a `1064 passed (1064)`
+   control — fewer tests than the control, which is a **COLLECT** failure, a distinct outcome, and not a
+   meaningful subset.
+
+The rebuilt harness gates every vitest probe on `tsc --noEmit` being **green on the mutant** first,
+classifies on `status === undefined` rather than the exit code (`tsc` exits 2, so an "0 or 1" predicate
+would call a textbook red `DID-NOT-RUN`), reports `COLLECT-FAILED` when the test count drops below the
+control's, and **refuses** `named=false` as `NOT-ATTRIBUTABLE` rather than a pass.
+
+**8.4, stated plainly.** **No Supabase client has ever been constructed** — every `SUPABASE_*` variable
+is absent, so `getServerEnv()` throws on every real request. PostgREST wire behaviour, the
+`error.cause.code === "23505"` duplicate detection, and RLS as enforced by the Supabase API gateway are
+all **unverified**. The duplicate this suite treats as a success is a value a mock returned, not a code a
+database raised. **No human has looked at any screen in this project** — `happy-dom` is synthetic, and
+`renderToStaticMarkup` never fires a handler, so nothing above is visual verification. **No failing CI
+run has ever been observed**, so "a failing test blocks the pull request" remains inferred from the
+required checks rather than demonstrated.
