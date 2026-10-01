@@ -6,6 +6,17 @@ import type { AllocatedEntry } from "@/schemas/batch";
 import type { DatasetEntry, DatasetEntryInput } from "@/schemas/dataset";
 import type { ValidatorProfile } from "@/schemas/validator";
 import type { ValidationResponse, ValidationResponseInput } from "@/schemas/validation";
+import type { SubmitValidationIntent } from "@/lib/validation/validation-actions-core";
+
+/**
+ * The smallest response the intent accepts: the decline, which carries nothing else.
+ *
+ * Used by every `@ts-expect-error` line below, so the directives are about the KEYS around it and not
+ * about whether a six-field evaluable response happens to type-check. A literal repeated four times
+ * would drift, and a drift would surface as an unexplained type error on a line whose comment says the
+ * problem is a missing key.
+ */
+const DECLINE = { evaluation: "cannot_evaluate" } as const;
 
 /** The keys of `T`, as a union. */
 type KeyUnion<T> = keyof T;
@@ -352,5 +363,127 @@ describe("the allocation request exposes no client-authoritative field", () => {
     expect(typeof withOrder).toBe("object");
     expect(typeof withPositions).toBe("object");
     expect(typeof withTarget).toBe("object");
+  });
+});
+
+/**
+ * =================================================================================================
+ * THE SUBMIT INTENT EXPOSES NO CLIENT-AUTHORITATIVE FIELD, and the same key-set pin applies for a
+ * stronger reason than the allocation request's did
+ * =================================================================================================
+ * `submitValidationIntentSchema` is the payload of the action that records a research response, so
+ * every key it carries is a fact about a research record that a client is asserting. Three are needed
+ * — which batch, which entry within it, and the response — and the four that are NOT there are the
+ * whole guarantee:
+ *
+ *   `validatorId`   whose answer this is. It is read from the batch record, and a client-supplied one
+ *                   would be a client-supplied claim about a research record's authorship.
+ *   `id`            which response this is. Minted server-side; a client-supplied one is a client-
+ *                   chosen primary key, and the approved `research-schema` spec forbids surrogate
+ *                   uuid primary keys for this table besides.
+ *   `position`      where in the batch the entry sits. The order is allocation's, and a position a
+ *                   client sends is a request to be shown a chosen entry.
+ *   `createdAt`     when the response happened. Server-minted, and a client-supplied timestamp is a
+ *                   client-supplied fact about when research was collected.
+ *
+ * =================================================================================================
+ * WHY THE BEHAVIOURAL HALF IS NOT ENOUGH, which is the reason this block exists at all
+ * =================================================================================================
+ * `validation-actions.test.ts` proves the schema REFUSES six plausible extra keys by name, and that is
+ * worth having. It cannot be the guarantee: a mutation that adds a field named `clientOrder`, or
+ * `preferred`, or anything else, passes all six refusals untouched. The lesson is recorded in
+ * `AGENTS.md` from `coverage-aware-allocation`, where the same guarantee was attempted behaviourally,
+ * measured, and found NOT to work — the two-file mutation that added a `clientOrder` field *and honoured
+ * it* left the suite green at `51 passed (51)` against a `51 passed (51)` control.
+ *
+ * So the pin is here, at the layer where a key that does not exist yet is visible. MEASURED for this
+ * intent: adding `clientOrder: z.array(z.number()).optional()` to `submitValidationIntentSchema` turns
+ * `pnpm run typecheck` red at `TS2322: Type 'true' is not assignable to type 'never'`, exit 2. The
+ * negative control — a `@ts-expect-error` that stops suppressing once the field exists — is written
+ * below in the same form as every other one in this file, so it cannot rot into an unused directive.
+ */
+describe("the validation submit intent exposes no client-authoritative field", () => {
+  it("has exactly a batch, an entry, and a response, and no fourth key", () => {
+    // This runtime expectation cannot fail on its own and is not what pins the property — the
+    // declaration is. It exists so the alias is evaluated at all, which is the difference between a
+    // working pin and a vacuous one.
+    const assertion: KeySetIsExactly<
+      SubmitValidationIntent,
+      "batchId" | "datasetEntryId" | "response"
+    > = true;
+    expect(assertion).toBe(true);
+  });
+
+  it("rejects an identity, a response id, a position, and a timestamp at the type layer", () => {
+    // WHERE THE DIRECTIVE GOES MATTERS, and the first draft of this block got it wrong in a way that
+    // read as a broken pin. TypeScript reports an excess-property error on the OFFENDING PROPERTY line,
+    // not on the `const` declaration, so a `@ts-expect-error` above the declaration is reported as
+    // `TS2578: Unused '@ts-expect-error' directive` while `TS2353: 'validatorId' does not exist in type
+    // …` is reported four lines below it. The fix is mechanical — one directive per offending property,
+    // directly above it — and it is recorded here because a directive that suppresses nothing is the
+    // exact failure this file exists to prevent, arrived at from the other direction.
+    const withValidator: SubmitValidationIntent = {
+      batchId: "batch-7f3a1c",
+      datasetEntryId: "OD_0007",
+      response: DECLINE,
+      // @ts-expect-error — `validatorId` is not a field of the intent; authorship comes from the batch.
+      validatorId: "VAL_a81d92c1",
+    };
+    const withId: SubmitValidationIntent = {
+      batchId: "batch-7f3a1c",
+      datasetEntryId: "OD_0007",
+      response: DECLINE,
+      // @ts-expect-error — a client-chosen response id; the server mints one.
+      id: "rsp_chosen_by_the_client",
+    };
+    const withPosition: SubmitValidationIntent = {
+      batchId: "batch-7f3a1c",
+      datasetEntryId: "OD_0007",
+      response: DECLINE,
+      // @ts-expect-error — a position is allocation's to give, not a client's to request.
+      position: 3,
+    };
+    const withTimestamp: SubmitValidationIntent = {
+      batchId: "batch-7f3a1c",
+      datasetEntryId: "OD_0007",
+      response: DECLINE,
+      // @ts-expect-error — and a client-chosen collection time.
+      createdAt: "2020-01-01T00:00:00.000Z",
+    };
+
+    expect(typeof withValidator).toBe("object");
+    expect(typeof withId).toBe("object");
+    expect(typeof withPosition).toBe("object");
+    expect(typeof withTimestamp).toBe("object");
+  });
+
+  it("requires all three keys, so a partial intent is not constructible", () => {
+    // The other direction, and the one that catches the opposite mistake: a type that permitted a
+    // partial intent would let a caller build `{ batchId }` and discover the problem at runtime. A
+    // MISSING property is reported on the declaration, so here the directive DOES go above the
+    // `const` — the asymmetry with the block above is the point.
+    // @ts-expect-error — `response` is required.
+    const withoutResponse: SubmitValidationIntent = {
+      batchId: "batch-7f3a1c",
+      datasetEntryId: "OD_0007",
+    };
+    // @ts-expect-error — so is `datasetEntryId`.
+    const withoutEntry: SubmitValidationIntent = { batchId: "batch-7f3a1c", response: DECLINE };
+
+    expect(typeof withoutResponse).toBe("object");
+    expect(typeof withoutEntry).toBe("object");
+  });
+
+  it("exposes the response as the SCHEMA's type, so a caller cannot widen it with extra fields", () => {
+    // `response` is deliberately a `z.object` rather than a `strictObject` — that is pre-existing and
+    // recorded as risk-free, because a stripped key on a nested value cannot become a stored fact: the
+    // stored record is re-validated by `validationResponseSchema` before the write. This assertion pins
+    // the consequence, which is that the intent's `response` type has EXACTLY the response's keys, so a
+    // caller cannot pass a fourth field even if the runtime were to strip it.
+    const assertion: KeySetIsExactly<
+      SubmitValidationIntent["response"],
+      keyof ValidationResponseInput
+    > = true;
+    expect(assertion).toBe(true);
   });
 });
