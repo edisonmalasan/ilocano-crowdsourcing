@@ -31,6 +31,8 @@ Applied in this order, both in CI and on a hosted project.
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `20260930120000_research_schema.sql`                 | The six research tables, their constraints and indexes, and Row Level Security enabled on all six with no policy granting access to `anon` or `authenticated`. |
 | `20260930160000_required_bilingual_translations.sql` | Replaces the single optional translation pair with two required ones, and drops the superseded columns. See the operational note below.                        |
+| `20260930190000_allocation_batch_positions.sql`      | Adds `batch_entries.position` plus its two constraints. **Refuses** rather than renumbering pre-existing rows, whose order is unrecoverable.                   |
+| `20261001120000_validation_batches_created_at.sql`   | Adds `validation_batches.created_at`, backfills it, and adds the `(validator_id, created_at desc, id desc)` access path the recovery read orders by.           |
 
 The research schema is anonymous by design: validators have no Supabase Auth session, so nothing
 in it references `auth.uid()` or `auth.users`, and primary keys are domain identifiers rather
