@@ -23,7 +23,7 @@
  *     completion, or eligibility is trusted.
  */
 
-export { RepositoryError, isRepositoryError } from "./errors";
+export { POSTGREST_UNIQUE_VIOLATION_CODE, RepositoryError, isRepositoryError } from "./errors";
 export type { RepositoryErrorOptions, RepositoryOperation } from "./errors";
 
 export type { DatasetEntriesRepository } from "./dataset-entries-repository";

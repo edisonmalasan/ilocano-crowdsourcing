@@ -2,7 +2,11 @@ import "server-only";
 
 import type { ZodType } from "zod";
 
-import { RepositoryError, type RepositoryOperation } from "@/lib/repositories";
+import {
+  POSTGREST_UNIQUE_VIOLATION_CODE,
+  RepositoryError,
+  type RepositoryOperation,
+} from "@/lib/repositories";
 
 import type { PostgrestErrorLike, PostgrestResultLike } from "./client";
 
@@ -49,8 +53,12 @@ import type { PostgrestErrorLike, PostgrestResultLike } from "./client";
  * for. It would be covered only by a fake invented to satisfy it.
  */
 
-/** PostgreSQL SQLSTATE for a unique-constraint violation, as PostgREST reports it. */
-export const POSTGREST_UNIQUE_VIOLATION_CODE = "23505";
+/**
+ * Re-exported, not redefined. The definition moved to `@/lib/repositories/errors` so a domain
+ * service can branch on a uniqueness violation without importing a `server-only` module; the
+ * implementations below keep importing the name from here.
+ */
+export { POSTGREST_UNIQUE_VIOLATION_CODE };
 
 /** Renders a PostgREST error for `RepositoryError.detail`: a code and a message, never a value. */
 export function describePostgrestError(error: PostgrestErrorLike): string {

@@ -162,8 +162,8 @@ export const GUARD_WEAKNESS: Readonly<Record<string, Readonly<Record<string, str
       "a NEW over-confident sentence not on the nine forbidden list — the failure mode this test exists for is a page that is slightly too confident and reads perfectly well, so an unlisted instance passes.",
     "confirmation route > states that nothing identifying was collected":
       "the page collecting something identifying in different words — one required sentence, no forbidden set.",
-    "confirmation route > says plainly that receiving sentences is not switched on yet":
-      "the reassurance being removed and reworded rather than deleted — two required phrases, so only their total absence fails.",
+    "confirmation route > no longer says the next part of the study is switched off, because it is not":
+      'the INVERTION being only half-done: the guard now forbids two phrasings and requires `href="/validate"` plus one link label, so a page that removed the false claim and then failed to offer the real path — or offered it with a dangling href the inventory scan no longer covers — still passes. The weakest mutation is a route that says “sentences arrive soon” and links nowhere; nothing here forbids that.',
     "confirmation route > does not promise the screening question will not be asked again, because it can be":
       "a reworded version of the same false promise — two forbidden phrasings, none of them a shape.",
     "confirmation route > promises the one thing that is actually guaranteed about a return visit":

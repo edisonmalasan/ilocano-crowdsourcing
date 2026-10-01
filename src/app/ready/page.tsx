@@ -14,10 +14,16 @@ import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
  * a confirmation screen that echoes a stored profile is a screen that has to be
  * kept correct as the profile changes, and none of it helps the participant.
  *
- * It deliberately does NOT link to a batch route. Allocation is Phase 4, so there
- * is nothing to link to yet. An honest dead end that says what is coming is better
- * than a link to a 404, and better than a screen implying a batch is one click away
- * when it is not implemented.
+ * It deliberately does NOT link to a BATCH route, and that is still true: `/validate/<batchId>`
+ * needs a batch identifier, and a batch identifier does not exist until the server has chosen one.
+ * An honest dead end that says what is coming is better than a link to a 404, and better than a
+ * screen implying a batch is one click away when it is not implemented.
+ *
+ * This paragraph previously read "Allocation is Phase 4, so there is nothing to link to yet", and that
+ * was false from the moment `requestBatchAction` existed and stayed false while this page linked
+ * nowhere. It has been corrected here rather than left standing, because a comment asserting that a
+ * capability is absent is a claim someone will believe — and the verification pass for Phase 5 caught
+ * exactly that, on a task that was ticked as having corrected this very sentence and had not.
  *
  * It DOES link back to `/start`. The original reason it linked nowhere — "so it cannot
  * link to a route that does not exist" — was satisfied trivially by having no links, and
@@ -204,6 +210,38 @@ export default async function ReadyPage() {
             <p className="label-meta text-ink-muted">{t("ready.next.label")}</p>
             <p className="text-small text-ink-muted">{t("ready.next.body1")}</p>
             <p className="text-small text-ink-muted">{t("ready.next.body2")}</p>
+          </Card>
+
+          {/*
+            THE ONWARD PATH, added by the validation-experience change.
+
+            This section previously said the next part of the study "is not switched on yet" and
+            told the participant that closing the tab was a complete and legitimate way to finish.
+            Both statements became FALSE the moment `requestBatchAction` existed, and the module
+            header's claim that "Allocation is Phase 4, so there is nothing to link to yet" was
+            already false. A confirmation page that describes a state the product is no longer in is
+            worse than no page: it is a page that tells a participant who came here to work that
+            there is nothing for them to do.
+
+            The destination is `/validate` and NOT `/validate/<batchId>`, because a batch
+            identifier does not exist until the server has chosen one. `/validate` asks for a batch
+            and then navigates, so this link has a real target that exists in the repository, and the
+            href test can assert against routes rather than against a wish.
+
+            The link is placed after the "not started yet" card rather than replacing it, because the
+            two address different visitors: `/start` is for a browser that has not answered the
+            screening question, and this is for one that has. Both remain reachable, and the exact
+            internal href set is asserted by `tests/unit/onboarding-routes.test.tsx`.
+          */}
+          <Card tone="raised" className="flex flex-col gap-4 p-6">
+            <p className="label-meta text-accent">{t("ready.begin.label")}</p>
+            <p className="text-small text-ink-muted">{t("ready.begin.body")}</p>
+            <Link
+              href="/validate"
+              className="border-ink bg-accent text-paper border-accent-press hover:bg-accent-press rounded-pill text-label inline-flex w-fit items-center gap-2 border-2 px-5 py-3"
+            >
+              {t("ready.begin.cta")}
+            </Link>
           </Card>
 
           <Card tone="inset" className="flex flex-col gap-3 p-6">

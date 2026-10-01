@@ -41,26 +41,72 @@ export function progressTrackClasses({ className }: { className?: string } = {})
   return cn("h-2.5 w-full rounded-xs border-2 border-ink bg-paper-sunken", className);
 }
 
+/**
+ * The participant-visible strings, pre-composed by the caller.
+ *
+ * They are STRINGS rather than format functions or a format string on purpose. "Item 3 of 10" and
+ * "Pangungusap 3 ng 10" are one fact with two grammars, and a `"Item {n} of {m}"` template would
+ * force one language to carry the other's word order. The caller already knows the numbers and holds
+ * the catalog, so it composes them there — in the participant's language — and this component stays
+ * free of a localization dependency it has no way to serve correctly for every locale.
+ */
+export interface BatchProgressLabels {
+  /** The accessible name of the progressbar. */
+  readonly progress: string;
+  /** The position readout, e.g. "Sentence 3 of 10". */
+  readonly item: string;
+  /** The completion readout, e.g. "2 saved". */
+  readonly saved: string;
+}
+
+/**
+ * The English defaults, kept exactly as they were before `labels` existed.
+ *
+ * A caller that omits `labels` must get byte-identical markup to the version that had no such prop,
+ * so these strings are the previous literals rather than a re-derivation of them.
+ */
+const DEFAULT_LABELS: BatchProgressLabels = {
+  progress: "Batch progress",
+  item: "Item {index} of {total}",
+  saved: "{completed} saved",
+};
+
 export interface BatchProgressProps {
   /** 1-based position of the entry currently being judged. */
   index: number;
   /** Entries in the batch. */
   total: number;
+  /**
+   * How many are complete, when that is NOT derivable from `index`.
+   *
+   * `index - 1` is only the completed count when a validator has worked strictly forwards through the
+   * batch. A session that excludes already-answered entries can present position 3 while five
+   * responses are stored, so the server's own count is passed in rather than recomputed. The
+   * segments still follow `index`, because they describe where the participant IS, not how much
+   * exists.
+   */
+  completed?: number;
+  /** Localized strings. Omitting them preserves the previous English rendering exactly. */
+  labels?: BatchProgressLabels;
   className?: string;
 }
 
-export function BatchProgress({ index, total, className }: BatchProgressProps) {
+export function BatchProgress({ index, total, completed, labels, className }: BatchProgressProps) {
   const safeTotal = Math.max(1, total);
   const safeIndex = Math.min(Math.max(index, 1), safeTotal);
-  const completed = safeIndex - 1;
+  const completedCount = Math.min(Math.max(completed ?? safeIndex - 1, 0), safeTotal);
+
+  const shown = labels ?? DEFAULT_LABELS;
+  const item = shown.item
+    .replace("{index}", String(safeIndex))
+    .replace("{total}", String(safeTotal));
+  const saved = shown.saved.replace("{completed}", String(completedCount));
 
   return (
     <div className={cn("w-full", className)}>
       <div className="flex items-baseline justify-between gap-3">
-        <p className="label-meta text-ink-muted">
-          Item {safeIndex} of {safeTotal}
-        </p>
-        <p className="label-meta text-ink-faint">{completed} saved</p>
+        <p className="label-meta text-ink-muted">{item}</p>
+        <p className="label-meta text-ink-faint">{saved}</p>
       </div>
 
       <div
@@ -69,8 +115,8 @@ export function BatchProgress({ index, total, className }: BatchProgressProps) {
         aria-valuemin={1}
         aria-valuemax={safeTotal}
         aria-valuenow={safeIndex}
-        aria-valuetext={`Item ${safeIndex} of ${safeTotal}, ${completed} saved`}
-        aria-label="Batch progress"
+        aria-valuetext={`${item}, ${saved}`}
+        aria-label={shown.progress}
       >
         {Array.from({ length: safeTotal }, (_, offset) => {
           const segmentIndex = offset + 1;

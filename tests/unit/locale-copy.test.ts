@@ -196,6 +196,35 @@ describe("the two things the type cannot catch", () => {
   });
 });
 
+/**
+ * How short a catalog value may be before "appears inside an instruction" stops being evidence of
+ * a leak.
+ *
+ * MEASURED against the real data rather than chosen. Instructions run 57 to 132 characters
+ * (median 84), so no catalog value can be a whole instruction; the reverse direction is only ever
+ * about a pasted FRAGMENT, and the shortest thing a person would paste from a sentence is a short
+ * phrase. Every value in both catalogs of eight or more characters matches zero instructions as a
+ * whole-word phrase.
+ *
+ * The two halves of that claim — that the floor excludes something real, and that it hides nothing —
+ * are both re-measured by the test named `MEASURED: the whole-word fragment floor is load-bearing
+ * and hides nothing`, so this constant cannot quietly become a loophole.
+ */
+const MIN_FRAGMENT_CHARACTERS = 8;
+
+/**
+ * True when `fragment` occurs in `haystack` bounded by non-letter characters on both sides.
+ *
+ * `\p{L}` rather than `[A-Za-z]` because the haystack is Ilocano, and ASCII-only boundaries would
+ * treat a Unicode letter as a boundary and match inside it. The value is interpolated into the
+ * pattern, so it is escaped first: catalog values contain punctuation — em dashes, ellipses,
+ * parentheses — and an unescaped `.` or `(` would quietly change what is being matched.
+ */
+function matchesWholeWords(fragment: string, haystack: string): boolean {
+  const escaped = fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\p{L}])${escaped}([^\\p{L}]|$)`, "u").test(haystack);
+}
+
 describe("the typing of the research material that must never be localized", () => {
   it("holds no dataset instruction, place name, or identifier, and the check is built from the DATA", async () => {
     // ==============================================================================================
@@ -306,9 +335,33 @@ describe("the typing of the research material that must never be localized", () 
               `${language} key "${key}" contains the whole instruction of ${entry.id}`,
             );
           }
-          if (entry.instruction.includes(value)) {
+          // ----------------------------------------------------------------------------------
+          // THE REVERSE DIRECTION NEEDS BOTH GUARDS BELOW, AND BOTH ARE MEASURED, NOT ASSUMED
+          // ----------------------------------------------------------------------------------
+          // Plain `instruction.includes(value)` is not a usable test in either language, and the
+          // two languages fail for DIFFERENT reasons, which is why neither fix alone was kept:
+          //
+          //   Filipino "ng" is the linker and appears inside 368 of the 600 instructions as a
+          //   fragment of a longer word — zero whole-word matches, 368 substring matches. Whole-word
+          //   matching alone removes every one of those.
+          //
+          //   English "of" matches 60 instructions AS A WHOLE WORD, because the dataset contains
+          //   English institution names — "University of Baguio", "University of the
+          //   Cordilleras" — and "of" is a legitimate English word. No amount of word-boundary
+          //   care fixes a coincidence between two real things.
+          //
+          // So the reverse direction requires a whole-word match AND a length floor. The floor is
+          // not fitted to the offender: across both catalogs and all 600 instructions, exactly one
+          // value collides at whole-word level, it is two characters long, and every value of
+          // eight or more characters collides zero times. The test immediately below re-measures
+          // both halves of that claim, so if a future copy edit creates a collision the floor is
+          // shown to have been hiding it rather than asserted to have been safe.
+          if (
+            value.length >= MIN_FRAGMENT_CHARACTERS &&
+            matchesWholeWords(value, entry.instruction)
+          ) {
             violations.push(
-              `${language} key "${key}" has leaked into the instruction of ${entry.id}`,
+              `${language} key "${key}" appears verbatim inside the instruction of ${entry.id}`,
             );
           }
         }
@@ -328,6 +381,57 @@ describe("the typing of the research material that must never be localized", () 
 
       expect(violations, `${language} catalog holds no research material`).toEqual([]);
     }
+  });
+
+  it("MEASURED: the whole-word fragment floor is load-bearing and hides nothing", async () => {
+    // The floor `MIN_FRAGMENT_CHARACTERS` introduces is only defensible if BOTH of its halves are
+    // true at the same time, and both are re-measured here rather than asserted in a comment:
+    //
+    //   1. IT IS LOAD-BEARING. Without it, at least one catalog value matches an instruction as a
+    //      whole word. If that set were empty, the floor would be excluding nothing and the rule
+    //      would be an unexplained special case.
+    //   2. IT HIDES NOTHING. No catalog value at or above the floor matches any instruction as a
+    //      whole word. If that is ever false, a real leak is being suppressed by the floor, and the
+    //      failure belongs HERE, naming the offending key — not in a guard that silently skips it.
+    //
+    // Between them these two make the floor self-validating on every run of the suite. A copy edit
+    // that starts colliding is reported by this test, whatever its length.
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
+
+    const { entries } = parseSyntheticDataset(
+      JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+    );
+    expect(entries.length, "this measurement read a real dataset").toBe(600);
+
+    const belowFloor: string[] = [];
+    const atOrAboveFloor: string[] = [];
+
+    for (const [language, catalog] of [
+      ["English", ENGLISH_COPY],
+      ["Filipino", FILIPINO_COPY],
+    ] as const) {
+      for (const [key, value] of Object.entries(catalog)) {
+        if (!entries.some((entry) => matchesWholeWords(value, entry.instruction))) continue;
+        const label = `${language} "${key}" = ${JSON.stringify(value)} (${value.length} chars)`;
+        if (value.length < MIN_FRAGMENT_CHARACTERS) belowFloor.push(label);
+        else atOrAboveFloor.push(label);
+      }
+    }
+
+    // (1) The floor excludes something real. The offender is named so a reader is not left to
+    // rediscover it: an English "of" against "University of Baguio".
+    expect(
+      belowFloor.length,
+      `the fragment floor must be excluding at least one real whole-word collision; found none, so MIN_FRAGMENT_CHARACTERS = ${MIN_FRAGMENT_CHARACTERS} is an unexplained special case and should be reconsidered`,
+    ).toBeGreaterThan(0);
+
+    // (2) And nothing it excludes was hiding a leak.
+    expect(
+      atOrAboveFloor,
+      `a catalog value of ${MIN_FRAGMENT_CHARACTERS} or more characters appears verbatim in an instruction`,
+    ).toEqual([]);
   });
 
   it("CAN fail: the guard above would catch a real instruction pasted into either catalog", async () => {
@@ -360,6 +464,48 @@ describe("the typing of the research material that must never be localized", () 
     const firstValue = ENGLISH_COPY[firstKey as CopyKey];
     expect(firstValue.length).toBeGreaterThan(0);
     expect(entries[0].instruction.includes(firstValue)).toBe(false);
+
+    // THE REVERSE DIRECTION'S CAN-FIRE CONTROL, ADDED WITH THE FRAGMENT FLOOR.
+    //
+    // The floor and the whole-word rule both restrict when the reverse direction reports, so the
+    // plain `instruction.includes(firstValue)` check above no longer demonstrates anything about the
+    // rule that is actually in force: it exercises `String.includes`, not `matchesWholeWords`, and it
+    // ignores the floor entirely. A guard whose control tests a different comparison than the guard
+    // uses is the "test that APPEARS to be a guard while not being one" defect.
+    //
+    // So the control pastes a REAL FRAGMENT of a real instruction — its first three words, taken
+    // from the record rather than hand-written — and asserts that the rule as written would flag it.
+    // The fragment is taken from the record because a hand-written sample would have reproduced the
+    // original defect in a smaller size: a marker that matches neither the sample nor the data.
+    const fragment = instruction.split(/\s+/u).slice(0, 3).join(" ");
+    expect(
+      fragment.length,
+      "the control fragment clears MIN_FRAGMENT_CHARACTERS, so it exercises the rule in force",
+    ).toBeGreaterThanOrEqual(MIN_FRAGMENT_CHARACTERS);
+    expect(matchesWholeWords(fragment, instruction), "the control fragment is a real one").toBe(
+      true,
+    );
+
+    // And the coincidence the floor exists for is demonstrated on REAL data, with the offending
+    // instruction FOUND rather than written out. The first draft of this control hardcoded `entries[0]`
+    // and the word "of", and it failed: that record does not mention a university, so the anchor was a
+    // guess about the data and the assertion was false for a reason that had nothing to do with the
+    // rule. This is the same lesson as every other hand-typed anchor in this repository - it is also
+    // why the search below asserts that it found something, so a dataset revision that removes the
+    // collision reports INCONCLUSIVE rather than passing quietly.
+    const shortValue = "of";
+    expect(shortValue.length).toBeLessThan(MIN_FRAGMENT_CHARACTERS);
+    const coincidence = entries.find((entry) => matchesWholeWords(shortValue, entry.instruction));
+    expect(
+      coincidence,
+      `no instruction contains ${JSON.stringify(shortValue)} as a whole word, so the fragment floor is no longer excluding anything and MIN_FRAGMENT_CHARACTERS should be reconsidered`,
+    ).toBeDefined();
+    // Named in the message because it is the evidence for the floor being load-bearing: an English
+    // function word colliding with an English institution name inside an Ilocano sentence.
+    expect(
+      matchesWholeWords(shortValue, coincidence?.instruction ?? ""),
+      `expected ${coincidence?.id} to contain "of" as a whole word`,
+    ).toBe(true);
   });
 
   it("localizes only the proficiency LABEL, never the proficiency VALUE", () => {
