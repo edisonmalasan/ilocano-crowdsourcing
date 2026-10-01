@@ -841,7 +841,7 @@ is RED, and one variable changes between them.
 and leaving the repair's second assertion in place turned a probe RED for the wrong reason. Both files
 are restored byte-identical after every probe.
 
-**Two harness defects were mine, in the same probe file, and both produced plausible wrong verdicts.**
+**Three harness defects were mine, in the same probe file, and each produced a plausible wrong verdict.** The count was written as "two" while three bullets sat under it, which is the same defect this repository has now found twice in an enumeration whose labels no longer match its own text — and this time it was in the sentence *describing* enumerations. The honest number is three and all three are real.
 
 - A probe mutated the guard by calling a **one-argument callback as if it took two**, so the "injected"
   href was the literal string `undefined`. It then reported GREEN — reading exactly like the finding
@@ -866,6 +866,37 @@ occurrence of that refusal in this repository was in my own probe.
 **A guard kept for legibility that is measured redundant.** The `entryIds.length === 0` early return in
 the repository seam is retained for readability, and it was measured rather than assumed: deleting it
 leaves 14/14 green. It is documented as redundant instead of being quietly relied upon.
+
+**A measured figure inside prose is exactly where a table delimiter goes to hide.** Refreshing the three
+`test:*` rows in `AGENTS.md` put vitest's own `4 failed | 11 passed (15)` into two table cells, and
+`AGENTS.md` records that a literal `|` inside a cell splits the row — while those two rows were carrying
+the very figures that distinguish a control from a probe, which is where a reader's attention goes. A
+column count caught it: `test:dom` declared **6** columns against a 4-column header and
+`test:integration` **5**. **Reading the diff would not have**, because the pipes sit mid-line in a 5 KB
+row. The fix is `/` rather than `\|`: it reads the same and keeps the precision, whereas an escape
+introduced in two cells would leave a reader wondering whether the unescaped ones are special too. All
+four tables in the file now measure 4/4/4/4 against `main`'s 4/4/4/4, compared from the blob with
+`git cat-file` rather than through a PowerShell pipe — a pipeline that re-encodes the bytes produces
+*zero* tables, which is a checker that measured nothing and would have reported a pass.
+
+**The encoding paragraph was itself carrying the corruption it warns about, and a false count sat under
+three bullets.** `AGENTS.md` holds a lesson about judging a file by its bytes, and it held **three
+`U+FFFD`** in its own committed bytes at exactly the character under discussion — hex-dumped as `ef bf bd`
+three times, one per byte of a three-byte `U+2026`. `git show` piped through PowerShell reports **744** on
+the same file; `git cat-file` reports **3**. Nothing would ever have repaired it, since `AGENTS.md` is
+`.prettierignore`d and never formatter-owned. Repaired, with the measurement recorded beside the
+paragraph. Separately, this ledger's own entry said "**Two** harness defects" above **three** bullets —
+the same shape `AGENTS.md` records twice for an enumeration whose labels no longer match its text, and
+here it was in the sentence *describing* enumerations. Corrected to three rather than dropping the third,
+which is real.
+
+**A pattern you have not read out of the file is a guess, and a guess that misses is indistinguishable
+from an absent defect.** Two repair patterns were typed from memory of the diff and matched **zero**
+times, reporting "pattern occurs 0 times" — the same empty-match shape this file records four times,
+arrived at from a new direction. Both were located instead by printing the file's own bytes, which showed
+the cells end on different sentences than the ones typed. The diagnostic that catches this now prints
+the file's text when a pattern misses, distinguishes *already applied* from *not found*, and reports which
+pattern of which file — because "pattern occurs 0 times" with no index is undiagnosable.
 
 **What remains unwitnessed, and says so.** `created_at` is server-written and never client-supplied, but
 no Supabase client has ever been constructed here, so PostgREST behaviour, `error.cause.code ===
