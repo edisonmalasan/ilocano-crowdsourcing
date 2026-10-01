@@ -795,6 +795,35 @@ before assuming the code is at fault.**
   "Filipino" edited the English catalog — and the guard, firing correctly, named the wrong language.
   **Anchor on the declaration (`^export const NAME`) and assert the declaration offsets are in the
   expected order**, or the probe will be honest about the wrong file.
+- **A guard that decides what COUNTS as an instance of the thing it guards will usually decide it
+  wrongly, and the error is invisible in the guard's own output.** The table-shape check over
+  `AGENTS.md` and `docs/ROADMAP.md` reported *"no row has a different cell count from its header"*
+  — exit 0, confident, and run minutes before the finding — over a table containing a row that had
+  **lost its closing `|`**. One line caused it:
+  `const looksLikeRow = line.trim().startsWith("|") && line.trim().endsWith("|");`
+  A row missing its closing delimiter fails `endsWith("|")`, so it **was not counted as a row**; the
+  next branch then ran `if (!looksLikeRow) { header = null; }`, which ended the table. The malformed
+  row therefore escaped **and** every row beneath it stopped being checked — eight rows of
+  `Project Status` were unverified for the same reason one was. The general form: **a detector whose
+  first step is "is this a thing I check?" will silently discard malformed instances of that thing,
+  because malformedness usually means failing exactly that test.** The repair recognises a partial
+  instance — inside a known table, a line that *opens* a row is a row whether or not it is closed —
+  reports it as malformed, and **keeps the table open**, because resetting there is what turned one
+  broken row into blind spots. Measured: repaired checker RED on the real defect, naming one malformed
+  row and one 3-cell row against a 2-cell header; GREEN after the repair; and the run asserts it found
+  a non-zero number of tables, because a checker that matched nothing would otherwise report success.
+  **Note what the defect was made of: a pipe inside a cell.** The fix was reworded rather than
+  escaped, because the cell explaining the fix had itself acquired a literal `|` in a code span — the
+  paragraph would have been a lie about itself. **A defect report that reproduces its own defect is
+  worse than no report.**
+- **Editing a markdown table cell by PREFIX is what creates a three-cell row, and the diff shows
+  nothing wrong.** A row replaced as `| Label | NEW |` while the previous body still follows becomes
+  `| Label | NEW | OLD |` — three cells against a two-cell header. It survived here because the
+  replacement was one edit and the leftover was an earlier row's sentence, so no line looked
+  anomalous. **Rebuild the whole cell from its label plus a fresh value; never append to or prepend
+  within one.** Note also that a table row **must be a single line** — a newline ends the row — so a
+  readable multi-paragraph draft must be collapsed to one line before it can be a cell, and that
+  collapse is a normalisation worth stating rather than a silent trim.
 
 - **A classifier whose expected argument shape differs from what its caller passes reports an EMPTY
   CAPTURE, and an empty capture is the one result indistinguishable from a clean run.** A probe written to
