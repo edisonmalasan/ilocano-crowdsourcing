@@ -310,14 +310,59 @@ describe("CB-4/CB-5 — the pending state, and the single-flight latch", () => {
   it("makes exactly ONE request for two presses dispatched in the same task", async () => {
     holdRequest();
 
-    // Two SYNCHRONOUS presses, before React re-renders — which is the only arrangement that can
-    // expose the difference between a latch and `isPending`. `press` runs inside a synchronous `act`,
-    // and two of them in a row with nothing awaited between are the same-task case the latch exists
-    // for: `isPending` is still `false` on the second read.
-    view.press(continueControl());
-    view.press(continueControl());
+    // Two clicks inside ONE `act`, so React commits NOTHING between them. This is the only arrangement
+    // that can tell the latch from `disabled`, and the distinction is the whole content of this test.
+    //
+    // ── WHY THE PREVIOUS VERSION OF THIS TEST PROVED NOTHING ───────────────────────────────────────────
+    // It called `view.press()` twice. Each `press` opens and closes its own `act`, and React commits
+    // at the close — so the two presses were two TASKS, the first had already committed `disabled`,
+    // and the second press was stopped by `disabled`. The test passed, but it was measuring
+    // `disabled`, not the latch, and **deleting `inFlight` outright left it green.** It also said
+    // "the only arrangement that can expose the difference" while being the arrangement that cannot.
+    //
+    // Measured, not argued: `finished-batch.tsx` documents that "a double press HERE would create TWO
+    // batches", and `design.md` records an orphaned batch as this change's accepted ordering risk. So
+    // the latch is the only thing standing between a fast double press and an orphan, and a guard that
+    // cannot see it removed is not a guard.
+    view.pressMany(continueControl(), 2);
 
     expect(h.requests).toHaveLength(1);
+  });
+
+  it("CAN FIRE: pressMany observes a handler with NO latch issuing TWO requests", () => {
+    // The control for the test above, and it is the half that makes that test a guard. `pressMany`
+    // claims it can see the difference between a latched and an unlatched handler; this proves it, in
+    // the same file, with the same harness, in the same task shape — so "the count was 1" cannot be
+    // an artefact of `pressMany` refusing to deliver the second click at all.
+    //
+    // This is deliberately NOT a second copy of `FinishedBatch`. A control that renders the real
+    // component with the latch edited out would be testing a hypothetical component; what matters is
+    // that the harness can count 2 here, because then a count of 1 over the real component is a
+    // measurement rather than a limitation of the instrument.
+    holdRequest();
+    let proceeds = 0;
+
+    const unlatched = mount(
+      <button
+        type="button"
+        onClick={() => {
+          // No `inFlight` ref consulted at all: the shape the finished screen would have if its
+          // latch were deleted. `isPending` is never consulted either, because inside one `act` the
+          // re-render that would set it has not happened yet.
+          proceeds += 1;
+          h.hold?.resolve?.();
+        }}
+      >
+        no latch
+      </button>,
+    );
+
+    unlatched.pressMany(unlatched.one("button"), 2);
+
+    // Both clicks landed and both proceeded. So `pressMany` delivers every click in the same task,
+    // and the real component's count of 1 is attributable to the latch.
+    expect(proceeds).toBe(2);
+    unlatched.unmount();
   });
 });
 
