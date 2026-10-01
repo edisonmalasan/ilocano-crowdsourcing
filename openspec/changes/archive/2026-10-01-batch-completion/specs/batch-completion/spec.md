@@ -1,3 +1,13 @@
+# Spec Delta
+
+## Purpose
+
+Defines what a validator sees and may do once every entry in their batch has been answered. Covers how
+a finished batch is recognised from the absence of unanswered entries rather than from a stored status,
+how the finished screen reports its two server-derived figures, how a validator may request one further
+coverage-aware batch or stop without discarding anything, and what the finished presentation
+deliberately does not reveal.
+
 ## ADDED Requirements
 
 ### Requirement: A finished batch is recognised from the absence of work, never from an assertion
