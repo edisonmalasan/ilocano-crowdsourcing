@@ -1546,15 +1546,41 @@ describe("the finished screen's two controls", () => {
 describe("the start route", () => {
   it("renders one h1 and offers a way to begin, with no batch id invented", async () => {
     // There is nothing to link TO until the server allocates, so the start is a press rather than a
-    // link. Asserted as the ABSENCE of a batch href: a `href="/validate/batch-1"` here would be a
-    // batch that does not exist.
+    // link. Asserted as the ABSENCE of any href under `/validate/`.
+    //
+    // ============================================================================================
+    // THIS ASSERTION WAS VACUOUS, AND IT WAS VACUOUS BEFORE THE RECOVERY FEATURE EXISTED
+    // ============================================================================================
+    // It read `expect(html).not.toMatch(/href="\/validate\/batch/)`, on the reasoning that a batch id
+    // begins `batch`. It does not. `defaultBatchId` mints
+    // `VAL_a81d92c1-2026-09-30T20:14:03.117Z` — the validator's identifier first — so a real batch href
+    // is `href="/validate/VAL_…"`, and the pattern could not match one in a thousand years of minting.
+    //
+    // The regex is now `href="\/validate\/`, which is the property the test was always about, and it
+    // can fire. `tasks.md` 6.4 asked for exactly this check, and it is worth being precise about why it
+    // mattered: the resume affordance this change adds is a `next/link` to `/validate/<batchId>`, so
+    // for the first time in this repository a batch href on the start screen would have been LEGIMATE.
+    // The old assertion would have passed unchanged, and it would have been saying nothing about the
+    // thing it named.
+    //
+    // What the new assertion does NOT claim: that the client-rendered screen has no batch href. It
+    // does, legitimately, once the lookup answers — `tests/dom/start-batch.test.tsx` covers that, and
+    // this is the SERVER-rendered markup, where the offer cannot yet exist because the lookup is an
+    // effect. That split is the reason a server-rendered guard stays meaningful after this change
+    // rather than having to be weakened to accommodate it.
     const { default: Page } = await loadStartPage();
 
     const html = renderToStaticMarkup(await Page());
 
     expect(countOccurrences(html, "<h1")).toBe(1);
     expect(html).toContain("<main");
-    expect(html).not.toMatch(/href="\/validate\/batch/);
+    expect(html).not.toMatch(/href="\/validate\//);
+    // Named explicitly, so a reader can see WHICH prefix was assumed and check it against the minting
+    // code rather than having to trust the regex. Derived from the source, not hardcoded, so a change
+    // to the id scheme cannot leave this comment quietly false.
+    expect(html).not.toContain(
+      `/validate/${encodeURIComponent("VAL_a81d92c1-2026-09-30T20:14:03.117Z")}`,
+    );
   });
 
   it("resolves its document title from the interface locale", async () => {
@@ -1579,9 +1605,35 @@ describe("the start route", () => {
     const startButtons = countOccurrences(html, EN("validateStart.begin"));
 
     expect(startButtons).toBe(1);
-    // And the control is a button rather than a link, because a batch does not exist to link to yet.
-    expect(html).toContain("<button");
-    expect(html).not.toMatch(/href="\/validate\/batch/);
+
+    // And the control is a BUTTON rather than a link, because a batch does not exist to link to yet.
+    //
+    // SCOPED TO THE CONTROL, and the scoping is the whole repair. This used to read
+    // `expect(html).not.toMatch(/href="\/validate\/batch/)` over the whole document, on the reasoning
+    // that a batch id begins `batch`. It does not — `defaultBatchId` mints `VAL_…` — so the pattern
+    // could never match a real href, in a thousand years of minting. It is the *same* defect as the
+    // assertion repaired in the test above, and it survived here because the two were written by
+    // different changes and neither author read the other.
+    //
+    // The document-wide form is ALSO now wrong on its own terms, and THIS feature is why: a start
+    // screen showing a resume offer legitimately carries a batch href. So a page-wide "no batch href"
+    // assertion is no longer merely vacuous, it is a statement the product contradicts — while being
+    // too weak to notice that it does. A guard in that position is worse than no guard, because the
+    // next author reads it as protection.
+    //
+    // What is asserted instead is a property OF THE CONTROL: every `<button>` opening tag on the page
+    // carries no `href`. The resume offer above it renders a `<Link>`, not a `<button>`, so it cannot
+    // affect the result — which is the point. The earlier form would have started failing the day this
+    // feature shipped, if it had ever been able to fire at all.
+    const buttonTags = html.match(/<button[^>]*>/g) ?? [];
+
+    // Assert the search found something. A guard that silently read nothing passes all of its own
+    // checks, and `?? []` above makes exactly that mistake available.
+    expect(buttonTags.length, "no <button> tag was found to inspect").toBeGreaterThan(0);
+    expect(
+      buttonTags.filter((tag) => tag.includes("href")),
+      "a button carries an href",
+    ).toEqual([]);
   });
 });
 
