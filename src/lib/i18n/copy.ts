@@ -384,13 +384,18 @@ export const ENGLISH_COPY = {
   // The stale sentence that used to close this paragraph — "Asking for another batch is not part of
   // this part of the study yet" — is GONE, in both catalogs, and its removal is the requirement.
   //
-  // What replaces it is deliberately NOTHING that promises a further batch either. A screen that said
-  // "you can ask for another batch" before the continue control exists would be a promise the product
-  // cannot keep, which is the same class of defect as the sentence it replaced; the control's own
-  // label is the honest place for that promise, and the control is a separate concern from this copy.
+  // What replaces it is deliberately NOTHING that promises a further batch either, and that is STILL
+  // the right call now that the continue control exists. It was right for two reasons when the control
+  // did not exist — a promise the product could not keep, and the label being the honest place for
+  // one — and it remains right for the second of them, which is the durable one. A paragraph that
+  // said "ask for another batch whenever you like" would be an OPEN-ENDED offer, and the pool is not
+  // unlimited: it runs out, and promising otherwise in prose is a claim the server cannot keep.
   //
-  // So the paragraph says only what is true: every sentence in this batch has an answer, and each one
-  // was saved as it was given.
+  // So the paragraph still says only what is true — every sentence in this batch has an answer, and
+  // each one was saved as it was given — and the offer lives on the control's own label, where a
+  // participant presses it rather than reading about it. The guards that once forbade promising a
+  // further batch were re-aimed when the control landed; see `ENCOURAGEMENT_EN` in
+  // `tests/unit/locale-copy.test.ts` for what replaced them and why.
   "validate.finished.body":
     "You have answered every sentence in this batch. Each one was saved as you went.",
   // The two figures, and WHY they are labelled rather than presented as bare numbers (`design.md` D5).
@@ -404,6 +409,49 @@ export const ENGLISH_COPY = {
   // their scope, because that is the only difference there is.
   "validate.finished.batchFigureLabel": "Entries answered in this batch",
   "validate.finished.lifetimeFigureLabel": "Entries answered in total",
+
+  // -- The finished screen's two controls --------------------------------------
+  // The paragraph above promises nothing, and that is still right: a promise belongs on the control
+  // that keeps it, and the control now EXISTS. So the offer lives here and nowhere else — one label
+  // that asks for another batch, one label that stops, and one sentence saying what stopping means.
+  //
+  // "Answer another batch" rather than "You can answer another batch", deliberately. The subject is
+  // the participant and the verb is an action they can take; the second wording would be an offer
+  // ABOUT them, which is the register a volume mechanic speaks in, and this figure is a record
+  // rather than a running total for exactly that reason (`design.md` D7).
+  "validate.finished.continue": "Answer another batch",
+  // The in-button progress label, so the pending state is available as TEXT and not only as styling.
+  // It says what is happening rather than how long it is taking: no countdown, no "almost there".
+  "validate.finished.continue.working": "Preparing your sentences…",
+  // The stop control, and the sentence that says what it does. A label like "Finish" alone invites
+  // the reading that something was closed, and the sentence rules that out — nothing is written,
+  // nothing is reverted, and coming back is still possible. It says NOTHING about how many batches a
+  // participant ought to do, which the localization requirement forbids implying.
+  "validate.finished.finish": "Finish for now",
+  "validate.finished.finishNote":
+    "Stopping here changes nothing you have already submitted, and you can still come back another " +
+    "time.",
+  // The exhausted pool, in this screen's own words. `validateStart.exhausted` cannot be reused here:
+  // it says every available sentence "has already been answered by the required number of people",
+  // which is COVERAGE vocabulary, and this screen also shows a lifetime figure that is deliberately
+  // not a coverage figure (`design.md` D2). Reusing the key would also have hidden the string from
+  // the `validate.finished.*` copy guard, which is scoped by namespace. The reassurance is kept
+  // because it is true and because it is the thing a participant who pressed the button needs to hear.
+  "validate.finished.exhausted":
+    "There are no more sentences for you to answer right now. Everything you have already submitted " +
+    "is unchanged. Thank you.",
+  // Three failure sentences, and `not_configured` is distinct because "come back later" is true
+  // there while "try again" would be a lie — retrying cannot succeed until somebody deploys. Each
+  // says no batch was created, so a participant who pressed the button knows what did and did not
+  // happen.
+  "validate.finished.failure.notConfigured":
+    "The study is not open right now, and no new batch was created.",
+  "validate.finished.failure.invalid":
+    "This browser could not be recognised as a validator, so no new batch was created. Answer the " +
+    "Ilocano question first.",
+  "validate.finished.failure.persistence":
+    "Your next batch could not be prepared just now, and none was created. Everything you have " +
+    "already submitted is unchanged.",
   "validate.absent.label": "We could not find that batch",
   "validate.absent.body":
     "The address may be incomplete, or the batch may belong to a different browser. Nothing you " +
@@ -748,8 +796,9 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.finished.label": "Tapos na ang batch na ito",
   // The retired sentence, gone here for the same reason and with the same constraint as in the
   // English catalog: it told the validator that asking for another batch was unavailable, which the
-  // change removes. Nothing replaces it that promises a further batch either, because the control
-  // that would make that true is a separate concern from this paragraph.
+  // change removes. Nothing replaces it that promises a further batch either, and that is still the
+  // right call now that the continue control EXISTS — the pool is not unlimited, so an open-ended
+  // offer in prose is a claim the server cannot keep. The offer lives on the control's own label.
   "validate.finished.body":
     "Sinagot mo na ang bawat pangungusap sa batch na ito. Nase-save ang bawat isa habang ginagawa mo.",
   // The two figure labels, carrying the SAME meaning as the English pair rather than being a shorter
@@ -757,6 +806,51 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   // total. "Mga ambag" is deliberately absent — see `design.md` D2 and the English label's comment.
   "validate.finished.batchFigureLabel": "Mga entry na sinagot sa batch na ito",
   "validate.finished.lifetimeFigureLabel": "Mga entry na sinagot sa kabuuan",
+
+  // -- Dalawang control ng tapos na ang screen ---------------------------------
+  // Ang pangungusap sa itaas ay walang pangangako, at tama iyon: ang pangangako ay nasa control
+  // na nagta-tago nito, at doon na umiiral ang control. Kaya dito lamang ang alok — isang label na
+  // humihiling ng isa pang batch, isang label na tumitigil, at isang pangungusap na sinasabi kung
+  // ano ang ibig sabihin ng pagtigil.
+  //
+  // "Sagutin ang isa pang batch" at hindi "Maaari kang sagutin ang isa pang batch", nang kamalayan.
+  // Ang panauhan ay ang kalahok at ang pang verb ay isang aksyong magagawa niya; ang pangalawang
+  // boses ay isang alok na TUNGOL sa kanya, at iyon ang boses ng isang volume mechanic — kaya ang
+  // talaan ng natapos na trabaho ay tala lamang, hindi tumatagos habang nagtatrabaho (`design.md` D7).
+  "validate.finished.continue": "Sagutin ang isa pang batch",
+  // Ang label habang hinihingi, kaya ang estado ng paghihintay ay makikita bilang TEKSTO at hindi lamang
+  // bilang anyo. Sinasabi nito kung ano ang nangyayari, hindi kung gaano katagal: walang countdown,
+  // walang "halos na".
+  "validate.finished.continue.working": "Inihahanda ang mga pangungusap…",
+  // Ang control na tumitigil, at ang pangungusap na sinasabi kung ano ang ginagawa nito. Ang label
+  // na "Tapusin" lamang ay nag-aanyaya ng pagbasa na may sarado na, at inaalis ng pangungusap na iyon
+  // ang tanawin — walang isinusulat, walang ibinabalik, at puwede pa ring bumalik. Walang sinasabi
+  // tungkol sa ilang batch ang dapat ang kalahok, at iyon ang ipinagbabawal ng kinakailangan sa
+  // lokalisasyon.
+  "validate.finished.finish": "Tapusin na muna",
+  "validate.finished.finishNote":
+    "Walang binabago sa ipinasa mo kung tatapusin mo na dito, at puwede ka pa ring bumalik sa ibang " +
+    "pagkakataon.",
+  // Ang naubos na pool, sa sariling salita ng screen na ito. Hindi maaaring gamitin ang
+  // `validateStart.exhausted`: sinasabi nito na "sagot na ng kinakailangang bilang ng tao" ang bawat
+  // pangungusap, at iyon ay salitang COVERAGE — samantalang ang lifetime figure sa screen na ito ay
+  // sinadayang HINDI coverage figure (`design.md` D2). Kung muling gamitin ang key, nasa ilalim
+  // ng `validate.finished.*` copy guard ang string, at hindi nito kailanman makikita iyon.
+  "validate.finished.exhausted":
+    "Wala nang pangungusap na maaari mong sagutin sa ngayon. Walang binabago sa lahat ng ipinasa mo. " +
+    "Salamat.",
+  // Tatlong pangungusap ng pagkabigo, at `not_configured` ay hiwalay dahil doon totoo ang
+  // "balikan later" samantalang ang "subukan muli" ay pagkakaisa — hindi maaaring magtagumpay ang
+  // pagsubok hanggang may mag-deploy. Sasabihin ng bawat isa na walang batch na nalikha, para alam
+  // ng kalahok kung ano at hindi nangyari.
+  "validate.finished.failure.notConfigured":
+    "Bukas pa ang pag-aaral, at walang bagong batch na nalikha.",
+  "validate.finished.failure.invalid":
+    "Hindi makilala ang browser na ito bilang validator, kaya walang bagong batch na nalikha. " +
+    "Sagutin muna ang tanong tungkol sa Ilocano.",
+  "validate.finished.failure.persistence":
+    "Hindi maipaghanda ang iyong susunod na batch ngayon, at wala ring nalikha. Walang binabago sa " +
+    "lahat ng ipinasa mo.",
   "validate.absent.label": "Hindi namin mahanap ang batch na iyon",
   "validate.absent.body":
     "Maaaring hindi kumpleto ang address, o ibang browser ang may hawak ng batch. Walang " +

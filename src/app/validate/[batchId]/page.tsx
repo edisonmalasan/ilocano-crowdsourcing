@@ -11,6 +11,7 @@ import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
 import type { ValidationSessionOutcome } from "@/lib/validation/session";
 import { openValidationSession, sessionDependencies } from "@/lib/validation/session-service";
 
+import { FinishedBatch } from "./finished-batch";
 import { ValidationForm } from "./validation-form";
 
 /**
@@ -207,6 +208,24 @@ function SessionBody({ outcome, locale }: SessionBodyProps) {
               value={outcome.lifetimeAnsweredCount}
             />
           </dl>
+
+          {/*
+            THE TWO CONTROLS, and the reason they live in their own client island rather than here.
+
+            A Server Component cannot ask the server for a batch on a participant's behalf, so the
+            continue control has to be an island — and once one of them is, putting the other beside it
+            costs nothing and buys two things worth having. The requirement is that continuing and
+            finishing are DISTINCT controls and that choosing one does not trigger the other, and that
+            is a claim about two controls answering to the same component, which is only observable
+            if they are in one place: a handler-level test can drive either one from a single mount.
+            A finish control in a Server Component would be inertly correct and untestable, and
+            "untestable" is how the two would have quietly grown the same handler.
+
+            `FINISH_HREF` is `"/"`, the only route that is not part of the validation sequence, and
+            neither the two figures above nor anything else on this card is derived from the
+            destination. See the component's header for both decisions in full.
+          */}
+          <FinishedBatch locale={locale} />
         </Card>
       </>
     );
