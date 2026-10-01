@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { allocateBatch, defaultBatchId } from "@/lib/allocation/allocate-batch";
+import {
+  allocateBatch,
+  defaultBatch,
+  type MintedBatchIdentity,
+} from "@/lib/allocation/allocate-batch";
 import {
   RepositoryError,
   type BatchesRepository,
@@ -221,14 +225,25 @@ function createFakes(
 
   // Declared as the interface rather than built up from a partial, so the fake is checkable as one.
   const batches: BatchesRepository = {
-    async create(batch) {
+    async create(batch, createdAt) {
       record("batches.create", batch);
+      // The instant the repository was told to write is recorded, because a later change that stopped
+      // passing it would be invisible here otherwise: `create` would still "succeed" against this fake
+      // and the migration's `not null` would only object against a real database.
+      record("batches.create.createdAt", createdAt);
       stored.set(batch.id, batch);
       return batch;
     },
     async findById(id) {
       record("batches.findById", id);
       return stored.get(id) ?? null;
+    },
+    // Not exercised by the allocation service, which never looks for an interrupted batch. Declared
+    // because the interface requires it and this fake is typed as the interface on purpose — a
+    // partial here would stop being a check on the interface's shape.
+    async listForRecovery(validatorId) {
+      record("batches.listForRecovery", validatorId);
+      return [];
     },
   };
 
@@ -260,16 +275,16 @@ function dependenciesFor(
   over: {
     readonly config?: AllocationConfig;
     readonly random?: () => number;
-    readonly newBatchId?: (validatorId: AnonymousValidatorId) => string;
+    readonly newBatch?: (validatorId: AnonymousValidatorId) => MintedBatchIdentity;
   } = {},
 ) {
   return {
     ...fakes.dependencies,
     config: over.config ?? config(),
     random: over.random ?? constantZero,
-    newBatchId:
-      over.newBatchId ??
-      ((validatorId: AnonymousValidatorId) => defaultBatchId(validatorId, FIXED_NOW)),
+    newBatch:
+      over.newBatch ??
+      ((validatorId: AnonymousValidatorId) => defaultBatch(validatorId, FIXED_NOW)),
   };
 }
 
@@ -689,8 +704,8 @@ describe("a successful allocation", () => {
     const original = fakes.dependencies.batches.create;
     fakes.dependencies.batches = {
       ...fakes.dependencies.batches,
-      create: async (batch) => {
-        const stored = await original(batch);
+      create: async (batch, createdAt) => {
+        const stored = await original(batch, createdAt);
         return { ...stored, entries: [...stored.entries].reverse() };
       },
     };

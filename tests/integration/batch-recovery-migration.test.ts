@@ -24,6 +24,11 @@
  * used a single equivalence constraint and the test for "an evaluable row with no translations"
  * passed because the wrong constraint fired.
  *
+ * ONE SECTION IS ABOUT SOMETHING ELSE, and says so where it is: "a batch row with no entries" proves
+ * what the DATA and the SQL SHAPE do, because the application's `listForRecovery` cannot be built
+ * here at all — it is behind `import "server-only"`. The half of that claim which is about the
+ * application's own translation is in the unit suite, and the section names where.
+ *
  * WHAT THE ORDERING TESTS DO NOT PROVE, stated here because it is the weakest claim in the file:
  * that `order by created_at desc, id desc` is TOTAL cannot be shown by observing a result set. If
  * the `id` key were dropped from the query, PostgreSQL would still return *some* permutation, and on
@@ -430,6 +435,182 @@ describe("the interrupted-batch-recovery migration", () => {
       } finally {
         await closeTestDatabase(once);
       }
+    });
+  });
+
+  /**
+   * The residue row — task 3.5's evidence.
+   *
+   * ================================================================================================
+   * WHY THIS SECTION IS ABOUT SQL RATHER THAN ABOUT THE LOOKUP
+   * ================================================================================================
+   * `SupabaseBatchesRepository.listForRecovery` cannot be exercised here. It lives behind
+   * `import "server-only"`, which cannot be imported under Vitest, so the application cannot build a
+   * repository against this database and observe what it returns.
+   *
+   * That constraint tempts a test into writing its OWN SQL and calling the result "the lookup" — and
+   * `tests/integration/lifetime-figure.test.ts` is the cautionary example already recorded in
+   * `docs/ROADMAP.md` for exactly that: it writes its own `count(*)`, so it cannot catch a
+   * coverage-filtered count in the application's own query builder. The honest split is:
+   *
+   *   HERE  — that a batch with no entries is a legal, reachable row, and that the SHAPE of the two
+   *           reads returns it. This is a fact about the data and the SQL, and it is testable here.
+   *   UNIT  — that `listForRecovery` maps such a row to an empty `entryIds` without raising
+   *           (`repositories-supabase.test.ts`), and that the rule then reports `none`
+   *           (`batch-recovery.test.ts`).
+   *
+   * Neither half is the whole claim, and the header says so rather than letting the section's presence
+   * imply otherwise.
+   */
+  describe("a batch row with no entries, which the recovery read has to be able to SEE", () => {
+    /** Writes the residue: a batch with a `created_at` and deliberately NO `batch_entries` rows. */
+    async function seedResidueBatch(database: TestDatabase, id: string, createdAt: string) {
+      await applySql(
+        database,
+        `insert into public.validation_batches (id, validator_id, created_at)
+       values ('${id}', '${VALIDATOR}', '${createdAt}')`,
+        "residue batch",
+      );
+    }
+
+    /**
+     * A second batch that DOES have one placement, so the residue is a contrast rather than the only case.
+     *
+     * It seeds the dataset entry too, and that is not tidiness: `batch_entries.dataset_entry_id` is a
+     * FOREIGN KEY, and the file's `beforeEach` seeds only validators. The resulting `23503` names the
+     * missing key exactly, which is a better failure than a placement that quietly did not exist — and a
+     * test about grouping rows would have passed anyway against a missing placement, had the foreign key
+     * not caught it first.
+     */
+    async function seedPopulatedBatch(database: TestDatabase, id: string, createdAt: string) {
+      await applySql(
+        database,
+        `insert into public.validation_batches (id, validator_id, created_at)
+       values ('${id}', '${VALIDATOR}', '${createdAt}');
+     insert into public.dataset_entries (id, category, instruction, source_payload)
+       values ('OD_0001', 'origin_destination', 'Iti Baguio Athletic Bowl ti ayanko ita.',
+               '{"id":"OD_0001"}'::jsonb)
+       on conflict (id) do nothing;
+     insert into public.batch_entries (batch_id, dataset_entry_id, position)
+       values ('${id}', 'OD_0001', 1)`,
+        "populated batch",
+      );
+    }
+
+    it("is a LEGAL row: nothing in the production schema refuses a batch that has no entries", async () => {
+      // This is what makes the residue real rather than hypothetical. `create` performs two writes
+      // with no transaction across them, so a failure between them leaves exactly this row — and if
+      // some constraint forbade it, the residue could not exist and this whole section would be
+      // testing a fiction.
+      await expect(seedResidueBatch(db, BATCH, EARLY)).resolves.toBeUndefined();
+
+      const rows = await query<{ id: string }>(db, `select id from public.validation_batches`);
+      expect(rows).toEqual([{ id: BATCH }]);
+    });
+
+    it("is RETURNED by two flat reads, which is why the implementation groups rows in JavaScript", async () => {
+      await seedResidueBatch(db, BATCH, EARLY);
+      await seedPopulatedBatch(db, SECOND_BATCH, LATE);
+
+      // THE FIRST READ, exactly as the repository issues it: no join, no filter beyond ownership.
+      const batches = await query<{ id: string }>(
+        db,
+        `select id from public.validation_batches
+          where validator_id = '${VALIDATOR}'
+          order by created_at desc, id desc`,
+      );
+      expect(batches.map((row) => row.id)).toEqual([SECOND_BATCH, BATCH]);
+
+      // THE SECOND READ, as issued: every row for those batch ids.
+      const entries = await query<{ batch_id: string; dataset_entry_id: string }>(
+        db,
+        `select batch_id, dataset_entry_id from public.batch_entries
+          where batch_id in ('${SECOND_BATCH}', '${BATCH}')
+          order by batch_id, dataset_entry_id`,
+      );
+
+      // Grouped here the way `listForRecovery` groups them — and the residue KEEPS ITS PLACE, with
+      // nothing on the left. This is the whole point: the batch is not absent from the result, it is
+      // present with an empty list, and only the recognition rule — which knows what the validator has
+      // already answered — may conclude there is no work.
+      const grouped = new Map<string, string[]>();
+      for (const row of entries) {
+        const existing = grouped.get(row.batch_id);
+        if (existing === undefined) grouped.set(row.batch_id, [row.dataset_entry_id]);
+        else existing.push(row.dataset_entry_id);
+      }
+      expect(grouped.get(BATCH) ?? []).toEqual([]);
+      expect(grouped.get(SECOND_BATCH)).toEqual(["OD_0001"]);
+      // The residue's id is still in the map as a KEY, having been written only by the first read's
+      // row. If it were missing from `grouped` entirely, the row would have been filtered rather than
+      // reported — the failure mode task 3.5 forbids.
+      expect(batches.map((row) => row.id)).toContain(BATCH);
+    });
+
+    it("would VANISH under a joined select, which is the measured reason this read is not one", async () => {
+      // THE CAN-FIRE CONTROL for the two-read design decision.
+      //
+      // `design.md` rejects PostgREST's embedded-resource select ("no project, so the shape of the
+      // nested rows is an untested assumption") on the grounds of UNVERIFIABILITY. That argument is
+      // about the wire. This test is about something else and it is verifiable right here: an INNER
+      // JOIN does not return a batch with no entries AT ALL, so the single-request shape would have
+      // silently filtered the residue out — the exact outcome task 3.5 says the listing must not have.
+      //
+      // So the decision is now justified by a measurement rather than only by caution, and the reason
+      // is not "two round trips are tidier". It is that the joined shape CANNOT express the case this
+      // method exists to handle.
+      await seedResidueBatch(db, BATCH, EARLY);
+      await seedPopulatedBatch(db, SECOND_BATCH, LATE);
+
+      const joined = await query<{ id: string }>(
+        db,
+        `select b.id from public.validation_batches b
+           join public.batch_entries e on e.batch_id = b.id
+          where b.validator_id = '${VALIDATOR}'`,
+      );
+
+      // The residue is absent. Asserted POSITIVELY, naming the row that is missing, so the failure
+      // says what happened rather than merely that two lists differ.
+      expect(joined.map((row) => row.id)).toEqual([SECOND_BATCH]);
+      expect(joined.map((row) => row.id)).not.toContain(BATCH);
+
+      // And a LEFT JOIN — the shape that WOULD preserve it — returns it with NULLs rather than an
+      // empty list, which is a second thing the translation would have to normalise. Stated because
+      // "we used a left join instead" sounds like a fix and is actually a different translation
+      // burden, not a smaller one.
+      const leftJoined = await query<{ id: string; dataset_entry_id: string | null }>(
+        db,
+        `select b.id, e.dataset_entry_id from public.validation_batches b
+           left join public.batch_entries e on e.batch_id = b.id
+          where b.validator_id = '${VALIDATOR}'
+          order by b.id`,
+      );
+      const residueRows = leftJoined.filter((row) => row.id === BATCH);
+      expect(residueRows).toHaveLength(1);
+      expect(residueRows[0]?.dataset_entry_id).toBeNull();
+    });
+
+    it("is a row `findById` refuses, so the two methods genuinely disagree", async () => {
+      // Establishes that `listForRecovery`'s tolerance is a DELIBERATE divergence rather than an
+      // accident of two methods happening to read different columns. `findById` raises on this row
+      // because `batchRecordSchema` requires at least one entry; the constraint it trips is the
+      // non-empty `batch_entries` requirement, and matching the row's existence here is what makes the
+      // divergence legible.
+      await seedResidueBatch(db, BATCH, EARLY);
+
+      const placements = await query<{ count: number }>(
+        db,
+        `select count(*)::int as count from public.batch_entries where batch_id = '${BATCH}'`,
+      );
+      expect(placements[0]?.count).toBe(0);
+
+      // The batch row nonetheless exists and is owned by this validator, which is exactly the state
+      // `listForRecovery` must surface with an empty list.
+      const owner = await query<{ validator_id: string }>(
+        db,
+        `select validator_id from public.validation_batches where id = '${BATCH}'`,
+      );
+      expect(owner).toEqual([{ validator_id: VALIDATOR }]);
     });
   });
 });

@@ -44,6 +44,11 @@ const EXPECTED_MIGRATIONS = [
   "20260930120000_research_schema.sql",
   "20260930160000_required_bilingual_translations.sql",
   "20260930190000_allocation_batch_positions.sql",
+  // Arrived with interrupted-batch recovery, for one reason: "the most recently created interrupted
+  // batch" needs an age the table did not have. Listed here rather than derived from the directory,
+  // which is the point of this constant — a migration added and not listed here fails rather than
+  // being silently absorbed, which is the only way a CLOSED list stays closed.
+  "20261001120000_validation_batches_created_at.sql",
 ] as const;
 
 /**
@@ -183,22 +188,38 @@ describe("research schema migrations", () => {
       ]);
     });
 
-    it("gives the structural tables only their identity, their foreign keys, and the batch order", async () => {
+    it("gives the structural tables only their identity, their foreign keys, and the two columns behaviour actually reads", async () => {
       // The spec says these three "carry only the columns those foreign keys and their own identity
-      // require" — with ONE named exception, added by the coverage-aware-allocation delta:
-      // `batch_entries` carries `position` recording the server-selected order of its batch. The
-      // test is still a CLOSED set, asserted per table, not a "contains the required columns" check
-      // that a lifecycle column would pass.
+      // require" — with TWO named exceptions, each added by a delta that shipped behaviour with it:
       //
-      // What the exception does NOT admit is the rest of what that delta keeps undefined: batch
-      // status, completion timestamps, and assignment timestamps. `validation_batches` therefore
-      // still carries exactly `id` and `validator_id`, and that is the assertion that would fail if
-      // `status`, `assigned_at`, `completed_at`, or `created_at` were added alongside `position`.
+      //   - `batch_entries.position`, added by the coverage-aware-allocation delta, recording the
+      //     server-selected order of its batch.
+      //   - `validation_batches.created_at`, added by the interrupted-batch-recovery delta, to make
+      //     "the most recently created interrupted batch" a total order rather than a guess.
+      //
+      // The test is still a CLOSED set, asserted per table, not a "contains the required columns"
+      // check that a lifecycle column would pass.
+      //
+      // ============================================================================================
+      // THIS COMMENT PREVIOUSLY NAMED `created_at` AS FORBIDDEN, AND THAT WAS A REAL CLAIM
+      // ============================================================================================
+      // It said: "that is the assertion that would fail if `status`, `assigned_at`, `completed_at`, or
+      // `created_at` were added". Two of those four are still forbidden and still fail this test. The
+      // third — `created_at` — was named on the reasonable expectation that it never would arrive,
+      // and it arrived, with a migration and a reason.
+      //
+      // The honest correction is to narrow the list rather than delete the sentence: the guard's VALUE
+      // was always in the specific names it refuses, and a comment listing four names of which one is
+      // now legitimate would leave a reader trusting the other three and wondering what happened to
+      // the fourth. `status`, `assigned_at`, and `completed_at` remain forbidden. So does a SECOND
+      // timestamp: `updated_at`, `last_active_at`, and `abandoned_at` are refused here too, because
+      // "the column arrived with a reason" must not become "timestamps are welcome" — the reason is
+      // per-column, and the next one has not arrived yet.
       //
       // `batch_entries` legitimately carries no `id`: its primary key IS the pair.
       const expected = new Map<string, string[]>([
         ["validation_sessions", ["id", "validator_id"]],
-        ["validation_batches", ["id", "validator_id"]],
+        ["validation_batches", ["created_at", "id", "validator_id"]],
         ["batch_entries", ["batch_id", "dataset_entry_id", "position"]],
       ]);
 
@@ -214,6 +235,30 @@ describe("research schema migrations", () => {
           `columns of ${table}`,
         ).toEqual(columns);
       }
+
+      // The forbidden set as an ENUMERATION of names, stated rather than left to the closed set above.
+      // What this adds is the REASON a future author should read: these are the names that keep
+      // failing, and one name that used to be on this list is now legitimately expected.
+      const batchColumns = (
+        await query<{ column_name: string }>(
+          db,
+          `select column_name from information_schema.columns
+           where table_schema = 'public' and table_name = 'validation_batches'`,
+          [],
+        )
+      ).map((row) => row.column_name);
+
+      expect(
+        [
+          "status",
+          "assigned_at",
+          "completed_at",
+          "updated_at",
+          "last_active_at",
+          "abandoned_at",
+        ].filter((forbidden) => batchColumns.includes(forbidden)),
+        "a column arrived that no behaviour reads",
+      ).toEqual([]);
     });
 
     it("defines no constraint describing a lifecycle the batch-completion change has not built", async () => {
@@ -529,7 +574,8 @@ describe("research schema migrations", () => {
       await applySql(
         db,
         `insert into public.validators (id) values ('VAL_0000b001');
-         insert into public.validation_batches (id, validator_id) values ('batch_b1', 'VAL_0000b001');
+         insert into public.validation_batches (id, validator_id, created_at)
+      values ('batch_b1', 'VAL_0000b001', '2026-09-30T12:00:00.000Z');
          insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
          values ('res_both', 'VAL_0000b001', '${OTHER_ENTRY}', 'batch_b1', 'correct_natural'${BOTH_TRANSLATIONS.values});`,
@@ -955,9 +1001,14 @@ async function seed(database: TestDatabase): Promise<void> {
   await applySql(
     database,
     `insert into public.validators (id) values ('${VALIDATOR}'), ('${OTHER_VALIDATOR}');
-     insert into public.validation_batches (id, validator_id)
-       values ('${BATCH}', '${VALIDATOR}'), ('${BATCH}_2', '${VALIDATOR}'),
-              ('${BATCH}_3', '${OTHER_VALIDATOR}');
+     -- \`created_at\` is supplied because migration \`20261001120000\` makes it \`not null\` with no
+     -- default, so an insert that omits it is refused rather than dated by the database. The third
+     -- row belongs to a DIFFERENT validator and carries the newest instant of the three, which is
+     -- what makes it a real test of the ownership filter rather than of the ordering.
+     insert into public.validation_batches (id, validator_id, created_at)
+       values ('${BATCH}', '${VALIDATOR}', '2026-09-30T12:00:00.000Z'),
+              ('${BATCH}_2', '${VALIDATOR}', '2026-09-30T12:30:00.000Z'),
+              ('${BATCH}_3', '${OTHER_VALIDATOR}', '2026-09-30T13:00:00.000Z');
      insert into public.dataset_entries (id, category, instruction, source_payload)
        values ('${ENTRY}', 'origin_destination', '${INSTRUCTION}', '{"id":"${ENTRY}"}'::jsonb),
               ('${OTHER_ENTRY}', 'origin_destination', 'Ibaba ti centro.', '{"id":"${OTHER_ENTRY}"}'::jsonb);`,

@@ -144,16 +144,50 @@ function createInMemoryRepositories() {
 
   const batches = new Map<string, BatchRecord>();
 
+  // The creation instants `create` was handed, so `listForRecovery` reports what was written rather
+  // than a fixture constant that would be the same for every batch and make the ordering untestable.
+  const batchCreatedAt = new Map<string, string>();
+
   const batchRepository: BatchesRepository = {
-    async create(batch) {
+    async create(batch, createdAt) {
       if (batches.has(batch.id)) {
         throw new RepositoryError("validation_batches.insert", `batch ${batch.id} already exists`);
       }
       batches.set(batch.id, batch);
+      batchCreatedAt.set(batch.id, createdAt);
       return batch;
     },
     async findById(id) {
       return batches.get(id) ?? null;
+    },
+    async listForRecovery(validatorId) {
+      // A REAL projection rather than `[]`: this in-memory repository backs tests of services that
+      // consume the recovery read, and a fake that always answered "none" would let a service that
+      // ignores the result entirely pass.
+      //
+      // NEWEST FIRST, by the same two keys and the same code-point comparison the Supabase
+      // implementation asks the database for. `localeCompare` is deliberately NOT used: the domain
+      // rule's own note says a collation that orders differently under two locales would make the
+      // offered batch depend on where the server runs, and a fake using one would quietly disagree
+      // with the real read about which of two batches wins.
+      return [...batches.values()]
+        .filter((batch) => batch.validatorId === validatorId)
+        .map((batch) => ({
+          id: batch.id,
+          validatorId: batch.validatorId,
+          createdAt: batchCreatedAt.get(batch.id) ?? "",
+          entryIds: batch.entries.map((placement) => placement.datasetEntryId),
+        }))
+        .sort((left, right) =>
+          left.createdAt === right.createdAt
+            ? left.id < right.id
+              ? -1
+              : 1
+            : left.createdAt < right.createdAt
+              ? -1
+              : 1,
+        )
+        .reverse();
     },
   };
 
@@ -280,6 +314,7 @@ describe("failing repository", () => {
       batches: {
         create: async () => fail("validation_batches.insert", "down"),
         findById: async () => fail("validation_batches.findById", "down"),
+        listForRecovery: async () => fail("validation_batches.listForRecovery", "down"),
       },
     };
   }
@@ -340,10 +375,19 @@ describe("failing repository", () => {
     // is the only thing that says whether the batch row or the read-back failed, and a
     // half-written allocation is exactly the situation where that matters.
     await expect(
-      batches.create({ id: "batch_01", validatorId: PROFILE.id, entries: [] }),
+      batches.create(
+        { id: "batch_01", validatorId: PROFILE.id, entries: [] },
+        "2026-10-01T09:15:00.000Z",
+      ),
     ).rejects.toMatchObject({ operation: "validation_batches.insert" });
     await expect(batches.findById("batch_01")).rejects.toMatchObject({
       operation: "validation_batches.findById",
+    });
+    // The recovery read is named too, and this is the assertion that keeps it in the union: an
+    // operation name that exists but is unreachable from a test is a name nothing has checked, and a
+    // caller branching on which read failed would have no way to tell recovery from allocation.
+    await expect(batches.listForRecovery(PROFILE.id)).rejects.toMatchObject({
+      operation: "validation_batches.listForRecovery",
     });
   });
 

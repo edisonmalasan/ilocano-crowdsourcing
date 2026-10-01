@@ -1,7 +1,14 @@
 import "server-only";
 
-import { RepositoryError, type BatchesRepository } from "@/lib/repositories";
-import { batchRecordSchema, type BatchRecord } from "@/schemas/batch";
+import type { RecoverableBatch } from "@/lib/domain/batch-recovery";
+import {
+  RepositoryError,
+  type BatchesRepository,
+  type IsoDateTimeString,
+} from "@/lib/repositories";
+import { batchIdSchema, batchRecordSchema, type BatchRecord } from "@/schemas/batch";
+import { anonymousValidatorIdSchema } from "@/schemas/validator";
+import { datasetEntryIdSchema } from "@/schemas/dataset";
 
 import type { SupabaseClientLike } from "./client";
 import {
@@ -11,13 +18,22 @@ import {
   POSTGREST_UNIQUE_VIOLATION_CODE,
   readRows,
   readSingleRow,
+  toIsoDateTime,
 } from "./rows";
 import { BATCHES_OPERATIONS as OPS } from "./operations";
 
-/** The `validation_batches` table as this mapping understands it. Every value is validated. */
+/**
+ * The `validation_batches` table as this mapping understands it. Every value is validated.
+ *
+ * `created_at` arrived with migration `20261001120000`, by the reasoning recorded there: one column,
+ * for one purpose, written by the server rather than defaulted by the database. It is `unknown` here
+ * rather than `string` for the same reason every other column is — the translation validates it, so a
+ * value the database could not have produced is caught rather than carried.
+ */
 interface BatchRow {
   id: unknown;
   validator_id: unknown;
+  created_at: unknown;
 }
 
 /**
@@ -35,13 +51,44 @@ interface BatchEntryRow {
   position: unknown;
 }
 
-/** Two columns. `validation_batches` has no timestamp column and none is invented here. */
-const BATCH_COLUMNS = ["id", "validator_id"] as const satisfies readonly (keyof BatchRow)[];
+/**
+ * Three columns, and the third arrived with migration `20261001120000`.
+ *
+ * The old comment here said "two columns, and `validation_batches` has no timestamp column and none is
+ * invented here". That was true when written and would have been the right thing to say at the time;
+ * what made it stop being true is {@link listForRecovery}, which cannot order by a column it cannot
+ * select. The principle it stated survives unchanged — a column exists because code reads it — and the
+ * note is rewritten rather than deleted so the next reader can see what stopped being true and why.
+ *
+ * `created_at` is selected on {@link findById} as well even though that method does not use it. That
+ * is deliberate and costs one column: both reads go through this list, so a second list would be a
+ * second place to forget a column when one is added, and `batchRecordSchema` is a `strictObject` whose
+ * input this file assembles field by field — an unread column is simply never read.
+ */
+const BATCH_COLUMNS = [
+  "id",
+  "validator_id",
+  "created_at",
+] as const satisfies readonly (keyof BatchRow)[];
 
 const BATCH_ENTRY_COLUMNS = [
   "batch_id",
   "dataset_entry_id",
   "position",
+] as const satisfies readonly (keyof BatchEntryRow)[];
+
+/**
+ * Two columns, for {@link SupabaseBatchesRepository.listForRecovery}, and `position` is deliberately
+ * NOT among them.
+ *
+ * A second column list rather than a narrower use of {@link BATCH_ENTRY_COLUMNS}, because selecting
+ * `position` here would fetch the stored order for a read that does not use it — and a value in hand
+ * is a value a later edit will start reading. The order is research data; it is read through
+ * `findById` by the batch's own route, and by nothing else.
+ */
+const BATCH_ENTRY_ID_COLUMNS = [
+  "batch_id",
+  "dataset_entry_id",
 ] as const satisfies readonly (keyof BatchEntryRow)[];
 
 /**
@@ -91,11 +138,15 @@ export class SupabaseBatchesRepository implements BatchesRepository {
    * whose contents no test had ever seen. `enrollValidator` makes the same choice about the
    * identifier it minted.
    */
-  async create(batch: BatchRecord): Promise<BatchRecord> {
+  async create(batch: BatchRecord, createdAt: IsoDateTimeString): Promise<BatchRecord> {
     const batchResult = await awaitQuery(OPS.create, "validation_batches.insert", () =>
       this.client
         .from("validation_batches")
-        .insert({ id: batch.id, validator_id: batch.validatorId })
+        // `created_at` is written HERE, explicitly, and is the reason migration
+        // `20261001120000` set the column `not null` with no default: the application is the single
+        // source of time for this fact, and a default added later would be invisible to the read-back
+        // below — the column would simply arrive populated, from somewhere else.
+        .insert({ id: batch.id, validator_id: batch.validatorId, created_at: createdAt })
         .select(BATCH_COLUMNS.join(","))
         .single(),
     );
@@ -240,5 +291,141 @@ export class SupabaseBatchesRepository implements BatchesRepository {
       OPS.findById,
       `validation_batches.findById ${id}`,
     );
+  }
+
+  /**
+   * Every batch belonging to one validator, newest first, each with its entry ids.
+   *
+   * ==============================================================================================
+   * TWO READS, because a batch spans two tables and this is the same reason `findById` takes two
+   * ==============================================================================================
+   * The alternative is one request with an embedded resource — `select("id, validator_id, created_at,
+   * batch_entries(dataset_entry_id)")` — which is genuinely one round trip and is what a hand-written
+   * query would do. It was rejected because this project cannot verify a single PostgREST behaviour
+   * about embedded selects: there is no Supabase project here, so the shape of the nested rows, the
+   * `null` an absent relationship produces, and the ordering of a nested array are all untested
+   * assumptions that would sit underneath a research decision. Two flat reads use only `.eq`, `.in`,
+   * `.order` and `.select(cols)`, every one of which this directory already depends on, and the
+   * grouping of rows back onto their batches is done in JavaScript where a test can observe it.
+   *
+   * ==============================================================================================
+   * THE ORDER IS ASKED FOR AND THEN RE-DERIVED, which looks redundant and is the point
+   * ==============================================================================================
+   * `.order("created_at", { ascending: false }).order("id", { ascending: false })` is the query. It is
+   * also a WIRE BEHAVIOUR, and `findById` already learned the lesson this copies: the order of a
+   * batch is research data, so a guarantee this class's callers rely on must be a property of the
+   * RETURNED VALUE rather than of a request a proxy or a future implementation of
+   * `SupabaseClientLike` could forget. `recognizeInterruptedBatch` re-derives the winner from the
+   * rows anyway — the spec requires the choice to be total and independent of arrival order — so the
+   * sort here is not what makes the answer correct; it is what makes the FIRST row the right one for
+   * a reader who trusts the array order, which is worth having and is worth having honestly.
+   *
+   * The entry ids are NOT sorted. They arrive in whatever order the database returned them, and the
+   * recognition rule only ever asks whether a set contains one, so sorting them would imply an order
+   * this read does not have a reason to establish. Positions are not selected at all: see the
+   * interface's note on why.
+   *
+   * ==============================================================================================
+   * AN ENTRY-LESS BATCH COMES BACK WITH AN EMPTY `entryIds`, AND THAT IS THE DESIGN
+   * ==============================================================================================
+   * `findById` RAISES on such a row. This method returns it. The two differ because they answer
+   * different questions: `findById` backs a route that will render a batch, and rendering a batch with
+   * no entries would present a database fault as "nothing was left for you"; `listForRecovery` feeds a
+   * rule whose job is to decide whether there is any work at all, and a rule that cannot SEE the
+   * residue cannot decide that. Filtering it out here would move a research decision into the
+   * persistence layer, where the answered set that would justify the filter does not exist.
+   *
+   * ==============================================================================================
+   * WHAT A TRUNCATED RESPONSE WOULD DO HERE, AND WHY IT IS NOT GUARDED THE WAY `findById` GUARDS IT
+   * ==============================================================================================
+   * PostgREST caps a response at the project's maximum rows. A short read of BATCHES would hide a
+   * newer batch and could report `none` while an interrupted batch existed; a short read of ENTRIES
+   * would understate what remains and could offer work that does not exist. Both are wrong, and
+   * neither is guarded by `assertPageIsComplete`, which needs a `count` this read does not request.
+   * That is a real gap and it is stated rather than hidden. It is bounded in the same way
+   * `listEntryIdsForValidator` states its bound: one row per allocation, and no validator's rows
+   * approach a thousand in a study of 600 entries, because the database refuses to let anyone answer
+   * an entry twice.
+   */
+  async listForRecovery(validatorId: string): Promise<RecoverableBatch[]> {
+    const batchResult = await awaitQuery(
+      OPS.listForRecovery,
+      "validation_batches.listForRecovery",
+      () =>
+        this.client
+          .from("validation_batches")
+          .select(BATCH_COLUMNS.join(","))
+          .eq("validator_id", validatorId)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false }),
+    );
+
+    const batchRows = readRows(
+      batchResult,
+      OPS.listForRecovery,
+      "validation_batches.listForRecovery",
+    );
+
+    // No batches is a NORMAL answer, not a reason to skip the second read and not a failure: it is
+    // exactly what "no interrupted batch" looks like from the persistence layer.
+    if (batchRows.length === 0) return [];
+
+    const entryResult = await awaitQuery(
+      OPS.listForRecovery,
+      "validation_batches.listForRecoveryEntries",
+      () =>
+        this.client
+          .from("batch_entries")
+          .select(BATCH_ENTRY_ID_COLUMNS.join(","))
+          .in(
+            "batch_id",
+            batchRows.map((row) => row.id),
+          ),
+    );
+    const entryRows = readRows(
+      entryResult,
+      OPS.listForRecovery,
+      "validation_batches.listForRecoveryEntries",
+    );
+
+    // Grouped here rather than in the query, so the grouping is something a test can watch. A batch
+    // with no rows on the left keeps its EMPTY list rather than disappearing — that absence is the
+    // residue this method exists to make visible.
+    const entryIdsByBatchId = new Map<unknown, unknown[]>();
+    for (const row of entryRows) {
+      const existing = entryIdsByBatchId.get(row.batch_id);
+      if (existing === undefined) entryIdsByBatchId.set(row.batch_id, [row.dataset_entry_id]);
+      else existing.push(row.dataset_entry_id);
+    }
+
+    return batchRows.map((row, index) => ({
+      id: parseDomainValue(
+        batchIdSchema,
+        row.id,
+        OPS.listForRecovery,
+        `validation_batches.listForRecovery row ${index} id`,
+      ),
+      validatorId: parseDomainValue(
+        anonymousValidatorIdSchema,
+        row.validator_id,
+        OPS.listForRecovery,
+        `validation_batches.listForRecovery row ${index} validator_id`,
+      ),
+      // Normalised, so the domain holds ONE representation of an instant and the recognition rule's
+      // `Date.parse` is not the only thing standing between a `+08:00` offset and a correct order.
+      createdAt: toIsoDateTime(
+        row.created_at,
+        "validation_batches.created_at",
+        OPS.listForRecovery,
+      ),
+      entryIds: (entryIdsByBatchId.get(row.id) ?? []).map((entryId, entryIndex) =>
+        parseDomainValue(
+          datasetEntryIdSchema,
+          entryId,
+          OPS.listForRecovery,
+          `validation_batches.listForRecovery row ${index} entry ${entryIndex}`,
+        ),
+      ),
+    }));
   }
 }

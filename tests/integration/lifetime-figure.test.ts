@@ -303,8 +303,12 @@ async function seed(database: TestDatabase): Promise<void> {
   await applySql(
     database,
     `insert into public.validators (id) values ('${VALIDATOR}'), ('${OTHER_VALIDATOR}');
-     insert into public.validation_batches (id, validator_id)
-       values ('${BATCH}', '${VALIDATOR}'), ('${OTHER_BATCH}', '${VALIDATOR}');
+     -- \`created_at\` is supplied because migration \`20261001120000\` makes it \`not null\` with no
+     -- default. These rows exist AFTER that migration, so they are dated the way the application dates
+     -- a batch rather than by a database default.
+     insert into public.validation_batches (id, validator_id, created_at)
+       values ('${BATCH}', '${VALIDATOR}', '2026-09-30T12:00:00.000Z'),
+              ('${OTHER_BATCH}', '${VALIDATOR}', '2026-09-30T12:30:00.000Z');
      insert into public.dataset_entries (id, category, instruction, source_payload)
        values ('OD_0001', 'origin_destination', 'Iti Baguio Athletic Bowl ti ayanko ita.', '{"id":"OD_0001"}'::jsonb),
               ('OD_0002', 'origin_destination', 'Ibaba ti centro.', '{"id":"OD_0002"}'::jsonb),
