@@ -11,13 +11,13 @@
 
 | Field | Value |
 | --- | --- |
-| Current roadmap phase |  **Phases 1-5 are CLOSED and ARCHIVED — eleven changes**, enumerated in `Completed milestones` below and readable on disk under `openspec/changes/archive/`. **Phase 6 — batch completion, continuation, and interrupted-batch handling — is IN PROGRESS, as two bounded slices:** `batch-completion` archived as **#46** (`c067cf7`), and `interrupted-batch-recovery` at its Propose stage. The first slice carried roadmap tasks 1-5; the second carries task 6, *restore interrupted active batches where practical*, and is the last outstanding task in the phase. |
-| Current OpenSpec change |  **`interrupted-batch-recovery`** — roadmap **Phase 6, second bounded slice and its last task**, at its **Propose** stage on `docs/interrupted-batch-recovery-proposal`. Adds **one** capability, `batch-recovery`, and modifies **zero**: 7 requirements and 20 scenarios, every one ADDED, cross-checked by the OpenSpec CLI's own parse against the markdown source rather than counted once by one reader. An independent verification pass re-derived every factual claim in the proposal from source and found **five defects, all corrected before merge**; `tasks.md` section 0.5 records them one by one. Predecessor `batch-completion` archived as **#46** (`c067cf7`). |
-| Lifecycle state |  `proposing` — **`interrupted-batch-recovery`**, roadmap **Phase 6 (second and final slice)**. Proposal artifacts written; `openspec change validate --strict` reports **valid**, and `openspec change show --json --deltas-only` parses the delta, which it could not do for `batch-completion`. The Apply has not begun. The framing that governs this change is recorded here because it is the line most likely to be misremembered: **this is not a data-loss fix.** Measured — `selectBatchEntries` excludes a candidate only when it is already **answered** or already covered, so an abandoned batch's unanswered entries stay allocatable to anyone, including the same validator. No coverage is destroyed by abandonment, and the answers already recorded cannot be re-asked, because `UNIQUE (validator_id, dataset_entry_id)` forbids it. What is lost is the participant's sense of continuity, and that is the whole of the case. Separately measured: `/validate/[batchId]` **already resumes**, since `resolveSessionEntry` returns the first unanswered placement when no position is requested, so this change is one discovery read plus one affordance and writes no resume logic. |
+| Current roadmap phase | **Phases 1-5 are CLOSED and ARCHIVED — eleven changes**, enumerated in `Completed milestones` below and readable on disk under `openspec/changes/archive/`. **Phase 6 — batch completion, continuation, and interrupted-batch handling — is IN PROGRESS, as two bounded slices.** `batch-completion` is archived as **#46** (`c067cf7`); `interrupted-batch-recovery` is at its **Apply** stage. The first slice carried roadmap tasks 1-5; this one carries task 6, *restore interrupted active batches where practical*, and is the last outstanding task in the phase. |
+| Current OpenSpec change | **`interrupted-batch-recovery`** — roadmap **Phase 6, second bounded slice and its last task**, at its **Apply** stage on `feat/interrupted-batch-recovery`, branched from the Propose merge **#47** (`5962521`). Adds **one** capability, `batch-recovery`, and modifies **zero**: 7 requirements and 20 scenarios, every one ADDED. The delta lives only under `openspec/changes/`, and `openspec validate --specs --strict` is re-checked to stay at **10** until Sync runs — a new directory appearing under `openspec/specs/` during an Apply would mean the delta had been written to the wrong place. Predecessor `batch-completion` archived as **#46** (`c067cf7`). |
+| Lifecycle state | `applying` — **`interrupted-batch-recovery`**, roadmap **Phase 6 (second and final slice)**. Sections 1-3 of `tasks.md` merged within the Propose PR and were re-measured at that commit (lint 0, format 0, typecheck 0; 42 files / 1149 unit, 5 / 57 dom, 9 / 128 integration). Sections 4-8 are implemented and verified on this branch, and every gate was re-run **after** the last source edit rather than before it: lint 0 problems, `format:check` "All matched files use Prettier code style!", typecheck 0 errors, unit **45 files / 1176 tests**, dom **6 / 72**, integration **9 / 128**, `build` "Compiled successfully", the dataset guard scoped to its own file at **1 file / 7 tests**, and `openspec change validate interrupted-batch-recovery --strict` exit 0. **Every one of those numbers was read out of the command output.** Nine files are added or modified and no existing behaviour outside the start screen changed. Section 9 and the independent verification pass remain. |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`); **`landing-and-screening` Apply (PR #12, `e1390ba`)**; `landing-and-screening` Sync + Archive (PR #13, `411e18f`); bilingual requirements into this roadmap (PR #14, `523cfd0`); bilingual proposal (PR #15, `d4c40cd`); status reconciliation (PR #16, `0c042ed`); bilingual requirements into `AGENTS.md` `AGENTS.md` durable rules); `required-bilingual-translations` proposal (PR #15, `d4c40cd`), implementation (PR #18, `438b691`), spec sync (PR #19, `aaa8810`) and archive (PR #20, `76fd7a3`); `coverage-aware-allocation` proposal (PR #22, `d2fd596`), implementation (PR #23, `1134da9`), spec sync (PR #24, `304d450`) and archive (PR #25, `174fa2c`); `research-schema-guarantee-coverage` proposal (PR #26, `8ae4bc3`), spec sync (PR #27, `06dc92e`) and archive (PR #28, `5788383`); `interface-localization` proposal (PR #29, `50ff9eb`), implementation (PR #30, `2aaca46`), spec sync (PR #31, `f03bf65`) and archive (PR #32, `794aaf5`); **`thin-shell-call-sites` proposal (PR #33, `b5b59b2`), implementation (PR #34, `73ab777`) and archive (PR #35, `80a8dba`); `pending-state-specification` proposal (PR #36, `cb347cf`), implementation (PR #37, `bf76173`), spec sync (PR #38, `d3e1627`) and archive (PR #39, `ab1c7be`). **This row previously ended "archive in flight in this PR", which was written during the `thin-shell-call-sites` Archive and had still not been corrected two changes later** — a third instance of a forward-looking ledger figure outliving the stage that wrote it, the same defect the `Archived Changes` table carried |
-| Last merged OpenSpec stage |  **#46 — `c067cf7` — `chore/archive-batch-completion`**, merged 2026-10-01: the Sync and Archive of `batch-completion`. Read back from `git`; `git log -1 --format=%p` reported **two parents**, `cb197fe a290817`, and `git merge-base --is-ancestor` reported it an **ancestor of `main`**. Stated plainly, as every stage's wording of this row is: it is **stale for the whole of its own stage by construction**, which is why it is re-derived from `git` each time rather than carried forward from the previous stage's number. |
-| Doc-only PRs since that stage |  **None yet — #47, this Propose, becomes the first when it merges.** The count is stated separately from the enumeration, and the two are reconciled when it is known, because a count and a list that disagree are worse than either one alone. |
-| Next eligible objective |  **Apply `interrupted-batch-recovery`** — then an independent verification pass, then Sync and Archive, each on its own branch cut from the updated `main`. The design's two open questions are carried into that Apply: whether `validation_batches.created_at` must match the existing application-written session timestamps, and whether the `(validator_id, created_at DESC, id DESC)` index can be justified on reasoning when no Supabase project exists on which to measure it. This row deliberately names **no branch**: the branch-existence check treats a live row naming a branch that does not exist as a stale reference, and an objective legitimately looks forward to one. |
+| Last merged OpenSpec stage | **PR #47** — `5962521` — `docs/interrupted-batch-recovery-proposal`, a **merge commit** (two parents), verified an ancestor of `origin/main` **in this edit rather than assumed**. That carries `interrupted-batch-recovery`'s proposal, design, spec delta, and tasks. Predecessor: PR #46, `c067cf7`, the `batch-completion` archive. CI run `36843732312` was read back from its log rather than from `gh pr checks`. |
+| Doc-only PRs since that stage | **None yet.** The Apply PR for this branch is the next stage and it carries `src/`, `tests/`, and `openspec/` files, so it is an implementation stage rather than a documentation one. **This row is a claim to be re-derived after the next merge, not a fact to be carried** — it has already been stale once on `main`, when it still read "None yet" several merged changes later. |
+| Next eligible objective | **Close out this change**, in order: (1) an independent verification pass over the Apply implementation against the delta, with the verifier forbidden from editing the repository; (2) repair any CRITICAL or WARNING finding and re-run the gates; (3) **Sync and Archive** — `openspec archive` does both in one step in this repository, so there is no separate sync command; (4) move the roadmap cursor to **Phase 7, the protected researcher/admin dashboard**. **Do not begin Phase 7 from this branch.** |
 | Blockers | **No Supabase project credentials** — `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are all absent, so `getServerEnv()` throws on every real request and **no Supabase client has ever been constructed**. PostgREST wire behaviour, `code === "23505"`, and RLS as enforced by the Supabase API gateway are therefore unverified. **No browser has ever rendered any screen** — `happy-dom` is synthetic, so nothing in this repository counts as visual verification and a human still has to look at the pages. **CI integrity: four runs have reported `success` with steps absent from the step list**, on both jobs, including one where the dataset-guard job reported success having run only *Install pnpm*. `gh run rerun` fixed every instance and it has not recurred since, but **merge on the log, never on the checkmark.** **No failing CI run has ever been observed**, so "a failing test blocks the pull request" remains inferred from the required checks rather than demonstrated. **No `docker`, `psql`, or `supabase` CLI** locally. **Known pre-existing defect, out of scope:** `tests/integration/pglite-harness.test.ts` is order-dependent under `--sequence.shuffle` (4 of 11), confirmed untouched by `git diff`. **Found during the Sync stage, recorded not fixed:** `openspec/specs/research-schema/spec.md` contains **two different scenarios sharing the heading "The refusal is proven, not assumed"** (lines 252 and 344, unrelated bodies), so scenario headings are **not unique identifiers** in these specs; any tool keying on them must key by name **and** occurrence, or a change deleting one of the pair reads as no change at all. **The custom ESLint boundary rule is INERT on Windows for a component that omits its own `"use client"`
 directive** — newly discovered by the Phase 5 verification pass on 2026-10-01, **pre-existing**, and
 deliberately **not repaired** by the change that found it, because `AGENTS.md` puts CI/CD and security
@@ -794,6 +794,83 @@ either. The archived table called one line "S21, the PRIMARY submit disabled, cr
 current file `disabled={isPending}` occurs exactly **once** and belongs to the `AnswerGroup`, while
 **both** buttons bind `disabled={submitState.disabled}` — so a probe anchored on the archived label
 mutates the *skip* affordance and calls it the primary submit.
+
+### Ledger — `interrupted-batch-recovery`
+
+**What this change is, stated so it cannot be misremembered.** It is **not** a data-loss fix, and that
+is a measurement rather than a position. `selectBatchEntries` (`src/lib/domain/allocation.ts`) excludes
+exactly two things: entries the validator has already answered, and entries already at the coverage
+target. An abandoned batch's unanswered entries satisfy neither exclusion, so they remain allocatable
+and no instruction is lost. **Only continuity was lost.** A second measurement points the same way:
+`/validate/[batchId]` already resumes, because `resolveSessionEntry` returns the first placement that
+is not complete. What was missing was **discovery** — the participant had no way to find the batch they
+had left. Both facts are recorded in the change's `proposal.md`, and they are the reason the change
+adds recognition and nothing else.
+
+**A requirement met by an accident is not met.** The Server Action wrapper originally did not catch, on
+the reasoning that the core already mapped a repository failure to *unavailable*. But `getServerEnv()`
+runs while building the argument, so with no credentials the action **rejected** before the core was
+reached — and the island calls it with `.then()` and no `.catch()`. The outcome would have stayed
+`null`, and `null` collapses to `none`. D4 would therefore have held by coincidence: delete either
+file and nothing turns red. The wrapper now catches and translates, in the same shape as
+`src/lib/allocation/actions.ts`, and `tests/unit/recovery-actions-wrapper.test.ts` drives the **real**
+wrapper with the environment module throwing — which is the only path that can run in this repository,
+since all three `SUPABASE_*` are absent.
+
+**Two guard names asserted falsehoods, and both were renamed rather than widened.** A test named
+*"writes no timestamp, because the table has none"* became *"writes no timestamp beyond the one the
+table now has, and no lifecycle column"* once D2 added `created_at`, and the `research-schema` closed
+column-set comment was narrowed with an explicit retraction block. The generalisation: **a guard whose
+name asserts a falsehood must be renamed, not silently widened**, because the next reader weighs the
+name and not the body.
+
+**A guard that a feature makes false is worse than no guard, and there were TWO in one file.**
+`tests/unit/validation-routes.test.tsx` asserted `/href="\/validate\/batch/`, which cannot match a
+real batch href: `defaultBatchId` mints `VAL_<identifier>-<instant>`. That one had been recorded here
+as a pre-existing loose regex — the note described the symptom and not the cause. Repairing it revealed
+that the **very next test in the same file carried the identical vacuous pattern**, written by a
+different change whose author had not read the first. Both were repaired, and the second repair is the
+more serious: a document-wide "no batch href" assertion is now a statement **the product itself
+contradicts**, because a start screen showing a resume offer legitimately carries a batch href — while
+being too weak to notice that it does. It is now scoped to the start control's own tag, so the offer
+above it cannot affect the result. Four probes, all as expected: with a real batch href injected into
+the island's server-rendered markup the **old** guard is GREEN (the finding) and the **repaired** guard
+is RED, and one variable changes between them.
+
+**A vacuity claim must be about the file as it existed BEFORE the repair.** Reverting only the regex
+and leaving the repair's second assertion in place turned a probe RED for the wrong reason. Both files
+are restored byte-identical after every probe.
+
+**Two harness defects were mine, in the same probe file, and both produced plausible wrong verdicts.**
+
+- A probe mutated the guard by calling a **one-argument callback as if it took two**, so the "injected"
+  href was the literal string `undefined`. It then reported GREEN — reading exactly like the finding
+  it was written to produce. Offsets, lengths, and both SHA-256 digests were internally consistent and
+  all three described a mutation that injected nothing of use. The fix was to read the value from a
+  module constant and **assert it starts with `/validate/`**. The lesson is already recorded here in
+  general form; what is new is that **a mutation must be inspected, not merely summarised**.
+- The harness kept `files` and `edits` as two parallel lists kept in step by hand. The drift surfaced
+  as a probe throwing on an anchor meant for a different file. `files` is now **derived** from
+  `edits`.
+- A sibling probe came back RED for the right reason and the wrong test: the *other* guard in the same
+  file was still live and fired on the injected markup. The fix was to remove the other guard, not to
+  explain the red away.
+
+**Five of six failures in the new DOM file were harness errors, and one read like a pass** if only the
+exit code were checked. This is the third change in a row where the defects hid in a test's own first
+draft, and it is why every probe here runs a **negative control before every mutant**, classifies on
+four outcomes (`GREEN` / `RED` / `DID-NOT-RUN` / `DID-NOT-PARSE`), and **refuses to score an
+ambiguous anchor** — an anchor occurring twice is the refusal working, not an obstacle, and the sixth
+occurrence of that refusal in this repository was in my own probe.
+
+**A guard kept for legibility that is measured redundant.** The `entryIds.length === 0` early return in
+the repository seam is retained for readability, and it was measured rather than assumed: deleting it
+leaves 14/14 green. It is documented as redundant instead of being quietly relied upon.
+
+**What remains unwitnessed, and says so.** `created_at` is server-written and never client-supplied, but
+no Supabase client has ever been constructed here, so PostgREST behaviour, `error.cause.code ===
+"23505"`, and RLS as enforced by the API gateway are all unverified. **No browser has ever rendered any
+screen in this project**, including the offer this change adds.
 
 ## 1. Project Goal
 

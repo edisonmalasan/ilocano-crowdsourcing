@@ -4,16 +4,16 @@ Every task below names the evidence that closes it. A box ticked without that ev
 
 ## 0. Scope decisions taken before implementation
 
-- [ ] 0.1 Confirm by reading `selectBatchEntries` that an abandoned batch's unanswered entries stay
+- [x] 0.1 Confirm by reading `selectBatchEntries` that an abandoned batch's unanswered entries stay
   allocatable, and that the proposal's framing follows the code rather than the intuitive story.
   **Evidence:** the `answeredEntryIds` and coverage filters are the only two exclusions, quoted in the
   proposal.
-- [ ] 0.2 Confirm `/validate/[batchId]` already resumes, so no resume logic is written. **Evidence:**
+- [x] 0.2 Confirm `/validate/[batchId]` already resumes, so no resume logic is written. **Evidence:**
   `resolveSessionEntry` returns the first unanswered placement when no position is requested, and a test
   asserting a re-opened batch presents the first gap.
-- [ ] 0.3 Confirm `validation_batches` has exactly `id` and `validator_id`. **Evidence:** read from the
+- [x] 0.3 Confirm `validation_batches` has exactly `id` and `validator_id`. **Evidence:** read from the
   migration, and from an integration test asserting the column set.
-- [ ] 0.4 Confirm the change adds one capability and modifies zero, by searching `openspec/specs/` for
+- [x] 0.4 Confirm the change adds one capability and modifies zero, by searching `openspec/specs/` for
   interruption, resumption, and batch age. **Evidence:** the search and its result recorded here;
   `research-schema`'s deferral quoted as the forward permission, not a breach.
 
@@ -96,58 +96,100 @@ to do is a worse record than one that records what was already wrong and is now 
 
 ## 4. Server authority over the lookup
 
-- [ ] 4.1 A Server Action taking the anonymous identifier only. **No batch-id parameter exists** — see D9.
-- [ ] 4.2 Re-check the identifier against enrolled validators, returning the same refusal as every other
+- [x] 4.1 A Server Action taking the anonymous identifier only. **No batch-id parameter exists** — see D9.
+- [x] 4.2 Re-check the identifier against enrolled validators, returning the same refusal as every other
   validator-keyed operation.
-- [ ] 4.3 Three modelled outcomes: interrupted batch, explicit *none*, explicit *unavailable*. A repository
-  failure maps to *unavailable* as a typed error boundary, never swallowed into *none*.
-- [ ] 4.4 A pure decision function mapping the three outcomes to what the screen shows, so the branches are
+- [x] 4.3 Three modelled outcomes: interrupted batch, explicit *none*, explicit *unavailable*. A repository
+  failure maps to *unavailable* as a typed error boundary, never swallowed into *none*. **Also:** the
+  **wrapper** now catches and translates, which the first draft did not. Because `getServerEnv()` runs
+  while building the argument, a missing credential never reaches the core, so without the `try` the
+  action would *reject* — and the island calls it with `.then()` and no `.catch()`. D4 would then have
+  been satisfied **by accident**: `outcome` would stay `null`, and `null` collapses to `none`. Nothing
+  would have failed, and nothing would have failed on the next edit either.
+  `tests/unit/recovery-actions-wrapper.test.ts` drives the real wrapper with the environment module
+  throwing, which is the only path that runs in this repository — all three `SUPABASE_*` are absent.
+- [x] 4.4 A pure decision function mapping the three outcomes to what the screen shows, so the branches are
   testable with no DOM and no database.
-- [ ] 4.5 **Can-fire control required:** the identity re-check must go red when removed.
+- [x] 4.5 **Can-fire control required:** the identity re-check must go red when removed. **Evidence:**
+  control GREEN `10 passed`; deleting the `findById` read **and** its `null` early return → RED
+  `3 failed | 7 passed (10)`; keeping the read and dropping only the early return → RED
+  `1 failed | 9 passed (10)`. Both reds name the identity test, and the file was restored byte-identical
+  (sha `21614d66…`). The second probe is the one that carries the claim: the first would also be red if
+  the read were missing, so it cannot tell "re-checks the identity" from "calls a repository".
 
 ## 5. The screen, on `/validate`
 
-- [ ] 5.1 The lookup is issued on mount from the existing `StartBatch` island. `Start a batch` is **never**
+- [x] 5.1 The lookup is issued on mount from the existing `StartBatch` island. `Start a batch` is **never**
   disabled, delayed, or removed by it (D3).
-- [ ] 5.2 The resume affordance is a `next/link` to the batch's own address, with no handler and no write
+- [x] 5.2 The resume affordance is a `next/link` to the batch's own address, with no handler and no write
   (D6).
-- [ ] 5.3 While the lookup is in flight and after it reports *unavailable*, the screen renders exactly as
+- [x] 5.3 While the lookup is in flight and after it reports *unavailable*, the screen renders exactly as
   it does with *none* — the same markup, not a second branch that happens to look the same (D4).
-- [ ] 5.4 The counts read as **remaining** entries, never answered ones and never a contribution total
+- [x] 5.4 The counts read as **remaining** entries, never answered ones and never a contribution total
   (D7).
-- [ ] 5.5 DOM coverage that the resume link exists when a batch is offered, does not exist otherwise, and
+- [x] 5.5 DOM coverage that the resume link exists when a batch is offered, does not exist otherwise, and
   that pressing `Start a batch` still issues its allocation request while a resume offer is on screen.
-- [ ] 5.6 **Can-fire control required:** deleting the resume affordance must turn 5.5 red.
+- [x] 5.6 **Can-fire control required:** deleting the resume affordance must turn 5.5 red. **Evidence:**
+  control GREEN `15 passed`; deleting only the `<Link>` → RED `4 failed | 11 passed (15)`; deleting the
+  whole conditional branch → RED `5 failed | 10 passed (15)`. Both mutations left the JSX balanced, and
+  the second asserted that the span it removed contained every piece of the offer and **not** the start
+  button, so the red is attributable rather than collateral.
 
 ## 6. What the offer may reveal
 
-- [ ] 6.1 The recovery outcome type carries **exactly** the batch id, remaining, and total — pinned at the
+- [x] 6.1 The recovery outcome type carries **exactly** the batch id, remaining, and total — pinned at the
   type layer so a fourth field fails `typecheck`, with the accompanying prose assertion that the pin alone
   is defeatable.
-- [ ] 6.2 No proficiency, no screening answer, no activity timestamp, and no other batch's existence
+- [x] 6.2 No proficiency, no screening answer, no activity timestamp, and no other batch's existence
   appears in the offer or the batch it leads to.
-- [ ] 6.3 The resume link's `href` carries the validator's anonymous identifier, because `defaultBatchId`
+- [x] 6.3 The resume link's `href` carries the validator's anonymous identifier, because `defaultBatchId`
   embeds it. Assert that this is the **only** identifier rendered on the start screen beyond the one the
   participant's browser already holds — a closed assertion, not an absence check, since "no identifier
   appears" is already false and an absence test against it would pass for the wrong reason.
-- [ ] 6.4 Check `tests/unit/validation-routes.test.tsx`, which asserts `/validate` renders no
-  `href="/validate/batch…`. Real ids begin `VAL_`, so a resume link will not trip it, and the guard must be
-  confirmed still meaningful rather than merely still passing.
+- [x] 6.4 Check `tests/unit/validation-routes.test.tsx`, which asserts `/validate` renders no
+  `href="/validate/batch…"`. Real ids begin `VAL_`, so a resume link will not trip it, and the guard must be
+  confirmed still meaningful rather than merely still passing. **Evidence — the guard was vacuous, and so
+  was a second one beside it that nobody had read:**
+  - The pattern `/href="\/validate\/batch/` cannot match a real batch href, because `defaultBatchId` mints
+    `VAL_<identifier>-<instant>`. Repaired to `/href="\/validate\//` plus a derived named assertion.
+  - **A sibling assertion in the same file, in the very next test, carried the identical vacuous
+    pattern.** It had been recorded in the ledger as a pre-existing loose regex; the note described the
+    symptom and not the cause. Repaired to assert the *start control's own tag* is a `<button>` with no
+    `href` — a property of the element, so the resume `<Link>` above it cannot affect the result.
+  - Four probes, all as expected, every file restored byte-identical. Control GREEN `58 passed`. With a
+    real batch href injected into the island's server-rendered markup: the **old** guard GREEN
+    `58 passed` — that green is the finding — and the **repaired** guard RED `1 failed | 57 passed`. Both
+    old guards restored together GREEN; the repaired sibling guard RED when the start control is rendered
+    as a link.
+  - **The second repair is the more serious of the two.** A document-wide "no batch href" assertion is now
+    a statement the *product contradicts* — a start screen with a resume offer legitimately carries one —
+    while being too weak to notice. A guard in that position is worse than no guard, because the next
+    author reads it as protection.
 
 ## 7. Localization
 
-- [ ] 7.1 Add every new key to **both** catalogs, and derive catalog key-set parity from the English
+- [x] 7.1 Add every new key to **both** catalogs, and derive catalog key-set parity from the English
   catalog rather than from a list the test invents.
-- [ ] 7.2 Re-run the copy test that compares catalog values against the 600 real instructions, bilaterally,
-  so no Ilocano instruction or place name can appear in either catalog.
+- [x] 7.2 Re-run the copy test that compares catalog values against the 600 real instructions, bilaterally,
+  so no Ilocano instruction or place name can appear in either catalog. **Evidence:** re-run inside the
+  full `test:unit` project as part of the §8.1 gate set; the five new `validateStart.resume.*` keys are
+  read by `tests/dom/start-batch.test.tsx` from the English catalog — derived, not listed — and none of
+  them, in either language, matches a failure-word pattern.
 
 ## 8. Verification
 
-- [ ] 8.1 `pnpm run lint`, `format:check`, `typecheck`, the three test projects, and `build`, each actually
-  run and read back.
-- [ ] 8.2 The dataset guard scoped to its own file: `pnpm exec vitest run --project integration
-  tests/integration/immutable-dataset.test.ts` must report 1 file / 7 tests.
-- [ ] 8.3 `openspec change validate interrupted-batch-recovery --strict`.
+- [x] 8.1 `pnpm run lint`, `format:check`, `typecheck`, the three test projects, and `build`, each actually
+  run and read back. **Evidence, all read off the command output rather than off a green exit code:**
+  `lint` 0 problems; `format:check` "All matched files use Prettier code style!"; `typecheck` 0 errors;
+  unit **45 files / 1176 tests**, dom **6 / 72**, integration **9 / 128**, all exit 0; `build` "Compiled
+  successfully". Every gate was re-run **after** the last source edit rather than before it.
+- [x] 8.2 The dataset guard scoped to its own file: `pnpm exec vitest run --project integration
+  tests/integration/immutable-dataset.test.ts` must report 1 file / 7 tests. **Evidence:** `1 passed (1)`
+  and `7 passed (7)` — the literal command, named in the invocation, and the count read back. A
+  `pnpm run test:integration -- <path>` form drops the filter on Linux and silently runs everything.
+- [x] 8.3 `openspec change validate interrupted-batch-recovery --strict`. **Evidence:** exit 0,
+  "Change "interrupted-batch-recovery" is valid". The deprecation warning the CLI prints alongside it is
+  expected and is not a failure; the verdict line and the exit code are the answer.
 - [ ] 8.4 An independent verification pass comparing the implementation against this delta, per the
   orchestration rules. **A ticked box in this file is not evidence for any of the above.**
 
