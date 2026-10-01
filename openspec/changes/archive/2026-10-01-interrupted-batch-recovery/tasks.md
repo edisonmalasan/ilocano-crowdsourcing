@@ -298,14 +298,47 @@ to do is a worse record than one that records what was already wrong and is now 
 - [x] 8.3 `openspec change validate interrupted-batch-recovery --strict`. **Evidence:** exit 0,
   "Change "interrupted-batch-recovery" is valid". The deprecation warning the CLI prints alongside it is
   expected and is not a failure; the verdict line and the exit code are the answer.
-- [ ] 8.4 An independent verification pass comparing the implementation against this delta, per the
+- [x] 8.4 An independent verification pass comparing the implementation against this delta, per the
   orchestration rules. **A ticked box in this file is not evidence for any of the above.**
+  **Evidence: the pass ran, returned NO, and its findings were repaired — it is ticked because the pass
+  happened AND its CRITICAL findings are closed, not because the boxes above are ticked.** It reported
+  **3 CRITICAL, 4 WARNING, 8 NOTE**. All 3 CRITICAL and all 4 WARNING were repaired and the repairs
+  measured; 2 of the 8 NOTEs were repaired and 6 were not, each with its reason recorded in the diff and in
+  `docs/ROADMAP.md`.
+  **The finding worth carrying forward is that all three CRITICALs were claims of ENFORCEMENT that did not
+  hold, rather than missing behaviour.** Two type-layer pins were advertised in two ledgers as making a
+  fourth field fail `typecheck`, and neither was an assertion site — both were exported aliases nobody
+  named, so the compiler never evaluated them. Measured before repair: an optional fourth field on
+  `InterruptedBatchOffer` gave the **identical** `tsc` failure with the alias present and with it deleted,
+  and a Zod optional key on `recoveryIntentSchema` left `tsc` at **exit 0**. The offer's pin was
+  **deleted** as redundant (`tests/unit/batch-recovery.test.ts:256` already closed that key set, at the type
+  layer and at runtime); the intent's pin was **given an assertion site** and now fires with
+  `TS2322: Type 'true' is not assignable to type 'never'`. The third CRITICAL was that the migration's own
+  backfill statement was executed by **no test at all** — the test hand-wrote its own `alter table` and its
+  own `update` — so the whole justification for the `id DESC` tiebreaker rested on SQL nothing ran; it now
+  applies the production migration, and deleting the shipped backfill is RED at `3 failed / 17 passed (20)`.
+  **The verifier was forbidden from editing the repository and did not re-measure any of its own probe
+  figures**, so every number above was re-derived from source by the root orchestrator with its own probe
+  and its own negative control, not inherited.
 
 ## 9. Ledger
 
-- [ ] 9.1 `## Project Status` moved to the Propose state, with the branch, the change, and the next
+- [x] 9.1 `## Project Status` moved to the Propose state, with the branch, the change, and the next
   objective — every SHA resolved and proved an ancestor of `origin/main` before it is written.
-- [ ] 9.2 The design's framing decision recorded where a future reader will look for it: **this change is
+  **Evidence: satisfied by the Propose PR (#47, `5962521`) and then carried forward through Apply and
+  Archive, so this box describes a state the ledger has already moved past.** The row names the branch, the
+  change, the capability added, the scenario count, and the next objective; every SHA it carries
+  (`5962521`, `c067cf7`) was checked with `git merge-base --is-ancestor` against `origin/main` **in the edit
+  that wrote it** rather than assumed, and the Apply merge `3faa312` was checked the same way before this
+  line was written. **Ticked late, on purpose:** the alternative was leaving a Propose-stage box unticked in
+  a permanent archive, which reads as work that was skipped rather than work that was overtaken.
+- [x] 9.2 The design's framing decision recorded where a future reader will look for it: **this change is
   not a data-loss fix, and the measurement that shows so is in `proposal.md`.** That is the line most
   likely to be misremembered as a rescue, which is exactly why it belongs in the ledger rather than only in
   a proposal nobody will reread.
+  **Evidence:** `docs/ROADMAP.md`, under the heading "What this change is, stated so it cannot be
+  misremembered" — it names the change **not** a data-loss fix as a *measurement*, gives the two exclusions
+  `selectBatchEntries` actually applies, concludes that only continuity was lost, and adds the second
+  measurement that `/validate/[batchId]` already resumes via `resolveSessionEntry`. It closes by pointing
+  at the change's `proposal.md` and by stating that the missing thing was **discovery**. It is placed in the
+  roadmap rather than only in the proposal for exactly the reason this task gives.
