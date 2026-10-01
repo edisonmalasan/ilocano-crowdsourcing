@@ -4,6 +4,11 @@ import {
   ILOCANO_PROFICIENCY_SUPPORTING_COPY,
   type IlocanoProficiency,
 } from "@/schemas/validator";
+import {
+  EVALUATION_CHOICES,
+  TRANSLATION_FIELD_LABELS,
+  type Evaluation,
+} from "@/schemas/validation";
 
 import type { InterfaceLocale } from "@/lib/domain/locale";
 
@@ -250,13 +255,17 @@ export const ENGLISH_COPY = {
   "ready.notStarted.cta": "Go to the Ilocano question",
   "ready.next.label": "What happens next",
   "ready.next.body1":
-    "Receiving sentences is the next part of the study and is not switched on yet. When it is, a " +
-    "browser that already answered the question is recognised as the same validator and is given " +
-    "ten Ilocano navigation sentences to check. Coming back to this browser will not replace your " +
-    "screening answer.",
+    "You are given Ilocano navigation sentences one at a time, in the order the study chose, and " +
+    "each one is judged on its own. Coming back to this browser will not replace your screening " +
+    "answer.",
   "ready.next.body2":
-    "Until then, nothing is required of you. If you have already answered the Ilocano question in " +
-    "this browser, closing this tab is a complete and legitimate way to finish.",
+    "Each finished sentence is saved straight away, so you can stop at any point without losing what " +
+    "you have already done, and come back later from this same browser.",
+  "ready.begin.label": "Start now",
+  "ready.begin.body":
+    "Ask for your sentences. The study chooses which ones you get, and how many, so it may be " +
+    "asking for them right now.",
+  "ready.begin.cta": "Start validating",
   "ready.stop.label": "If you want to stop",
   "ready.stop.body":
     "Clearing this browser's site data removes the code that links you to your validator " +
@@ -274,6 +283,117 @@ export const ENGLISH_COPY = {
     "affected.",
   "notFound.cta": "Go back to the start",
   "notFound.meta.title": "Page not found",
+
+  // -- Starting a batch -----------------------------------------------------
+  // The route a participant lands on to leave `/ready` and obtain a batch. The batch is requested
+  // from the server rather than linked to, because a batch id does not exist until the server has
+  // chosen one — which is also why this route cannot be a static `href` on `/ready`.
+  "validateStart.meta.title": "Start validating",
+  "validateStart.title": "Start your batch",
+  "validateStart.lead":
+    "You will be given a set of Ilocano navigation sentences, one at a time, in the order the " +
+    "study chose.",
+  "validateStart.begin": "Give me my sentences",
+  "validateStart.working": "Preparing your sentences…",
+  "validateStart.working.ariaLabel": "Preparing your sentences",
+  "validateStart.noIdentity":
+    "This browser does not hold a saved validator identity, so there is nothing to attach a batch " +
+    "to. Answer the Ilocano question first.",
+  "validateStart.noIdentity.cta": "Go to the Ilocano question",
+  "validateStart.exhausted":
+    "Every sentence available to this validator has already been answered by the required number of " +
+    "people. Thank you — there is nothing more to do right now.",
+  "validateStart.failure.notConfigured":
+    "The study is not open right now, and no batch was created.",
+  "validateStart.failure.invalid":
+    "This browser could not be recognised as a validator, and no batch was created. Answer the " +
+    "Ilocano question first.",
+  "validateStart.failure.persistence":
+    "We could not prepare your sentences just now, and no batch was created. You can try again in " +
+    "a moment.",
+
+  // -- The validation session ------------------------------------------------
+  // Doubles as the document title. Every string on this route is chrome: the sentence itself is
+  // research material and is rendered from storage, never from here.
+  "validate.meta.title": "Validating",
+  "validate.meta.description":
+    "One Ilocano navigation sentence at a time. Your judgement, any correction, and both " +
+    "translations are saved as you go.",
+  "validate.header.step": "step 4 of 4",
+  "validate.entry.label": "The sentence",
+  "validate.entry.instructionLabel": "Ilocano sentence",
+  "validate.entry.originLabel": "Intended origin",
+  "validate.entry.destinationLabel": "Intended destination",
+  "validate.entry.transitModeLabel": "Intended travel mode",
+  "validate.entry.transitMode.absent": "Not stated",
+
+  // -- Progress --------------------------------------------------------------
+  // Three fragments rather than one formatted sentence, because "Sentence 3 of 10" and
+  // "Pangungusap 3 ng 10" are the same fact with different grammar, and a format string would force
+  // one of those languages to carry the other's word order.
+  "validate.progress.label": "Progress through this batch",
+  "validate.progress.sentence": "Sentence",
+  "validate.progress.of": "of",
+  "validate.progress.saved": "saved",
+
+  // -- Per-entry form --------------------------------------------------------
+  "validation.evaluation.legend": "What does this sentence do?",
+  // The four approved option labels and clarifiers, ASSIGNED from `EVALUATION_CHOICES` in
+  // `@/schemas/validation` rather than retyped, for the reason the screening labels are: the
+  // approved English wording has one home, and a catalog that restates it is a second place for it
+  // to be quietly edited. Declared order is preserved, never sorted, never re-labelled.
+  "validation.evaluation.correct_natural": EVALUATION_CHOICES[0].label,
+  "validation.evaluation.correct_natural.description": EVALUATION_CHOICES[0].description,
+  "validation.evaluation.correct_unnatural": EVALUATION_CHOICES[1].label,
+  "validation.evaluation.correct_unnatural.description": EVALUATION_CHOICES[1].description,
+  "validation.evaluation.incorrect": EVALUATION_CHOICES[2].label,
+  "validation.evaluation.incorrect.description": EVALUATION_CHOICES[2].description,
+  "validation.evaluation.cannot_evaluate": EVALUATION_CHOICES[3].label,
+  "validation.evaluation.cannot_evaluate.description": EVALUATION_CHOICES[3].description,
+  "validation.evaluation.hint":
+    "Choose the one that fits best. A correction is asked for only when you choose the second or " +
+    "third option, and two translations are asked for unless you choose the last.",
+  "validation.correction.label": "Corrected Ilocano sentence",
+  "validation.correction.description":
+    "Write it the way you would actually say it. It is stored beside the original sentence, which " +
+    "is never changed.",
+  "validation.translation.english": TRANSLATION_FIELD_LABELS.english.label,
+  "validation.translation.english.description":
+    "Translate the validated Ilocano sentence — your correction if you wrote one, otherwise the " +
+    "sentence above — into English.",
+  "validation.translation.filipino": TRANSLATION_FIELD_LABELS.filipino.label,
+  "validation.translation.filipino.description":
+    "Isalin sa Filipino ang validated na pangungusap — ang iyong correction kung may isinulat ka, " +
+    "kundi ang pangungusap sa itaas.",
+  "validation.translation.required":
+    "Both translations are required for this answer, and neither can be skipped.",
+  "validation.submit": "Save and continue",
+  "validation.submitting": "Saving…",
+  "validation.savingNote":
+    "Each sentence is saved as soon as you finish it, so you can stop at any point without losing " +
+    "what you have already done.",
+  "validation.failure.invalid":
+    "We could not accept that answer, and nothing was saved. Check the highlighted inputs.",
+  "validation.failure.notConfigured": "The study is not open right now, and nothing was saved.",
+  "validation.failure.persistence":
+    "We could not save that answer. Nothing was saved, so nothing is lost — you can try again in a " +
+    "moment.",
+
+  // -- Session states --------------------------------------------------------
+  "validate.finished.label": "This batch is finished",
+  "validate.finished.body":
+    "You have answered every sentence in this batch. Each one was saved as you went. Asking for " +
+    "another batch is not part of this part of the study yet.",
+  "validate.absent.label": "We could not find that batch",
+  "validate.absent.body":
+    "The address may be incomplete, or the batch may belong to a different browser. Nothing you " +
+    "have submitted is affected.",
+  "validate.absent.cta": "Start a new batch",
+  "validate.failed.label": "We could not read your batch",
+  "validate.failed.body":
+    "Nothing was changed and nothing was lost. You can try again in a moment.",
+  "validate.failed.invalid": "That link did not name a sentence position, so nothing was read.",
+  "validate.failed.persistence": "Your sentences could not be loaded just now.",
 } as const;
 
 /**
@@ -481,14 +601,17 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "ready.notStarted.cta": "Pumunta sa tanong ng Ilocano",
   "ready.next.label": "Ang susunod",
   "ready.next.body1":
-    "Ang pagtanggap ng mga pangungusap ay susunod na bahagi ng pag-aaral at hindi pa naka-on. " +
-    "Kapag naganap na ito, kilalang muli bilang parehong validator ang browser na sumagot na sa " +
-    "tanong, at bibigyan ito ng sampung pangungusap sa nabigasyong Ilocano na susuriin. Ang " +
+    "Ibinibigay sa iyo ang mga pangungusap sa nabigasyong Ilocano nang isa-isa, sa " +
+    "pagkakasunod-sunod na pinili ng pag-aaral, at sinusuriin ang bawat isa nang isa-isa. Ang " +
     "pagbalik sa browser na ito ay hindi magpapalit sa iyong sagot sa pagsusuri.",
   "ready.next.body2":
-    "Hanggang doon, walang kinakailangang gawin sa iyo. Kung sumagot ka na sa tanong ng Ilocano " +
-    "sa browser na ito, ang pagtatapos ng browser na ito ay isang tunay at tanggap na paraan ng " +
-    "pagtatapos.",
+    "Nase-save ang bawat natapos na pangungusap kaagad, kaya puwede kang tumigil anumang oras " +
+    "nang hindi nawawalan ng ginawa mo na, at makabalik sa browser na ito sa bandang huli.",
+  "ready.begin.label": "Magsimula na",
+  "ready.begin.body":
+    "Humingi ng iyong mga pangungusap. Pinipili ng pag-aaral kung alin ang ibibigay sa iyo at " +
+    "ilan, kaya maaaring hinihingi niya ang mga ito ngayon.",
+  "ready.begin.cta": "Magsimula ng pagpapatunay",
   "ready.stop.label": "Kung gusto mong tumigil",
   "ready.stop.body":
     "Ang pag-clear ng datos ng site sa browser na ito ay nag-aalis ng code na nag-uugnay sa iyo " +
@@ -506,6 +629,117 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "Maaaring nagbago ang address, o hindi kumpleto ang link. Walang naaapektuhan sa ipinasa mo.",
   "notFound.cta": "Bumalik sa simula",
   "notFound.meta.title": "Hindi natagpuan ang pahina",
+
+  // -- Simula ng batch -------------------------------------------------------
+  // The `/ready` page's onward path. A batch id does not exist until the server has chosen one, so
+  // the request is made from the participant's browser rather than linked to from `/ready`.
+  "validateStart.meta.title": "Magsimula ng pagpapatunay",
+  "validateStart.title": "Magsimula ng iyong batch",
+  "validateStart.lead":
+    "Bibigyan ka ng mga pangungusap na nabigasyon sa Ilocano, isa-isa, sa pagkakasunod-sunod na " +
+    "pinili ng pag-aaral.",
+  "validateStart.begin": "Bigyan ako ng mga pangungusap",
+  "validateStart.working": "Inihahanda ang iyong mga pangungusap…",
+  "validateStart.working.ariaLabel": "Inihahanda ang iyong mga pangungusap",
+  "validateStart.noIdentity":
+    "Walang naka-save na pagkakakilanlan ng validator ang browser na ito, kaya walang maaattach " +
+    "na batch. Sagutin muna ang tanong tungkol sa Ilocano.",
+  "validateStart.noIdentity.cta": "Pumunta sa tanong tungkol sa Ilocano",
+  "validateStart.exhausted":
+    "Sagot na ng kinakailangang bilang ng tao ang bawat pangungusap na abot ng validator na ito. " +
+    "Salamat — wala nang kailangang gawin sa ngayon.",
+  "validateStart.failure.notConfigured": "Bukas pa ang pag-aaral, at walang batch na nalikha.",
+  "validateStart.failure.invalid":
+    "Hindi makilala ang browser na ito bilang validator, at walang batch na nalikha. Sagutin muna " +
+    "ang tanong tungkol sa Ilocano.",
+  "validateStart.failure.persistence":
+    "Hindi maipaghanda ang iyong mga pangungusap ngayon, at walang batch na nalikha. Puwede " +
+    "mong subukan muli sa lalong madaling panahon.",
+
+  // -- Ang validation session ------------------------------------------------
+  // Ang mismong pahina. Lahat ng string dito ay chrome: ang mismong pangungusap ay materyal ng
+  // pananaliksik at hinahango mula sa storage, hindi mula rito.
+  "validate.meta.title": "Pagpapatunay",
+  "validate.meta.description":
+    "Isa-isa ang mga pangungusap sa nabigasyon na nasa Ilocano. Ang iyong paghusga, anumang " +
+    "pagwawasto, at ang dalawang pagsasalin ay nase-save habang ginagawa mo.",
+  "validate.header.step": "hakbang 4 sa 4",
+  "validate.entry.label": "Ang pangungusap",
+  "validate.entry.instructionLabel": "Pangungusap sa Ilocano",
+  "validate.entry.originLabel": "Nilayong pinagmulan",
+  "validate.entry.destinationLabel": "Nilayong puntahan",
+  "validate.entry.transitModeLabel": "Nilayong paraan ng paglalakbay",
+  "validate.entry.transitMode.absent": "Hindi nakasaad",
+
+  // -- Progreso ---------------------------------------------------------------
+  // Tatlong fragmento sa halip na isang pangungusap na may format, dahil ang “Pangungusap 3 ng 10” at
+  // ang “Sentence 3 of 10” ay iisang bagay na magkaibayong gramatika, at ang isang format string ay
+  // pipilitin sa isang wika na dalhin ang gramatika ng iba.
+  "validate.progress.label": "Progreso sa batch na ito",
+  "validate.progress.sentence": "Pangungusap",
+  "validate.progress.of": "ng",
+  "validate.progress.saved": "ang naisave",
+
+  // -- Form kada entry --------------------------------------------------------
+  "validation.evaluation.legend": "Ano ang ginagawa ng pangungusap na ito?",
+  "validation.evaluation.hint":
+    "Piliin ang pinakangkop. Hinihingi lamang ng pagwawasto ang ikalaw o ikatlong pagpipilian, at " +
+    "dalawang pagsasalin ang hinihingi maliban kung pipiliin mo ang huli.",
+  "validation.evaluation.correct_natural": "Tama at natural",
+  "validation.evaluation.correct_natural.description":
+    "Sinasabi ng pangungusap ang nais ipahayag at natural itong basahin sa Ilocano.",
+  "validation.evaluation.correct_unnatural": "Tama ngunit hindi natural ang dating",
+  "validation.evaluation.correct_unnatural.description":
+    "Tama ang kahulugan, ngunit hindi natural ang dating para sa isang nagsasalita.",
+  "validation.evaluation.incorrect": "Mali",
+  "validation.evaluation.incorrect.description":
+    "Hindi ipinapakita ng pangungusap ang impormasyong nais ipahayag.",
+  "validation.evaluation.cannot_evaluate": "Hindi ko kayang suriin nang may katiyakan",
+  "validation.evaluation.cannot_evaluate.description":
+    "Hindi ka sapat ang kumpiyansa upang suriin ang entry na ito.",
+  "validation.correction.label": "Tamang Ilocano",
+  "validation.correction.description":
+    "Isulat ito ayon sa tunay mong pangungusap. Itinatago ito sa tabi ng orihinal na pangungusap, na " +
+    "hindi kailanman binabago.",
+  "validation.translation.english": "Pagsasalin sa Ingles",
+  "validation.translation.english.description":
+    "Isalin sa Ingles ang validated na Ilocano — ang iyong pagwawasto kung may isinulat ka, kundi " +
+    "ang pangungusap sa ibabaw.",
+  "validation.translation.filipino": "Pagsasalin sa Filipino",
+  "validation.translation.filipino.description":
+    "Isalin sa Filipino ang validated na pangungusap — ang iyong pagwawasto kung may isinulat ka, " +
+    "kundi ang pangungusap sa ibabaw.",
+  "validation.translation.required":
+    "Kailangan ang dalawang pagsasalin para sa sagot na ito, at wala sa dalawang maaaring laktawan.",
+  "validation.submit": "I-save at magpatuloy",
+  "validation.submitting": "Ini-save…",
+  "validation.savingNote":
+    "Nase-save ang bawat pangungusap sa oras na natatapos mo, kaya puwede kang tumigil anumang " +
+    "oras nang hindi nawawalan ng ginawa mo na.",
+  "validation.failure.invalid":
+    "Hindi namin maaanggap ang sagot na iyon, at walang nase-save. Pakisuri ang mga naka-highlight na " +
+    "input.",
+  "validation.failure.notConfigured": "Bukas pa ang pag-aaral, at walang nase-save.",
+  "validation.failure.persistence":
+    "Hindi namin ma-save ang sagot na iyon. Walang nase-save, kaya walang nawala — puwede mong " +
+    "subukan muli sa lalong madaling panahon.",
+
+  // -- Mga kalagayan ng session -------------------------------------------------
+  "validate.finished.label": "Tapos na ang batch na ito",
+  "validate.finished.body":
+    "Sinagot mo na ang bawat pangungusap sa batch na ito. Nase-save ang bawat isa habang ginagawa " +
+    "mo. Hinihingi ng ibang batch ay hindi bahagi pa ng bahaging ito ng pag-aaral.",
+  "validate.absent.label": "Hindi namin mahanap ang batch na iyon",
+  "validate.absent.body":
+    "Maaaring hindi kumpleto ang address, o ibang browser ang may hawak ng batch. Walang " +
+    "naaapektuhan sa ipinasa mo.",
+  "validate.absent.cta": "Magsimula ng bagong batch",
+  "validate.failed.label": "Hindi namin mabasa ang iyong batch",
+  "validate.failed.body":
+    "Walang binago at walang nawala. Puwede mong subukan muli sa lalong madaling panahon.",
+  "validate.failed.invalid":
+    "Hindi nagpangalan ang link na iyon ng posisyon ng pangungusap, kaya walang binasa.",
+  "validate.failed.persistence": "Hindi ma-load ang iyong mga pangungusap ngayon.",
 };
 
 /**
@@ -592,4 +826,45 @@ export type LocaleNameKey = "switcher.englishName" | "switcher.filipinoName";
 export const LOCALE_NAME_KEYS: Record<InterfaceLocale, LocaleNameKey> = {
   en: "switcher.englishName",
   fil: "switcher.filipinoName",
+};
+
+/**
+ * The label key for each approved evaluation.
+ *
+ * The same `Record`-over-a-closed-union mechanism as `PROFICIENCY_LABEL_KEYS`, for the same reason:
+ * a fifth approved evaluation, or a renamed one, is a `pnpm run typecheck` failure naming a missing
+ * property rather than a validation screen that renders an unlabelled option.
+ *
+ * Only the LABEL is localized. The value a validator's judgement is stored as is
+ * `EVALUATION_CHOICES[i].value` and is never read from this module, so a participant choosing
+ * "Mali" is recorded as `incorrect` and one choosing "Incorrect" is recorded as `incorrect` too.
+ */
+export type EvaluationLabelKey =
+  | "validation.evaluation.correct_natural"
+  | "validation.evaluation.correct_unnatural"
+  | "validation.evaluation.incorrect"
+  | "validation.evaluation.cannot_evaluate";
+
+export const EVALUATION_LABEL_KEYS: Record<Evaluation, EvaluationLabelKey> = {
+  correct_natural: "validation.evaluation.correct_natural",
+  correct_unnatural: "validation.evaluation.correct_unnatural",
+  incorrect: "validation.evaluation.incorrect",
+  cannot_evaluate: "validation.evaluation.cannot_evaluate",
+};
+
+/**
+ * The clarifier shown under each option label.
+ *
+ * All four are present and all four are rendered, which is the neutrality requirement expressed as
+ * structure rather than discipline: a design that gave one option a clarifier would be visibly
+ * flagging that option, so there is no way to add one without this map growing unevenly and a test
+ * noticing.
+ */
+export type EvaluationDescriptionKey = `${EvaluationLabelKey}.description`;
+
+export const EVALUATION_DESCRIPTION_KEYS: Record<Evaluation, EvaluationDescriptionKey> = {
+  correct_natural: "validation.evaluation.correct_natural.description",
+  correct_unnatural: "validation.evaluation.correct_unnatural.description",
+  incorrect: "validation.evaluation.incorrect.description",
+  cannot_evaluate: "validation.evaluation.cannot_evaluate.description",
 };

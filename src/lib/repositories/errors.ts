@@ -18,6 +18,18 @@
  * operation failed, and a log or a test can assert the failure was attributed to the right call
  * rather than to a repository in general.
  */
+/**
+ * PostgreSQL SQLSTATE for a unique-constraint violation, as PostgREST reports it in an error's
+ * `code`.
+ *
+ * It lives in this module rather than in the Supabase implementation for one reason: a domain
+ * service that must BRANCH on "this validator already answered this entry" needs the code, and a
+ * service worth unit-testing cannot import a `server-only` module. `@/lib/repositories/supabase/rows`
+ * re-exports it so the implementations keep importing it from where it has always lived, and there
+ * is exactly one definition of the string.
+ */
+export const POSTGREST_UNIQUE_VIOLATION_CODE = "23505";
+
 export type RepositoryOperation =
   | "dataset_entries.list"
   | "dataset_entries.findById"

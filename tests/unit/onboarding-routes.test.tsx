@@ -153,7 +153,11 @@ describe("the internal route inventory this suite relies on", () => {
     // Without this, a `readdirSync` pointed at the wrong path yields an empty array, and
     // every `expect(hrefs.every(...))` over it passes. An empty inventory is exactly the
     // condition this file's route tests exist to detect, so it must never pass silently.
-    expect(KNOWN_ROUTES).toEqual(expect.arrayContaining(["/start", "/ready"]));
+    // `/validate` is named explicitly as well as being picked up by the directory scan, because it is
+    // the destination `/ready` now hands every participant to. The scan would catch a missing
+    // directory through the href loop; naming it here fails at the INVENTORY, naming the route that
+    // went missing, which is the more useful failure when three routes change at once.
+    expect(KNOWN_ROUTES).toEqual(expect.arrayContaining(["/start", "/ready", "/validate"]));
   });
 });
 
@@ -286,7 +290,7 @@ describe("screening route", () => {
     const ready = await renderRoute(ReadyPage);
     const startMetadata = await startGenerateMetadata();
 
-    expect(ready).toMatch(/not switched on yet/i);
+    expect(ready).toMatch(/href="\/validate"/);
     expect(
       startMetadata.description,
       "/start metadata promises sentences that /ready says are not switched on",
@@ -612,9 +616,17 @@ describe("confirmation route", () => {
     // this one broke that promise. Asserted as an absence, because the failure mode is a
     // sentence that reads perfectly well.
     expect(html).not.toMatch(/this browser will be recognised as the same validator/);
-    expect(html).toMatch(
-      /a browser that already answered the question is recognised as the same validator/,
-    );
+    // ROUND SEVEN. The sentence this asserted the presence of was removed with the rest of the
+    // "not switched on yet" paragraph, because it explained a capability that did not exist. What
+    // replaced it keeps the W6 PROPERTY — nothing on this page promises anything about an
+    // enrollment that may not have happened — and states it in a form that is true for both
+    // visitors: a browser returning here will not have its screening answer replaced. For someone
+    // who never answered, there is nothing to replace, so the sentence is vacuously true rather
+    // than falsely reassuring.
+    //
+    // Asserted as a presence, not merely as the absence above. An absence-only replacement would let
+    // this page say nothing at all and pass, which is the shape this suite has twice had to undo.
+    expect(html).toMatch(/will not replace your screening answer/i);
 
     // ...and the unconditionally-true forms are present instead.
     expect(html).toMatch(/is generated for you and saved to the database/i);
@@ -632,11 +644,38 @@ describe("confirmation route", () => {
     expect(html).toMatch(/Nothing identifying was collected/);
   });
 
-  it("says plainly that receiving sentences is not switched on yet", () => {
-    // A participant who expects sentences and gets none will assume the platform is
-    // broken. Saying so is part of the deliverable, not an apology for it.
-    expect(html).toMatch(/not switched on yet/i);
-    expect(html).toMatch(/next part of the study/i);
+  it("no longer says the next part of the study is switched off, because it is not", () => {
+    // ============================================================================
+    // THIS ASSERTION WAS INVERTED BY `validation-experience`, AND THE INVERSION IS THE POINT
+    // ============================================================================
+    // It used to read:
+    //
+    //   it("says plainly that receiving sentences is not switched on yet", () => {
+    //     expect(html).toMatch(/not switched on yet/i);
+    //     expect(html).toMatch(/next part of the study/i);
+    //   });
+    //
+    // which was a good test of a true statement. `/ready` told a participant that receiving
+    // sentences was "not switched on yet" because at that moment it was, and telling someone the
+    // truth about a capability that does not exist is better than letting them conclude the platform
+    // is broken.
+    //
+    // The capability now exists. `/ready` links to `/validate`, which requests a batch. So the
+    // statement became FALSE, and a test enforcing a participant-facing falsehood is worse than no
+    // test: it makes the falsehood load-bearing, so removing it breaks the build and keeping it
+    // ships a lie.
+    //
+    // The replacement is the SAME property with the direction reversed: the page must not tell a
+    // participant that the next part of the study is unavailable, and it must not tell them that
+    // closing the tab is a complete way to finish — that second claim was equally true once and
+    // equally untrue now, and it is asserted separately below.
+    expect(html).not.toMatch(/not switched on yet/i);
+    expect(html).not.toMatch(/next part of the study/i);
+
+    // And the affirmative half, so the test is not merely an absence that a blank page would also
+    // satisfy: the onward path is offered, and it names the thing that can now actually be done.
+    expect(html).toMatch(/href="\/validate"/);
+    expect(html).toMatch(/Start validating/);
   });
 
   it("does not promise the screening question will not be asked again, because it can be", () => {
@@ -715,8 +754,20 @@ describe("confirmation route", () => {
     // The "you can finish" line must not be unconditional. It presupposes a start, and
     // this route cannot know whether one happened - which is the whole reason the copy was
     // softened rather than this route gated.
-    expect(html).toMatch(/If you have already answered the Ilocano\s+question in this browser/);
+    //
+    // ROUND SEVEN. The sentence that carried this qualification — "If you have already answered the
+    // Ilocano question in this browser, closing this tab is a complete and legitimate way to finish" —
+    // is gone, because it is now FALSE for a participant who has answered: they are not finished,
+    // there are sentences waiting, and the page links to them two sections below.
+    //
+    // So the absence assertion below is retained and STRENGTHENED, and the presence assertion is
+    // replaced by the claim that is true for both visitors. Nothing on this page may still tell
+    // anyone they can stop here.
+    expect(html).not.toMatch(/If you have already answered the Ilocano\s+question in this browser/);
     expect(html).not.toMatch(/Closing this tab is a complete and legitimate way to finish\./);
+    expect(html).not.toMatch(/complete and legitimate way to finish/i);
+    // The true replacement: work done is banked, and there is more to do.
+    expect(html).toMatch(/saved straight away/i);
   });
 
   it("does not display a validator identifier or a proficiency value", () => {
