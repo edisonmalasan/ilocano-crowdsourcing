@@ -418,30 +418,44 @@ What this evidence explicitly does **not** establish:
   `GET {SUPABASE_URL}/auth/v1/health` returns **200**. Verified by NAME and LENGTH only; no value was
   printed, and none is recorded here. `NEXT_PUBLIC_SUPABASE_URL` equals `SUPABASE_URL` and the two
   anon-key variables are equal, which was checked rather than assumed.
-  - **What is now the real blocker: the hosted schema is EMPTY.** PostgREST's OpenAPI root on the
-    real project exposes **0 relation paths** — no tables, so nothing has been created. The
-    application is therefore still unable to read or write anything, and **no Supabase client has
-    ever been constructed in this repository against a real project**, because every code path that
-    would construct one needs a table to exist first.
-  - **Why it cannot be fixed from this machine.** Applying SQL needs a Supabase personal access
-    token, the `supabase` CLI with a linked project, or `psql`/`docker` — none of which are present —
-    and PostgREST exposes no SQL-executing function. The five production migrations have been bundled
-    into a single pasteable file (`supabase/migrations/`, in filename order) and handed to the
-    operator, because **pasting it into the hosted SQL editor is a manual Supabase action**. Nothing
-    in this repository can execute it, and **the migration history must not be rewritten to make it
-    easier**: the fix is to apply the existing files, not to author new ones.
-  - **Required to unblock:** one paste of the bundled migrations into the Supabase SQL editor, then a
-    dataset import, which additionally needs a **production `DatasetEntrySink`** — `importDatasetEntries`
-    has no production entry point today and is reachable only from two test files. That entry point
-    is deliberately **not** folded into `researcher-admin-access`; it is a separate bounded change,
-    because a change that is already gated should not absorb a second unfinished boundary.
-  - **The consequence for Phase 7, stated plainly rather than left to be discovered:** the researcher
-    access boundary in `researcher-admin-access` has been observed to **refuse** an unauthenticated
-    request from a real running server, and has **never** been observed to **read or write** anything
-    against the real project. Gate items 2 through 5 — hosted schema present, OD data present, anon
-    access denied by the real gateway, and privileged server-side PostgREST reads — are **open and
-    blocked on the manual paste above.** Until they are observed, the honest description is *"the
-    boundary is proved to refuse; it is unproved to work."*
+  - **~~The hosted schema is EMPTY.~~ RESOLVED 2026-10-03 by measurement.** PostgREST's OpenAPI root
+    now exposes **7 relation paths and 2 RPC paths**. The five production migrations were applied to
+    the real project **unchanged, in filename order, one request per file**, through the Supabase
+    Management API. The hosted `validations` table carries `english_translation` and
+    `filipino_translation` and does **not** carry `translation_language` or `translation_text`, so the
+    forward bilingual migration is confirmed on a real server and not only in PGlite. All five files
+    were accepted; the migration history was **not** rewritten to make the deploy easier.
+  - **Why the manual route failed, recorded because it will recur and because the failure is
+    invisible.** The Supabase SQL Editor runs a pasted script as a **single transaction**, so one
+    failing statement rolls back all five migrations and still reports success. A paste can also land
+    in the **wrong project**, and no in-database check can detect that: the observable result is
+    identical either way. The project reference cannot be read from the new opaque key format, which
+    carries no `ref` claim. Both explanations were live for six rounds; the only thing that separated
+    them was querying `pg_class` in the project the paste had actually run in.
+  - **A Supabase personal access token is now present in the local `.env.local` as
+    `SUPABASE_ACCESS_TOKEN`,** verified by name and length only. The Management API
+    (`POST /v1/projects/{ref}/database/query`) applies existing migration files and reports the
+    server's error verbatim, which removes the paste, the transaction, and the wrong-project failure
+    classes at once. A `401` from that endpoint is a credential problem and is reported as
+    `?? UNVERIFIED` rather than as a migration refusal, because no SQL was evaluated.
+  - **What is now the real blocker: the OD dataset has not been imported.** `dataset_entries` exists
+    and is readable as `service_role`, and holds **0 rows**. Verifying it needs a **production
+    `DatasetEntrySink`** — `importDatasetEntries` still has no production entry point and is reachable
+    only from two test files. That is deliberately a **separate bounded change**, not folded into a
+    change that was already gated: a gated change should not absorb a second unfinished boundary.
+  - **The consequence for Phase 7, updated 2026-10-03: the boundary is now proved to WORK, not only to
+    refuse.** Gate item 1 (project reachable), item 2 (schema present), item 4 (anonymous access
+    denied by the **real gateway**), and item 5 (privileged server-side PostgREST reads) are all
+    **satisfied by measurement**, with a tally of **26 satisfied, 0 not satisfied, 0 unverified**.
+    RLS was measured in both available shapes: every `insert` was rejected with the **named** policy
+    and PostgreSQL code `42501`, and `select`/`update`/`delete` were measured against a probe row
+    that genuinely existed — anonymous 0 rows against a `service_role` control of exactly 1, with the
+    table confirmed returned to its prior count. Both attempt-counter functions were exercised on the
+    real wire. **Two gaps are stated rather than implied away:** no desktop browser has ever rendered
+    any screen in this project, so a successful sign-in round trip remains unexercised; and the
+    repository's own query builders (`.in()`, `.range()`, `.neq()`, `.eq()`) have still never run
+    against a real PostgREST, because the reads above were issued by a gate probe rather than by
+    `factory.ts`. Both close with the next change.
   - **Older sections of this file still say the three variables are absent, and they have been left
     saying so on purpose.** Each `What this evidence explicitly does not establish` list is a record of
     what was true **at the phase it belongs to**, and three of them name the absent credentials. Those
@@ -466,9 +480,12 @@ What this evidence explicitly does **not** establish:
     wrong direction.** Measured: making `ADMIN_OPERATOR_SECRETS` a required member of
     `serverEnvSchema` turns the public-path tests red.
   - **The sign-in attempt counter lives in a table, so the migrations must be applied before sign-in
-    can succeed.** A deployment that has not applied them refuses sign-in indistinguishably from one
-    whose counter is merely down, and this project has no error-reporting service to tell the two
-    apart. That trade is deliberate; the diagnosis is the operator's, from their own project settings.
+    can succeed — and they now are, on the real project.** The table and both counter functions exist
+    and were exercised end to end over the real wire. The obligation is retained rather than struck
+    through, because it is a property of the design and not of one deployment: a deployment that has
+    not applied the migrations refuses sign-in indistinguishably from one whose counter is merely
+    down, and this project has no error-reporting service to tell the two apart. That trade is
+    deliberate; the diagnosis is the operator's, from their own project settings.
   - **The proxy in front of the application must set or overwrite `x-forwarded-for`, and must not
     strip `x-real-ip`.** Both halves are load-bearing and neither is fixable in code, because code
     cannot know which proxy is in front of it. On a deployment that passes a client-supplied

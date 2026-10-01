@@ -143,15 +143,36 @@ only — no value is printed here, and none ever should be.** `NEXT_PUBLIC_SUPAB
 absent was written from the absence of a *local runtime* and generalised into the absence of a
 *project*; those are different questions and the second was never asked.
 
-**What is missing is the SCHEMA, and that is now the blocker.** The hosted project exposes **0 relation
-paths** on PostgREST's OpenAPI root, so no migration has ever been applied to it and **no Supabase
-client has ever been constructed against a real project** in this repository — every path that would
-construct one needs a table to exist first. Applying the SQL needs a Supabase personal access token,
-the `supabase` CLI with a linked project, or `psql`/`docker`, none of which are present, and
-PostgREST exposes no SQL-executing function, so **applying the bundled migrations is a manual Supabase
-action**. The five production migrations are concatenated, in filename order, into one pasteable file
-for the operator; **the fix is to apply the existing files, never to rewrite migration history to make
-it easier.** Recorded in `docs/ROADMAP.md` -> `### Active Blockers`.
+**The schema is now APPLIED, and the paragraph this replaces said it was missing — another correction
+by measurement rather than by opinion.** Measured 2026-10-03: the five production migrations were
+applied to the hosted project **unchanged, in filename order, one request per file**, through the
+Supabase Management API using a personal access token now present in `.env.local` as
+`SUPABASE_ACCESS_TOKEN` (verified by name and length only). PostgREST's OpenAPI root exposes **7
+relation paths and 2 RPC paths**. `service_role` reads every research table over the real wire, and
+the anonymous role is denied by the real gateway: each `insert` is rejected with the **named** policy
+and PostgreSQL code `42501`, and `select`/`update`/`delete` return 0 rows against a probe row that
+demonstrably exists — an `service_role` control on the same row returned exactly 1. Both attempt-counter
+functions were exercised end to end and the table re-confirmed empty afterwards.
+
+**Two things the previous paragraph asserted are now false and are corrected here rather than deleted:**
+
+- **"No Supabase client has ever been constructed against a real project."** Still true of
+  *production code* at the moment of writing, and the reason matters: the privileged reads above were
+  issued by a purpose-built gate probe using the service key as a raw header, **not** by
+  `src/lib/supabase/factory.ts`. So the repository's own query builders — `.in()`, `.range()`,
+  `.neq()`, `.eq()` — have still never executed against a real PostgREST, and the claim in the
+  ledger row about them is unchanged. The gap closes when production code first reads or writes.
+- **"Applying the SQL is a manual Supabase action."** No longer true. It *was*, and the reason it
+  took six rounds is worth keeping: the Supabase SQL Editor runs a pasted script as a **single
+  transaction**, so one failing statement rolls back all five migrations and still reports success,
+  and a paste can land in the **wrong project**, which no in-database check can detect — the empty
+  schema looks identical in both cases. A personal access token removes the paste, the transaction,
+  and the wrong-project failure classes at once.
+
+`docs/ROADMAP.md` -> `### Active Blockers` records the same measurement, the current real blocker
+(the OD dataset holds 0 rows and needs a production `DatasetEntrySink`), and the standing instruction
+that **the fix is always to apply the existing migration files, never to rewrite migration history to
+make it easier.**
 
 Current entry point:
 

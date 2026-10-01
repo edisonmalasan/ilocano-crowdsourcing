@@ -228,41 +228,94 @@ defect are precisely the ones this project has never exercised:
 3. Row Level Security confirmed as enforced by the Supabase API gateway rather than by the database
    engine, which PGlite cannot reproduce and which this project's deny-all posture depends on.
 
-##### STATUS, measured 2026-10-02: item 1 SATISFIED, items 2 and 3 BLOCKED
+##### STATUS, measured 2026-10-03: all three items SATISFIED, with one stated residual
 
-**Item 1 is satisfied, by observation.** `pnpm run dev` was run against the real `.env.local` and a
-real `GET /researcher` was issued. It returns a genuine HTTP **403** — not a redirect to sign-in and
-not a 500 — which is what proves the guard is reached and that `forbidden()` is in effect. The
-response carries `X-Robots-Tag: noindex, nofollow` and a `robots` meta noindex; it is byte-identical
-across repeat requests once Next.js's per-request RSC id is normalised; it discloses no reason, no
-credential name, and no fact about whether the deployment is configured; `/researcher/sign-in` is
-reachable without a session, and no session cookie is set for an unauthenticated requester; and
-`/`, `/start`, and `/ready` are served 200 with exactly one `h1` each, which is the load-bearing
-consequence of validating the admin variables separately (D1). The dev server's own log independently
-records `GET /researcher 403` on every such request.
+**Item 1 is satisfied, by observation, and was re-measured on 2026-10-03 after the schema landed.**
+`pnpm run dev` was run against the real `.env.local` and a real `GET /researcher` was issued. It
+returns a genuine HTTP **403** — not a redirect to sign-in and not a 500 — which is what proves the
+guard is reached and that `forbidden()` is in effect. The response carries `X-Robots-Tag: noindex,
+nofollow` and a `robots` meta noindex; it is byte-identical across repeat requests once Next.js's
+per-request RSC id is normalised; it discloses no reason, no credential name, and no fact about
+whether the deployment is configured; `/researcher/sign-in` is reachable without a session and sets
+no session cookie; and `/`, `/start`, and `/ready` are served 200 with exactly one `h1` each, which
+is the load-bearing consequence of validating the admin variables separately (D1). The probe reported
+**all checks passed**, including that no researcher route leaks an absolute URL or an env value.
 
-Two things that probe could **not** establish, recorded so a reader does not over-read it:
+**Item 2 is satisfied, by observation, at the wire level.** With the schema applied, `service_role`
+issued seven real `GET` requests through PostgREST, one per research table, and every one returned
+**200** with the derived column count: `dataset_entries` 9, `validators` 5, `validation_sessions` 2,
+`validation_batches` 3, `batch_entries` 3, `validations` 10, `researcher_signin_attempts` 4. The
+hosted `validations` table carries `english_translation` and `filipino_translation` and does **not**
+carry `translation_language` or `translation_text`, which is the forward bilingual migration observed
+on a real server rather than only in PGlite.
 
-- **It is not browser verification.** No desktop browser is connected to this session, so the screen
-  has still never been rendered by anything that lays it out. The evidence is HTTP status, headers,
-  and served HTML — not appearance.
-- **It never reached a database read.** The guard refuses before any read, so this exercises
-  authorization and nothing else. Items 2 and 3 remain unobserved.
+**THE RESIDUAL, stated rather than glossed.** Item 2 was written expecting the *first* real
+observation of `.in()`, `.range()`, `.neq()`, and `.eq()` — the calls in
+`src/lib/repositories/supabase/*` that only a recording fake has ever exercised. **That has still
+not happened.** The seven reads above were issued by a purpose-built gate probe using the service
+key as a raw header, not by this repository's `factory.ts` client, so the repository's own query
+builders remain unproven against a real PostgREST. The gap is now narrow and named: it closes when
+production code performs its first real read or write, which is the next change (the hosted dataset
+import) rather than this one. Treating the probe's success as evidence about the repository's client
+would be exactly the substitution of a neighbouring measurement for the required one.
 
-**Items 2 and 3 are blocked on a manual Supabase action, not on code.** The project exists and is
-reachable — `/auth/v1/health` returns 200 and the seven `.env.local` variables are present and
-non-blank — but the hosted schema is **empty**: PostgREST's OpenAPI root exposes **zero** relation
-paths. Applying the migrations requires SQL, and this machine has no Supabase PAT, no linked
-`supabase` CLI, no `psql`, no `docker`, and PostgREST exposes no SQL-executing function. The five
-production migrations have been bundled into one pasteable file and handed to the operator; nothing
-in this repository can execute it. Until it is applied, the researcher area's privileged reads have
-never run and gate items 2 through 5 stay open.
+**Item 3 is satisfied, by observation, on the real gateway.** All seven tables deny the anonymous
+role, and the denial is now measured in both shapes rather than one:
 
-The gate is an **entry condition on the Apply**, not a task inside it: no implementation in this
-change merges until a real Supabase project exists and all three have been observed. Until then the
-change's own status is "implemented and unit-tested, refused correctly by a real server, and never
-exercised against a real authorization boundary or a real database", and the ledger must say that
-rather than imply otherwise.
+- **INSERT is the decisive test that needs no data.** PostgreSQL evaluates the `WITH CHECK` policy
+  against the *proposed* row, so a rejection is a genuine access decision and nothing is written.
+  All seven returned `new row violates row-level security policy for table "<name>"` carrying
+  PostgreSQL code `42501`.
+- **SELECT, UPDATE, and DELETE could not discriminate on empty tables** — zero rows is equally
+  consistent with a deny-all policy and with a permissive one over an empty table, so reporting that
+  as a pass would be vacuous. One clearly-marked probe row (`id = "PROBE-RLS-GATE"`, not research
+  data) was written as `service_role`, measured, and removed. The anonymous role received **0 rows**
+  on SELECT, UPDATE (204), and DELETE, while the `service_role` control on the same row received
+  **exactly 1**. A permissive policy cannot produce that pair. The table was then confirmed returned
+  to its prior count, `before=0 after=0`.
+- **Both attempt-counter functions were exercised on the real wire**, which is the first time this
+  project has reached a database through `.rpc()`. `researcher_signin_attempts_record` returned `1`,
+  `researcher_signin_attempts_clear` removed the row, and the table was re-counted empty.
+
+The full gate tally is **26 satisfied, 0 not satisfied, 0 unverified**.
+
+##### What the blocked period established, and it is operational guidance rather than filler
+
+The gate was blocked for six rounds, and **not one of those rounds was about SQL.** The recorded
+reasons, in the order they turned out to matter:
+
+- **The SQL Editor's paste is a single transaction.** A pasted multi-statement script that fails
+  anywhere rolls back all five migrations and still reports success. The observable result was a
+  green "success" and a completely empty `public` schema, verified by reading `pg_class` directly.
+  Applying the migrations **one file per request** is what made the outcome attributable.
+- **A paste can also land in the wrong project**, and nothing inside a database can detect it: the
+  emptiness is identical. The project reference cannot be read from the new opaque key format, which
+  carries no `ref` claim, so the two explanations are separable only by querying the project the
+  paste actually ran in.
+- **The Supabase Management API removes the whole failure class.** With
+  `SUPABASE_ACCESS_TOKEN` present, `POST /v1/projects/{ref}/database/query` applies the existing
+  migration files unchanged, in filename order, one request each, and reports the server's error
+  verbatim. A `401` from that endpoint is a credential problem and is deliberately reported as
+  `?? UNVERIFIED` rather than as a migration refusal, because no SQL was evaluated.
+- **A verification probe that cannot distinguish an absence from a denial will certify a security
+  property it never observed.** The first version of the gate probe scored all seven RLS probes
+  `SATISFIED` against a project with **zero tables**, because it treated any error as a denial and
+  `PGRST205` is not an access decision. The second version erred the other way and reported five
+  **false violations**, because it parsed `Content-Range` as `^/0` while PostgREST emits a leading
+  `star`. Both were found by reading the server's own response rather than by re-running.
+- **Supabase returns `401`, not `42501`, for a policy rejection on INSERT** — a status-based
+  classifier that assumes PostgreSQL's native code will report a real access decision as
+  unverified. The body, not the status, decides.
+- **Column and argument names must be read, never guessed.** The probe invented
+  `source_entry_id` (the column is `id`) and a one-argument call to a two-argument function. Both
+  produced `PGRST204`/`PGRST202` errors that named *the probe*. The migration files in this
+  repository are the authority for both column types and function signatures, and the probe now
+  refuses to run rather than guessing.
+
+The gate is an **entry condition on the Apply**, and it is now discharged. What remains unexercised
+is stated above rather than implied away: **no desktop browser has ever rendered any screen in this
+project**, so there is still no visual verification of the researcher pages, and a successful
+sign-in round trip has still never been performed in a browser.
 
 ### D10 — The documented admin variables ship empty, not filled with sample text
 
