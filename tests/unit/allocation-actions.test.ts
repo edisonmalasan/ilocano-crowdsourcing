@@ -139,10 +139,25 @@ function createRecordingDependencies(
         calls.push("batches.findById");
         return null;
       },
+      async listForRecovery() {
+        // Never reached by allocation. Present because this object is CAST to
+        // `AllocationActionDependencies`, and a cast makes the compiler unable to check a missing
+        // member — so nothing but a test would notice its absence, and nothing at all would notice it
+        // while every assertion here stayed green.
+        calls.push("batches.listForRecovery");
+        return [];
+      },
     },
     config: allocationConfigSchema.parse({}),
     random: () => 0,
-    newBatchId: (validatorId: string) => `${validatorId}-batch`,
+    // The identifier AND the instant, from ONE minting call. A fixture returning only an id would have
+    // satisfied the old shape while leaving `create` with nothing to write to `created_at` — and no
+    // assertion in this file would have said so, because the failure would surface only against a
+    // database that does not exist here.
+    newBatch: (validatorId: string) => ({
+      id: `${validatorId}-batch`,
+      createdAt: "2026-09-30T00:00:00.000Z",
+    }),
     ConfigurationFailure: class ServerEnvError extends Error {},
   } as unknown as AllocationActionDependencies;
 

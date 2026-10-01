@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { allocateBatch, defaultBatchId } from "@/lib/allocation/allocate-batch";
+import {
+  allocateBatch,
+  defaultBatch,
+  type MintedBatchIdentity,
+} from "@/lib/allocation/allocate-batch";
 import {
   RepositoryError,
   type BatchesRepository,
@@ -221,14 +225,32 @@ function createFakes(
 
   // Declared as the interface rather than built up from a partial, so the fake is checkable as one.
   const batches: BatchesRepository = {
-    async create(batch) {
+    async create(batch, createdAt) {
       record("batches.create", batch);
+      // The instant the repository was told to write is recorded, because a later change that stopped
+      // passing it would otherwise be invisible here: `create` would still "succeed" against this fake
+      // and the migration's `not null` would only object against a real database.
+      //
+      // This comment used to claim that visibility and **nothing asserted it** — the recorder existed,
+      // the value was written into `calls`, and no test in the file ever read it, so the "would be
+      // invisible otherwise" was a guarantee with no witness. The assertion now exists: "hands the
+      // repository a server-minted instant" under `describe("a successful allocation")` reads this entry
+      // and compares it to the injected clock. **A recorder with no reader is the same defect as a guard
+      // with no failing case** — it looks like evidence and supplies none.
+      record("batches.create.createdAt", createdAt);
       stored.set(batch.id, batch);
       return batch;
     },
     async findById(id) {
       record("batches.findById", id);
       return stored.get(id) ?? null;
+    },
+    // Not exercised by the allocation service, which never looks for an interrupted batch. Declared
+    // because the interface requires it and this fake is typed as the interface on purpose — a
+    // partial here would stop being a check on the interface's shape.
+    async listForRecovery(validatorId) {
+      record("batches.listForRecovery", validatorId);
+      return [];
     },
   };
 
@@ -260,16 +282,16 @@ function dependenciesFor(
   over: {
     readonly config?: AllocationConfig;
     readonly random?: () => number;
-    readonly newBatchId?: (validatorId: AnonymousValidatorId) => string;
+    readonly newBatch?: (validatorId: AnonymousValidatorId) => MintedBatchIdentity;
   } = {},
 ) {
   return {
     ...fakes.dependencies,
     config: over.config ?? config(),
     random: over.random ?? constantZero,
-    newBatchId:
-      over.newBatchId ??
-      ((validatorId: AnonymousValidatorId) => defaultBatchId(validatorId, FIXED_NOW)),
+    newBatch:
+      over.newBatch ??
+      ((validatorId: AnonymousValidatorId) => defaultBatch(validatorId, FIXED_NOW)),
   };
 }
 
@@ -591,6 +613,40 @@ describe("a successful allocation", () => {
     expect(allocated(outcome).batchId).toBe((created?.argument as BatchRecord).id);
   });
 
+  it("hands the repository a server-minted instant, so the NOT NULL backfill column can be written", async () => {
+    // The fake at the top of this file has recorded `batches.create.createdAt` since an earlier change,
+    // with a comment claiming that "a later change that stopped passing it would be invisible here
+    // otherwise". **That was a claim of coverage with no assertion behind it** — nothing in this file read
+    // the recorded instant, so the fake recorded a value nobody checked and the comment described a
+    // guarantee that did not exist. The independent verification pass found it.
+    //
+    // What makes it worth asserting rather than deleting the recorder: the `interrupted-batch-recovery`
+    // migration makes `validation_batches.created_at` `NOT NULL` with **no default**, and the backfill
+    // only covers rows that existed when the migration ran. So from that migration forward the service
+    // MUST pass the instant, and a service that stopped passing it would still pass every other test in
+    // this file — `create` returns the batch either way, and the only place the omission is visible is a
+    // real database rejecting the insert.
+    //
+    // Asserted against the **injected** clock rather than `expect.any(Date)`, because a service that
+    // called `new Date()` itself would satisfy the weaker check and the point of the injection is that
+    // the instant is the server's and is testable.
+    const fakes = createFakes({ pool: [entry("OD_0001")] });
+
+    await allocateBatch(request, dependenciesFor(fakes));
+
+    const recorded = fakes.calls.find((call) => call.method === "batches.create.createdAt");
+    // Assert the CALL happened, not merely that the value is plausible: an undefined instant would fail
+    // the equality below, but a missing call and a call with `undefined` are the same defect and should
+    // not depend on which shape a reader happened to imagine.
+    //
+    // The instant is an ISO **string**, not a `Date`. That is what the first draft of this assertion got
+    // wrong — it asserted `toBeInstanceOf(Date)` and went red on `'2026-09-30T12:00:00.000Z'` — and the
+    // red is worth keeping rather than quietly rewriting: the service serialises before handing the
+    // instant over, which is the right shape for PostgREST and the wrong thing to assume without reading.
+    expect(recorded).toBeDefined();
+    expect(recorded?.argument).toBe(FIXED_NOW.toISOString());
+  });
+
   it("records each entry at the 1-based position it occupies in the server-selected order", async () => {
     const fakes = createFakes({ pool: [entry("OD_0001"), entry("OD_0002"), entry("OD_0003")] });
 
@@ -689,8 +745,8 @@ describe("a successful allocation", () => {
     const original = fakes.dependencies.batches.create;
     fakes.dependencies.batches = {
       ...fakes.dependencies.batches,
-      create: async (batch) => {
-        const stored = await original(batch);
+      create: async (batch, createdAt) => {
+        const stored = await original(batch, createdAt);
         return { ...stored, entries: [...stored.entries].reverse() };
       },
     };

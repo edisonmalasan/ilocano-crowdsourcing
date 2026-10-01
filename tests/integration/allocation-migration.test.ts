@@ -50,22 +50,71 @@ const THIRD_ENTRY = "OD_0003";
 const INSTRUCTION = "Iti Baguio Athletic Bowl ti ayanko ita.";
 
 /**
- * Seeds one validator, two batches, and three entries.
+ * The rows every test here needs, split so the batch insert can sit BETWEEN its two neighbours.
  *
- * No `batch_entries` row: `position` is `not null`, so every test that needs one supplies its own
- * and thereby states its position explicitly. A seeded placement would mean every rejection test had
- * to name a position that was not the thing under test.
+ * ============================================================================================
+ * WHY THIS IS A FRAGMENT AND NOT A STATEMENT — a schema-state consequence, measured
+ * ============================================================================================
+ * This file applies the migration set to TWO different databases that stop at DIFFERENT points, and
+ * migration `20261001120000` made that impossible to express as one `insert`.
+ *
+ * The column list for a batch row is now schema-dependent in a way it was not before:
+ *
+ *   - against the FULL set, `validation_batches.created_at` is `not null` with no default, so an
+ *     insert omitting it is refused.
+ *   - against the set stopped before `20260930190000`, the column does not exist at all, so an insert
+ *     naming it fails with `42703`.
+ *
+ * One seed function therefore cannot be correct for both, and the two failures look nothing alike —
+ * a not-null violation and an undefined column — which is why this is named rather than left as a
+ * boolean flag. A flag would have made the two statements differ by a word nobody reads at the call
+ * site.
+ *
+ * Neither list is wrong: each is what the application would have written at that point in the schema's
+ * history. The rows before and after the batch insert are the part that is genuinely common, and they
+ * are separate fragments for a reason that is not tidiness: `validation_batches.validator_id` is a
+ * FOREIGN KEY, so the validator must exist first. Collapsing the three back into one string invited
+ * exactly that mistake — it was made, and it surfaced as
+ * `validation_batches_validator_id_fkey`, which says nothing about the column under test.
+ *
+ * No `batch_entries` row: `position` is `not null`, so every test that needs one supplies its own and
+ * thereby states its position explicitly. A seeded placement would mean every rejection test had to
+ * name a position that was not the thing under test.
  */
-async function seed(database: TestDatabase): Promise<void> {
-  await applySql(
-    database,
-    `insert into public.validators (id) values ('${VALIDATOR}');
-     insert into public.validation_batches (id, validator_id)
-       values ('${BATCH}', '${VALIDATOR}'), ('${OTHER_BATCH}', '${VALIDATOR}');
-     insert into public.dataset_entries (id, category, instruction, source_payload)
+const VALIDATOR_SEED = `insert into public.validators (id) values ('${VALIDATOR}');`;
+
+const ENTRY_SEED = `insert into public.dataset_entries (id, category, instruction, source_payload)
        values ('${ENTRY}', 'origin_destination', '${INSTRUCTION}', '{"id":"${ENTRY}"}'::jsonb),
               ('${OTHER_ENTRY}', 'origin_destination', 'Ibaba ti centro.', '{"id":"${OTHER_ENTRY}"}'::jsonb),
-              ('${THIRD_ENTRY}', 'origin_destination', 'Ibaba ti kalsada.', '{"id":"${THIRD_ENTRY}"}'::jsonb);`,
+              ('${THIRD_ENTRY}', 'origin_destination', 'Ibaba ti kalsada.', '{"id":"${THIRD_ENTRY}"}'::jsonb);`;
+
+/** Seeds against a database carrying the FULL migration set, where `created_at` is required. */
+async function seedCurrentSchema(database: TestDatabase): Promise<void> {
+  await applySql(
+    database,
+    `${VALIDATOR_SEED}
+     insert into public.validation_batches (id, validator_id, created_at)
+       values ('${BATCH}', '${VALIDATOR}', '2026-09-30T12:00:00.000Z'),
+              ('${OTHER_BATCH}', '${VALIDATOR}', '2026-09-30T12:30:00.000Z');
+     ${ENTRY_SEED}`,
+    "seed",
+  );
+}
+
+/**
+ * Seeds against a database stopped BEFORE `20261001120000`, where the column does not exist.
+ *
+ * These rows stand for batches that existed before the instant was recorded, which is precisely the
+ * state the backfill in that migration exists to handle — so seeding them without an instant is
+ * correct for this database and wrong for every other.
+ */
+async function seedPreInstantSchema(database: TestDatabase): Promise<void> {
+  await applySql(
+    database,
+    `${VALIDATOR_SEED}
+     insert into public.validation_batches (id, validator_id)
+       values ('${BATCH}', '${VALIDATOR}'), ('${OTHER_BATCH}', '${VALIDATOR}');
+     ${ENTRY_SEED}`,
     "seed",
   );
 }
@@ -92,7 +141,7 @@ describe("the allocation batch-position migration", () => {
 
   beforeEach(async () => {
     await truncateAll(db);
-    await seed(db);
+    await seedCurrentSchema(db);
   });
 
   describe("ordering", () => {
@@ -237,7 +286,7 @@ describe("the allocation batch-position migration", () => {
       populated = await createTestDatabase();
       const applied = await applyMigrationsUntil(populated, ALLOCATION_MIGRATION);
       expect(applied.applied).toEqual([...PRIOR_MIGRATIONS]);
-      await seed(populated);
+      await seedPreInstantSchema(populated);
     });
 
     afterAll(async () => {

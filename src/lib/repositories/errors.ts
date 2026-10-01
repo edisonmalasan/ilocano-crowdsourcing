@@ -45,7 +45,8 @@ export type RepositoryOperation =
   | "validations.countForEntry"
   | "validations.countForValidator"
   | "validation_batches.insert"
-  | "validation_batches.findById";
+  | "validation_batches.findById"
+  | "validation_batches.listForRecovery";
 
 export interface RepositoryErrorOptions {
   /** The original failure, preserved for diagnostics. Never re-wrapped into a bare message. */

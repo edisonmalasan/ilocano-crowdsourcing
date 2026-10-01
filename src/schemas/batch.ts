@@ -150,9 +150,15 @@ export type BatchEntryPlacement = z.infer<typeof batchEntryPlacementSchema>;
  * different (reordered entries, a dropped row) be papered over by the service that built the
  * request.
  *
- * There are no timestamps. `validation_batches` has none to carry: `assigned_at` and a lifecycle
- * `status` belong to the batch-completion change, and adding columns for behavior no code
- * implements is the exact thing the structural-table scenario in the research-schema spec forbids.
+ * This RECORD carries no timestamps. `validation_batches` now does — `created_at` was added by the
+ * `interrupted-batch-recovery` migration so an abandoned batch can be recognised without a lifecycle
+ * column, and the repository reads it separately (`listForRecovery` selects it; `findById` does not).
+ * The distinction is deliberate and worth keeping: a timestamp is needed to ORDER a validator's batches,
+ * but nothing about a single batch's own lifecycle needs one, so this type stays timestamp-free and the
+ * record the participant reads back is unchanged.
+ *
+ * A lifecycle `status` still does not exist, and adding columns for behavior no code implements is the
+ * exact thing the structural-table scenario in the research-schema spec forbids.
  *
  * `entries` is `.min(1)`, and that minimum is a correctness guard rather than a validation
  * nicety. `create` issues two PostgREST calls — the batch row, then its entry rows — and there is

@@ -312,6 +312,43 @@ export const ENGLISH_COPY = {
     "We could not prepare your sentences just now, and no batch was created. You can try again in " +
     "a moment.",
 
+  // -- Picking up an interrupted batch --------------------------------------
+  // The only copy in the catalog that describes something the participant has ALREADY done, rather
+  // than something they are about to do. Every string here is about their own unfinished work.
+  //
+  // THERE IS DELIBERATELY NO COPY FOR A FAILED CHECK, and that absence is a requirement rather than an
+  // oversight. `design.md` D4 models *none* and *unavailable* as different outcomes and requires the
+  // screen to render them identically, so a sentence for one and not the other would be a research
+  // statement about our infrastructure, in the middle of a volunteer task, that a participant cannot
+  // verify and cannot act on. `recovery-flow.test.ts` is what enforces it, and the enforcement is a
+  // TEXTUAL SCAN rather than a behavioural check, so the honest description is: that test reads this
+  // module's source text and asserts no branch of it can acquire a sentence. It proves a string is or is
+  // not present, which is why it is defeated by a rename and cannot observe a runtime lookup — an earlier
+  // version of this comment claimed a throwing translator enforced it, and there is no such translator:
+  // the parameter was DELETED, because an unused one was an ESLint warning and because the shape of a
+  // requirement should not be talked around. Stated here rather than left to be discovered, since a
+  // production comment that overstates its own test is how a guarantee quietly stops existing.
+  //
+  // And there is no string offering reassurance about how many batches a participant ought to do, nor
+  // about any total. The only figure is what is left of THIS batch, which is work they have already
+  // been given.
+  "validateStart.resume.title": "You have a batch part-finished",
+  // The count is composed from THREE keys at the call site rather than from one `{remaining} of
+  // {total}` template, because "4 of 10 sentences" and "4 ng 10 na pangungusap" are one fact with two
+  // grammars and a template would force one language to carry the other's word order. This is the same
+  // decision `validate.progress.sentence` / `.of` / `.saved` already make, and it is the reason this
+  // copy block reads as three fragments rather than one sentence.
+  //
+  // It also makes the ORDER of the figures a property of the catalog: `remaining` comes first in both
+  // languages, which is the whole point of the sentence. A template would let a translator move
+  // `total` ahead of `remaining`, producing "10 of 4", and nothing would fail.
+  "validateStart.resume.remaining.connector": "of",
+  "validateStart.resume.remaining.unit": "sentences still waiting for you",
+  "validateStart.resume.cta": "Carry on where you stopped",
+  "validateStart.resume.note":
+    "Everything you already sent is saved. Starting a new batch instead is fine too — the sentences " +
+    "in this one stay available to you.",
+
   // -- The validation session ------------------------------------------------
   // Doubles as the document title. Every string on this route is chrome: the sentence itself is
   // research material and is rendered from storage, never from here.
@@ -723,6 +760,30 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validateStart.failure.persistence":
     "Hindi maipaghanda ang iyong mga pangungusap ngayon, at walang batch na nalikha. Puwede " +
     "mong subukan muli sa lalong madaling panahon.",
+
+  // -- Pagpapatuloy ng naputol na batch ---------------------------------------
+  // Ang tanging teksto sa katalogong ito na naglalarawan sa GINAWA na ng kontribusyon, hindi sa
+  // gagawin. Lahat ng string dito ay tungkol sa sarili mong hindi pa tapos na trabaho.
+  //
+  // WALA RITO NG TEKSTO PARA SA BIGO NA PAGKAMALI — ang kawalan ay kailangan, hindi pagkakamali. Ang
+  // `design.md` D4 ay naglalarawan ng *none* at *unavailable* bilang magkaibang resulta at hinihingi
+  // na magkatugma ang mga itinatampok ng screen, kaya ang isang pangungusap para sa isa at wala para sa
+  // isa ay pahayagang pananaliksik tungkol sa aming imprastrukturang, nasa gitna ng gawain ng boluntaryo,
+  // na hindi mabibeberipika o maisasagawa ng kontribusyon.
+  //
+  // At walang string na nag-aanyaya ng kumpirensya kung ilang batch ang dapat gawin ng isang tao, at
+  // walang kabuuan. Ang tanging bilang ay natitira sa batch na ito — trabahong ibinigay na sa iyo.
+  "validateStart.resume.title": "Mayroon kang bahagyang tapos na batch",
+  // Pinagkukunan ng tatlong key ang bilang sa lugar ng pagtawag, gaya ng ginagawa ng
+  // `validate.progress.*` sa itaas: "4 of 10" at "4 ng 10" ay iisang katotobanan na may dalawang
+  // gramatika, at ang isang `{remaining} of {total}` ay pipilitin sa isang wika ang pagkakasunod-sunod
+  // ng salita ng isa.
+  "validateStart.resume.remaining.connector": "ng",
+  "validateStart.resume.remaining.unit": "na pangungusap pa ang naghihintay sa iyo",
+  "validateStart.resume.cta": "Magpatuloy ka sa kung saan ka tumigil",
+  "validateStart.resume.note":
+    "Nase-save na ang lahat ng ipinadala mo. Puwede ring magsimula ng bagong batch — nananatiling " +
+    "available sa iyo ang mga pangungusap ng batch na ito.",
 
   // -- Ang validation session ------------------------------------------------
   // Ang mismong pahina. Lahat ng string dito ay chrome: ang mismong pangungusap ay materyal ng

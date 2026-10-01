@@ -44,6 +44,23 @@ const RESPONSE: ValidationResponse = {
   updatedAt: "2026-09-30T00:00:00.000Z",
 };
 
+/** A batch record with exactly the placements given, for the recovery-read assertions below. */
+function batchOf(id: string, validatorId: string, entries: BatchRecord["entries"]): BatchRecord {
+  return {
+    id,
+    validatorId: validatorId as BatchRecord["validatorId"],
+    entries,
+  };
+}
+
+/** One entry at one 1-based position, so a projection's flat `entryIds` is checkable. */
+function entryAt(datasetEntryId: string, position: number): BatchRecord["entries"][number] {
+  return {
+    datasetEntryId: datasetEntryId as BatchRecord["entries"][number]["datasetEntryId"],
+    position,
+  };
+}
+
 /**
  * In-memory fakes.
  *
@@ -144,16 +161,59 @@ function createInMemoryRepositories() {
 
   const batches = new Map<string, BatchRecord>();
 
+  // The creation instants `create` was handed, so `listForRecovery` reports what was written rather
+  // than a fixture constant that would be the same for every batch and make the ordering untestable.
+  const batchCreatedAt = new Map<string, string>();
+
   const batchRepository: BatchesRepository = {
-    async create(batch) {
+    async create(batch, createdAt) {
       if (batches.has(batch.id)) {
         throw new RepositoryError("validation_batches.insert", `batch ${batch.id} already exists`);
       }
       batches.set(batch.id, batch);
+      batchCreatedAt.set(batch.id, createdAt);
       return batch;
     },
     async findById(id) {
       return batches.get(id) ?? null;
+    },
+    async listForRecovery(validatorId) {
+      // A REAL projection rather than `[]`, and **that choice used to be defended by a comment naming a
+      // benefit this file does not provide.** The comment said this fake "backs tests of services that
+      // consume the recovery read", and no such test exists: nothing outside this file can import a test
+      // file, and within it no test called this method. So the projection was written to satisfy the
+      // interface — which requires a body — and then credited with a coverage it had none of.
+      //
+      // That matters because the *ordering* encoded below is the whole point of the method, and an
+      // unasserted ordering in a fake is the most expensive kind of unassertion: a service test written
+      // against it later would silently inherit whichever order this body happens to implement, and if
+      // that were ascending the test would still pass while the product offered the wrong batch. So the
+      // ordering is now asserted directly, below, against batches written in an order the fake has to
+      // correct.
+      //
+      // NEWEST FIRST, by the same two keys and the same code-point comparison the Supabase
+      // implementation asks the database for. `localeCompare` is deliberately NOT used: the domain
+      // rule's own note says a collation that orders differently under two locales would make the
+      // offered batch depend on where the server runs, and a fake using one would quietly disagree
+      // with the real read about which of two batches wins.
+      return [...batches.values()]
+        .filter((batch) => batch.validatorId === validatorId)
+        .map((batch) => ({
+          id: batch.id,
+          validatorId: batch.validatorId,
+          createdAt: batchCreatedAt.get(batch.id) ?? "",
+          entryIds: batch.entries.map((placement) => placement.datasetEntryId),
+        }))
+        .sort((left, right) =>
+          left.createdAt === right.createdAt
+            ? left.id < right.id
+              ? -1
+              : 1
+            : left.createdAt < right.createdAt
+              ? -1
+              : 1,
+        )
+        .reverse();
     },
   };
 
@@ -213,6 +273,56 @@ describe("repository interfaces are satisfiable without a database", () => {
 
     await validations.insert(RESPONSE);
     expect(await validations.countForEntry("OD_0001")).toBe(1);
+  });
+
+  it("projects the recovery read newest-first, breaking a tie by id descending", async () => {
+    // The assertion the fake's own comment used to imply and never had. See the note on `listForRecovery`.
+    //
+    // Three batches of ONE validator, inserted in an order the projection has to undo:
+    //
+    //   "batch_b"  same instant as "batch_a"   -> the tiebreaker must put "batch_b" FIRST
+    //   "batch_a"  same instant as "batch_b"   -> (id descending, so b precedes a)
+    //   "batch_old" an EARLIER instant          -> must sort LAST despite being inserted first
+    //
+    // So an ascending implementation fails, a tie-break on insertion order fails, and an implementation
+    // that ignores `createdAt` fails — three different wrong answers, one assertion. The tie is the part
+    // worth having: it is the case the `id DESC` key in the migration's index exists to make
+    // deterministic, and a fake that resolved it by insertion order would hide exactly that.
+    const { batches } = createInMemoryRepositories();
+    const instant = "2026-10-01T09:00:00.000Z";
+    const earlier = "2026-10-01T08:00:00.000Z";
+
+    await batches.create(batchOf("batch_old", PROFILE.id, [entryAt("OD_0001", 1)]), earlier);
+    await batches.create(batchOf("batch_a", PROFILE.id, [entryAt("OD_0002", 1)]), instant);
+    await batches.create(batchOf("batch_b", PROFILE.id, [entryAt("OD_0003", 1)]), instant);
+
+    const listed = await batches.listForRecovery(PROFILE.id);
+
+    expect(listed.map((candidate) => candidate.id)).toEqual(["batch_b", "batch_a", "batch_old"]);
+    // The entry ids come back as a flat list, because the recovery read is two flat selects and the
+    // grouping happens in the domain. Asserting the shape here means a future change to that shape is
+    // caught in the fake rather than discovered by whichever service test adopts it.
+    expect(listed[0]?.entryIds).toEqual(["OD_0003"]);
+    // The instant is REPORTED, not merely used for ordering: the recognition rule hands `createdAt` on to
+    // the caller, so a projection that ordered by it and then dropped it would pass an ordering-only
+    // assertion.
+    expect(listed.map((candidate) => candidate.createdAt)).toEqual([instant, instant, earlier]);
+  });
+
+  it("scopes the recovery read to the validator it was asked about", async () => {
+    // A read that returned every validator's batches would be a privacy defect, not a coverage one, and
+    // a fake that ignored its argument could not catch it. Asserted because the parameter exists and an
+    // unused parameter is indistinguishable from a forgotten filter.
+    const { batches } = createInMemoryRepositories();
+    const other = "VAL_0000beef" as ValidatorProfile["id"];
+    const instant = "2026-10-01T09:00:00.000Z";
+
+    await batches.create(batchOf("batch_mine", PROFILE.id, [entryAt("OD_0001", 1)]), instant);
+    await batches.create(batchOf("batch_theirs", other, [entryAt("OD_0002", 1)]), instant);
+
+    expect(await batches.listForRecovery(PROFILE.id)).toHaveLength(1);
+    expect(await batches.listForRecovery(other)).toHaveLength(1);
+    expect(await batches.listForRecovery("VAL_00000000" as ValidatorProfile["id"])).toEqual([]);
   });
 
   it("distinguishes an absent record (null) from a failed call (a raised RepositoryError)", async () => {
@@ -280,6 +390,7 @@ describe("failing repository", () => {
       batches: {
         create: async () => fail("validation_batches.insert", "down"),
         findById: async () => fail("validation_batches.findById", "down"),
+        listForRecovery: async () => fail("validation_batches.listForRecovery", "down"),
       },
     };
   }
@@ -340,10 +451,19 @@ describe("failing repository", () => {
     // is the only thing that says whether the batch row or the read-back failed, and a
     // half-written allocation is exactly the situation where that matters.
     await expect(
-      batches.create({ id: "batch_01", validatorId: PROFILE.id, entries: [] }),
+      batches.create(
+        { id: "batch_01", validatorId: PROFILE.id, entries: [] },
+        "2026-10-01T09:15:00.000Z",
+      ),
     ).rejects.toMatchObject({ operation: "validation_batches.insert" });
     await expect(batches.findById("batch_01")).rejects.toMatchObject({
       operation: "validation_batches.findById",
+    });
+    // The recovery read is named too, and this is the assertion that keeps it in the union: an
+    // operation name that exists but is unreachable from a test is a name nothing has checked, and a
+    // caller branching on which read failed would have no way to tell recovery from allocation.
+    await expect(batches.listForRecovery(PROFILE.id)).rejects.toMatchObject({
+      operation: "validation_batches.listForRecovery",
     });
   });
 

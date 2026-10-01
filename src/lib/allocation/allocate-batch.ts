@@ -129,17 +129,25 @@ export interface AllocationDependencies {
    */
   readonly random: () => number;
   /**
-   * Batch identifiers are minted here, not by the repository and not by the client. Injected rather
-   * than generated inline for the same reason `enrollValidator` takes a `now`: a collision then
-   * becomes something a test can provoke, instead of a 32-bit coincidence nobody can reproduce.
+   * A batch's identity at the moment it is created: its identifier AND its creation instant.
    *
-   * It takes the VALIDATOR ID because {@link defaultBatchId} encodes it, and because the real
-   * wrapper builds its dependencies BEFORE the payload is parsed — so it cannot know whose batch it
-   * is minting at the point the dependency object is created. Passing the id in moves that one
-   * necessary input to the only moment that has it, instead of minting an id unconnected to its
-   * owner.
+   * BOTH COME FROM ONE `Date`, and that is the whole reason they are returned together rather than
+   * asked for separately. Migration `20261001120000` refuses to order batches by the ISO instant
+   * embedded in the identifier, on the grounds that the string exists for a different reason and a
+   * future id scheme would break the ordering silently. Having refused to READ that string, the
+   * application would then be writing two instants for one event — the one inside the id and the one
+   * in `created_at` — that could differ by however long the request took. A batch whose id says it
+   * was created at `T1` while the column says `T2` is a batch nobody can reason about, so the two
+   * are minted from the same `Date` and the dependency's return type says so.
    */
-  readonly newBatchId: (validatorId: AnonymousValidatorId) => string;
+  readonly newBatch: (validatorId: AnonymousValidatorId) => MintedBatchIdentity;
+}
+
+/** A freshly minted batch's identifier and creation instant. See {@link AllocationDependencies}. */
+export interface MintedBatchIdentity {
+  readonly id: string;
+  /** ISO 8601, as `Date.prototype.toISOString()` produces it. */
+  readonly createdAt: string;
 }
 
 /**
@@ -150,9 +158,25 @@ export interface AllocationDependencies {
  * The validator's own id is included so that a log line naming a batch also names whose batch it is
  * — and it is the validator's OWN identifier, never another one, because a batch id is readable to
  * the validator who owns it.
+ *
+ * The embedded instant is NOT an ordering source, and migration `20261001120000` says why at length:
+ * it exists because a log line should be readable, so a future id scheme could drop it and would
+ * break any ordering built on it silently while the query kept working. The authoritative creation
+ * instant is the `created_at` column, and {@link defaultBatch} writes both from ONE `Date` so they
+ * cannot disagree.
  */
 export function defaultBatchId(validatorId: AnonymousValidatorId, now: Date): string {
   return `${validatorId}-${now.toISOString()}`;
+}
+
+/**
+ * The production `newBatch`: a batch identifier and its creation instant, from one `Date`.
+ *
+ * Exported rather than inlined in `actions.ts` so that the pairing — one instant, two facts — is a
+ * named thing a test can check rather than a detail of a dependency object.
+ */
+export function defaultBatch(validatorId: AnonymousValidatorId, now: Date): MintedBatchIdentity {
+  return { id: defaultBatchId(validatorId, now), createdAt: now.toISOString() };
 }
 
 /**
@@ -250,20 +274,23 @@ export async function allocateBatch(
 
     if (selected.length === 0) return { status: "exhausted" };
 
-    const batchId = dependencies.newBatchId(request.validatorId);
+    const minted = dependencies.newBatch(request.validatorId);
 
     // READ BACK, not the argument. See the header.
-    const stored = await dependencies.batches.create({
-      id: batchId,
-      validatorId: request.validatorId,
-      entries: selected.map((entry, index) => ({
-        datasetEntryId: entry.id,
-        // 1-based, derived HERE from the selected order. There is no code path by which a caller
-        // supplies this, which is what the "a client cannot dictate the batch order" scenario
-        // reduces to once the parameter does not exist.
-        position: index + 1,
-      })),
-    });
+    const stored = await dependencies.batches.create(
+      {
+        id: minted.id,
+        validatorId: request.validatorId,
+        entries: selected.map((entry, index) => ({
+          datasetEntryId: entry.id,
+          // 1-based, derived HERE from the selected order. There is no code path by which a caller
+          // supplies this, which is what the "a client cannot dictate the batch order" scenario
+          // reduces to once the parameter does not exist.
+          position: index + 1,
+        })),
+      },
+      minted.createdAt,
+    );
 
     return {
       status: "allocated",

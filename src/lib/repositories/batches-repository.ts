@@ -1,4 +1,7 @@
+import type { RecoverableBatch } from "@/lib/domain/batch-recovery";
 import type { BatchRecord } from "@/schemas/batch";
+
+import type { IsoDateTimeString } from "./types";
 
 /**
  * Access to persisted batches and their ordered entries.
@@ -20,12 +23,21 @@ import type { BatchRecord } from "@/schemas/batch";
  * too.
  *
  * Raises `RepositoryError` on failure — see `@/lib/repositories/errors`. There is no "empty batch"
- * result: a read-back with no entries raises rather than returning a batch the allocation contract
- * forbids reporting.
+ * result from {@link BatchesRepository.findById}: a read-back with no entries raises rather than
+ * returning a batch the allocation contract forbids reporting. {@link
+ * BatchesRepository.listForRecovery} is the ONE method that returns an entry-less batch, as an empty
+ * `entryIds`, and each method's own note says why the two differ.
  */
 export interface BatchesRepository {
   /**
    * Persists a batch and its ordered entries, in ONE repository call.
+   *
+   * `createdAt` is the batch's authoritative creation instant, SUPPLIED BY THE CALLER rather than
+   * defaulted by the database. That is the same choice `ValidatorsRepository.touchLastActive` makes
+   * with its `at`, and for the same reason: a column default would make the database a second source
+   * of time for a fact the application already owns, which is the same duplication that removed
+   * `requested_size` from this table. Migration `20261001120000` states it, and the migration's own
+   * test asserts the column carries no default.
    *
    * "One call" means one method invocation, not one SQL statement: the implementation issues the
    * `validation_batches` insert and then the `batch_entries` insert, because PostgREST cannot write
@@ -33,10 +45,11 @@ export interface BatchesRepository {
    * is therefore no transaction across them, and a failure between them leaves a batch row with no
    * entries. That residue is inert — `validation_batches` carries no lifecycle column and nothing
    * can reference a batch that has no entries — and it is detectable, because `findById` on such a
-   * row raises rather than returning an empty batch. A compensating delete was considered and
-   * rejected: it would be batch lifecycle behavior, which belongs to the change that owns the
-   * lifecycle, and a write that can fail halfway and then try to undo itself is harder to reason
-   * about than one that fails loudly.
+   * row raises rather than returning an empty batch, and {@link listForRecovery} reports it with an
+   * empty `entryIds` so the recognition rule can skip it rather than fail on it. A compensating
+   * delete was considered and rejected: it would be batch lifecycle behavior, which belongs to the
+   * change that owns the lifecycle, and a write that can fail halfway and then try to undo itself is
+   * harder to reason about than one that fails loudly.
    *
    * Positions are written exactly as given and are never re-derived here. They were derived by the
    * allocation service from the order its selection rule returned, and re-deriving them in the
@@ -47,7 +60,7 @@ export interface BatchesRepository {
    * silent no-op: a duplicate batch id is a server bug (ids are minted), and reporting it as success
    * would leave the caller holding a batch whose entries may never have been written.
    */
-  create(batch: BatchRecord): Promise<BatchRecord>;
+  create(batch: BatchRecord, createdAt: IsoDateTimeString): Promise<BatchRecord>;
 
   /**
    * The stored batch with this ID and its entries in `position` order, or `null` when absent.
@@ -57,4 +70,30 @@ export interface BatchesRepository {
    * one entry, and the realistic cause is the partial write described on {@link create}.
    */
   findById(id: string): Promise<BatchRecord | null>;
+
+  /**
+   * Every batch belonging to `validatorId`, newest first, each with its entry ids.
+   *
+   * ORDERED BY `created_at DESC, id DESC`, and the ordering is this method's contract rather than a
+   * detail of its query string — see the note below on why that distinction matters here more than it
+   * does for the other reads.
+   *
+   * NO POSITIONS. The result carries entry ids and nothing else about the order they were assigned
+   * in, because the only consumer asks which entries REMAIN and the stored order is read through
+   * {@link findById} by the batch's own route when a validator actually resumes. Returning positions
+   * here would create a second path by which an order could be rendered, and the batch's order is
+   * research data.
+   *
+   * AN ENTRY-LESS BATCH IS RETURNED, WITH AN EMPTY `entryIds`, rather than filtered out or treated
+   * as a failure. That is a deliberate departure from {@link findById}, which raises on the same row,
+   * and the reason is what this read is FOR: the residue of {@link create}'s two untransacted writes
+   * is exactly the row this method must be able to see without failing, because it is the row that
+   * would otherwise be offered to a participant as work that does not exist. Filtering it out here
+   * would make that decision in the persistence layer, where the evidence for it does not exist;
+   * returning it makes the decision in `recognizeInterruptedBatch`, which has the answered set and can
+   * therefore judge interruption for itself. What this method must NOT do is hand back something a
+   * later {@link findById} would turn into an exception — which is why the shape is the plain
+   * structural one and not `BatchRecord`.
+   */
+  listForRecovery(validatorId: string): Promise<RecoverableBatch[]>;
 }

@@ -398,7 +398,22 @@ function responseRows(start: number, count: number): Record<string, unknown>[] {
   }));
 }
 
-const BATCH_ROW = { id: "batch_01", validator_id: "VAL_a81d92c1" };
+/**
+ * A stored `validation_batches` row, carrying the instant migration `20261001120000` added.
+ *
+ * The value is written WITH A NON-ZERO UTC OFFSET on purpose. PostgREST serialises `timestamptz`
+ * with the server's offset, so a fixture using only `Z` would make `toIsoDateTime` look like a
+ * no-op — and the whole reason this column is normalised at the persistence boundary is that a
+ * domain value must be ONE representation regardless of where the server runs.
+ */
+const BATCH_ROW = {
+  id: "batch_01",
+  validator_id: "VAL_a81d92c1",
+  created_at: "2026-10-01T09:15:00+08:00",
+};
+
+/** What `BATCH_ROW.created_at` must normalise to, which is not the string on the wire. */
+const BATCH_ROW_CREATED_AT = "2026-10-01T01:15:00.000Z";
 
 /**
  * Three `batch_entries` rows, shuffled relative to their own `position` values.
@@ -430,6 +445,15 @@ const BATCH_RECORD = {
     { datasetEntryId: "OD_0003", position: 3 },
   ],
 };
+
+/**
+ * The creation instant `create` is told to write.
+ *
+ * A CONSTANT rather than `new Date()` at the call site, for the reason every other fixture here is
+ * fixed: an assertion about what was written must not depend on when the suite ran. It is also the
+ * value the tests assert the insert carries, so the fixture and the claim cannot drift apart.
+ */
+const BATCH_CREATED_AT = "2026-10-01T09:15:00.000Z";
 
 describe("SupabaseDatasetEntriesRepository", () => {
   it("translates a row to a domain entry, in camelCase, with no persistence field left in it", async () => {
@@ -1180,7 +1204,7 @@ describe("SupabaseBatchesRepository", () => {
     const fake = createFakeClient();
     scriptCreate(fake);
 
-    await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD);
+    await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT);
 
     const writes = fake.calls.filter((call) => call.method === "insert");
     expect(writes.map((call) => call.table)).toEqual(["validation_batches", "batch_entries"]);
@@ -1194,6 +1218,37 @@ describe("SupabaseBatchesRepository", () => {
     ]);
   });
 
+  it("writes created_at explicitly, so a database default could not quietly supply it", async () => {
+    // Migration `20261001120000` sets the column `not null` with NO default, precisely so the
+    // application stays the single source of time for a batch's creation instant — the same reason
+    // `requested_size` was removed from this table. This is the assertion that keeps that honest:
+    // it names the insert's own body, so dropping `created_at` from the object is a failure here
+    // rather than a database error nobody would see until a deployment.
+    //
+    // It also covers a subtler regression: a default added to the column LATER would leave this test
+    // green, because the insert would still carry the value. What this catches is the application
+    // ceasing to write it, which is the half the application controls.
+    const fake = createFakeClient();
+    scriptCreate(fake);
+
+    await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT);
+
+    const batchInsert = fake.calls.find(
+      (call) => call.method === "insert" && call.table === "validation_batches",
+    );
+    // Closed key set, read off the recorded call. Not `toMatchObject`, which would pass while a fourth
+    // column appeared — and a fourth column on this insert is exactly the kind of addition that turns
+    // one writer of time into two.
+    expect(Object.keys(writtenRow(batchInsert!)).sort()).toEqual([
+      "created_at",
+      "id",
+      "validator_id",
+    ]);
+    // The value, not just the column's presence: an insert carrying `created_at: null` would satisfy a
+    // key-set check and then be refused by the `not null` constraint the migration added.
+    expect(writtenRow(batchInsert!).created_at).toBe(BATCH_CREATED_AT);
+  });
+
   it("returns the READ-BACK sorted by position, not the argument and not the wire's order", async () => {
     // The read-back is the whole design: a repository that stored a different order must not be
     // able to report the order the caller wanted. Both wrong answers are ruled out by the same
@@ -1201,7 +1256,10 @@ describe("SupabaseBatchesRepository", () => {
     const fake = createFakeClient();
     scriptCreate(fake);
 
-    const stored = await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD);
+    const stored = await new SupabaseBatchesRepository(fake.client).create(
+      BATCH_RECORD,
+      BATCH_CREATED_AT,
+    );
 
     expect(stored).toEqual(BATCH_RECORD);
     expect(stored.entries.map((entry) => entry.datasetEntryId)).toEqual([
@@ -1272,7 +1330,9 @@ describe("SupabaseBatchesRepository", () => {
     fake.enqueue({ data: BATCH_ROW, error: null, count: null });
     fake.enqueue({ data: [BATCH_ENTRY_ROWS_SHUFFLED[0]!], error: null, count: null });
 
-    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+    const error = await catchError(
+      new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT),
+    );
 
     expect(isRepositoryError(error)).toBe(true);
     expect((error as RepositoryError).detail).toContain("stored 1 of 3 entries");
@@ -1290,7 +1350,9 @@ describe("SupabaseBatchesRepository", () => {
       ),
     );
 
-    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+    const error = await catchError(
+      new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT),
+    );
 
     expect(isRepositoryError(error)).toBe(true);
     expect((error as RepositoryError).operation).toBe("validation_batches.insert");
@@ -1305,7 +1367,9 @@ describe("SupabaseBatchesRepository", () => {
     const fake = createFakeClient();
     fake.enqueue({ data: null, error: null, count: null });
 
-    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+    const error = await catchError(
+      new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT),
+    );
 
     expect(isRepositoryError(error)).toBe(true);
     // The exact wording is asserted rather than a looser fragment, because the point is that the
@@ -1325,7 +1389,9 @@ describe("SupabaseBatchesRepository", () => {
     fake.enqueue({ data: BATCH_ENTRY_ROWS_SHUFFLED, error: null, count: null });
     fake.enqueue({ data: null, error: null, count: null });
 
-    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+    const error = await catchError(
+      new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT),
+    );
 
     expect(isRepositoryError(error)).toBe(true);
     expect((error as RepositoryError).detail).toContain("absent immediately after insert");
@@ -1340,7 +1406,9 @@ describe("SupabaseBatchesRepository", () => {
       failure("23505", 'duplicate key value violates unique constraint "validation_batches_pkey"'),
     );
 
-    const error = await catchError(new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD));
+    const error = await catchError(
+      new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT),
+    );
 
     expect(isRepositoryError(error)).toBe(true);
     expect((error as RepositoryError).operation).toBe("validation_batches.insert");
@@ -1361,23 +1429,285 @@ describe("SupabaseBatchesRepository", () => {
       expect(typeof call.columns).toBe("string");
       expect(call.columns).not.toBe("*");
     }
-    expect(fake.calls[0]?.columns).toBe("id,validator_id");
+    // `created_at` joined `id,validator_id` with migration `20261001120000`, which the shared
+    // `BATCH_COLUMNS` note in `batches.ts` explains: one list for both reads, so a column added later
+    // has one place to be added. This assertion is what makes that trade-off checkable.
+    expect(fake.calls[0]?.columns).toBe("id,validator_id,created_at");
     expect(fake.calls[1]?.columns).toBe("batch_id,dataset_entry_id,position");
   });
 
-  it("writes no timestamp, because the table has none and inventing a column is not a migration", async () => {
-    // `assigned_at`, `completed_at`, and a lifecycle `status` belong to the batch-completion change.
-    // Asserted so an eager timestamp added here fails rather than being absorbed: the structural
-    // scenario in the research-schema spec forbids columns that no behaviour backs, and
-    // `created_at` is the most likely one to be added by reflex.
+  it("writes no timestamp beyond the one the table now has, and no lifecycle column", async () => {
+    // RENAMED, and the rename is the point. This test used to read "writes no timestamp, because the
+    // table has none and inventing a column is not a migration" — which was true and is now FALSE,
+    // because migration `20261001120000` added `created_at`. A guard whose NAME asserts a falsehood is
+    // worse than no guard: the next reader trusts the title and assumes the absence is still being
+    // enforced when the assertion underneath has quietly been widened to match new behaviour.
+    //
+    // What survives is the actual intent. `assigned_at`, `completed_at`, and a lifecycle `status` are
+    // still forbidden, and they are the columns most likely to be added by reflex — the structural
+    // scenario in the research-schema spec forbids a column no behaviour backs, and the one addition
+    // this change DID make had to arrive with a migration and a stated reason, which is what happened
+    // to `created_at`. So the guard is now: exactly three columns, one of which is the creation instant
+    // the application was told to write, and nothing resembling a lifecycle.
     const fake = createFakeClient();
     scriptCreate(fake);
 
-    await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD);
+    await new SupabaseBatchesRepository(fake.client).create(BATCH_RECORD, BATCH_CREATED_AT);
 
-    expect(Object.keys(writtenRow(fake.calls[0]!)).sort()).toEqual(["id", "validator_id"]);
+    // Closed key set, so a FOURTH column fails rather than being absorbed.
+    expect(Object.keys(writtenRow(fake.calls[0]!)).sort()).toEqual([
+      "created_at",
+      "id",
+      "validator_id",
+    ]);
     expect(Object.keys(writtenRows(fake.calls[1]!)[0]!)).not.toContain("assigned_at");
     expect(fake.calls[0]?.columns).not.toContain("assigned_at");
+    // The two the header above names, asserted by name rather than by a shape, because a shape
+    // assertion would pass while a column named `assignedAt` arrived.
+    for (const forbidden of [
+      "assigned_at",
+      "completed_at",
+      "status",
+      "abandoned_at",
+      "resumed_at",
+    ]) {
+      expect(writtenRow(fake.calls[0]!)).not.toHaveProperty(forbidden);
+      expect(fake.calls[0]?.columns).not.toContain(forbidden);
+    }
+  });
+});
+
+/**
+ * `listForRecovery` — the interrupted-batch read.
+ *
+ * ============================================================================================
+ * WHAT THESE TESTS PROVE, AND WHAT THEY CANNOT
+ * ============================================================================================
+ * They prove the FILTERS, THE COLUMNS, and THE ORDER the implementation handed the client, and how it
+ * translated what came back. They prove nothing about PostgREST: no Supabase project exists in this
+ * repository, so `.order(a).order(b)` is recorded here and never sent anywhere. In particular:
+ *
+ *   - that PostgREST composes two `.order` calls into `order=a.desc,b.desc` at all;
+ *   - that it applies them in the order written;
+ *   - that `timestamptz` arrives as a string with an offset (the fixture ASSUMES this);
+ *   - that `.in("batch_id", [...])` binds an array of unknown length.
+ *
+ * The ordering test below is therefore deliberately written to pin the REQUEST, and its comment says
+ * why that is the most this layer can honestly assert.
+ */
+describe("SupabaseBatchesRepository.listForRecovery", () => {
+  const RECOVERY_ROWS = [
+    {
+      id: "batch_02",
+      validator_id: "VAL_a81d92c1",
+      created_at: "2026-10-02T10:00:00+08:00",
+    },
+    {
+      id: "batch_01",
+      validator_id: "VAL_a81d92c1",
+      created_at: "2026-10-01T09:15:00+08:00",
+    },
+  ];
+
+  it("asks for this validator's batches, newest first, on BOTH keys in order", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: RECOVERY_ROWS, error: null, count: null });
+    fake.enqueue({
+      data: [
+        { batch_id: "batch_02", dataset_entry_id: "OD_0003" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_0001" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_0002" },
+      ],
+      error: null,
+      count: null,
+    });
+
+    await new SupabaseBatchesRepository(fake.client).listForRecovery("VAL_a81d92c1");
+
+    const read = fake.calls[0]!;
+    expect(read.table).toBe("validation_batches");
+    // `created_at` has to be selectable to be orderable. A change that ordered by it without
+    // selecting it would still be a valid query and would fail here, which is the point.
+    expect(read.columns).toBe("id,validator_id,created_at");
+
+    // THE WHOLE `filters` ARRAY, in order. Not "contains an order on created_at": the RECOVERY
+    // REQUIREMENT is that the choice between two batches is TOTAL, which is a property of the
+    // sequence — `id` only breaks a tie on `created_at` if it comes second. An assertion that
+    // checked each key independently would pass on `.order("id").order("created_at")`, which orders
+    // by identifier FIRST and is a different query that happens to mention both columns.
+    //
+    // This is the can-fire control for the ordering: reversing the two `.order` calls in
+    // `batches.ts` changes this array and fails it by name. Proven, not assumed — and proven in BOTH
+    // ways of getting it wrong: swapping the two clauses (`1 failed | 79 passed (80)`) and flipping
+    // one to `ascending: true` (the same). The second is the mistake a reader is likelier to make and
+    // the one an "ordered by created_at?" assertion would never catch.
+    //
+    // The probe that proved this had to be repaired first, and the repair is the fifth occurrence of
+    // a defect this repository has now seen five times: its anchor string occurs TWICE in `batches.ts`
+    // — once in this method's own documentation, which quotes the query it describes, and once in the
+    // query — so it edited a sentence and reported GREEN for both probes. A GREEN from a probe whose
+    // mutation never reached the code is indistinguishable from a guard that cannot fire, which is the
+    // one thing the probe existed to rule out. The probe now resolves the anchor only when it occurs
+    // exactly once AND does not begin a comment line.
+    expect(read.filters).toEqual([
+      { kind: "eq", column: "validator_id", value: "VAL_a81d92c1" },
+      { kind: "order", column: "created_at", ascending: false },
+      { kind: "order", column: "id", ascending: false },
+    ]);
+  });
+
+  it("reads the entries of exactly those batches, without asking for the stored order", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: RECOVERY_ROWS, error: null, count: null });
+    fake.enqueue({
+      data: [
+        { batch_id: "batch_02", dataset_entry_id: "OD_0003" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_0001" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_0002" },
+      ],
+      error: null,
+      count: null,
+    });
+
+    await new SupabaseBatchesRepository(fake.client).listForRecovery("VAL_a81d92c1");
+
+    const entries = fake.calls[1]!;
+    expect(entries.table).toBe("batch_entries");
+    // `position` is deliberately absent. This read asks which entries REMAIN; the batch's own order
+    // is read through `findById` by the batch's route. Fetching it here would put the research order
+    // within reach of a second renderer, which is the whole risk the interface's note describes.
+    expect(entries.columns).toBe("batch_id,dataset_entry_id");
+    expect(entries.filters).toEqual([
+      { kind: "in", column: "batch_id", value: ["batch_02", "batch_01"] },
+    ]);
+  });
+
+  it("normalises the instant, so the domain holds one representation whatever the server's offset", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: [BATCH_ROW], error: null, count: null });
+    fake.enqueue({
+      data: [{ batch_id: "batch_01", dataset_entry_id: "OD_0001" }],
+      error: null,
+      count: null,
+    });
+
+    const [batch] = await new SupabaseBatchesRepository(fake.client).listForRecovery(
+      "VAL_a81d92c1",
+    );
+
+    // `+08:00` on the wire, `Z` in the domain. A pass-through would leave `+08:00` here and this
+    // assertion fails — and it is the reason `toIsoDateTime` is called at all rather than trusted.
+    expect(batch?.createdAt).toBe(BATCH_ROW_CREATED_AT);
+  });
+
+  it("returns an entry-less batch with an empty list, rather than raising as findById does", async () => {
+    // THE DECISION task 3.5 asks for, and it is a real divergence between two methods of one class.
+    // `findById` RAISES on this row; this method must not. The row is the residue of `create`'s two
+    // untransacted writes, and a rule that cannot SEE it cannot decide there is no work — whereas a
+    // route that rendered it would present a database fault as "nothing was left for you".
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: [
+        { id: "batch_01", validator_id: "VAL_a81d92c1", created_at: "2026-10-01T09:15:00+08:00" },
+      ],
+      error: null,
+      count: null,
+    });
+    // NO entry rows at all — the residue, exactly.
+    fake.enqueue({ data: [], error: null, count: null });
+
+    const batches = await new SupabaseBatchesRepository(fake.client).listForRecovery(
+      "VAL_a81d92c1",
+    );
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]?.entryIds).toEqual([]);
+    // And the row is still there. Filtering it out would have produced `[]` and this would fail — which
+    // is the distinction between "no interrupted batch" and "there is a batch I cannot offer", and the
+    // recognition rule is the only thing entitled to make it.
+    expect(batches[0]?.id).toBe("batch_01");
+  });
+
+  it("groups entries onto the right batch, without reordering them", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: RECOVERY_ROWS, error: null, count: null });
+    fake.enqueue({
+      data: [
+        { batch_id: "batch_01", dataset_entry_id: "OD_0002" },
+        { batch_id: "batch_02", dataset_entry_id: "OD_0003" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_0001" },
+      ],
+      error: null,
+      count: null,
+    });
+
+    const batches = await new SupabaseBatchesRepository(fake.client).listForRecovery(
+      "VAL_a81d92c1",
+    );
+
+    // The DATABASE's order for batch_01 is OD_0002 then OD_0001, and that is what must come back.
+    // Sorting them would assert an order this read has no reason to establish — and the batch's real
+    // order is `position`, which is not even selected here.
+    //
+    // In BATCH order, which is the database's own: batch_02 first, because that is the row order the
+    // batch read returned.
+    expect(batches.map((batch) => batch.entryIds)).toEqual([["OD_0003"], ["OD_0002", "OD_0001"]]);
+    expect(batches.map((batch) => batch.id)).toEqual(["batch_02", "batch_01"]);
+  });
+
+  it("reads nothing about entries when the validator has no batches", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({ data: [], error: null, count: null });
+
+    const batches = await new SupabaseBatchesRepository(fake.client).listForRecovery(
+      "VAL_a81d92c1",
+    );
+
+    // "No batches" is the NORMAL answer and must not be paid for with a second round trip. A second
+    // call here would be unscripted and this fake REJECTS it, so the assertion below is a
+    // measurement rather than a hope: it can fail.
+    expect(batches).toEqual([]);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("names the recovery operation when either read fails", async () => {
+    // Two cases that look identical to a caller and must not: a failure to list the batches and a
+    // failure to list their entries are different faults, and both must be attributable rather than
+    // surfacing as an empty list — which would be reported as "no interrupted batch", i.e. as a
+    // successful answer to a research question nobody asked.
+    const batchReadFails = createFakeClient();
+    batchReadFails.enqueue({ data: null, error: { message: "boom", code: "XX000" }, count: null });
+    await expect(
+      new SupabaseBatchesRepository(batchReadFails.client).listForRecovery("VAL_a81d92c1"),
+    ).rejects.toMatchObject({ operation: "validation_batches.listForRecovery" });
+
+    const entryReadFails = createFakeClient();
+    entryReadFails.enqueue({ data: RECOVERY_ROWS, error: null, count: null });
+    entryReadFails.enqueue({
+      data: null,
+      error: { message: "boom", code: "XX000" },
+      count: null,
+    });
+    await expect(
+      new SupabaseBatchesRepository(entryReadFails.client).listForRecovery("VAL_a81d92c1"),
+    ).rejects.toMatchObject({ operation: "validation_batches.listForRecovery" });
+  });
+
+  it("refuses an unreadable creation instant rather than handing the rule a broken string", async () => {
+    // The repository boundary, not the rule: `recognizeInterruptedBatch` has its own raise for this,
+    // and that guard is unreachable THROUGH the repository. Both exist, and this is the one a caller
+    // actually meets.
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: [{ id: "batch_01", validator_id: "VAL_a81d92c1", created_at: "not-a-timestamp" }],
+      error: null,
+      count: null,
+    });
+    fake.enqueue({ data: [], error: null, count: null });
+
+    await expect(
+      new SupabaseBatchesRepository(fake.client).listForRecovery("VAL_a81d92c1"),
+    ).rejects.toMatchObject({ operation: "validation_batches.listForRecovery" });
   });
 });
 
@@ -1588,6 +1918,10 @@ describe("the operation name each method reports", () => {
       "validations.countForValidator",
       "validation_batches.insert",
       "validation_batches.findById",
+      // Arrived with `listForRecovery`, and this row is what proves the union and the method map were
+      // BOTH updated: the check is bidirectional, so adding the method without the union entry fails
+      // the compiler and adding the union entry without the method fails HERE.
+      "validation_batches.listForRecovery",
     ];
     const used = Object.values(maps).flatMap((map) => Object.values(map));
 

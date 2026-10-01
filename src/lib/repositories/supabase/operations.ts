@@ -40,14 +40,20 @@ import type {
  *
  *   `BatchesRepository.create`  ->  "validation_batches.insert"
  *
- * It is named here rather than left for a reader to derive, because the union is named after the
+ * A FOURTH arrived with interrupted-batch recovery:
+ *
+ *   `BatchesRepository.listForRecovery`  ->  "validation_batches.listForRecovery"
+ *
+ * Both are named here rather than left for a reader to derive, because the union is named after the
  * TABLE and the method after the aggregate: writing `"validation_batches.create"` would have been
  * defensible and would still have diverged from `"validators.insert"` two entries above it. One
- * convention for the whole union beats three locally reasonable ones.
+ * convention for the whole union beats four locally reasonable ones.
  *
  * `BatchesRepository.findById` is NOT a divergence — it happens to read the same in both places,
  * which is recorded only so a future author does not assume the absence of a comment means an
- * oversight.
+ * oversight. The fourth divergence is the near miss worth noting: `listForRecovery` could have been
+ * `"validation_batches.list"`, which is defensible on its own terms and would still have been a fifth
+ * spelling of the same idea.
  *
  * THE UNION IS THE AUTHORITY, and it is NOT renamed here.
  * `RepositoryOperation` is exported public API from `@/lib/repositories`, it is already asserted
@@ -96,4 +102,9 @@ export const BATCHES_OPERATIONS = {
   // union names the persistence call on the table.
   create: "validation_batches.insert",
   findById: "validation_batches.findById",
+  // `listForRecovery` IS a divergence, of the same shape: the method says which question is being
+  // asked, the union names the read on the table. Written `"validation_batches.list"` for the reason
+  // the union is named after the table at all, and rejected for the reason above — it would be a
+  // FOURTH locally reasonable convention in a union that is meant to have one.
+  listForRecovery: "validation_batches.listForRecovery",
 } as const satisfies Record<keyof BatchesRepository, RepositoryOperation>;

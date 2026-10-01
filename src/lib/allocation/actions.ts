@@ -5,7 +5,7 @@ import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 import { allocationConfigSchema } from "@/schemas/batch";
 
 import { runAllocateBatch, type AllocationActionDependencies } from "./allocation-actions-core";
-import { defaultBatchId } from "./allocate-batch";
+import { defaultBatch } from "./allocate-batch";
 import type { AllocationOutcome } from "@/schemas/batch";
 
 /**
@@ -62,7 +62,10 @@ function actionDependencies(): AllocationActionDependencies {
     // else. Both remain pending thesis-team and adviser approval.
     config: allocationConfigSchema.parse({}),
     random: Math.random,
-    newBatchId: (validatorId) => defaultBatchId(validatorId, new Date()),
+    // ONE `Date` per batch, for the identifier AND the `created_at` the migration requires the
+    // server to write. Two reads of the clock would let a batch's id and its column disagree, and the
+    // column is the one that orders.
+    newBatch: (validatorId) => defaultBatch(validatorId, new Date()),
     ConfigurationFailure: ServerEnvError,
   };
 }
