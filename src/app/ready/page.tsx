@@ -14,10 +14,16 @@ import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
  * a confirmation screen that echoes a stored profile is a screen that has to be
  * kept correct as the profile changes, and none of it helps the participant.
  *
- * It deliberately does NOT link to a batch route. Allocation is Phase 4, so there
- * is nothing to link to yet. An honest dead end that says what is coming is better
- * than a link to a 404, and better than a screen implying a batch is one click away
- * when it is not implemented.
+ * It deliberately does NOT link to a BATCH route, and that is still true: `/validate/<batchId>`
+ * needs a batch identifier, and a batch identifier does not exist until the server has chosen one.
+ * An honest dead end that says what is coming is better than a link to a 404, and better than a
+ * screen implying a batch is one click away when it is not implemented.
+ *
+ * This paragraph previously read "Allocation is Phase 4, so there is nothing to link to yet", and that
+ * was false from the moment `requestBatchAction` existed and stayed false while this page linked
+ * nowhere. It has been corrected here rather than left standing, because a comment asserting that a
+ * capability is absent is a claim someone will believe — and the verification pass for Phase 5 caught
+ * exactly that, on a task that was ticked as having corrected this very sentence and had not.
  *
  * It DOES link back to `/start`. The original reason it linked nowhere — "so it cannot
  * link to a route that does not exist" — was satisfied trivially by having no links, and

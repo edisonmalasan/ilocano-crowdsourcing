@@ -6,7 +6,6 @@ import {
   type AllocatedEntry,
   type BatchEntryPlacement,
 } from "@/schemas/batch";
-import type { DatasetEntryId } from "@/schemas/dataset";
 
 /**
  * ============================================================================
@@ -180,22 +179,31 @@ export function resolveSessionEntry(
   };
 }
 
-/**
- * Which entry the NEXT screen should show, after one has just been completed.
+/*
+ * ============================================================================
+ * WHY THERE IS NO `resolveNextSessionEntry`, RECORDED RATHER THAN DELETED QUIETLY
+ * ============================================================================
+ * This module used to export a second function, `resolveNextSessionEntry(entries, completed,
+ * completedEntryEntryId)`, whose doc said it existed "rather than as a call with
+ * `requestedPosition: position + 1` at each of two call sites". It had ZERO production callers. Its
+ * only importers were two test files — and one of those tests used it to assert that advancing to the
+ * next entry works, so the test proved the dead function correct rather than proving anything about
+ * the product. **A specification gaining an implementation is not a scenario gaining a witness; a
+ * function gaining a test is not a function gaining a caller.**
  *
- * This exists as its own function rather than as a call with `requestedPosition: position + 1` at
- * each of two call sites, because the arithmetic is only right if the position the participant was
- * on really is the placement that was just answered — and because the advance must be derived from
- * the server's order in exactly one place. It is the same decision `resolveSessionEntry` makes, with
- * the entry just completed added to the completed set; expressing it as a separate named function
- * means the set is extended in one place instead of two.
+ * It could not have had a caller, and that is the interesting part. The advance is
+ * `position + 1` where `position` is the PLACEMENT's own position, which
+ * `src/app/validate/[batchId]/page.tsx` passes as `position={session.position}` — the server's
+ * figure, never the URL's requested one. So the arithmetic is forward by construction, and the
+ * candidate function was not merely unused but *wrong for the real path*: it resolved
+ * `requestedPosition: undefined`, which `resolveSessionEntry` answers with `remaining[0]` — the FIRST
+ * outstanding entry — where the route's own call answers with the first outstanding entry at or after
+ * the requested position. Those differ exactly when a participant resumes part-way through a batch,
+ * and the route's version is the correct one.
+ *
+ * Fetching the next entry inside the write was considered and REJECTED during design, for research
+ * integrity: the next sentence must not be read before the current response is stored. That decision
+ * is what leaves the advance as a navigation, and therefore leaves this function with nowhere to live.
+ * The guarantee is asserted where it is real — three links, all in production, in
+ * `validation-routes.test.tsx` and `tests/dom/validation-form.test.tsx`.
  */
-export function resolveNextSessionEntry(
-  entries: readonly BatchEntryPlacement[],
-  completedEntryIds: ReadonlySet<string>,
-  completedDatasetEntryId: DatasetEntryId,
-): SessionEntryChoice | null {
-  const next = new Set(completedEntryIds);
-  next.add(completedDatasetEntryId);
-  return resolveSessionEntry(entries, next, undefined);
-}

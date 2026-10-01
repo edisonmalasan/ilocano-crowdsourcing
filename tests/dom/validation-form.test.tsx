@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ValidationForm } from "@/app/validate/[batchId]/validation-form";
 import { translatorFor } from "@/lib/i18n/copy";
-import { resolveNextSessionEntry } from "@/lib/validation/session";
+import { resolveSessionEntry } from "@/lib/validation/session";
 import { EVALUATION_CHOICES } from "@/schemas/validation";
 
 import { mount, type Mounted } from "./support/dom-harness";
@@ -124,7 +124,10 @@ function type(field: HTMLTextAreaElement | HTMLInputElement, value: string): voi
   const setter = Object.getOwnPropertyDescriptor(prototype.prototype, "value")?.set;
   if (!setter) throw new Error("no value setter on the input prototype");
   setter.call(field, value);
-  field.dispatchEvent(new window.Event("input", { bubbles: true }));
+  // Inside `act`, via the harness's generic `dispatch`. The first draft dispatched this directly and
+  // the file emitted 95 `not wrapped in act(...)` warnings; the harness doc records why that is a
+  // defect rather than cosmetic.
+  view.dispatch(field, new window.Event("input", { bubbles: true }));
 }
 
 /**
@@ -229,9 +232,12 @@ afterEach(async () => {
   // leaves React's async act queue non-empty and every later test in this file measures that instead of
   // its own subject — four tests did exactly that before this hook existed.
   if (h.hold !== null) {
-    h.hold.resolve();
+    // Released INSIDE `act`, via `settle`'s callback. Releasing it outside is what produced the last
+    // remaining "A suspended resource finished loading inside a test" warning — the deferred write
+    // settling is a state change, and React logs it rather than flushing it silently.
+    const release = h.hold.resolve;
     h.hold = null;
-    await view.settle();
+    await view.settle(release);
   }
   view.unmount();
   vi.clearAllMocks();
@@ -407,7 +413,7 @@ describe("VF-3 and VF-4 — the pending state, observed WHILE the write is open"
     expect(options().filter((option) => option.disabled)).toHaveLength(0);
     expect(field("correctedInstruction").hasAttribute("disabled")).toBe(false);
 
-    holdWrite();
+    const release = holdWrite();
     view.submitForm(form());
 
     expect(options()).toHaveLength(4);
@@ -426,6 +432,18 @@ describe("VF-3 and VF-4 — the pending state, observed WHILE the write is open"
     // not told the answer disappeared.
     const selected = options().filter((option) => option.getAttribute("aria-checked") === "true");
     expect(selected).toHaveLength(1);
+
+    // The write is closed HERE, inside this test and inside `act`, rather than left to `afterEach`.
+    //
+    // This was the last remaining `not wrapped in act` warning in the `dom` project, and it took
+    // three attempts to localise: it fires only for THIS test and not for the four other sites that
+    // hold a write open, and neither wrapping the release in `act` nor draining microtasks inside it
+    // changed it — two hypotheses, both measured, both wrong. What differs here is that the test ends
+    // immediately after the last assertion, so the release lands in the same turn as the unmount.
+    // Closing it here removes the ambiguity entirely, and it costs nothing: every assertion above
+    // still runs while the write is open, which is the state this test exists to observe.
+    release();
+    await view.settle();
   });
 
   it("RE-ENABLES the control once the write settles", async () => {
@@ -606,8 +624,13 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
     // is the actual participant-facing failure. `renderToStaticMarkup` cannot re-mount, and a
     // `router.push` mock cannot either, so the advance is closed here by doing both halves: a real
     // unmount and mount at the position the push named, with the entry chosen by the REAL
-    // `resolveNextSessionEntry` against a real placement list — the same function the route's service
-    // calls. No arithmetic anywhere in the assertion.
+    // `resolveSessionEntry` — the production function, called the way
+    // `validation-session-service.ts` calls it. No arithmetic anywhere in the assertion.
+    //
+    // REWRITTEN during the Phase 5 verification repair. The first draft resolved the entry with
+    // `resolveNextSessionEntry`, a DIFFERENT function that had zero production callers, so the test
+    // proved that dead function correct and said nothing about the product. It is now the same call
+    // the route makes, with the position read out of the pushed URL rather than supplied by this test.
     const PLACEMENTS = [
       { datasetEntryId: "OD_0005", position: 1 },
       { datasetEntryId: "OD_0006", position: 2 },
@@ -631,14 +654,16 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
 
     // What the server resolves that request to, using the real resolver.
     //
-    // The completed set is MEASURED, not assumed. The first draft of this test passed an EMPTY set plus
-    // the entry just answered, and got `OD_0005` — the FIRST remaining placement, because with only
-    // OD_0007 marked done, placements 1 and 2 are still outstanding. That is the resolver behaving
-    // correctly and the expectation being wrong: an expected value written down rather than measured
-    // is the fifth time that has happened in this session, and it is worth recording that the failure
-    // looks like a defect in the code under test.
-    const completed = new Set(["OD_0005", "OD_0006"]);
-    const next = resolveNextSessionEntry(PLACEMENTS, completed, "OD_0007");
+    // The completed set is MEASURED, not assumed, and it includes the entry just answered because the
+    // write is what completed it — the server reads the completed set from storage, and the form
+    // navigated only after the insert resolved. The first draft of this test passed an EMPTY set plus
+    // the entry just answered to a function that added it internally, and got `OD_0005` — the FIRST
+    // remaining placement, because with only OD_0007 marked done, placements 1 and 2 are still
+    // outstanding. That is the resolver behaving correctly and the expectation being wrong: an
+    // expected value written down rather than measured is the fifth time that has happened in this
+    // session, and it is worth recording that the failure looks like a defect in the code under test.
+    const completed = new Set(["OD_0005", "OD_0006", "OD_0007"]);
+    const next = resolveSessionEntry(PLACEMENTS, completed, requestedPosition);
     expect(next).not.toBeNull();
     expect(next?.placement.datasetEntryId).not.toBe("OD_0007");
     expect(next?.placement.datasetEntryId).toBe("OD_0008");
@@ -661,6 +686,62 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
     // And no second insert happened merely by arriving somewhere: presenting an entry is a read, and a
     // mount that wrote on arrival would double every response.
     expect(h.submitted).toHaveLength(1);
+  });
+
+  it("CAN FIRE: the pushed position actually CHANGES which entry the resolver presents", () => {
+    // The control the re-mount test above needs and did not have, found by asking what would have to
+    // be true for that test's resolution step to fail.
+    //
+    // It reads the position out of the pushed URL and hands it to the resolver, so if the form pushed
+    // a position the resolver ignores — or a position past the end, which the resolver answers with
+    // the first remaining entry — the resolution above would return the same answer anyway. `?position=999`
+    // is exactly that case: it resolves to `OD_0008` too, because nothing is at or after 999 and the
+    // fallback takes over. So a mutation of the form's push to a wrong-but-large position is invisible
+    // to the test above, and the sibling test that asserts the exact URL string is what catches it.
+    //
+    // This test pins the missing half: two DIFFERENT in-range positions must give two DIFFERENT
+    // entries, which is what makes reading the position out of the URL worth anything. Without it, the
+    // re-mount's use of `requestedPosition` would be decoration.
+    const PLACEMENTS = [
+      { datasetEntryId: "OD_0005", position: 1 },
+      { datasetEntryId: "OD_0006", position: 2 },
+      { datasetEntryId: "OD_0007", position: 3 },
+      { datasetEntryId: "OD_0008", position: 4 },
+    ] as const;
+
+    // Only OD_0005 completed, so THREE placements remain. The first draft of this control used a
+    // completed set that left ONE placement, and every requested position then resolved to the same
+    // entry — the control passed for the wrong reason while proving nothing about the position. It
+    // failed on `expected 'OD_0008' to be 'OD_0007'`, which is an expected value written down instead
+    // of measured: a single remaining placement cannot discriminate between three positions.
+    const completed = new Set(["OD_0005"]);
+
+    // Measured, not assumed — the values below were read out of the resolver, not derived by hand.
+    // `remaining` is OD_0006 (2), OD_0007 (3), OD_0008 (4); the rule is the first placement at or
+    // after the requested position, falling back to the first remaining.
+    const atTwo = resolveSessionEntry(PLACEMENTS, completed, 2);
+    const atThree = resolveSessionEntry(PLACEMENTS, completed, 3);
+    const atFour = resolveSessionEntry(PLACEMENTS, completed, 4);
+    // A position BEFORE the first remaining, and one PAST the end, both take the fallback — which is
+    // why a wrong-but-large push is invisible to the test above and needs the sibling test that
+    // asserts the exact URL.
+    const atOne = resolveSessionEntry(PLACEMENTS, completed, 1);
+    const atFarPastTheEnd = resolveSessionEntry(PLACEMENTS, completed, 999);
+
+    expect(atTwo?.placement.datasetEntryId).toBe("OD_0006");
+    expect(atThree?.placement.datasetEntryId).toBe("OD_0007");
+    expect(atFour?.placement.datasetEntryId).toBe("OD_0008");
+    expect(atOne?.placement.datasetEntryId).toBe("OD_0006");
+    expect(atFarPastTheEnd?.placement.datasetEntryId).toBe("OD_0006");
+    // Three in-range positions, THREE different answers — this is the property that makes reading the
+    // position out of the pushed URL worth anything rather than decoration.
+    expect(new Set([atTwo, atThree, atFour].map((c) => c?.placement.datasetEntryId)).size).toBe(3);
+    // And the two fallbacks agree with the first remaining, which is what a stale link lands on.
+    expect(atOne?.placement.datasetEntryId).toBe(atFarPastTheEnd?.placement.datasetEntryId);
+    // Never a completed entry, on any of the five requests.
+    for (const choice of [atOne, atTwo, atThree, atFour, atFarPastTheEnd]) {
+      expect(completed.has(choice?.placement.datasetEntryId ?? "")).toBe(false);
+    }
   });
 });
 

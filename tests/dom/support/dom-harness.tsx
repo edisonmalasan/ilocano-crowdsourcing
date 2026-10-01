@@ -45,8 +45,15 @@ export interface Mounted {
    * transition open, and `pressAndSettle` would await a promise that never resolves.
    */
   press(target: Element): void;
-  /** Flushes pending microtasks inside `act`, letting React commit async state changes. */
-  settle(): Promise<void>;
+  /**
+   * Flushes pending microtasks inside `act`, letting React commit async state changes.
+   *
+   * Takes an optional callback that runs INSIDE that same `act`, which is how a state change with no
+   * DOM event of its own gets wrapped: releasing a deferred write is a state change, and releasing it
+   * outside `act` is what produced this project's last remaining
+   * "A suspended resource finished loading inside a test" warning.
+   */
+  settle(run?: () => void): Promise<void>;
   /** Click and let every pending promise resolve. Use only for resolvable work. */
   pressAndSettle(target: Element): Promise<void>;
   /**
@@ -60,6 +67,22 @@ export interface Mounted {
   submitForm(form: HTMLFormElement): void;
   /** Dispatch `submit` and let the resulting promises resolve. */
   submitFormAndSettle(form: HTMLFormElement): Promise<void>;
+  /**
+   * Dispatches an arbitrary event inside a SYNCHRONOUS `act`.
+   *
+   * Added because `press` and `submitForm` cover only the two events this project's controls use,
+   * and typing into a controlled field dispatches `input` — which React applies as an update, and an
+   * update dispatched outside `act` is a warning *and* an unflushed commit. The first draft of the
+   * validation form's DOM tests called `field.dispatchEvent(...)` directly and produced **95**
+   * `not wrapped in act(...)` warnings across the file. Each was followed by an explicit `settle()`,
+   * so no assertion was reading a stale DOM and all of them passed — but a suite that emits 95
+   * warnings is a suite nobody re-reads carefully, and this project's claim that its `dom` bars were
+   * "proved red before any guard depended on them" depends on the output being legible.
+   *
+   * The general form is kept rather than an `input`-specific helper so the next control that needs
+   * `change` or `blur` does not reintroduce the same defect in a new place.
+   */
+  dispatch(target: Element, event: Event): void;
   unmount(): void;
 }
 
@@ -92,8 +115,10 @@ export function mount(element: ReactElement): Mounted {
         target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
       });
     },
-    async settle(): Promise<void> {
-      await act(async () => {});
+    async settle(run?: () => void): Promise<void> {
+      await act(async () => {
+        run?.();
+      });
     },
     async pressAndSettle(target: Element): Promise<void> {
       await act(async () => {
@@ -108,6 +133,11 @@ export function mount(element: ReactElement): Mounted {
     async submitFormAndSettle(form: HTMLFormElement): Promise<void> {
       await act(async () => {
         form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+      });
+    },
+    dispatch(target: Element, event: Event): void {
+      act(() => {
+        target.dispatchEvent(event);
       });
     },
     unmount(): void {

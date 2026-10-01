@@ -145,7 +145,32 @@ interactive controls are **enumerated from the rendered markup by tag** (`button
 runs the **same** classifier over a literal list containing `"Skip translation for now"` and requires it
 to be found, while `"Correct and natural"` and `"Submit answer"` are required **not** to match — a
 pattern that matched all three would also pass the absence assertion. A **Filipino** enumeration runs
-too, with a separate pattern: the two languages share no root, so a reuse would have been vacuous. 4.3 —
+too, with a separate pattern: the two languages share no root, so a reuse would have been vacuous.
+
+**4.2's enumerator was BLIND TO VOID ELEMENTS, and the verification pass caught it, so the evidence
+above is corrected here rather than left standing.** The task was ticked on a guard whose extraction
+pattern was `` new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)</${tag}>`) `` — which **demands a closing tag**.
+`input` is an HTML void element and React writes it as `<input ... />`, so the enumerator matched **zero
+inputs in all three spellings**, while its own comment claimed "`input` is included because a checkbox is
+a perfectly good way to skip something" and this paragraph named `input` among the enumerated tags. A
+guard that names a control kind it cannot see is reporting coverage it is not providing, which is the
+second time this repository has paid for exactly that. **It was measured, not argued:** with a real
+`<button>Skip translation for now</button>` added to the form the guard went red naming the control, and
+with a real `<input type="checkbox" aria-label="Skip translation for now"/>` it stayed **green at 42
+passed**.
+
+The scenario held throughout — the live screen contains no `<input>` at all — but it held for a reason
+the guard did not measure. The repair separates the two element shapes explicitly (`VOID_TAGS` gets its
+own pattern) and adds the control the guard did not have, which exercises the **extraction** rather than
+the **predicate**: the original can-fire control ran the classifier over a hand-written literal array, so
+it could never detect a broken enumerator. The new one renders two real `<input type="checkbox">`
+elements through `renderToStaticMarkup`, feeds the markup to the real enumerator, and requires that both
+void inputs and the accompanying button are found **and** that only the skip-flavoured label is flagged.
+A companion test records the other half honestly: the real screen has **zero** inputs and the only tag
+present is `button`, because the conditional textareas are **hidden** rather than disabled (D5) until an
+evaluation is chosen — so that count is a fact about today's markup, not a property of the enumerator.
+That companion's first draft expected `{button, textarea}` and failed, which is the sixth time this
+session an expected value written down instead of measured failed against correct code. 4.3 —
 split across the two layers that can see it: the `dom` test asserts the **submitted payload** carries the
 validator's own strings and that no field echoes the dataset's wording, and `validation-actions.test.ts`
 asserts the **inserted row** carries the same three strings byte for byte, that the two translations were
@@ -183,29 +208,96 @@ control pastes a **real** record into each catalog.
       duplicate and asserting an advance with **no** discard, plus a negative control asserting a
       non-duplicate failure is reported as a failure and does **not** advance.
 
-**Evidence.** 5.1 — `pnpm run lint` exits 0 with **zero warnings**, and the boundary rule
-(`sadino/no-privileged-imports`) covers every client component. **One measured correction to the task's
-wording:** the core file does not import `server-only` **of its own**, but it *inherits* the marker
-through `parseWriteIntent` in `@/lib/server/write-intake`, so `validation-actions.test.ts` **does** stub
-`server-only` — exactly as `allocation-actions.test.ts` does. The file's module comment claimed no stub
-was needed; that was measured wrong and has been corrected in place. 5.2 — the action's call sequence is
-asserted as exactly `["batches.findById:batch-1", "validations.insert"]` with **no** dataset call, and
-the batch in the fixture has two entries of which one is answered. 5.3 — see below. 5.4 — the pending
-state is observed **while the write is open**, and the single-flight latch is exercised by two
-submissions inside **one synchronous `act`** so no render can occur between them; `h.submitted` is
-asserted at length **1**. 5.5 — `already_recorded` advances and the document must not say nothing was
-saved; a `failed` write does not advance and does.
+**Evidence.** 5.1 — `pnpm run lint` exits 0 with **zero warnings**. **The claim that the boundary rule
+(`sadino/no-privileged-imports`) "covers every client component" is NARROWED, because measurement showed it
+is inert on Windows for the one kind that matters most, and the defect is PRE-EXISTING.** The rule gates
+on `context.filename.includes("/components/")` at `eslint.config.mjs:74`, and on Windows
+`context.filename` is a native path with backslashes, so the substring is absent. Five isolation cases
+were probed: a file under `src/components/` carrying `"use client"` **fires** the rule, a file under
+`src/components/` **without** the directive does **not** fire, and `src/lib/` and `src/app/` without the
+directive correctly do not fire. So on this platform a *presentation component that omits its own
+`"use client"`* and imports a privileged module escapes the lint gate. There is **no live breach** in
+this change — `src/components/validation/entry-card.tsx` imports only `@/schemas/batch` — and
+`eslint.config.mjs` is **unchanged from `main`**, so this is not something this change introduced. It
+also does not weaken CI, which runs `ubuntu-latest` where the rule fires normally. It is **not repaired
+here**: `AGENTS.md` puts CI/CD and security tooling outside a change's scope and forbids unrelated fixes,
+so it is recorded in `docs/ROADMAP.md` as a newly discovered pre-existing defect with its measurement
+rather than quietly fixed or quietly dropped. The durable rule it guards is instead verified by reading:
+no client component in this change reaches `server-only`, `@supabase/supabase-js`, or the service-role
+env module, and `entry-card.tsx` imports no copy catalog at all.
+
+**Two further measured corrections to the task's wording.** The core file does not import `server-only`
+**of its own**, but it *inherits* the marker through `parseWriteIntent` in `@/lib/server/write-intake`,
+so `validation-actions.test.ts` **does** stub `server-only` — exactly as `allocation-actions.test.ts`
+does. The file's module comment claimed no stub was needed; that was measured wrong and has been
+corrected in place. 5.2 — the action's call sequence is asserted as exactly
+`["batches.findById:batch-1", "validations.insert"]` with **no** dataset call, and the batch in the
+fixture has two entries of which one is answered. 5.3 — see below. 5.4 — the pending state is observed
+**while the write is open**, and the single-flight latch is exercised by two submissions inside **one
+synchronous `act`** so no render can occur between them; `h.submitted` is asserted at length **1**. 5.5 —
+`already_recorded` advances and the document must not say nothing was saved; a `failed` write does not
+advance and does.
 
 **5.3 required more than a pushed URL, and the reason is worth recording.** Asserting
 `router.push("/validate/<batch>?position=4")` would be satisfied by a form that pushed a URL and a server
 that then showed the **same** entry again — which is the actual participant-facing failure. So the test
 does both halves: it reads the position back **out of the URL the form produced**, unmounts, mounts the
-real component again at that position, and takes the entry from the **real `resolveNextSessionEntry`**
+real component again at that position, and takes the entry from the **real `resolveSessionEntry`**
 against a real placement list. No arithmetic appears in the assertion. The completed set had to be
 **measured**: the first draft passed an empty set plus the entry just answered and got `OD_0005`, the
 first *remaining* placement, because with only `OD_0007` done, placements 1 and 2 were still outstanding.
 That was the resolver behaving correctly and the expectation being invented — the fifth time this
 session that an expected value written down rather than measured failed against correct code.
+
+**5.3 was ALSO WITNESSING A DEAD FUNCTION, and the verification pass caught it. This paragraph is the
+correction, and the deletion it describes is recorded in `src/lib/validation/session.ts`.** The first
+draft resolved the next entry with `resolveNextSessionEntry` — a second export whose own doc said it
+existed "rather than as a call with `requestedPosition: position + 1` at each of two call sites". **It
+had zero production callers.** Its only importers were two test files, and this test was one of them, so
+it proved a *dead* function correct and said nothing about the product. **A function gaining a test is
+not a function gaining a caller**, which is the same shape as the "a specification gaining an
+implementation is not a scenario gaining a witness" rule already recorded in `AGENTS.md`.
+
+It could not have had a caller, and that is the interesting part. The advance really is
+`position + 1`, where `position` is the **placement's** own position, which
+`src/app/validate/[batchId]/page.tsx` passes as `position={session.position}` — the server's figure,
+never the URL's requested one. So the arithmetic is forward by construction and the candidate function
+was not merely unused but *wrong for the real path*: it resolved `requestedPosition: undefined`, which
+`resolveSessionEntry` answers with `remaining[0]`, where the route's own call answers with the first
+remaining placement at or after the requested position. Those differ exactly when a participant resumes
+part-way through a batch, and the route's version is the correct one. Fetching the next entry inside the
+write was rejected during design for research integrity — the next sentence must not be read before the
+current response is stored — and that decision is what leaves the advance as a navigation and therefore
+leaves the function with nowhere to live.
+
+**The guarantee is now asserted where it is real, as three production links**, and the second and third
+were the ones the first draft had no witness for:
+
+1. the form pushes exactly `position + 1`, read back out of the URL — the sibling test in the same
+   `describe`, which is what catches a *wrong* position and not merely a missing one;
+2. `resolveSessionEntry`, the production function, called with the position the push named — and with a
+   **new can-fire control** that three different in-range positions give three different entries, which
+   is what makes reading the position out of the URL worth anything rather than decoration. Without it
+   the first control is invisible to a mutation pushing a large position, because the resolver's
+   past-the-end fallback answers `OD_0008` for `?position=999` too. That control itself failed on its
+   first draft with a completed set leaving only **one** remaining placement, where every requested
+   position resolves to the same entry — a control that passes for the wrong reason is still a control
+   that proves nothing;
+3. the route treats the **server's** placement position as the current one, never the URL's, asserted
+   from rendered markup. A source scan would prove a string is present and nothing about which value
+   reached the form.
+
+**One behaviour the deleted tests encoded is now UNSPECIFIED, and is raised for the Sync stage rather
+than quietly adopted.** They asserted that a participant answering an entry *out of order* is next shown
+the **first entry still needing an answer**, even one positioned before the one just answered. The
+production path does not do that and cannot: it advances by placement position, so a participant who
+reached `?position=7` is next sent to `?position=8`, leaving position 1 outstanding. **Nothing is lost**
+— the resolver falls back to the first remaining entry once the requested position passes the end, so an
+earlier entry is never permanently skipped and can still reach its coverage target. But no scenario
+specifies which behaviour is correct, and "the next entry in the order the server allocated" is
+satisfied by both readings when a validator answers in order, which is the only way the session is meant
+to be driven. Inventing a rule for the case the specification does not reach would be exactly the kind of
+unapproved widening this project records as a finding.
 
 ## 6. Safe navigation, and preventing an invalid submission
 
@@ -250,7 +342,70 @@ a required input is missing, and the missing input is **named**; the server-side
 and `/validate` before the href loop runs, so a `readdirSync` pointed at the wrong path cannot yield an
 empty array and pass every href assertion vacuously. `/validate` is named **explicitly as well as** being
 picked up by the directory scan, because the scan reports a missing directory and the explicit name
-reports the missing route. 7.2 — the Proposal carries the open question; **2** matches.
+reports the missing route. **7.1 was ticked as having corrected a comment it had not, and the
+verification pass caught it.** The header comment at `src/app/ready/page.tsx:17` still read
+*"It deliberately does NOT link to a batch route. Allocation is Phase 4, so there is nothing to link to
+yet"* while the same page carried `href="/validate"` at line 234 — so the sentence was false twice over,
+once when it was written and again once the link existed. A **new** JSX comment near the link *quoted*
+the stale header as already false, which acknowledges a claim without correcting it, and a tick that
+asserts a correction is worse than an unticked box because it removes the work item. The header is now
+rewritten to the true and narrower claim — it does not link to a **BATCH** route, because
+`/validate/<batchId>` needs an identifier the server has not chosen yet — with the retraction recorded in
+place. **The two remaining occurrences of the old sentence in that file are the retraction quoting it**,
+which is the trap `AGENTS.md` records: retracting a claim inside the comment that made it leaves the
+phrase legitimately present, so any absence check on this file has to allow a quoted past-tense
+attribution rather than a bare `not.toContain`. No behavioural impact; the tick was simply untrue.
+7.2 — the Proposal carries the open question; **2** matches.
+
+### The four verification-repair probes, and what they measured
+
+The independent verification pass for this Apply stage returned **NO** overall, on the grounds that three
+ticked boxes were not true as written and one guard reported coverage it did not provide. All four
+findings were re-derived independently before anything was repaired, all four were confirmed, and the
+repair of each is now witnessed by a mutation probe with a **negative control** and a **byte-identical
+restore**. A green suite cannot show that a guard fires, so these are the evidence.
+
+| Probe | Mutation | Result | Named failures |
+| --- | --- | --- | --- |
+| P6 (W1) | a real `<input type="checkbox" aria-label="Skip translation for now">` on the screen | RED | **2** tests, incl. `a control that can skip required research data: Skip translation for now` |
+| P7 (W2) | the stale *"Allocation is Phase 4"* sentence asserted as current | RED | **0** lines assert it; only the retraction quotes it |
+| P8 (W3) | the progress line rendering `completedCount + 1` instead of the placement position | RED | **1**, `expected '…' to contain 'Sentence 4 of 10'` |
+| P9 (W3) | the form advancing by `position + 2` | RED | **4**, all in VF-6 |
+
+**P6 is the one that matters, because the same mutation was GREEN before the repair.** With a real void
+`<input>` added, the *original* guard stayed green at 42 passed while the *fixed* one goes red naming the
+control. That is the whole of W1 in one measurement: the guard could not see the control kind its own
+comment claimed to cover.
+
+**P8b is recorded as a MEASURED LIMIT rather than a pass, and it is a limit on this change's own new
+test.** The new route test witnesses the **progress line**. It does **not** witness
+`position={session.position}` — the prop handed to the form — because a Server Component's props are not
+attributes in rendered HTML: `renderToStaticMarkup` cannot see them, and the only other instrument is a
+source scan, which proves a string is present and never that the code behaves as the string suggests. P8b
+mutates exactly that prop and the suite stays **green at 1214/1214**. That is written down rather than
+glossed, because the question "what would have to be true for this assertion to fail" is the one that
+finds vacuous guards, and the honest answer here is "break the prop wiring". Closing it properly needs a
+real server render plus a real navigation, which needs a browser and a Supabase project; **neither
+exists**.
+
+### The repair probe harness was wrong twice before it was right, and both errors are instructive
+
+The first harness generation reported **P6 and P9 as COLLECT-FAILED** — "1214 -> 1212 tests: FEWER than the
+control" — which read as *the guards do not fire*. They do. **The harness compared the wrong number.** A
+vitest run with two failures reports `1212 passed` against a control's `1214 passed`, and the harness
+checked that drop **before** checking whether there were failures at all, so every genuine red was
+reclassified as a collection break. A number compared against the wrong number is indistinguishable from
+a finding, which is the same conflation this harness exists to prevent. The discriminator is the
+**total** — `passed + failed` — and failures are checked first.
+
+The second error was in P8 itself, and the harness **refused it correctly**. The first P8 mutation was
+`position={Number(query["position"]) || session.position}`, which does not type-check —
+`query["position"]` is `string | string[] | undefined` — so `tsc` exited 2 and the harness reported
+NOT-ATTRIBUTABLE rather than a red. **A mutation that does not compile makes almost any assertion fail,
+so its red would have been evidence about a compile error.** The rewritten P8 mutates a line that
+type-checks, and the harness requires `tsc --noEmit` to be green on the mutant *before* believing any
+verdict. Note again that the discriminator is not the exit code: `tsc` exits **2** on a type error, so a
+predicate written for "0 or 1" calls a textbook red `DID-NOT-RUN`.
 
 ## 8. Integration verification
 

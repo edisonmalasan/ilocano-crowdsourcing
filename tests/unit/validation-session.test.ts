@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  resolveNextSessionEntry,
   resolveSessionEntry,
   validationSessionRequestSchema,
   type SessionOrderingKeyIsPositionOnly,
@@ -230,89 +229,54 @@ describe("which entry a session presents", () => {
   });
 
   it("does not mutate the caller's completed set", () => {
-    // `resolveNextSessionEntry` copies before adding, so a mutation here would quietly change the
-    // caller's view of what is done — and the caller is the session, which decides what is presented.
+    // Re-pointed at `resolveSessionEntry` during the Phase 5 verification repair. It previously
+    // exercised `resolveNextSessionEntry`, which had no production caller; the property itself is real
+    // and worth keeping, because the caller is the session service and a mutation here would quietly
+    // change its view of what is done.
     const entries = tenEntryBatch();
     const completed = new Set<string>(["OD_1000"]);
-    resolveNextSessionEntry(entries, completed, "OD_1001");
+    resolveSessionEntry(entries, completed, undefined);
 
     expect([...completed]).toEqual(["OD_1000"]);
   });
 });
 
-describe("which entry comes next, once one has been completed", () => {
-  it("advances to the next uncompleted entry", () => {
-    const entries = tenEntryBatch();
-    const choice = resolveNextSessionEntry(entries, new Set(), "OD_1000");
-
-    expect(choice?.placement.datasetEntryId).toBe("OD_1001");
-    expect(choice?.completedCount).toBe(1);
-    expect(choice?.remainingCount).toBe(9);
-  });
-
-  it("advances past an entry completed in an earlier step, not just the one just answered", () => {
-    const entries = tenEntryBatch();
-    const choice = resolveNextSessionEntry(entries, new Set(["OD_1000", "OD_1001"]), "OD_1002");
-
-    expect(choice?.placement.datasetEntryId).toBe("OD_1003");
-  });
-
-  it("is idempotent for an entry that is already recorded", () => {
-    // THE DUPLICATE PATH. A refused second write is still an answered entry, so re-deriving "next"
-    // with the id already in the completed set must land on the SAME next entry rather than
-    // re-presenting the one just answered. If this returned `OD_1000` again, a validator whose
-    // submit was retried would be shown the sentence they had just judged.
-    const entries = tenEntryBatch();
-    const first = resolveNextSessionEntry(entries, new Set(), "OD_1000");
-    const again = resolveNextSessionEntry(entries, new Set(["OD_1000"]), "OD_1000");
-
-    expect(first?.placement.datasetEntryId).toBe("OD_1001");
-    expect(again?.placement.datasetEntryId).toBe(first?.placement.datasetEntryId);
-  });
-
-  it("returns null once the last entry is completed", () => {
-    const entries = tenEntryBatch();
-    const allButLast = new Set(entries.slice(0, 9).map((entry) => entry.datasetEntryId));
-    expect(resolveNextSessionEntry(entries, allButLast, "OD_1009")).toBeNull();
-  });
-
-  it("does NOT skip an earlier unanswered entry when the participant answers out of order", () => {
-    // The first draft of this test asserted the opposite — that answering `OD_1001` leads to
-    // `OD_1002` — and it failed against correct code. The expected value was a guess about the
-    // feature rather than a measurement of it, and the implementation was right: the session is
-    // sequential, and a validator who somehow answers entry 2 while entry 1 is unanswered must still
-    // be given entry 1 next. An advance that followed the entry just answered would let a stale
-    // position or a hand-edited link permanently skip an entry, and the skipped entry would then
-    // never reach its coverage target.
-    const entries = tenEntryBatch();
-    const choice = resolveNextSessionEntry(entries, new Set(["OD_1005"]), "OD_1001");
-
-    expect(choice?.placement.datasetEntryId).toBe("OD_1000");
-    expect(choice?.placement.position).toBe(1);
-    // The count still reflects what is genuinely done, including the out-of-order one.
-    expect(choice?.completedCount).toBe(2);
-    expect(choice?.remainingCount).toBe(8);
-  });
-
-  it("lands on the first remaining entry no matter WHICH entry was just answered", () => {
-    // The advance is derived from the server's order and the completed set, never from the id just
-    // answered. Three different "just answered" values, three results, all of them the first entry
-    // still needing an answer — a function that derived its result from the argument would answer
-    // `answered + 1` and give three different ids.
-    //
-    // The measured values are the recorded ones, and they were NOT the ones first written down: this
-    // test originally expected `[OD_1001, OD_1001, OD_1001]` and got
-    // `[OD_1001, OD_1000, OD_1000]`. Answering `OD_1003` leaves `OD_1000` unanswered and so still
-    // next. A test whose expected value is invented rather than measured is the failure this
-    // repository has recorded most often, and both of the last two failures in this file were it.
-    const entries = tenEntryBatch();
-    const landed = ["OD_1000", "OD_1003", "OD_1007"].map(
-      (answered) => resolveNextSessionEntry(entries, new Set(), answered)?.placement.datasetEntryId,
-    );
-
-    expect(landed).toEqual(["OD_1001", "OD_1000", "OD_1000"]);
-  });
-});
+/*
+ * REMOVED IN THE PHASE 5 VERIFICATION REPAIR, AND RECORDED RATHER THAN DELETED QUIETLY
+ * ============================================================================
+ * This block tested `resolveNextSessionEntry`, an export with ZERO production callers. Its only
+ * importers were this file and `tests/dom/validation-form.test.tsx` — and the dom test used it to
+ * assert that advancing to the next entry works, so it proved a DEAD function correct rather than
+ * proving anything about the product. A function gaining a test is not a function gaining a caller.
+ *
+ * What it encoded, and where each part is asserted for real instead:
+ *
+ *   - "a duplicate refusal still advances" is task 5.5, witnessed in `validation-actions.test.ts`
+ *     and `tests/dom/validation-form.test.tsx` against the real write path.
+ *   - "returns null once the last entry is completed" is already asserted against the PRODUCTION
+ *     function twice, and one of the two is the exact case this block covered: "falls back to the
+ *     first remaining entry when the position is one past the last" passes `position + 1` past the
+ *     end of a fully completed batch and requires `null` — the value the form's own arithmetic
+ *     produces on the eleventh submit.
+ *   - "the advance is derived from the server order and the completed set" is the three production
+ *     links recorded in `src/lib/validation/session.ts`: the route passes `session.position` (the
+ *     PLACEMENT position) to the form, the form pushes `position + 1`, and the server resolves that
+ *     against the completed set. Asserted in `validation-routes.test.tsx` and the dom test.
+ *
+ * ONE THING IT ENCODED IS NOW UNSPECIFIED, and is raised as an open question for the Sync stage
+ * rather than quietly adopted or quietly dropped. It asserted that a participant who answers an
+ * entry OUT OF ORDER is next shown the FIRST entry still needing an answer, even one positioned
+ * before the one they just answered. The production path does NOT do that, and cannot: it advances by
+ * the placement position, so a participant who reached `?position=7` and answered it is next sent to
+ * `?position=8`, leaving position 1 outstanding. Nothing is lost — the resolver falls back to the
+ * first remaining entry once the requested position passes the end, so an earlier entry is never
+ * permanently skipped and can still reach its coverage target.
+ *
+ * But NO SCENARIO specifies which behaviour is correct here. "The next entry in the order the server
+ * allocated" is satisfied by both readings when a validator answers in order, which is the only way
+ * the session is meant to be driven. Inventing a rule for the case the specification does not reach
+ * would be exactly the kind of unapproved widening this project records as a finding.
+ */
 
 /**
  * A negative control for the type pin, run as a documented probe rather than as a permanent test.

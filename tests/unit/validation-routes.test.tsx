@@ -491,6 +491,38 @@ describe("the progress the participant is shown", () => {
       `${EN("validate.progress.sentence")} 3 ${EN("validate.progress.of")} 10`,
     );
   });
+
+  it("treats the SERVER's placement position as the current one, never the URL's requested one", async () => {
+    // The third of the three links that make the advance correct, and the one the Phase 5
+    // verification pass found missing. The advance is `position + 1` in
+    // `src/app/validate/[batchId]/validation-form.tsx`, and that arithmetic is only forward-progressing
+    // if the `position` the form receives is the PLACEMENT's own position. If it were the URL's
+    // requested position, a participant arriving on a stale `?position=1` link whose placements 1-3
+    // are already answered would be advanced to position 2 — an entry they had already completed.
+    //
+    // It is witnessed here from RENDERED MARKUP rather than from source text, because the form's
+    // `position` prop is not itself an attribute in the output; the progress line is where the
+    // server's figure is visible, and the route renders the same `session.position` into both. A
+    // source scan would prove a string is present and nothing about which value reached it.
+    const { default: Page } = await loadSessionPage();
+    // The service resolved a request for position 1 forward to placement 4, which is what it does
+    // when the earlier placements are already completed.
+    openValidationSession.mockResolvedValue(presenting({ position: 4, total: 10 }));
+
+    const html = await renderRoute(Page as never, { searchParams: { position: "1" } });
+
+    // The screen's own account of where the validator is, and the figure the advance is derived from.
+    expect(html).toContain(
+      `${EN("validate.progress.sentence")} 4 ${EN("validate.progress.of")} 10`,
+    );
+    // The requested position is not what the screen believes, and never appears as the current one.
+    expect(html).not.toContain(
+      `${EN("validate.progress.sentence")} 1 ${EN("validate.progress.of")}`,
+    );
+    // The service WAS asked for the URL's position — so the test is not passing because the route
+    // ignored the query string altogether and defaulted to the first placement.
+    expect(openValidationSession.mock.calls[0]?.[0]).toMatchObject({ position: 1 });
+  });
 });
 
 describe("the four evaluation options are offered without a preference", () => {
@@ -764,6 +796,60 @@ describe("no control on the validation screen can skip, defer, or postpone the r
     expect(SKIP_AFFORDANCE.test("Submit answer")).toBe(false);
   });
 
+  it("CAN FIRE: a VOID control rendered as real markup is ENUMERATED, not just classified", () => {
+    // The control the first draft of this guard did not have, and its absence is why the guard was
+    // blind. The control above runs the CLASSIFIER over a hand-written literal array, so it proves the
+    // predicate matches and says nothing about whether the EXTRACTION finds anything — and the
+    // extraction was matching zero inputs, in all three spellings React emits, while the comment above
+    // it named `input` as covered.
+    //
+    // So this one goes through `renderToStaticMarkup` and then through the real enumerator. Two
+    // separate things are proved: the enumerator FINDS a void control, and the classifier FLAGS it.
+    const realMarkup = renderToStaticMarkup(
+      <div>
+        <input type="checkbox" aria-label="Skip translation for now" readOnly />
+        <input type="checkbox" aria-label="I already answered this one" readOnly />
+        <button type="button">Submit answer</button>
+      </div>,
+    );
+
+    const enumerated = interactiveControls(realMarkup);
+
+    // EXTRACTION: both void inputs and the button are found, by tag, with no closing tag present.
+    expect(enumerated.filter((control) => control.tag === "input")).toHaveLength(2);
+    expect(enumerated.filter((control) => control.tag === "button")).toHaveLength(1);
+    // The attributes reached the label — an input found but unlabelled would be invisible to the
+    // classifier, which is a subtler version of the same defect.
+    expect(enumerated.map((control) => control.label)).toContain("Skip translation for now");
+    expect(enumerated.map((control) => control.label)).toContain("I already answered this one");
+    // CLASSIFICATION: exactly the skip-flavoured one is flagged.
+    const offenders = enumerated.filter((control) => SKIP_AFFORDANCE.test(control.label));
+    expect(offenders.map((control) => control.label)).toEqual(["Skip translation for now"]);
+  });
+
+  it("enumerates ZERO inputs on the real screen, which is a measurement and not a broken pattern", async () => {
+    // The companion to the control above, and the reason its absence was survivable for a while: the
+    // live screen really does contain no `<input>` at all, so the blind spot had nothing to hide. That
+    // is a fact about TODAY's markup, not a property of the enumerator, and it is stated here so a
+    // reader can tell which of the two it is. The `aria-checked` count of **4** above is the same kind
+    // of fact: the options are `<button role="radio">`, so the text fields are the only form controls
+    // and they are `<textarea>`.
+    const { default: Page } = await loadSessionPage();
+
+    const html = await renderRoute(Page as never);
+    const controls = interactiveControls(html);
+
+    expect(controls.filter((control) => control.tag === "input")).toHaveLength(0);
+    // And the tags that ARE present, so the enumeration is not simply returning nothing.
+    //
+    // `button` ALONE, and that is a measurement rather than a placeholder: this screen has no
+    // evaluation chosen yet, and per D5 the conditional inputs are HIDDEN rather than rendered
+    // disabled, so there is no `<textarea>` either. The first draft of this assertion expected
+    // `{button, textarea}` and failed — an expected value written down instead of measured, which is
+    // the sixth time this session that one produced a failure against correct code.
+    expect(new Set(controls.map((control) => control.tag))).toEqual(new Set(["button"]));
+  });
+
   it("finds no such control in the Filipino catalog either", async () => {
     // The catalog guard covers both languages, and a control-level enumeration that only ran over
     // English would leave the Filipino screen unchecked. The Filipino vocabulary is genuinely
@@ -981,19 +1067,30 @@ interface InteractiveControl {
  *
  * Enumerated from the rendered markup by TAG rather than by a list of `role` values, so a control
  * that is focusable and operable but carries an unfamiliar role is still found. `input` is included
- * because a checkbox is a perfectly good way to skip something.
+ * because a checkbox is a perfectly good way to skip something — and it is enumerated by a SEPARATE
+ * pattern, because `input` is a void element and the general pattern demands a closing tag.
  */
 function interactiveControls(html: string): InteractiveControl[] {
   const controls: InteractiveControl[] = [];
-  for (const tag of ["button", "a", "input", "textarea", "select"]) {
-    const pattern = new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)</${tag}>`, "g");
+  for (const tag of INTERACTIVE_TAGS) {
+    // A VOID element has no closing tag, so a pattern that demands `</input>` can never match one —
+    // and the first draft of this helper used exactly that pattern for `input` while its own comment
+    // claimed "`input` is included because a checkbox is a perfectly good way to skip something".
+    // It enumerated ZERO inputs, in all three void spellings React emits. A guard that names a
+    // control kind it cannot see is the failure this repository has now paid for twice, so the two
+    // shapes are now separated explicitly rather than by one pattern that half-works.
+    const pattern = VOID_TAGS.has(tag)
+      ? new RegExp(`<${tag}\\b([^>]*)>`, "g")
+      : new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)</${tag}>`, "g");
     let match = pattern.exec(html);
     while (match !== null) {
-      const attributes = match[1] ?? "";
+      // React writes a void element as `<input ... />`, so the attribute group ends in a slash that is
+      // markup rather than content and must not reach the label.
+      const attributes = (match[1] ?? "").replace(/\/$/, "");
       const inner = stripTags(match[2] ?? "");
-      // A void element's "text" is its `aria-label`, `title`, `value`, or `placeholder` — whatever a
-      // participant would actually be told. `text` is nullable so a control with none of those is
-      // visible as such rather than silently reported as an empty label.
+      // A void element has no inner text, so its "text" is its `aria-label`, `title`, `value`, or
+      // `placeholder` — whatever a participant would actually be told. `text` is nullable so a control
+      // with none of those is visible as such rather than silently reported as an empty label.
       const fallback = firstAttribute(attributes, ["aria-label", "title", "value", "placeholder"]);
       controls.push({
         tag,
@@ -1006,6 +1103,15 @@ function interactiveControls(html: string): InteractiveControl[] {
   }
   return controls;
 }
+
+/**
+ * The tags a participant can operate, enumerated by TAG rather than by a list of `role` values, so a
+ * control that is focusable and operable but carries an unfamiliar role is still found.
+ */
+const INTERACTIVE_TAGS = ["button", "a", "input", "textarea", "select"] as const;
+
+/** HTML void elements: no closing tag, no children, and a label only through attributes. */
+const VOID_TAGS: ReadonlySet<string> = new Set(["input"]);
 
 /** The value of the first of `names` present in an HTML attribute string. */
 function firstAttribute(attributes: string, names: readonly string[]): string | null {
