@@ -45,6 +45,14 @@ const PRIVILEGED_SPECIFIERS = [
   // The sign-in DECISION. Server-side because it reads the environment and constructs no client of
   // its own — `actions.ts` is the only module allowed to pass it a repository.
   //
+  // This entry was MISSING while the comment above described it, and an independent verification pass
+  // measured the absence rather than reading it off the comment. A comment that describes list
+  // membership is a claim about a guard, so it is now true: `signin-core` holds the credential
+  // comparison call, the limit decision, and the issuance call, and a client import would put all
+  // three on the browser. Nothing else caught it — `import "server-only"` in the module is a runtime
+  // marker that only fires if the module is actually reached, and one structural test scanned for it
+  // by hand.
+  "@/lib/admin/signin-core",
   // NOTE: `@/lib/admin/actions` is deliberately ABSENT from this list. It is the Server Action
   // boundary, and a client component importing it is the supported and intended shape — that is how
   // the sign-in form reaches a decision it is not allowed to make. Listing it would make the

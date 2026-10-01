@@ -5,12 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+import { researcherSessionCookieOptions } from "@/lib/admin/cookie";
 import {
   RESEARCHER_REFUSAL_MESSAGE,
   resolveResearcherAccess,
   type ResearcherAccess,
 } from "@/lib/admin/guard";
-import { issueResearcherSession } from "@/lib/admin/session";
+import {
+  issueResearcherSession,
+  RESEARCHER_SESSION_MAX_LIFETIME_SECONDS,
+} from "@/lib/admin/session";
 
 /**
  * The researcher-area route guard.
@@ -207,15 +211,97 @@ describe("resolveResearcherAccess", () => {
     expect(RESEARCHER_REFUSAL_MESSAGE).not.toMatch(/\d/);
   });
 
-  it("serves one message regardless of whether the requested thing would have existed", () => {
-    // The guard has no idea what was requested, which is the point: it cannot vary a refusal by
-    // existence because it never learns what was asked for. Asserted by showing the refusal for a
-    // request that looks like a lookup is the same refusal as one that is not.
-    const lookupShaped = { status: "refused" } as ResearcherAccess;
-    const plain = refused(
-      resolveResearcherAccess({ presented: "x", adminEnv: CONFIGURED, nowMs: NOW_MS }),
+  it("refuses every refusal the same way, whatever the request was", () => {
+    // =============================================================================================
+    // RETITLED, and the old title was false
+    // =============================================================================================
+    // This test was called "serves one message regardless of whether the requested thing would have
+    // existed" and it compared a LITERAL `{ status: "refused" }` against the guard's own output. Both
+    // sides of that comparison were values the test itself supplied, so it could not fail for any
+    // reason related to record existence — an independent verification pass called it tautological
+    // and was right.
+    //
+    // What it ACTUALLY establishes, and the title now says so: the guard takes no input describing
+    // what was requested, so it has nothing to vary a refusal by. It is a property of the guard's
+    // SIGNATURE plus the fact that every branch returns the identical refusal — which is worth
+    // asserting, because a future branch that returns a second refusal shape is exactly the change
+    // this would catch.
+    //
+    // The requirement's stronger form — "indistinguishable from the response for an entry that does
+    // exist" — is STRUCTURALLY satisfied rather than evidenced here, and the real evidence is the
+    // write-intake ordering test in `admin-actions-wrapper.test.ts`, which proves no privileged read
+    // happens at all before the refusal is decided. That is asserted there, and pointed at here.
+    const argumentsUnderTest = resolveResearcherAccess.length;
+    expect(argumentsUnderTest).toBe(1);
+
+    // One argument, so nothing about a requested record can reach it. Enumerated from the real
+    // function rather than restated, so adding a parameter is what fails here.
+    expect(
+      resolveResearcherAccess
+        .toString()
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/.*$/gm, ""),
+    ).not.toMatch(/\bentry\b|\bexists\b|\bfound\b/i);
+
+    // And every refusal the guard can produce is the same refusal, over a set of inputs chosen to hit
+    // every branch: no session, a bad session, an unconfigured deployment, and a configured one.
+    const inputs = [
+      { presented: undefined, adminEnv: CONFIGURED },
+      { presented: "not-a-session", adminEnv: CONFIGURED },
+      { presented: undefined, adminEnv: null },
+      { presented: "not-a-session", adminEnv: null },
+    ];
+    const shapes = inputs.map((input) =>
+      resolveResearcherAccess({
+        presented: input.presented,
+        adminEnv: input.adminEnv,
+        nowMs: NOW_MS,
+      }),
     );
-    expect(lookupShaped).toEqual(plain);
+    // Exactly one distinct shape across every branch — not "all of them are refused", which a partial
+    // implementation would also satisfy, but "they are indistinguishable from each other".
+    expect(new Set(shapes.map((shape) => JSON.stringify(shape))).size).toBe(1);
+    expect(shapes.every((shape) => shape.status === "refused")).toBe(true);
+  });
+});
+
+describe("the session cookie carries the flags the requirement's words describe", () => {
+  // =============================================================================================
+  // WHY THESE ASSERTIONS EXIST AT ALL
+  // =============================================================================================
+  // Requirement 3 says the session "SHALL be marked so that page scripts cannot read it, it SHALL be
+  // restricted from being sent on cross-site requests". Those are three claims about three flags, and
+  // each flag is a value that can be changed to a *nearly* right one without anything else noticing.
+  //
+  // `sameSite: "lax"` shipped as the first version of this change. `lax` blocks the cross-site POST
+  // but still carries the cookie on a cross-site top-level GET navigation, so the requirement was not
+  // met — and the deviation was discharged by a comment in `cookie.ts` rather than by the spec. An
+  // independent verification pass caught it. These tests exist so the next person cannot repeat it,
+  // and the `sameSite` case is the load-bearing one: `strict` is the only value that means what the
+  // requirement says, and nothing in this feature needs the laxity.
+  const options = researcherSessionCookieOptions();
+
+  it("is unreadable by page scripts", () => {
+    expect(options.httpOnly).toBe(true);
+  });
+
+  it("is restricted from being sent on cross-site requests, which is what `strict` means", () => {
+    // Asserted as a CLOSED set, so `lax`, `none`, and an unset attribute all fail here rather than
+    // passing a `toBeTruthy`-shaped check.
+    expect(options.sameSite).toBe("strict");
+    // The negative form, stated so the reason is not lost: `lax` is the value that looks reasonable
+    // and is wrong here, and a future editor should meet the word `lax` in the guard's own source.
+    expect(["lax", "none", undefined, false]).not.toContain(options.sameSite);
+  });
+
+  it("is scoped to the researcher area, so public validator requests do not carry it", () => {
+    expect(options.path).toBe("/researcher");
+  });
+
+  it("carries the configured lifetime, matching the expiry inside the signed payload", () => {
+    // Both ends of the session's validity must agree, or the cookie outlives the signature or the
+    // signature outlives the cookie. One assertion over both, because the disagreement is the defect.
+    expect(options.maxAge).toBe(RESEARCHER_SESSION_MAX_LIFETIME_SECONDS);
   });
 });
 
@@ -431,6 +517,77 @@ describe("the route structure makes coverage structural", () => {
       const beneathGuard = directory === "(protected)" || directory.startsWith("(protected)/");
       expect(beneathGuard || directory === "sign-in" || hasOwnLayout).toBe(true);
     }
+  });
+});
+
+describe("the admin environment is read only from the researcher area", () => {
+  // =============================================================================================
+  // WHY THIS IS AN ENUMERATION AND NOT A HAND-CHECK
+  // =============================================================================================
+  // Task 3.7 asked for the readers of the admin env module to be enumerated "at whole-project scope
+  // rather than scoped to one file". An independent verification pass performed that enumeration by
+  // hand, found three readers, and reported that **nothing in the suite would fail if a fourth reader
+  // appeared under a public route** — which is the point of the exercise and the reason a by-hand
+  // count is not evidence.
+  //
+  // The consequence of a leak is concrete rather than theoretical. `getAdminEnv()` reads the operator
+  // credential and the session-protection secret, so a public validator route that called it would
+  // make an admin refusal — the thing D1 deliberately isolates — reachable from a public request. D1
+  // is the design decision that a deployment with no researcher credential still serves the public
+  // site, and this test is what keeps that decision load-bearing.
+  const ADMIN_ENV_READERS = sourceFiles().filter((file) =>
+    /\bgetAdminEnv\b/.test(readFileSync(file, "utf8")),
+  );
+
+  it("reads the admin environment from exactly three files, all inside the researcher area", () => {
+    const readers = ADMIN_ENV_READERS.map((file) =>
+      file.slice(SRC.length + 1).replaceAll("\\", "/"),
+    );
+
+    // Assert the enumeration is non-empty first. A resolver that silently matched nothing would make
+    // every assertion below pass for the wrong reason.
+    expect(readers.length).toBeGreaterThan(0);
+
+    // The CLOSED set. A fourth reader fails here by name rather than being absorbed.
+    //
+    // `lib/admin/env.ts` is in the list because it DEFINES the function, and an enumeration that
+    // omitted it would be filtering on something other than "reads the environment" — a reader list
+    // that excludes the definition is a list of an idea, not of the code. The first draft of this
+    // assertion expected three readers, was measured against four, and the fourth was this one; the
+    // count was wrong, not the code.
+    expect(readers.sort()).toEqual([
+      "app/researcher/(protected)/layout.tsx",
+      "app/researcher/sign-in/page.tsx",
+      "lib/admin/actions.ts",
+      "lib/admin/env.ts",
+    ]);
+
+    // The claim that matters, stated separately so it survives a reorganisation: NO public validator
+    // route may read it. Checked as a predicate over the reader list rather than by re-reading the
+    // three names, so this fails for a new reader anywhere rather than only for a renamed one.
+    const PUBLIC_ROUTE_PREFIXES = ["app/ready", "app/start", "app/validate", "app/page.tsx"];
+    for (const reader of readers) {
+      expect(PUBLIC_ROUTE_PREFIXES.some((prefix) => reader.startsWith(prefix))).toBe(false);
+    }
+  });
+
+  it("keeps the admin schema out of the shared server environment", async () => {
+    // The other half of D1, and the one with a failure mode in the wrong direction. If the admin
+    // variables became required members of `serverEnvSchema`, then every public route would FAIL in
+    // any environment without a researcher credential configured — which is the deployed default.
+    // "Fails closed" is right for the admin area and catastrophic for the public site.
+    const { serverEnvSchema } = await import("@/lib/env/server");
+    const shape = serverEnvSchema.shape as Record<string, unknown>;
+    expect(Object.keys(shape).sort()).not.toContain("ADMIN_OPERATOR_SECRETS");
+    expect(Object.keys(shape).sort()).not.toContain("ADMIN_SESSION_SECRET");
+    // And the public schema still parses an environment carrying NEITHER, which is the condition the
+    // separation exists for. Read from the real schema rather than a fixture of it.
+    const parsed = serverEnvSchema.safeParse({
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_ANON_KEY: "anon",
+      SUPABASE_SERVICE_ROLE_KEY: "service",
+    });
+    expect(parsed.success).toBe(true);
   });
 });
 

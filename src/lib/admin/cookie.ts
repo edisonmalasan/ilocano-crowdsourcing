@@ -18,10 +18,34 @@ import { RESEARCHER_AREA_PATH } from "@/lib/admin/routes";
  *   httpOnly   — page scripts cannot read it. A cookie an injected script can read is a credential
  *                an injected script can steal, and this is the one credential in the system that
  *                grants access.
- *   sameSite   — "lax" blocks the cross-site POST that would carry it. It deliberately still allows a
- *                top-level GET navigation to carry it, which is why D6 records the forward constraint:
- *                any future researcher WRITE must be a POST that re-checks the session server-side and
- *                must not be reachable by a link.
+ *   sameSite   — "strict", because the requirement says the session "SHALL be restricted from being
+ *                sent on cross-site requests" and `strict` is the only value that does exactly that.
+ *
+ *                =================================================================================
+ *                THIS WAS "lax", AND AN INDEPENDENT VERIFICATION PASS CAUGHT IT
+ *                =================================================================================
+ *                The first version shipped `lax`, justified by a source comment that said `lax` "blocks
+ *                the cross-site POST that would carry it. It deliberately still allows a top-level GET
+ *                navigation to carry it". That last clause is the problem: a cross-site
+ *                `<a href="…/researcher/…">`, or any third-party redirect, is a top-level GET and
+ *                **does** carry the cookie. So the requirement's sentence was not satisfied, and it
+ *                was discharged by a comment rather than by the spec — the requirement is ADDED by
+ *                this change, `proposal.md` records no MODIFIED capabilities, and so there was nowhere
+ *                for the deviation to live except prose.
+ *
+ *                `strict` is the fix rather than a rewording of the requirement, because the
+ *                requirement is the safer of the two and nothing here needs the exception. `strict`
+ *                drops the cookie from a cross-site top-level navigation; the cost is that a
+ *                researcher arriving from an external link is treated as signed out and must sign in
+ *                again. For a server-rendered area reached only by typing its own address or by an
+ *                in-app link, that is the correct trade. Rewriting an approved requirement to match a
+ *                narrower implementation is the move that should attract suspicion, not the one taken
+ *                here.
+ *
+ *                The forward constraint D6 records is therefore RETAINED and is now belt and braces
+ *                rather than load-bearing: any future researcher write must still be a POST that
+ *                re-checks the session server-side, because `strict` is a browser default that a
+ *                non-browser client is not obliged to honour.
  *   path       — scoped to the researcher area, so the session is not attached to every public
  *                validator request this origin serves. The validators' own anonymity argument against
  *                cookies applies to their identifier, not to this value, but sending a researcher
@@ -53,14 +77,17 @@ export const RESEARCHER_SESSION_COOKIE = "sadino_researcher_session";
  */
 export function researcherSessionCookieOptions(): {
   readonly httpOnly: true;
-  readonly sameSite: "lax";
+  readonly sameSite: "strict";
   readonly path: string;
   readonly secure: boolean;
   readonly maxAge: number;
 } {
   return {
     httpOnly: true,
-    sameSite: "lax",
+    // Not negotiable, and not a default. `tests/unit/admin-guard.test.ts` pins this value against the
+    // requirement's own words, because a change from `strict` to `lax` is the kind of edit that looks
+    // like loosening rather than like breaking anything.
+    sameSite: "strict",
     path: RESEARCHER_AREA_PATH,
     secure: process.env.NODE_ENV === "production",
     maxAge: RESEARCHER_SESSION_MAX_LIFETIME_SECONDS,

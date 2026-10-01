@@ -150,6 +150,75 @@ describe("the write-intake boundary runs before any privileged client is built",
     expect(result).toMatchObject({ status: "refused" });
   });
 
+  it("ignores a client-SUPPLIED attempt count, because the intake accepts exactly ONE key", async () => {
+    // =============================================================================================
+    // THE ROW ABOVE IS NOT ENOUGH, and this is the row that is
+    // =============================================================================================
+    // The unknown-extra-field refusal already covers `isAdmin: "true"`, and it looks like it covers
+    // this scenario — "the attempt count is not client-supplied". It does not. That guard is
+    // name-agnostic: it refuses every unknown key, which is a property of the REFUSAL and not a
+    // statement about counts. An independent verification pass was right to call Requirement 7's
+    // second scenario only partially evidenced by it.
+    //
+    // The claim is asserted as a CLOSED key set rather than through a deny-list, for the reason this
+    // repository has been bitten by before: a deny-list has to guess the name a future implementation
+    // would read, and `attemptCount`, `count`, `attempts`, `failedAttempts`, and `tries` would each
+    // need to be anticipated. A closed set fails on the first key added at all.
+    //
+    // WHY THIS IS STRUCTURAL RATHER THAN BEHAVIOURAL, stated because it is a weaker form of evidence
+    // ----------------------------------------------------------------------------------------------
+    // This suite's repository mock THROWS when constructed, so a call reaching it cannot be observed
+    // here — the argument shape is genuinely not visible at this boundary. An earlier draft of this
+    // test asserted a recorded call list that did not exist, which would have passed by throwing on
+    // an undefined binding at the first assertion rather than by proving anything. So the assertion is
+    // made where the key set IS visible: the intake, which is the only place a client-supplied count
+    // could enter at all.
+    const { researcherSignInInputSchema } = await import("@/schemas/researcher");
+
+    // Exactly one accepted key, enumerated from the real schema. The schema's own key is `credential`;
+    // the FORM FIELD that feeds it is `researcherAccessKey`, and the mapping between them is the
+    // action's job — asserted separately below, over what the action reads.
+    expect(Object.keys(researcherSignInInputSchema.shape).sort()).toEqual(["credential"]);
+
+    // And a payload carrying four differently-spelled count claims is refused outright, which is the
+    // behaviour a client would actually see.
+    reset();
+    const { result } = await signIn(
+      formWith({
+        ...WELL_FORMED,
+        attemptCount: "0",
+        count: "0",
+        attempts: "0",
+        failedAttempts: "0",
+      }),
+    );
+    expect(clientConstructions).toBe(0);
+    expect(result).toMatchObject({ status: "refused" });
+
+    // Finally, the action itself reads exactly one field off the form, and it does so through a
+    // single declared constant. Two halves, because either alone is satisfiable by the wrong code:
+    // a count of the reads alone would pass if the one read were of a count field, and the constant's
+    // value alone would pass if a second literal read sat beside it.
+    //
+    // A source assertion, so it fails loudly on a rename rather than silently on a behaviour change.
+    // The first draft of this matched `formData.get(?:All)?("literal")` and found ZERO calls, because
+    // the action reads through `CREDENTIAL_FIELD`; the empty capture would have satisfied a
+    // "nothing unexpected is read" claim if that claim had been phrased as an emptiness check, which
+    // is the fourth time in this project that an empty capture has been indistinguishable from a
+    // clean run.
+    const source = readFileSync(join(process.cwd(), "src", "lib", "admin", "actions.ts"), "utf8");
+    const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*$/gm, "");
+    // Exactly one read of the form, and it is the one declared constant.
+    const reads = [
+      ...withoutComments.matchAll(/formData\.(?:get|getAll|entries|keys)\s*\(([^)]*)\)/g),
+    ].map((m) => m[1]!.trim());
+    expect(reads).toEqual(["CREDENTIAL_FIELD"]);
+    // And that constant is declared exactly once, to the one form field the schema speaks.
+    expect(
+      [...withoutComments.matchAll(/const\s+CREDENTIAL_FIELD\s*=\s*"([^"]+)"/g)].map((m) => m[1]),
+    ).toEqual(["researcherAccessKey"]);
+  });
+
   it("refuses a form that submitted the credential field TWICE", async () => {
     // Its own test because the table above cannot express it: `Record<string, string>` holds one
     // value per key, so a repeated key would have collapsed to the last one and the row would have
@@ -410,7 +479,7 @@ describe("sign-out", () => {
     // targeted at a different path would leave a live copy at the original.
     expect(write.options.httpOnly).toBe(true);
     expect(write.options.path).toBe("/researcher");
-    expect(write.options.sameSite).toBe("lax");
+    expect(write.options.sameSite).toBe("strict");
     // And the redirect, which throws, which is why `thrown` is set.
     expect(redirects).toEqual(["/researcher/sign-in"]);
     expect(thrown).toBe("NEXT_REDIRECT:/researcher/sign-in");

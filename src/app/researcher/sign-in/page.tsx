@@ -9,6 +9,7 @@ import { readResearcherSessionCookie } from "@/lib/admin/cookie";
 import { getAdminEnv } from "@/lib/admin/env";
 import { resolveResearcherAccess } from "@/lib/admin/guard";
 import { RESEARCHER_HOME } from "@/lib/admin/routes";
+import { RESEARCHER_SESSION_MAX_LIFETIME_SECONDS } from "@/lib/admin/session";
 
 /**
  * The researcher sign-in surface.
@@ -59,6 +60,37 @@ export default async function ResearcherSignInPage() {
             key configured on the server; nothing about you is recorded here.
           </p>
           <SignInForm />
+          {/*
+            THE RESIDUAL WINDOW, STATED TO THE READER.
+
+            Requirement 6 says a session captured before sign-out stays usable until it expires, and
+            that "the platform SHALL state that residual window rather than imply that sign-out
+            revokes it". An independent verification pass found the window documented in prose and in
+            a constant's doc comment — i.e. stated to a developer and NOT to the operator — while the
+            sign-out control is labelled "Sign out" and redirects immediately. A control that says
+            "Sign out" and a platform that keeps honouring a captured cookie is the combination that
+            produces a researcher who believes they have ended an access they have not ended, which
+            is the specific misunderstanding the requirement exists to prevent.
+
+            So it is said here, on the page a signed-out researcher is actually looking at. The
+            duration is read from the same constant the session's `exp` is derived from rather than
+            written into the sentence, because a copy that says "8 hours" while the configuration
+            says something else is worse than no sentence: it is a false statement that reads as
+            reassurance. If the value is ever zero or negative the sentence is dropped rather than
+            rendered nonsense.
+
+            It is deliberately not localized, for the same reason the rest of this page is not, and it
+            is deliberately not alarming: this is a normal property of a stateless session, stated
+            plainly, in the researcher's own area rather than in a warning dialog they have to
+            dismiss.
+          */}
+          {RESEARCHER_SESSION_MAX_LIFETIME_SECONDS > 0 ? (
+            <p className="text-small text-ink-faint mt-6" data-testid="residual-window">
+              Signing out clears this browser&apos;s session, but a copy of a session taken earlier
+              stays valid until it expires. A session is valid for at most{" "}
+              {Math.floor(RESEARCHER_SESSION_MAX_LIFETIME_SECONDS / 3600)} hours.
+            </p>
+          ) : null}
           <p className="text-small text-ink-faint mt-6">
             <Link href="/" className={linkButtonClasses()}>
               Back to the validation site

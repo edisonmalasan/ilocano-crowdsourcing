@@ -22,6 +22,17 @@ and it is worse here than anywhere else, because the thing being faked is the th
 may read raw research responses. **The gate is therefore an entry condition on this change, not a
 task inside it.**
 
+> **PREMISE CORRECTED BY MEASUREMENT, 2026-10-02 — the first sentence above is FALSE and was false
+> when this proposal was written.** A real Supabase project exists: all three `SUPABASE_*` variables
+> are present in a local `.env.local`, all non-blank, and `GET {SUPABASE_URL}/auth/v1/health` returns
+> 200 (verified by name and length only). The paragraph is retained rather than rewritten, because
+> the reasoning it built is the reasoning the gate still rests on, and that reasoning does not
+> depend on the credentials: **the fake was always the problem, not the credential.** A real project
+> with an empty schema (0 relation paths in PostgREST's OpenAPI root) is still a project against
+> which an authorization boundary can only be proved to refuse. The half of the premise that holds is
+> "no Supabase client has ever been constructed in this project" — still exactly true — and the gate
+> is unchanged: see `design.md` D9 for the measured status of its three items.
+
 ## What Changes
 
 - **A new env-configured operator credential.** Two server-only variables: a set of operator

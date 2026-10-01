@@ -305,11 +305,35 @@ password, a token, a key — a published placeholder is a live credential.
   in D3, because a surprise here looks like an authentication bug.
 - **The whole authorization boundary is unexercised until a project exists** → the gate (D9), stated
   as a merge precondition rather than a follow-up task.
-- **A future admin write reachable by a link would ride a `Lax` cookie** → D6 records the POST-only
-  constraint now, while the person who can still fix it cheaply is reading this.
+- **A future admin write reachable by a link would ride the session cookie** → D6 records the POST-only
+  constraint now, while the person who can still fix it cheaply is reading this. The cookie is
+  `SameSite=Strict` (see D3's amendment note and `cookie.ts`), which blocks the cross-site navigation
+  a link would cause, but **`Strict` is a browser default a non-browser client is not obliged to
+  honour**, so the POST-plus-server-side-recheck constraint is the load-bearing one and the cookie
+  attribute is the second layer.
 - **The attempt table is the first unauthenticated-reachable write through the privileged path** →
   it is server-only, single-upsert, and shaped entirely by server code; no client value determines
   what is written beyond the counter increment.
+- **The attempt table grows one row per distinct request origin, and nothing ever removes one.** A
+  rate-limit counter is the kind of table that is small when it is new and unbounded when it has been
+  running for a year: an attacker rotating source addresses creates a row per address, and `clear`
+  only runs for an origin that *succeeds*. There is **no TTL, no purge job, and no retention
+  policy**, and the migration deliberately adds no index on `updated_at`, so even a future purge
+  would start as a sequential scan. This is a real operational gap, found by an independent
+  verification pass, and it is **recorded rather than fixed here** for two reasons: a purge is a
+  second write path and a second thing to get wrong in the same table the authorization decision
+  depends on, and a bounded fix needs a number — how many rows is too many for this deployment —
+  which is a thesis-team question, not an implementation detail. **It should become its own bounded
+  change before any deployment that faces untrusted traffic**, and that change should add the index
+  and a retention policy together.
+- **Requirement 4's cache-hostility property has no automated test, and cannot have one in this
+  suite.** `Cache-Control` and `X-Robots-Tag` are response headers, observable only over HTTP, so
+  `renderToStaticMarkup` and `happy-dom` both provably cannot see them. The evidence is the gate
+  measurement recorded in D8 — a real running server, headers read off the wire — and the honest
+  description of that requirement is therefore *"verified by measurement and by the gate probe,
+  not by a test that runs in `pnpm run test:*`."* A test asserting a header string in `next.config.ts`
+  was deliberately **not** added, because it would assert the declaration rather than the effect, and
+  the declaration is the half the platform silently replaces.
 
 ## Migration Plan
 

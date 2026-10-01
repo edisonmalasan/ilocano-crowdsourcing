@@ -48,6 +48,7 @@ import { metadata as protectedMetadata } from "@/app/researcher/(protected)/layo
 import { metadata as segmentMetadata } from "@/app/researcher/layout";
 import ResearcherSignInPage from "@/app/researcher/sign-in/page";
 import { RESEARCHER_AREA_PATH, RESEARCHER_HOME, RESEARCHER_SIGN_IN } from "@/lib/admin/routes";
+import { RESEARCHER_SESSION_MAX_LIFETIME_SECONDS } from "@/lib/admin/session";
 import { RESEARCHER_REFUSAL_MESSAGE } from "@/lib/admin/guard";
 
 /**
@@ -326,6 +327,34 @@ describe("the sign-in page", () => {
     const html = await renderAsync(ResearcherSignInPage);
     expect(html).not.toMatch(/ilocano|proficien|native|first-language|conversational/i);
     expect(html).not.toMatch(/OD_\d{4}/);
+  });
+
+  it("states the residual window, so it does not imply that sign-out revokes a session", async () => {
+    // =============================================================================================
+    // WHY THIS IS AN ASSERTION ABOUT RENDERED MARKUP AND NOT ABOUT A DOC COMMENT
+    // =============================================================================================
+    // Requirement 6's last clause — "the platform SHALL state that residual window rather than imply
+    // that sign-out revokes it" — was, before this test, satisfied only by prose in a design document
+    // and a constant's doc comment. An independent verification pass found that the requirement's own
+    // words say "the platform", and a developer-facing comment is not the platform; a control labelled
+    // "Sign out" that redirects immediately is what a researcher reads as revocation.
+    //
+    // So the claim is asserted where the reader is. `renderToStaticMarkup` is enough for it, because
+    // this is static text rather than an event, which is the one class of assertion in this project
+    // that the unit renderer genuinely can discharge.
+    const html = await renderAsync(ResearcherSignInPage);
+
+    // The two halves of the claim, separated so a partial implementation fails.
+    expect(html).toMatch(/signing out/i);
+    // Says the captured copy SURVIVES, rather than merely mentioning signing out.
+    expect(html).toMatch(/(copy|a copy)[^.]*stays valid|remains valid/i);
+    // And states the bound, read from the same constant the session's expiry is derived from — so the
+    // sentence cannot disagree with the configuration, which is the failure that would make this
+    // worse than saying nothing.
+    const hours = Math.floor(RESEARCHER_SESSION_MAX_LIFETIME_SECONDS / 3600);
+    expect(html).toContain(String(hours));
+    // It must not claim sign-out is immediate, which is the implication the requirement forbids.
+    expect(html).not.toMatch(/sign(ing)? out[^.]*(immediately|instantly|right away)/i);
   });
 
   it("is not part of the localized copy catalog", async () => {

@@ -125,7 +125,20 @@ async function functionSource(name: string): Promise<string> {
  * this reason, so the stripping is the point rather than a refinement.
  */
 async function bodyWithoutComments(name: string): Promise<string> {
+  // =============================================================================================
+  // BOTH COMMENT SYNTAXES, after the first version stripped only one of them
+  // =============================================================================================
+  // An independent verification pass noted that this stripped `--` line comments only, so a `/* … */`
+  // block containing the word `SELECT` would produce a FALSE POSITIVE — the guard failing a function
+  // that was fine. That is the same failure shape as the one the stripping exists to prevent, in the
+  // other direction, and a checker that flags a legitimate string teaches its reader to ignore it.
+  //
+  // Order matters: block comments are removed FIRST. A `--` stripper runs to end-of-line, so on a line
+  // reading `-- /* not a comment */` it would remove everything after `--` anyway and the block form
+  // would never be reached — correct by accident. Removing blocks first means a block comment's
+  // content cannot survive as an apparent line comment.
   return (await functionSource(name))
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
     .split("\n")
     .map((line) => line.replace(/--.*$/, ""))
     .join("\n");
@@ -171,6 +184,95 @@ describe("the migration is applied from the production directory", () => {
         where t.relname = 'researcher_signin_attempts' and c.contype = 'f'`,
     );
     expect(rows[0]?.count).toBe(0);
+  });
+
+  it("holds EXACTLY four columns, because this is the only place a researcher could be identified", async () => {
+    // =============================================================================================
+    // WHY A CLOSED COLUMN SET, AND WHY IT MATTERS MORE THAN THE CLOSED TABLE SET
+    // =============================================================================================
+    // Requirement 1's third scenario says no table "has gained a column whose declared purpose is to
+    // identify a researcher". The closed TABLE list elsewhere in this suite covers "no new table" — and
+    // the independent verification pass was right that it left this open: adding
+    // `researcher_email text` to this migration would have left every test in the repository green.
+    //
+    // That is the more important half. The six research tables are closed on both tables and columns
+    // already; this is the ONE new table, and a rate-limit counter keyed by request origin is exactly
+    // the shape a table grows an `email` or an `operator` column on. So the column list is asserted
+    // as an EXACT set, read from the real schema.
+    //
+    // A deny-list would not do: it has to guess every identifying name someone might pick, and
+    // `email`, `operator`, `name`, and `user_agent` would all slip past a check that only forbids the
+    // names it thought of. A closed set fails on the first column added at all, which is the correct
+    // outcome, because a new column here is a decision to be made deliberately against the
+    // anonymity invariant rather than slipped in beside an existing rate-limit counter.
+    //
+    // MEASURED, not asserted: a probe inserted `researcher_email text` into the migration and this
+    // suite went RED at `2 failed | 38 passed (40)`, naming this test and `identifies nobody`. A
+    // second probe inserted a neutral-named column with `default auth.uid()::text`, which is the
+    // subtler version of the same defect — an identity column wearing a neutral name — and it went red
+    // at `3 failed | 37 passed (40)`, naming all three. Control green at `40 passed (40)` before and
+    // after, migration restored byte-identical at sha `1bf85ffbc8d1`. So this is a guard that has
+    // been observed to fail, which is the only thing that distinguishes it from decoration.
+    const rows = await query<{ column_name: string }>(
+      db,
+      `select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = 'researcher_signin_attempts'
+        order by column_name`,
+    );
+    const columns = rows.map((row) => row.column_name);
+    // Assert the read was non-empty. A guard that silently read nothing would satisfy an
+    // "equals this exact list" assertion only by accident, and this file has been bitten by exactly
+    // that shape elsewhere.
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns).toEqual(["attempt_count", "origin_key", "updated_at", "window_started_at"]);
+  });
+
+  it("identifies nobody: no column is named after a person, and no default derives one", async () => {
+    // The companion to the closed set, and it catches something the closed set alone cannot: a column
+    // that is correctly NAMED but whose DEFAULT populates it from the request. `default auth.uid()`
+    // would be a researcher-identity column wearing a neutral name.
+    const rows = await query<{ column_name: string; column_default: string | null }>(
+      db,
+      `select column_name, column_default from information_schema.columns
+        where table_schema = 'public' and table_name = 'researcher_signin_attempts'`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.column_default ?? "").not.toMatch(/auth\.|current_user|session_user|request|jwt/i);
+    }
+    // And no column name reads as identifying a person.
+    const names = rows.map((row) => row.column_name).join(" ");
+    expect(names).not.toMatch(/email|user|operator|researcher|name|account|identity/i);
+  });
+
+  it("carries no index or default that references an authentication subject", async () => {
+    // Requirement 8's second scenario names FOUR kinds of object — "no key, foreign key, index, or
+    // default value references an authentication subject" — and the suite checked only foreign keys.
+    // An index on a column defaulting to `auth.uid()`, or a key whose expression is a session
+    // function, would have passed. All four are now enumerated.
+    const rows = await query<{ definition: string; kind: string }>(
+      db,
+      `select 'index' as kind, indexdef as definition
+         from pg_indexes
+        where schemaname = 'public' and tablename = 'researcher_signin_attempts'
+       union all
+       select 'constraint' as kind,
+              coalesce(pg_get_constraintdef(c.oid), '')
+         from pg_constraint c
+         join pg_class t on t.oid = c.conrelid
+         join pg_namespace n on n.oid = t.relnamespace
+        where n.nspname = 'public' and t.relname = 'researcher_signin_attempts'
+       union all
+       select 'default' as kind, coalesce(column_default, '')
+         from information_schema.columns
+        where table_schema = 'public' and table_name = 'researcher_signin_attempts'`,
+    );
+    // The read is non-empty: the primary key alone guarantees that, and a guard over an empty set
+    // proves nothing.
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.definition).not.toMatch(/auth\.|current_user|session_user|request\.jwt|jwt\./i);
+    }
   });
 });
 
@@ -290,16 +392,23 @@ describe("the increment is ONE STATEMENT, which is what atomicity actually rests
   // is correct — such a rewrite would still be atomic.
 
   it("reads no existing count in a separate statement", async () => {
-    // The whole distinction. The atomic body contains no `SELECT` at all: it reads nothing and
-    // writes through one upsert, taking the new count from `RETURNING`. A read-then-write rewrite
-    // necessarily introduces one.
+    // The whole distinction. The atomic body contains no read of the existing row at all: it reads
+    // nothing and writes through one upsert, taking the new count from `RETURNING`. A read-then-write
+    // rewrite necessarily introduces one.
     //
-    // Comments are stripped first, because a bare-keyword check is satisfied by a comment that
-    // happens to contain the keyword — and this repository has already found a guard that reported
-    // coverage it was not providing for exactly that reason.
+    // Four spellings of "read", not one, because an independent verification pass found the obvious
+    // gap: the first version forbade `SELECT` alone, so a read-then-write expressed as plpgsql's
+    // `PERFORM … INTO` or as a dynamic `EXECUTE` would have passed this assertion while being exactly
+    // as non-atomic. `PERFORM` is the idiomatic plpgsql spelling of exactly the statement this guard
+    // exists to forbid, so forbidding `SELECT` alone was the least effective version of this check.
+    //
+    // Comments are stripped first by `bodyWithoutComments`, which removes BOTH `--` and `/* … */`, so
+    // neither can satisfy nor defeat a keyword check.
     const body = await bodyWithoutComments("researcher_signin_attempts_record");
-    expect(body).not.toMatch(/\bselect\b/i);
-    // The positive form of the same claim, so the assertion above cannot pass against a body that
+    for (const reader of ["select", "perform", "execute", "fetch"]) {
+      expect(body).not.toMatch(new RegExp(`\\b${reader}\\b`, "i"));
+    }
+    // The positive form of the same claim, so the assertions above cannot all pass against a body that
     // simply lost the write.
     expect(body).toMatch(/\breturning\s+attempt_count\s+into\b/i);
   });
