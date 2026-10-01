@@ -60,6 +60,49 @@ const allocationIntentSchema = z.strictObject({
   requestedSize: z.number().int("requestedSize must be an integer").min(1).optional(),
 });
 
+/**
+ * What a client's batch request is allowed to be, as a TYPE.
+ *
+ * The schema above is the runtime enforcement and this is the compile-time one, and they are
+ * different layers doing different jobs: `strictObject` refuses an extra key that arrives over the
+ * wire, while this name is what a caller can write down — so a component that tried to send a
+ * `completedCount` would not compile rather than being refused at runtime.
+ */
+export type AllocationIntent = z.infer<typeof allocationIntentSchema>;
+
+/** The keys of `T`, as a union. */
+type KeyUnion<T> = keyof T;
+
+/** Exact (not assignable) equality, so a WIDER key set fails rather than passing. */
+type Equals<A, B> =
+  (<G>() => G extends A ? 1 : 2) extends <G>() => G extends B ? 1 : 2 ? true : false;
+
+/**
+ * Type-level pin on the ALLOCATION INTENT's key set (`tasks.md` 6.1).
+ *
+ * The requirement is that a client cannot dictate completion — cannot supply a completion status, an
+ * answered count, or a remaining count, and have any of them mean anything. A behavioural test cannot
+ * pin that, and the reason is measured rather than argued: in `coverage-aware-allocation` a two-file
+ * mutation that added a `clientOrder` field to `AllocationRequest` AND had the service honour it left
+ * the whole suite green at `51 passed (51)` against a `51 passed (51)` control. The obvious repair — a
+ * test that smuggles an order into the request and asserts it is ignored — was also written, measured,
+ * and does not work: the mutation honours a field named `clientOrder`, a test smuggling `order` never
+ * triggers it, and the suite was still `52 passed (52)`. Enumerating plausible key names cannot close
+ * the gap, because a mutation may name its field anything.
+ *
+ * `Equals` is used rather than `Exclude<…, K> extends never` because this is a key-set pin and
+ * `Equals` is the stronger of the two: it also fails if a key is REMOVED, so the pin cannot be
+ * satisfied by deleting `requestedSize`. A consumer writing
+ * `const pin: AllocationIntentKeysAreIdentifierAndSizeOnly = true` fails `pnpm run typecheck` with
+ * `TS2322: Type 'true' is not assignable to type 'never'` the moment any third key appears, whatever
+ * it is called.
+ *
+ * The two keys are the two the requirement needs and no others: who the batch is for, and a size
+ * PREFERENCE the server caps. Neither is a fact about a validator's progress.
+ */
+export type AllocationIntentKeysAreIdentifierAndSizeOnly =
+  Equals<KeyUnion<AllocationIntent>, "validatorId" | "requestedSize"> extends true ? true : never;
+
 export interface AllocationActionDependencies extends AllocationDependencies {
   /**
    * Thrown by the dependency builder when the deployment has no database configured. Typed as a

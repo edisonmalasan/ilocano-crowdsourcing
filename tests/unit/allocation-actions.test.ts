@@ -40,6 +40,17 @@ function createRecordingDependencies(
   over: {
     readonly knownValidator?: boolean;
     readonly pool?: { id: string }[];
+    /**
+     * The entries this validator has ALREADY answered, as `listEntryIdsForValidator` reports them.
+     *
+     * Added by the continuation work. The exclusion of already-answered entries is a guarantee that
+     * already belongs to `batch-allocation` and is already proven at the allocation unit, so the
+     * question `tasks.md` 2.5 asks is not "does allocation exclude them" but "does the path the
+     * CONTINUE control actually calls still exclude them". Driving this through the Server Action's
+     * core is what makes that a different experiment rather than a re-derivation from the same
+     * implementation the original proof used.
+     */
+    readonly answered?: string[];
   } = {},
 ) {
   const calls: string[] = [];
@@ -108,7 +119,7 @@ function createRecordingDependencies(
       },
       async listEntryIdsForValidator() {
         calls.push("validations.listEntryIdsForValidator");
-        return [];
+        return [...(over.answered ?? [])];
       },
       async countForEntry() {
         calls.push("validations.countForEntry");
@@ -305,6 +316,143 @@ describe("an accepted payload", () => {
 
     // Re-deriving the mapping here would be a second place to get it wrong.
     expect(outcome).toEqual({ status: "failed", reason: "persistence" });
+  });
+});
+
+describe("continuing after a finished batch, through the action the continue control calls", () => {
+  /**
+   * ==============================================================================================
+   * WHAT THIS BLOCK IS, AND WHY IT IS NOT THE EXISTING ALLOCATION GUARANTEE RE-DERIVED
+   * ==============================================================================================
+   * `tasks.md` 2.5 asks for the exclusion of already-answered entries to be asserted "through the
+   * continue path, rather than only at the allocation unit", and its own verification warns that
+   * "re-deriving a guarantee from its own implementation proves nothing". So the experiment here is
+   * deliberately a different one from `allocate-batch.test.ts`'s:
+   *
+   *   - it goes through `runAllocateBatch`, which is the function `requestBatchAction` delegates to and
+   *     therefore the one a press on the finished screen's continue control actually reaches;
+   *   - it supplies the exclusion through the REPOSITORY seam (`listEntryIdsForValidator`) rather than
+   *     by calling the selection rule, so the assertion is about what the action's callers observe.
+   *
+   * What it does NOT do is re-test `selectBatchEntries`' ordering or coverage weighting. Those belong
+   * to the allocation unit and are not restated here.
+   */
+
+  it("excludes every entry the validator already answered, from the batch the action returns", async () => {
+    // A pool of six and a batch size of four, so the exclusion is LOAD-BEARING: if nothing were
+    // excluded the action would still return four entries and a weaker assertion — "some entries were
+    // returned" — would pass. Asserted as a set difference against the whole pool instead, so a
+    // response that happened to return the right COUNT with an answered entry among it fails.
+    const pool = Array.from({ length: 6 }, (_, index) => ({ id: `OD_00${index + 10}` }));
+    const answered = ["OD_0010", "OD_0012"];
+    const { dependencies, calls } = createRecordingDependencies({ pool, answered });
+
+    const outcome = await runAllocateBatch(
+      { validatorId: "VAL_a81d92c1", requestedSize: 4 },
+      dependencies,
+    );
+
+    if (outcome.status !== "allocated") {
+      throw new Error(`expected an allocated batch, got ${JSON.stringify(outcome)}`);
+    }
+
+    // The exclusion is real: a batch was produced, and none of the answered entries is in it.
+    expect(outcome.entries.length).toBe(4);
+    const allocatedIds = outcome.entries.map((entry) => entry.id);
+    for (const entryId of answered) {
+      expect(
+        allocatedIds,
+        `${entryId} was already answered and must not be re-served`,
+      ).not.toContain(entryId);
+    }
+    // And it came from the exclusion rather than from the pool having shrunk: the unanswered entries
+    // really were available. Measured, not assumed — a fixture whose pool omitted the answered ids
+    // would make every assertion above pass with the exclusion switched off.
+    expect(calls).toContain("validations.listEntryIdsForValidator");
+    expect(allocatedIds.filter((id) => !answered.includes(id))).toHaveLength(4);
+    expect(pool.filter((entry) => answered.includes(entry.id))).toHaveLength(2);
+  });
+
+  it("CAN FIRE: the SAME action re-serves an answered entry once the exclusion is not consulted", () => {
+    // The control for the assertion above, and it is the one that makes it a guard. A repository whose
+    // `listEntryIdsForValidator` returns nothing is not a broken fixture — it is exactly what a
+    // participant's SECOND browser looks like, and it is what the assertion above would silently be
+    // passing if the exclusion were not really being applied.
+    //
+    // The same pool, the same size, the same validator, the same action. Only the answered list
+    // differs, and the answer differs with it — which is what proves the exclusion is load-bearing
+    // rather than incidental to the pool's size.
+    const pool = [{ id: "OD_0010" }, { id: "OD_0012" }];
+    const withAnswers = createRecordingDependencies({ pool, answered: ["OD_0010"] });
+    const withoutAnswers = createRecordingDependencies({ pool, answered: [] });
+
+    const excluded = runAllocateBatch({ validatorId: "VAL_a81d92c1" }, withAnswers.dependencies);
+    const included = runAllocateBatch({ validatorId: "VAL_a81d92c1" }, withoutAnswers.dependencies);
+
+    return Promise.all([excluded, included]).then(([after, before]) => {
+      if (after.status !== "allocated" || before.status !== "allocated") {
+        throw new Error("both requests were expected to allocate");
+      }
+      // Without the exclusion the answered entry IS served; with it, it is not.
+      expect(before.entries.map((entry) => entry.id)).toContain("OD_0010");
+      expect(after.entries.map((entry) => entry.id)).not.toContain("OD_0010");
+      // And the two runs really did differ, so the first assertion is a comparison and not a tautology.
+      expect(after.entries.map((entry) => entry.id)).not.toEqual(
+        before.entries.map((entry) => entry.id),
+      );
+    });
+  });
+
+  it("creates NO batch when continuing finds the pool exhausted, even with a non-empty dataset", async () => {
+    // `tasks.md` 2.4's verification, and the load-bearing half of "no batch is fabricated".
+    //
+    // An EMPTY pool would be a weak control: a service that returned `exhausted` because it had
+    // nothing to read is trivially not going to create a batch. So the pool here is NON-EMPTY and the
+    // exhaustion comes from the exclusion — every remaining entry is one this validator has already
+    // answered. That is precisely the situation a validator lands in after working through the whole
+    // dataset, and it is the one where a service that allocated anyway would create an empty batch.
+    const pool = Array.from({ length: 5 }, (_, index) => ({ id: `OD_00${index + 20}` }));
+    const answered = pool.map((entry) => entry.id);
+    const { dependencies, calls } = createRecordingDependencies({ pool, answered });
+
+    const outcome = await runAllocateBatch(VALID, dependencies);
+
+    // The fixture really is the hard case, asserted rather than assumed: a non-empty pool whose every
+    // entry is excluded.
+    expect(pool).toHaveLength(5);
+    expect(answered).toEqual(pool.map((entry) => entry.id));
+    expect(calls).toContain("datasetEntries.listActive");
+
+    expect(outcome).toEqual({ status: "exhausted" });
+    // THE CLAIM. Counted over the recorded calls, not inferred from the outcome shape: a service that
+    // created an empty batch and then reported `exhausted` would satisfy the assertion above.
+    expect(calls.filter((call) => call === "batches.create")).toEqual([]);
+    // And the outcome carries no batch id to navigate to, so the continue control has nothing to
+    // present — checked as a property of the value rather than of the component that reads it.
+    expect("batchId" in outcome).toBe(false);
+  });
+
+  it("CAN FIRE: the same action DOES create a batch when the pool is not exhausted", () => {
+    // The control for the assertion above, and the reason the count of zero means something. Identical
+    // fixture, identical call, with ONE entry not yet answered — so the only difference is whether
+    // anything is eligible, and the write appears and disappears with it.
+    const pool = Array.from({ length: 5 }, (_, index) => ({ id: `OD_00${index + 20}` }));
+    const all = pool.map((entry) => entry.id);
+    const allButOne = all.slice(0, 4);
+    const exhausted = createRecordingDependencies({ pool, answered: all });
+    const eligible = createRecordingDependencies({ pool, answered: allButOne });
+
+    return Promise.all([
+      runAllocateBatch(VALID, exhausted.dependencies),
+      runAllocateBatch(VALID, eligible.dependencies),
+    ]).then(([nothingLeft, somethingLeft]) => {
+      expect(nothingLeft.status).toBe("exhausted");
+      expect(somethingLeft.status).toBe("allocated");
+      // THE MEASUREMENT THE GUARD RESTS ON: the same action, the same repository shape, and the write
+      // is present in one and absent in the other.
+      expect(exhausted.calls.filter((call) => call === "batches.create")).toHaveLength(0);
+      expect(eligible.calls.filter((call) => call === "batches.create")).toHaveLength(1);
+    });
   });
 });
 
