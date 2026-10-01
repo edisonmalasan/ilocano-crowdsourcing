@@ -9,17 +9,27 @@ own owner, recognised from the work that remains rather than from any stored fla
 
 This is a change to the participant's continuity of experience, not a rescue of lost research data. That
 distinction is measured in `proposal.md` and is load-bearing: an abandoned batch's unanswered entries stay
-in the allocation pool, because `selectBatchEntries` excludes only entries the validator has already
-**answered**. No coverage is destroyed by abandonment, and this capability must not be described as though
-it recovers coverage it never lost.
+**eligible for allocation**, because the only two conditions `selectBatchEntries` tests are that the
+validator has already **answered** the entry and that it has already reached the coverage target. A third
+exclusion applies equally to everybody and is not an effect of abandonment: an entry marked inactive is not
+in the pool at all. **No coverage is destroyed by abandonment**, and this capability must not be described
+as though it recovers coverage it never lost.
 
 ## ADDED Requirements
 
 ### Requirement: An interrupted batch is recognised from work remaining, never from a stored flag
 
 The platform SHALL recognise a batch as interrupted when, and only when, the requesting validator owns it
-and at least one of its assigned entries has no recorded response. Recognition SHALL be derived from the
-stored batch, its stored entries, and the stored responses.
+and at least one of its assigned entries has no recorded response **by that validator**. Whether a
+response exists is a question about the validator, not about the batch: a response recorded against the
+same entry in a different batch of the same validator's answers it just as much, because the validator
+will not be offered that entry again. Recognition SHALL be derived from the stored batch, its stored
+entries, and the stored responses.
+
+A batch that holds **no entries at all** SHALL be treated as not interrupted, and SHALL NOT cause the
+lookup to fail. A batch row with no entries is a known residue of a non-transactional two-write create,
+it cannot be worked through, and reporting it as interrupted would offer a participant work that does not
+exist.
 
 The platform SHALL NOT introduce a batch lifecycle column, a status flag, or an assignment timestamp used
 solely to decide this question, and SHALL NOT offer a batch whose entries are all answered. A batch that
@@ -30,10 +40,20 @@ is finished is not interrupted, and the two conditions are complements derived f
 - **WHEN** a batch owned by the validator has at least one assigned entry with no recorded response
 - **THEN** that batch is recognised as interrupted for that validator
 
+#### Scenario: An entry answered in another batch is not offered again
+
+- **WHEN** an entry assigned to this batch was answered by the same validator in a different batch
+- **THEN** it counts as answered for this batch too, and is not part of the remaining count
+
 #### Scenario: A fully answered batch is never offered
 
 - **WHEN** every entry assigned to a batch has a recorded response
 - **THEN** that batch is not recognised as interrupted, however it was left, and is never offered for resumption
+
+#### Scenario: An empty batch is not an interrupted batch
+
+- **WHEN** a batch row holds no entries
+- **THEN** it is not recognised as interrupted, and looking for an interrupted batch does not fail because of it
 
 #### Scenario: Recognition is derived, not asserted
 
@@ -46,8 +66,10 @@ The platform SHALL offer the most recently created interrupted batch belonging t
 and SHALL report that batch's remaining and total entry counts.
 
 Where a validator owns more than one interrupted batch, the choice SHALL be total: no two batches may tie,
-and the same stored data SHALL always yield the same choice. Where a validator owns no interrupted batch,
-the platform SHALL offer none and SHALL behave exactly as it does today.
+and the same stored data SHALL always yield the same choice — including for batches whose recorded
+creation instant is identical, which is the case for every batch that predates the column. Where a
+validator owns no interrupted batch, the platform SHALL offer none and SHALL behave exactly as it does
+today.
 
 #### Scenario: A single interrupted batch is offered with its counts
 
@@ -57,7 +79,12 @@ the platform SHALL offer none and SHALL behave exactly as it does today.
 #### Scenario: Several interrupted batches resolve to one
 
 - **WHEN** the requesting validator owns more than one interrupted batch
-- **THEN** the most recently created is the one offered, and no tie is possible for batches created at the same recorded instant
+- **THEN** the most recently created is the one offered
+
+#### Scenario: The choice does not depend on how the rows came back
+
+- **WHEN** two of the validator's batches carry the same recorded creation instant
+- **THEN** the same one is offered every time, because the choice is broken by the batch identifier and not left to the order the rows arrived in
 
 #### Scenario: No interrupted batch offers nothing
 
@@ -86,7 +113,13 @@ in, resuming is not a lifecycle event, and the platform SHALL NOT record that a 
 #### Scenario: Resuming writes nothing
 
 - **WHEN** a validator follows the resumption affordance
-- **THEN** no batch, batch-entry, or validation row is created, changed, or removed as a result
+- **THEN** the request that follows it issues no write operation of any kind — no create, no update, no delete — against any store
+
+This scenario is about the **absence of a write path on the request**, not about the state of the database
+afterwards. It is written that way on purpose: a batch row cannot be un-written by following a link, so a
+test that asserted "the rows are unchanged afterwards" would pass whether or not the implementation ever
+attempted a write. What can be observed — and what must be asserted — is that following the affordance
+produces no write.
 
 ### Requirement: The recovery lookup is additive and can never withhold an option
 
@@ -114,25 +147,28 @@ inventing a message they can do nothing about would misinform them.
 - **WHEN** the lookup completes without finding an interrupted batch, and separately when it cannot complete
 - **THEN** these are distinct outcomes the platform can tell apart, and the second is not an exception swallowed into the first
 
-### Requirement: The recovery offer carries no stored profile data
+### Requirement: The recovery offer introduces no identifier beyond the one it leads to
 
 The recovery offer SHALL report only the interrupted batch's identifier, its remaining entry count, and its
 total entry count. It SHALL NOT carry the validator's proficiency, screening answer, enrolment state, or
 any timestamp of the validator's activity, and it SHALL NOT reveal the existence of any other batch.
 
-The participant is being told how much of their own current work remains. That is not the same as being
-told anything about themselves beyond the immediate question, and the difference is what keeps the offer
-free of the profile data this study deliberately does not collect.
+The batch's own address embeds the validator's anonymous identifier, and following the offer necessarily
+puts that address on screen. That is not a disclosure this requirement forbids, and pretending otherwise
+would make the requirement unsatisfiable: the identifier is one the browser already holds and already
+sends, so rendering the address it is about to navigate to discloses nothing it did not have. What the
+requirement forbids is any identifier, figure, or fact **beyond** that — a second identifier, a count of
+the participant's lifetime responses, or a hint that another batch exists.
 
 #### Scenario: Only three fields are reported
 
 - **WHEN** an interrupted batch is offered
 - **THEN** the offer carries the batch identifier, the remaining entry count, and the total entry count, and no other field
 
-#### Scenario: No profile or activity data is disclosed
+#### Scenario: The offer adds nothing to the address it leads to
 
-- **WHEN** an interrupted batch is offered
-- **THEN** no proficiency, no screening answer, and no timestamp of the validator's activity appears in the offer or in the batch it leads to
+- **WHEN** the offer is rendered
+- **THEN** the only identifier on it is the one embedded in the batch's own address, and no proficiency, no screening answer, and no timestamp of the validator's activity appears
 
 ### Requirement: The recovery offer is presented in both interface languages
 
@@ -154,7 +190,12 @@ batch only when the stored batch's own validator is the requesting validator.
 A client therefore cannot ask the server to resume a particular batch, and cannot name one belonging to
 somebody else. That the identifier is client-supplied is pre-existing and unchanged by this capability; the
 additional property here is that a lookup discloses a batch only for an identifier the caller already held,
-so it reveals nothing the caller did not already know.
+so it reveals nothing about anybody else.
+
+It is **not** a claim that the identifier cannot be guessed or enumerated. It is 32 bits of entropy, and the
+platform already answers the same question — does this identifier name an enrolled validator — through
+`unknown_validator` on every validator-keyed operation. So this capability adds **no new kind of oracle**,
+which is a weaker and accurate statement than saying it adds no oracle at all.
 
 #### Scenario: An unknown identifier is refused
 

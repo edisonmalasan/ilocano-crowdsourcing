@@ -25,9 +25,12 @@ if (coverage >= independentValidationTarget) continue;
 An abandoned batch's un**answered** entries satisfy neither. They stay in the pool, for any validator
 including the same one. So:
 
-- **No coverage is destroyed** by abandoning a batch. The seven entries remain allocatable.
-- **No response is lost.** The three answers are persisted, are excluded from future allocation, and are
-  protected from being re-asked by `UNIQUE (validator_id, dataset_entry_id)`.
+- **No coverage is destroyed** by abandoning a batch. The seven entries remain allocatable. (An entry marked
+  inactive is out of the pool for everyone, which is a property of the dataset rather than of abandonment.)
+- **No response is lost.** The three answers are persisted and are excluded from future allocation, so they
+  cannot be **offered** again — and, separately, `UNIQUE (validator_id, dataset_entry_id)` means a second
+  response for the same entry would be refused at the database. Two mechanisms at two layers, and the
+  allocation filter is the one that prevents the asking.
 - **The orphaned batch is inert**, not broken: its `batch_entries` rows feed nothing, because coverage is
   counted from `validations`, not from assignments.
 
@@ -44,9 +47,12 @@ resumes correctly**. `resolveSessionEntry` is handed the completed entry ids and
 requested, returns the first placement that is not among them — so reloading a batch URL lands on the first
 unanswered entry, and the finished screen already recognises a batch with no unanswered entries as finished.
 
-So no resume logic, no resume flag, and no batch lifecycle state need to be built. What does not exist is
-any way to **learn which batch is yours**. That is a read plus an affordance, and this change is that read
-and that affordance.
+So no resume logic, no resume flag, and no batch lifecycle state need to be built. What does not exist is any
+way to **learn which batch is yours**. That is a new repository read, a decision function, and an affordance
+— and the read is more than a query, because `BatchesRepository` currently has exactly `create` and
+`findById` and no list method, so it means a new interface method, a new name in the `RepositoryOperation`
+union that the `satisfies` assertion enforces, a new Supabase query, and a decided answer for a batch row
+that holds no entries. This change is that work.
 
 ## Why now
 
@@ -70,7 +76,10 @@ checked rather than assumed:
 - `openspec/specs/` was searched for anything specifying batch interruption, resumption, or a batch's age.
   **Nothing** specifies them. The nearest in-force requirement is `research-schema`'s *"batch status,
   completion timestamps, and assignment timestamps remain undefined until the changes that own them add
-  them"* — which is a forward permission naming this change as its owner, not a prohibition it breaks.
+  them"*. Read precisely, that deferral does not name this change as the owner of anything — it simply
+  does not forbid a creation timestamp, and a creation timestamp written at insert time is the batch's
+  assignment time. So this change takes the permission the deferral was written to create, rather than
+  claiming a licence the text does not issue.
 - `batch-completion` requires the finished screen to recognise a finished batch *"from the absence of work,
   never from an assertion"*. This change recognises an **interrupted** batch from the *presence* of work.
   These are complements of one derivation, not competing authorities, so the requirement is satisfied by

@@ -12,9 +12,14 @@ recognises a fully answered batch as finished. Nothing about resumption needs bu
 
 **2. Abandonment destroys no coverage.** `selectBatchEntries` excludes a candidate only when
 `answeredEntryIds.has(candidate.id)` or coverage has reached the target. An abandoned batch's unanswered
-entries satisfy neither and remain allocatable, to anyone. `UNIQUE (validator_id, dataset_entry_id)`
-separately guarantees the validator's three recorded answers can never be asked twice. The loss is the
-participant's continuity, not the study's data.
+entries satisfy neither and remain allocatable, to anyone. **No response is lost either**, but the
+mechanism is not the one a reader would guess, and this was corrected on verification: `UNIQUE
+(validator_id, dataset_entry_id)` forbids a **second recorded response**, not a second *asking*. What stops
+an answered entry being offered again is the allocation filter, at a different layer. The repository says so
+itself — `validations.ts` records that if the row cap were ever reached, the result would be **short**,
+the missing entries **would be offered again**, and the database would refuse the second response. So the
+constraint is a backstop behind the filter, not the filter. A third exclusion applies to everybody and is
+not an effect of abandonment: an entry marked inactive is not in the pool at all.
 
 **3. `validation_batches` has two columns and no timestamps.** `id` and `validator_id`, and nothing else.
 `research-schema` defers status, completion, and assignment timestamps *"until the changes that own them add
@@ -49,10 +54,21 @@ So: `created_at timestamptz`, **written by the server** in `create`, not default
 every other timestamp, and a database default would make the database a second source of time — the same
 objection that removed `requested_size` from this table.
 
-Ordering is `created_at DESC, id DESC`. The second key is not decoration: `toISOString()` has millisecond
-precision, so two batches created in the same millisecond tie, and an ordering that can tie makes the
-offered batch depend on the driver's row order. `id DESC` makes the result total and the same stored data
-always yields the same choice, which is what makes it testable.
+Ordering is `created_at DESC, id DESC`, and the reason for the second key had to be corrected on
+verification. The original argument was that `toISOString()` has millisecond precision, so two batches
+created in the same millisecond tie. **That is wrong**, and in an instructive way: for one validator, two
+batches minted in the same millisecond produce the *identical* id, because both halves of
+`` `${validatorId}-${now.toISOString()}` `` match. That is a primary-key collision on
+`validation_batches.id`, and the second write is refused as a persistence failure. It is not a tie.
+
+The tiebreaker is still right, for two reasons that survive the correction. First, `id` is unique by
+primary key, so ordering by it after `created_at` always yields one row — an ordering that can tie makes the
+offered batch depend on the driver's row order, which is not a property anyone can test or rely on.
+Second, and concretely: **the migration backfills every existing row with one identical `now()`**, so
+pre-existing batches really do share a creation instant, and a validator who had allocated twice before the
+migration has two interrupted batches with the same timestamp. That is an in-world witness for the tie, not
+a hypothetical. The tiebreaker exists because the backfill guarantees it, which is a better reason than the
+one first written.
 
 The migration is forward, and it backfills: existing rows get `now()`, because the honest backfill value for
 a batch created at an unknown time is the moment it became knowable. There are no production rows — no
@@ -111,6 +127,17 @@ would be a write-shaped control around a pure navigation.
 The contrast is worth recording because it shows the decision is a consequence of *what exists*, not a
 house style.
 
+**And the address is not free of the participant's identifier.** `defaultBatchId` embeds the validator's
+anonymous id verbatim, so rendering this link puts `VAL_…` in `/validate`'s HTML. That is accepted rather
+than designed around, and the acceptance is the honest position: the browser already holds that identifier
+and already sends it to the server, so the link discloses nothing it did not have. The alternative —
+changing batch ids so they no longer embed the owner — is a real improvement and is **out of scope here**,
+because `defaultBatchId`'s own docstring says the embedding is deliberate: a log line naming a batch should
+also name whose batch it is. What this change must not do is *add* an identifier beyond that one, which is
+why the requirement is phrased as "introduces no identifier beyond the one it leads to" rather than as
+"reveals no identifier" — the stricter phrasing is unsatisfiable, and an unsatisfiable requirement is a
+requirement that will be quietly ignored or quietly broken.
+
 ### D7 - The offer reports remaining entries, never answered ones
 
 The copy says how many of the batch's entries **remain**. It does not say how many the participant answered,
@@ -142,8 +169,16 @@ guarantee rather than a promise — the same technique `batch-allocation` used f
 reason: a parameter that does not exist cannot be honoured.
 
 The identifier is client-supplied, and that is pre-existing and unchanged. What is new is only that a
-lookup discloses a batch **for an identifier the caller already supplied**, so it reveals nothing the
-caller did not already know. It cannot be used to enumerate participants.
+lookup discloses a batch for an identifier the caller already supplied, so it reveals nothing the caller
+did not already know.
+
+**This was overstated in the first draft and the correction matters.** The draft said the lookup "cannot be
+used to enumerate participants". The identifier is `VAL_` plus 8 hex characters — 32 bits — and the lookup
+answers, for any guessed identifier, whether it names an enrolled validator and how much of its batch
+remains. So it absolutely can be used to enumerate. What is true is narrower: **the platform already
+answers that same question** through `unknown_validator` on `requestBatchAction` and every other
+validator-keyed operation, so this adds **no new kind of oracle**. A claim about attacker capability and a
+claim about novelty are different claims, and only the second one is true.
 
 ## Deliberately not in this change
 

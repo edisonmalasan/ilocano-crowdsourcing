@@ -17,6 +17,34 @@ Every task below names the evidence that closes it. A box ticked without that ev
   interruption, resumption, and batch age. **Evidence:** the search and its result recorded here;
   `research-schema`'s deferral quoted as the forward permission, not a breach.
 
+## 0.5 Corrections already made from the independent verification pass
+
+An independent verifier re-derived all seven factual claims in the proposal and design from the source
+rather than inheriting them. Most were confirmed; five defects were found and **corrected in the artifacts
+before the proposal was merged**. They are listed here because a task list that records only the work still
+to do is a worse record than one that records what was already wrong and is now right.
+
+- [x] 0.5.1 The `UNIQUE (validator_id, dataset_entry_id)` claim attributed *re-asking* to the wrong layer.
+  It forbids a second **recorded response**; what prevents an answered entry being **offered** again is the
+  allocation filter, and `validations.ts` already documents the case where that filter runs short and the
+  entries would be offered again. Corrected in `proposal.md` and `design.md`.
+- [x] 0.5.2 The `created_at DESC, id DESC` tiebreaker was justified by a claim that is **false**: two
+  batches minted by one validator in the same millisecond produce an *identical* id, which is a primary-key
+  collision and a refused insert, not a tie. Replaced with two reasons that survive — `id` is unique by
+  primary key so the order is total, and the backfill stamps every pre-existing row with one identical
+  instant, which makes a real tie possible in the world rather than only hypothetically.
+- [x] 0.5.3 "The lookup cannot be used to enumerate participants" was an overstatement. The identifier is
+  32 bits of entropy and the lookup answers an existence question for any guess. Restated as the accurate,
+  weaker claim: the platform already answers that question through `unknown_validator`, so this adds no
+  **new kind** of oracle.
+- [x] 0.5.4 The requirement that the offer "reveal no identifier" was **unsatisfiable**, because
+  `defaultBatchId` embeds the validator's own anonymous id and the mandated resume link therefore renders
+  it. Restated as "introduces no identifier beyond the one it leads to", with the acceptance and the
+  out-of-scope alternative written down.
+- [x] 0.5.5 The delta's Purpose generalised "`selectBatchEntries` excludes only answered entries" into "stay
+  in the allocation pool", which is wrong: an inactive entry is out of the pool for everyone. The claim is
+  now scoped to eligibility and the third exclusion is named.
+
 ## 1. The one new column, by forward migration
 
 - [ ] 1.1 Add `created_at timestamptz` to `public.validation_batches`, nullable, backfilled, then set
@@ -36,8 +64,16 @@ Every task below names the evidence that closes it. A box ticked without that ev
   counts, or the explicit *none* outcome.
 - [ ] 2.2 Cover: one interrupted batch; several, resolving to the most recent; a tie on `created_at` broken
   by `id`; a fully answered batch never offered; a batch whose entries are all answered in a *different*
-  batch still counts the shared entries as answered.
+  batch still counts the shared entries as answered; **an empty batch row is not interrupted and does not
+  fail the lookup.**
 - [ ] 2.3 **No database.** Pure, like `selectBatchEntries`, so the rule is testable without a connection.
+- [ ] 2.4 The remaining count must be derived from the **validator's** answered set, not the batch's. Two
+  wrong implementations are named here so neither is written by accident: counting only the responses whose
+  `batch_id` equals this batch (a validator who answered an entry in an earlier batch would be shown it as
+  remaining work, which is also a lie the allocation filter would then act on), and filtering to qualifying
+  responses so a `cannot_evaluate` reappears as work. The guard must assert the **filter the application
+  used**, and `lifetime-figure.test.ts` cannot be copied here — it writes its own SQL rather than exercising
+  the query builder, which is the exact weakness recorded against it.
 
 ## 3. The repository read
 
@@ -51,6 +87,12 @@ Every task below names the evidence that closes it. A box ticked without that ev
   this project does.
 - [ ] 3.4 **Can-fire control required:** the ordering argument must go red when reversed, proved by a
   failing mutation and not by inspection.
+- [ ] 3.5 Decide and implement what an **entry-less batch row** does. `create` performs two writes with no
+  transaction across them, so a batch with no entries is a known residue, and `findById` **raises** on one
+  because `batchRecordSchema` requires at least one entry. A listing method must therefore either filter
+  such rows out or return them as recognisably empty — it must not surface a row that a later
+  `findById` turns into an exception. **Evidence:** a test inserting a real residue row through the
+  production schema and asserting the lookup reports *none* rather than raising.
 
 ## 4. Server authority over the lookup
 
@@ -84,6 +126,13 @@ Every task below names the evidence that closes it. A box ticked without that ev
   is defeatable.
 - [ ] 6.2 No proficiency, no screening answer, no activity timestamp, and no other batch's existence
   appears in the offer or the batch it leads to.
+- [ ] 6.3 The resume link's `href` carries the validator's anonymous identifier, because `defaultBatchId`
+  embeds it. Assert that this is the **only** identifier rendered on the start screen beyond the one the
+  participant's browser already holds — a closed assertion, not an absence check, since "no identifier
+  appears" is already false and an absence test against it would pass for the wrong reason.
+- [ ] 6.4 Check `tests/unit/validation-routes.test.tsx`, which asserts `/validate` renders no
+  `href="/validate/batch…`. Real ids begin `VAL_`, so a resume link will not trip it, and the guard must be
+  confirmed still meaningful rather than merely still passing.
 
 ## 7. Localization
 
