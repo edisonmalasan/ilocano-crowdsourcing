@@ -9,8 +9,11 @@
  * Differences in English or Filipino wording alone are NEVER disagreement, because multiple
  * natural translations may be valid. That is enforced twice: behaviourally, by a test passing
  * rows whose translations differ and asserting no flag; and structurally, by a source test
- * asserting this module contains no reference to translations at all — so a future edit cannot
- * "just also compare" them without failing the suite first.
+ * asserting this module never READS a translation value — no `englishTranslation`, no
+ * `filipinoTranslation`, in any casing or snake_case. The module does name
+ * `requiresBilingualTranslations`, which is the qualifying RULE, not a translation value; the
+ * guard matches field access, not the word, so the rule stays usable while the values stay
+ * unreadable.
  *
  * Only QUALIFYING responses participate. A `cannot_evaluate` response is an abstention, not an
  * opinion: counting it as disagreement would flag entries for having been attempted, and a

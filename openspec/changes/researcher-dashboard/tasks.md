@@ -30,13 +30,18 @@
 
 ## 3. Dashboard data service (server-only)
 
-- [ ] 3.1 A server-only module that assembles the overview from repository reads: active entries,
+- [x] 3.1 A server-only module that assembles the overview from repository reads: active entries,
       validations for those entries, validator profiles for responding validators; computes the
       eleven figures with the domain functions; returns per-entry review flags. No credential, no
-      client component import. Verify with unit tests over fakes (figures on a hand-built dataset
+      client component import. Verified with unit tests over fakes (figures on a hand-built dataset
       with known bucket counts, disagreement cases, and non-qualifying rows contributing zero).
-- [ ] 3.2 Per-entry assembly for the review route: entry plus every stored response with validator
-      proficiency and per-response qualifying status plus reason. Verify with unit tests over fakes
+      Implemented as `src/lib/admin/dashboard.ts` with injected `Pick<>` repository contracts
+      (marker-free, so fakes need no `server-only` stub) plus `nonQualifyingReason` in a new
+      `src/lib/domain/review-reasons.ts` — separate from `review-flags.ts` because naming a missing
+      translation requires reading translation presence, which the flag module is structurally
+      forbidden from doing.
+- [x] 3.2 Per-entry assembly for the review route: entry plus every stored response with validator
+      proficiency and per-response qualifying status plus reason. Verified with unit tests over fakes
       including an unknown id (null, not an exception shape the page could mistake for data).
 
 ## 4. Overview page

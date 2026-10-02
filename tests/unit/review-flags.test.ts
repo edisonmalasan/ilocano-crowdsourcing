@@ -8,9 +8,9 @@
  *   1. BEHAVIOURAL — rows whose translations differ but evaluations and corrections agree must
  *      not flag. Without this, the module could compare translations tomorrow and no test would
  *      notice.
- *   2. STRUCTURAL — this module's comment-stripped source must contain no reference to
- *      translations at all. Without this, the behavioural test could be "fixed" by an edit that
- *      keeps the old cases passing while adding a translation comparison elsewhere.
+ *   2. STRUCTURAL — this module's comment-stripped source must contain no translation FIELD
+ *      access. Without this, the behavioural test could be "fixed" by an edit that keeps the old
+ *      cases passing while adding a translation comparison elsewhere.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,7 +22,11 @@ import {
   evaluationsDisagree,
   requiresResearcherReview,
 } from "@/lib/domain/review-flags";
-import type { QualifyingResponseShape } from "@/lib/domain/validation-response";
+import { nonQualifyingReason } from "@/lib/domain/review-reasons";
+import {
+  isQualifyingValidation,
+  type QualifyingResponseShape,
+} from "@/lib/domain/validation-response";
 
 const ENGLISH = "Go north past the market.";
 const FILIPINO = "Dumiretso ka sa hilaga lagpas ng palengke.";
@@ -153,16 +157,67 @@ describe("translations never count toward the flag", () => {
     expect(correctionsDiverge(responses)).toBe(false);
   });
 
-  it("contains no reference to translations in the module that computes the flag", () => {
+  it("contains no translation field access in the module that computes the flag", () => {
     // The structural half. Comments stripped first — the module's own header explains the rule in
-    // prose, and prose about translations is not a comparison of them. What remains must not
-    // mention translations at all, so no edit can compare them without failing here first.
+    // prose, and prose about translations is not a comparison of them. What remains must never
+    // READ a translation value, in any casing or snake_case, while NAMING the qualifying rule
+    // (`requiresBilingualTranslations`) stays allowed: the rule is what determines qualifying,
+    // and the guard's subject is value access, not the word. A pattern matching the bare word
+    // would forbid the import and force the module to restate the rule — the drift this project
+    // refuses.
     const source = readFileSync(
       fileURLToPath(new URL("../../src/lib/domain/review-flags.ts", import.meta.url)),
       "utf8",
     );
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-    expect(code).not.toMatch(/translation/i);
+    expect(code).not.toMatch(
+      /englishtranslation|filipinotranslation|english_translation|filipino_translation/i,
+    );
+  });
+});
+
+describe("nonQualifyingReason", () => {
+  it("returns null for a response that qualifies", () => {
+    expect(nonQualifyingReason(qualifying())).toBeNull();
+  });
+
+  it("reports unevaluable before anything else", () => {
+    // Even a `cannot_evaluate` carrying every other field is unevaluable first: the evaluation
+    // voids the rest, so the reason mirrors the predicate's short-circuit order rather than
+    // listing every defect.
+    expect(nonQualifyingReason({ evaluation: "cannot_evaluate" })).toBe("unevaluable");
+  });
+
+  it("reports a missing correction before missing translations", () => {
+    expect(nonQualifyingReason({ evaluation: "incorrect", correctedInstruction: "  " })).toBe(
+      "missing-correction",
+    );
+  });
+
+  it("reports English before Filipino when both are missing", () => {
+    // A stable priority, documented rather than accidental: the predicate checks English first,
+    // so the reason does too. Two missing fields still produce one reason, not a list.
+    expect(nonQualifyingReason({ evaluation: "correct_natural" })).toBe("missing-english");
+    expect(
+      nonQualifyingReason({ evaluation: "correct_natural", englishTranslation: ENGLISH }),
+    ).toBe("missing-filipino");
+  });
+
+  it("agrees with isQualifyingValidation on every shape it is given", () => {
+    // The reason and the verdict come from one rule. A shape the verdict accepts must have no
+    // reason, and a shape it rejects must have one — if the two ever disagree, one of them was
+    // edited without the other, which is the drift this module exists to prevent.
+    const shapes: QualifyingResponseShape[] = [
+      qualifying(),
+      { evaluation: "cannot_evaluate" },
+      { evaluation: "incorrect", correctedInstruction: "balikas a" },
+      { evaluation: "correct_natural", englishTranslation: ENGLISH },
+      qualifying({ evaluation: "incorrect", correctedInstruction: "balikas a" }),
+    ];
+
+    for (const shape of shapes) {
+      expect(nonQualifyingReason(shape) === null).toBe(isQualifyingValidation(shape));
+    }
   });
 });
