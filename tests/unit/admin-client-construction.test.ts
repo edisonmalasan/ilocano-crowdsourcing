@@ -193,6 +193,37 @@ describe("the service-role credential has exactly one construction site", () => 
     expect(signature.split(",").map((part) => part.trim())).toEqual(["url: string", "key: string"]);
   });
 
+  it("has exactly one CALLER of the constructor, and that caller is the module that reads the credential", () => {
+    // This is what makes task 4.4's claim — "exactly one passes a service-role key" — actually
+    // ASSERTABLE, and the reason it needed decomposing.
+    //
+    // The task's phrasing assumes the credential's NAME is visible at the construction site. It is
+    // not, by design: `createSupabaseAdminClient(url, key)` receives a value, and a module that
+    // receives a value is exactly what makes it loadable by the plain-Node command. So "the one
+    // service-role client" is a composition over three facts, and each is measured here and above:
+    //
+    //   1. exactly one `createClient(` site in the tree            (test 2)
+    //   2. it takes its key as a parameter, not by reading it      (test 3)
+    //   3. exactly one module calls it, and that module reads the
+    //      service-role credential out of `@/lib/env/server`       (this test)
+    //
+    // Together those say: one construction, and one path by which a service-role key reaches it. The
+    // phrasing is preserved in the test NAMES rather than dropped, because the alternative — a test
+    // named after a weaker claim than the one it makes — is how a reader stops trusting the suite.
+    const importers = files
+      .filter((file) => code.get(file)!.includes('from "@/lib/supabase/admin-client"'))
+      .map(relative)
+      .sort();
+
+    expect(importers, "a second caller is a second path for a privileged key").toEqual([
+      "lib/supabase/admin.ts",
+    ]);
+
+    // And that caller is one of the two modules proven to read the credential, so the composition
+    // closes rather than merely terminating at two unconnected facts.
+    expect(serviceRoleReaders).toContain("lib/supabase/admin.ts");
+  });
+
   it("closes the path from the variable to the client: two modules read it, and neither constructs anything", () => {
     // `lib/env/server.ts` VALIDATES the credential and `lib/supabase/admin.ts` passes it on. The
     // third module in the chain — the one that builds the client — must not appear here, because it

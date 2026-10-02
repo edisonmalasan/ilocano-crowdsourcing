@@ -31,7 +31,7 @@
  * status means the process ran, whatever it returned.
  */
 import { execFileSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
