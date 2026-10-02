@@ -24,20 +24,31 @@ const importsOf = (source: string): string =>
 /**
  * Source-level boundary guards.
  *
- * There is no Supabase project and no database in this environment, so the honest way to prove a
- * module-graph property is to read the module's source and assert what it does and does not
- * mention. This is not a substitute for the runtime `server-only` boundary — it is an additional
- * guard that fails with the offending file named, which is what makes a regression reviewable.
- * The dynamic `import()` assertions at the end of this file are the runtime half.
+ * WHERE THIS HEADER NOW DIFFERS FROM ITS EARLIER SELF, AND WHY THE TEST WAS EDITED RATHER THAN
+ * DELETED
+ * ----------------------------------------------------------------------------------------------
+ * It used to open by saying there is no Supabase project and no database in this environment. That
+ * was true when written and is false now: the hosted project exists, its migrations are applied,
+ * and `docs/ROADMAP.md` carries the measured gate results. The sentence was removed rather than
+ * softened, because a guard file that misstates its own environment teaches its reader to discount
+ * the guards beside it.
+ *
+ * Reading a module's source remains the honest way to prove a module-GRAPH property — which imports
+ * it has — from a test that deliberately does not build the graph. It is not a substitute for the
+ * runtime `server-only` boundary, and it is not a claim about the wire: the dynamic `import()`
+ * assertions at the end of this file are the runtime half, and the hosted gate probe is the half
+ * that touches a real PostgREST.
  */
 
 const BROWSER_SOURCE = read("../../src/lib/supabase/browser.ts");
 const ADMIN_SOURCE = read("../../src/lib/supabase/admin.ts");
+const ADMIN_CLIENT_SOURCE = read("../../src/lib/supabase/admin-client.ts");
 const SERVER_SOURCE = read("../../src/lib/supabase/server.ts");
 
 /** Comment-free code, so a doc comment cannot make a guard pass or fail. */
 const BROWSER_CODE = stripComments(BROWSER_SOURCE);
 const ADMIN_CODE = stripComments(ADMIN_SOURCE);
+const ADMIN_CLIENT_CODE = stripComments(ADMIN_CLIENT_SOURCE);
 const SERVER_CODE = stripComments(SERVER_SOURCE);
 
 describe("browser access path", () => {
@@ -86,9 +97,42 @@ describe("privileged access path", () => {
     expect(ADMIN_CODE).toContain("SUPABASE_SERVICE_ROLE_KEY");
   });
 
+  /**
+   * The env reading stays HERE and the `createClient` call moved to `./admin-client`.
+   *
+   * That split is the credential's trust boundary, and the two halves are asserted separately on
+   * purpose. An earlier version of this test asserted `persistSession: false` against
+   * `admin.ts`, which stopped being true when the construction moved — and the failure it produced
+   * was correct, so the fix was to point the assertion at the file that now owns the setting rather
+   * than to delete the assertion. A session-persistence setting that nothing checks is exactly the
+   * kind of comment-shaped guarantee this project has been bitten by.
+   */
   it("does not persist or refresh a session, because it acts as the service role itself", () => {
-    expect(ADMIN_CODE).toContain("persistSession: false");
-    expect(ADMIN_CODE).toContain("autoRefreshToken: false");
+    expect(ADMIN_CLIENT_CODE).toContain("persistSession: false");
+    expect(ADMIN_CLIENT_CODE).toContain("autoRefreshToken: false");
+    expect(ADMIN_CLIENT_CODE).toContain("detectSessionInUrl: false");
+  });
+
+  it("delegates the construction to the module that a plain-Node command can load", () => {
+    // The reason the split exists. If `admin.ts` called `createClient` directly, the operator
+    // command would have to import a `server-only` module, and the `server-only` package THROWS
+    // outside a React Server Component render — so the import would fail before the command ran.
+    expect(ADMIN_CODE).toContain(
+      "createSupabaseAdminClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)",
+    );
+    expect(ADMIN_CODE).not.toContain("createClient");
+
+    // And the delegate must NOT have acquired the marker, which is the property that makes it
+    // loadable. Asserted positively rather than by absence of a failure somewhere else.
+    expect(ADMIN_CLIENT_CODE).not.toMatch(/^\s*import\s+["']server-only["'];?/m);
+  });
+
+  it("takes the key as an ARGUMENT rather than reading the environment, so the env module stays behind its marker", () => {
+    // `createSupabaseAdminClient(url, key)`. If this module read `@/lib/env/server` itself, the
+    // marker would come along with it and the whole split would be undone — so this asserts the
+    // absence of the env import rather than trusting the header.
+    expect(importsOf(ADMIN_CLIENT_CODE)).not.toContain("@/lib/env/server");
+    expect(ADMIN_CLIENT_CODE).toContain("createSupabaseAdminClient(url: string, key: string)");
   });
 });
 

@@ -25,6 +25,18 @@ const PRIVILEGED_SPECIFIERS = [
   // Privileged (service-role) Supabase access.
   "@/lib/supabase/admin",
   "@/lib/repositories/supabase",
+  // The one `createClient(url, key)` call in the repository, separated from `@/lib/supabase/admin`
+  // because it deliberately does NOT carry `import "server-only"` and is therefore not caught by
+  // that marker. It takes the service-role key as a PARAMETER — `@/lib/env/server` is what reads
+  // the environment, and that module still has the marker — so a client import would put the code
+  // that consumes a service-role key on the browser. The boundary rule is the whole of its
+  // protection, which is exactly why it has to be listed here.
+  //
+  // Listed separately from the specifier above for the same reason `@/lib/admin/signin-core` is:
+  // `@/lib/repositories/supabase` matches the DIRECTORY in the sense ESLint sees only as an exact
+  // string, so `@/lib/repositories/supabase/rpc` does not match it and would be silently allowed.
+  "@/lib/supabase/admin-client",
+  "@/lib/repositories/supabase/rpc",
   // Cookie-backed server client: pulls `next/headers`, unusable in a client component.
   "@/lib/supabase/server",
   // Server environment parsing, which reads the service-role credential.

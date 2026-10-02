@@ -145,15 +145,35 @@ async function bodyWithoutComments(name: string): Promise<string> {
 }
 
 describe("the migration is applied from the production directory", () => {
-  it("is the last of five migrations, applied in filename order", async () => {
+  it("is applied in filename order from the production directory, alongside its successors", async () => {
     // Asserted as an exact list, not a count: `readMigrations` returns an empty array for a missing
     // directory and still succeeds, so a count check would pass on a typo'd path.
+    //
+    // ── WHAT CHANGED HERE, AND WHY IT WAS NOT DELETED ──────────────────────────────────────────────
+    // This test used to read "is the last of five migrations" and assert `toHaveLength(5)` plus
+    // "the last one is mine". The hosted dataset import added a sixth migration, the length
+    // assertion failed, and that failure was CORRECT — this is the ledger's recurring
+    // "a row that reads N until the next change finds it" failure, caught by a test instead of by a
+    // reader.
+    //
+    // The `last` claim was dropped rather than re-pointed at the new final migration, because it
+    // was never this test's subject: this file is about `researcher_signin_attempts`, and "is the
+    // most recent file in the directory" is a property that decays with every unrelated change while
+    // teaching its reader to expect decay. What remains is the claim that does not decay — this
+    // migration is present, it is in lexical position, and the whole directory is applied. The
+    // count assertion moved to the CLOSED list in `research-schema.test.ts`, which names every
+    // file, so a seventh migration fails there rather than here.
     const migrations = await readMigrations();
     const filenames = migrations.map((m) => m.filename);
-    expect(filenames).toHaveLength(5);
-    expect(filenames[filenames.length - 1]).toBe(MIGRATION);
+
+    expect(filenames).toContain(MIGRATION);
     // Lexical order, which is what Supabase uses and what the timestamp prefix exists to produce.
     expect([...filenames].sort()).toEqual(filenames);
+    // The timestamp prefix is what makes the order meaningful; without it, lexical order over
+    // `mm/dd` names would break at every month boundary.
+    for (const filename of filenames) {
+      expect(filename).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+    }
   });
 
   it("creates the table and both functions", async () => {

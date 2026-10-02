@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdminClient, type SupabaseAdminClient } from "@/lib/supabase/admin-client";
 
 import { getServerEnv, isServiceRoleKeyConfigured } from "@/lib/env/server";
 
@@ -23,20 +23,27 @@ import { getServerEnv, isServiceRoleKeyConfigured } from "@/lib/env/server";
  * privileged write. `tests/unit/supabase-clients.test.ts` asserts the `server-only` import is
  * present here.
  */
+/**
+ * DELEGATION, AND WHY THE MARKER STAYS HERE RATHER THAN MOVING WITH IT
+ * -------------------------------------------------------------------
+ * This module still carries `import "server-only"` and still reads the environment; what moved to
+ * the sibling `./admin-client` is the `createClient` call itself, because the hosted dataset import
+ * is a plain-Node operator command and the `server-only` package THROWS outside a React Server
+ * Component render. See that module's header for what replaces the marker on its side.
+ *
+ * The split is the credential's own trust boundary. HERE is where the environment is read, and that
+ * module is unreachable from a client bundle. THERE is where a url and a key are turned into a
+ * client, which is harmless on its own because it can only ever be handed a key a caller already
+ * holds. A function that both read the env and constructed the client could not be loaded by a
+ * command; a function that only constructs one can.
+ */
 export function createAdminSupabaseClient() {
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = getServerEnv();
 
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: {
-      // The service role acts as itself, not as any signed-in user; no session is persisted.
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false,
-    },
-  });
+  return createSupabaseAdminClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
 
-export type AdminSupabaseClient = ReturnType<typeof createAdminSupabaseClient>;
+export type AdminSupabaseClient = SupabaseAdminClient;
 
 /**
  * Whether the privileged credential is configured. Returns a boolean and never the value, so it is
