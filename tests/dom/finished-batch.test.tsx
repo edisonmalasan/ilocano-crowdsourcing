@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FinishedBatch } from "@/app/validate/[batchId]/finished-batch";
+import { FinishedBatch, FINISH_HREF } from "@/app/validate/[batchId]/finished-batch";
 import { translatorFor } from "@/lib/i18n/copy";
 
 import { batchIdFromAddress } from "./support/batch-address";
@@ -12,11 +12,14 @@ import { mount, type Mounted } from "./support/dom-harness";
  * =================================================================================================
  * WHY EVERY GUARD HERE IS IN THIS FILE AND NOT IN `validation-routes.test.tsx`
  * =================================================================================================
- * `renderToStaticMarkup` never fires a handler. It can prove the finish control is an `<a>` with the
- * right `href` and it can COUNT both controls, and that is genuinely all it can do. Every claim below
- * is about what a press DOES — that a request leaves, that its payload is one key wide, that the new
- * batch is presented, that nothing is written when finishing is chosen — and none of them is
- * observable without a DOM that can be operated.
+ * `renderToStaticMarkup` never fires a handler. It can COUNT both controls and it can see their
+ * element types, and that is genuinely all it can do — and this change made the gap wider, not
+ * narrower: the finish control used to carry its destination in an `href` that static markup could
+ * read, and it no longer does, because finishing now has to discard the attempt token before it
+ * leaves. Every claim below is about what a press DOES — that a request leaves, that its payload is
+ * one key wide, that the new batch is presented, that finishing issues no request while discarding
+ * the token and asking to be navigated — and none of them is observable without a DOM that can be
+ * operated.
  *
  *   CB-1  continuing requests a batch and the new batch is PRESENTED
  *   CB-2  the request carries the identifier and NOTHING else
@@ -25,7 +28,7 @@ import { mount, type Mounted } from "./support/dom-harness";
  *   CB-5  two presses in one task produce exactly ONE request
  *   CB-6  an exhausted pool is reported as itself, and no batch is presented
  *   CB-7  a refused request is reported, and the control becomes usable again
- *   CB-8  finishing issues NO request and navigates through no handler
+ *   CB-8  finishing issues NO request, DISCARDS the attempt token, and asks to be navigated
  *   CB-9  the two controls do not trigger each other
  *
  * =================================================================================================
@@ -36,10 +39,21 @@ import { mount, type Mounted } from "./support/dom-harness";
  * order, a real viewport's 44px target, or how a real browser interacts with `useTransition`. No
  * human has ever rendered this screen, and no Supabase client has ever been constructed, so the
  * action this file mocks has never spoken to a database.
+ *
+ * AND IT PERFORMS NO STORAGE — see the module-mock note below, which is the limit that matters most
+ * for CB-8, because CB-8 is about discarding something.
  */
 
 const h = vi.hoisted(() => ({
   pushes: [] as string[],
+  /**
+   * Every observable effect, in the ORDER it happened.
+   *
+   * Two arrays of effects cannot express "the token was discarded BEFORE the navigation", and that
+   * order is what `design.md` D3 specifies. This log can, and CB-8 asserts against it directly rather
+   * than asserting two separate facts and calling the pair an ordering.
+   */
+  events: [] as string[],
   /** Every payload handed to the allocation Server Action, in order. */
   requests: [] as unknown[],
   /**
@@ -64,12 +78,15 @@ const h = vi.hoisted(() => ({
    * than a bare stub.
    */
   identityReads: 0,
+  /** How many times the component discarded the attempt token. */
+  clears: 0,
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: (destination: string) => {
       h.pushes.push(destination);
+      h.events.push(`push:${destination}`);
     },
     replace: () => {},
     refresh: () => {},
@@ -80,33 +97,60 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/allocation/actions", () => ({
   requestBatchAction: vi.fn(async (raw: unknown) => {
     h.requests.push(raw);
+    h.events.push("request-batch");
     if (h.hold !== null) return h.hold.promise;
     return h.result;
   }),
 }));
 
 /**
- * The browser-local identity module, stubbed rather than driven against real `localStorage`.
+ * The browser-local identity module, stubbed rather than driven against real storage.
  *
- * `happy-dom` in this project exposes NO `window.localStorage` — measured, not assumed: the first
- * draft of this file called `window.localStorage.setItem(...)` in `beforeEach` and every test failed
- * with `TypeError: Cannot read properties of undefined (reading 'clear')`. Stubbing is also what
- * `tests/dom/screening-form.test.tsx` does, so this follows the established pattern rather than
- * introducing a second way of setting an identity up.
+ * The stub is here for TWO reasons, and only the first one is the historical one.
  *
- * WHAT THAT COSTS, stated rather than left for a reader to find: the real `readStoredValidatorId` —
- * its format validation, its handling of an untrusted stored value, and its "clear on a malformed
- * value" side effect — is NOT exercised here. It is exercised in `tests/unit/browser-identity.test.ts`
- * against a real `Storage`, and what THIS file owns is the narrower claim that the finished screen's
- * continue control consults the module at press time and forwards whatever it says.
+ *   1. `happy-dom` in this project exposes NO `localStorage` — measured by the test at the bottom of
+ *      this file, not assumed. The first draft called `window.localStorage.setItem(...)` in
+ *      `beforeEach` and every test failed with
+ *      `TypeError: Cannot read properties of undefined (reading 'clear')`.
+ *   2. This file needs to CONTROL the identity (three tests set it, one sets it to `null`) and to
+ *      COUNT the reads, which is how CB-1's press-time claim is made observable. A real
+ *      `sessionStorage` gives neither. `vi.mock` is file-wide, so the alternative is a second file —
+ *      and there is one: `tests/dom/finish-retires-attempt.test.tsx` drives the REAL module against
+ *      happy-dom's REAL, WORKING `sessionStorage` and observes an actual removal.
+ *
+ * MEASURED CORRECTION, because it is the kind of claim that survives being wrong for years:
+ * `happy-dom` here DOES provide `sessionStorage`, and it works. An earlier note in this project
+ * asserted that it exposed "neither `localStorage` nor `sessionStorage`", and that was half false —
+ * true of `localStorage`, false of `sessionStorage`. It was true when written, before the identity
+ * module moved, and it stopped being true for the storage this application actually uses. The
+ * enumeration that corrected it is a test here, so it cannot rot the same way.
+ *
+ * WHAT THE STUB COSTS, stated rather than left for a reader to find, and CB-8 is where it bites:
+ *
+ *   - The real `readStoredValidatorId` — its format validation, its handling of an untrusted stored
+ *     value, and its "clear on a malformed value" side effect — is NOT exercised here. It is exercised
+ *     in `tests/unit/validators-browser-identity.test.ts` against a real `Storage`.
+ *   - **The real `clearStoredValidatorId` is not exercised either, so "the token was discarded" in this
+ *     file means "the component asked the module to discard it."** Nothing here can observe an actual
+ *     storage removal. That is the honest content of CB-8 as written, and the sibling file is what
+ *     makes the stronger claim true somewhere.
+ *
+ * No real browser has been opened, so even the sibling file observes happy-dom's in-memory `Storage`
+ * and not a browser's.
+ *
+ * Stubbing is also what `tests/dom/screening-form.test.tsx` does, so this follows the established
+ * pattern rather than introducing a second way of setting an identity up.
  */
 vi.mock("@/lib/validators/browser-identity", () => ({
-  readStoredValidatorId: () => {
+  readStoredValidatorId: vi.fn(() => {
     h.identityReads += 1;
     return h.storedId;
-  },
-  writeStoredValidatorId: () => {},
-  clearStoredValidatorId: () => {},
+  }),
+  writeStoredValidatorId: vi.fn(() => {}),
+  clearStoredValidatorId: vi.fn(() => {
+    h.clears += 1;
+    h.events.push("clear-token");
+  }),
 }));
 
 const t = translatorFor("en");
@@ -118,11 +162,24 @@ const FINISHED_BATCH_ID = "VAL_a81d92c1-2026-09-30T20:14:03.117Z";
 let view: Mounted;
 
 function continueControl(): HTMLButtonElement {
-  return view.one<HTMLButtonElement>("button");
+  return (view.all("button") as HTMLButtonElement[])[0];
 }
 
-function finishControl(): HTMLAnchorElement {
-  return view.one<HTMLAnchorElement>("a");
+/**
+ * The finish control, selected BY ITS LABEL rather than by position or by element type.
+ *
+ * It used to be `view.one("a")`, which was unambiguous: it was the only anchor on the screen. It is a
+ * `<button>` now (`design.md` D3), so both controls are buttons and a positional or type-based
+ * selection would be asserting the order of two things that are otherwise interchangeable. A
+ * selection by label fails if the two labels are ever swapped, which is the failure worth catching.
+ */
+function finishControl(): HTMLButtonElement {
+  const label = t("validate.finished.finish");
+  const matches = (view.all("button") as HTMLButtonElement[]).filter(
+    (node) => (node.textContent ?? "").trim() === label,
+  );
+  expect(matches, `expected exactly one control labelled ${JSON.stringify(label)}`).toHaveLength(1);
+  return matches[0] as HTMLButtonElement;
 }
 
 function controlTexts(): string[] {
@@ -143,9 +200,11 @@ function holdRequest(): () => void {
 
 beforeEach(() => {
   h.pushes.length = 0;
+  h.events.length = 0;
   h.requests.length = 0;
   h.hold = null;
   h.identityReads = 0;
+  h.clears = 0;
   h.storedId = "VAL_a81d92c1";
   h.result = { status: "allocated", batchId: NEW_BATCH };
   view = mount(<FinishedBatch locale="en" />);
@@ -160,6 +219,56 @@ afterEach(async () => {
   }
   view.unmount();
   vi.clearAllMocks();
+});
+
+describe("the limits of this harness, asserted rather than asserted-in-prose", () => {
+  it("provides NO localStorage but A WORKING sessionStorage, which is the opposite of what was assumed", async () => {
+    // Task 4.3 asked for a test asserting this file's stub is in use, on the stated premise that
+    // "`happy-dom` here exposes neither `localStorage` nor `sessionStorage`". **THAT PREMISE IS
+    // MEASURED FALSE, and the measurement is the reason this test says so rather than repeating it.**
+    //
+    // Measured in this project, in this environment, by enumerating four candidates on both
+    // `globalThis` and `window`:
+    //
+    //   localStorage   -> undefined on both
+    //   sessionStorage -> PRESENT on both, a `Storage` whose setItem/getItem/removeItem/clear all work
+    //   indexedDB       -> undefined on both
+    //   caches         -> undefined on both
+    //
+    // The `localStorage` half is why this file has always stubbed: the first draft called
+    // `window.localStorage.clear()` and every test failed with `TypeError: Cannot read properties of
+    // undefined`. The `sessionStorage` half is the correction — since the identity module moved to
+    // `sessionStorage` in this change, the honest statement is that **the real module COULD be driven
+    // here**, and `tests/dom/finish-retires-attempt.test.tsx` does exactly that in a second file,
+    // because `vi.mock` is file-wide and this file's identity control and read-counting need the stub.
+    //
+    // Both directions are asserted on purpose. If a future `happy-dom` ever provides `localStorage`,
+    // the first assertion fails and a reader is told to re-check what the stub is standing in for. If
+    // `sessionStorage` ever stops working, the second fails and the file that depends on it says so.
+    // A comment asserting either would be a claim nobody re-measures, which is the defect this test
+    // was written to remove.
+    const globals = globalThis as unknown as Record<string, unknown>;
+    expect(globals["localStorage"], "happy-dom now provides localStorage").toBeUndefined();
+    expect(globals["indexedDB"], "happy-dom now provides indexedDB").toBeUndefined();
+
+    const storage = globals["sessionStorage"] as Storage | undefined;
+    expect(storage, "happy-dom no longer provides sessionStorage").toBeDefined();
+    expect(storage?.constructor?.name).toBe("Storage");
+    // Not merely present: a `Storage`-shaped object that silently drops writes would make the
+    // sibling file's "the token really was removed" assertion pass for the wrong reason.
+    storage?.setItem("sadino.probe", "v");
+    expect(storage?.getItem("sadino.probe")).toBe("v");
+    storage?.removeItem("sadino.probe");
+    expect(storage?.getItem("sadino.probe")).toBeNull();
+
+    // And the module this file's component used is the STUB, so "the token was discarded" in CB-8
+    // means "the component asked the module to discard it" and cannot quietly become a claim about
+    // real storage. Asserted by identity: the real module's functions are not what this component
+    // called. The real thing is measured in the sibling file named above.
+    const identity = await import("@/lib/validators/browser-identity");
+    expect(vi.isMockFunction(identity.clearStoredValidatorId)).toBe(true);
+    expect(vi.isMockFunction(identity.readStoredValidatorId)).toBe(true);
+  });
 });
 
 describe("CB-1/CB-2 — continuing asks the server, and sends nothing but who it is for", () => {
@@ -275,8 +384,8 @@ describe("CB-4/CB-5 — the pending state, and the single-flight latch", () => {
   it("is busy AND reports progress in text while its own request is open", async () => {
     // `design.md` open question 1, answered by measurement rather than by re-deciding: the control
     // that started the action becomes `disabled` and `aria-busy`, and its LABEL changes. It is not
-    // hidden — a control that vanished is a participant told nothing — and the finish link beside it
-    // is not made inert, because it is a navigation rather than an unavailable control and a
+    // hidden — a control that vanished is a participant told nothing — and the finish control beside it
+    // is not made inert, because it is the way out rather than an unavailable control and a
     // participant must always be able to leave.
     holdRequest();
 
@@ -430,7 +539,9 @@ describe("CB-6/CB-7 — what a request that does not allocate reports", () => {
       h.result = { status: "failed", reason };
       h.requests.length = 0;
       const mounted = mount(<FinishedBatch locale="en" />);
-      await mounted.pressAndSettle(mounted.one<HTMLButtonElement>("button"));
+      // The CONTINUE control specifically, by position, because both controls are `<button>`s now
+      // (D3) and `one("button")` refuses to guess between them.
+      await mounted.pressAndSettle((mounted.all("button") as HTMLButtonElement[])[0]);
       const text =
         mounted.one<HTMLElement>('[data-decision-message="true"]').textContent?.trim() ?? "";
       expect(text.length, `reason "${reason}" rendered an empty sentence`).toBeGreaterThan(10);
@@ -471,32 +582,88 @@ describe("CB-6/CB-7 — what a request that does not allocate reports", () => {
   });
 });
 
-describe("CB-8/CB-9 — finishing writes nothing, and the two controls are independent", () => {
-  it("is a LINK with an internal href, and there is no form to submit", () => {
-    // The load-bearing half of "finishing writes nothing" is the DOM tests below — that a press on it
-    // issues no request. What this establishes is the SHAPE: an anchor to a route in this app, inside
-    // no form, so there is no submission path for it to have.
+describe("CB-8/CB-9 — finishing writes nothing, retires the attempt, and the two controls are independent", () => {
+  it("is a CONTROL, not a link and not a form", () => {
+    // The load-bearing half of "finishing writes nothing" is the press below — that a press on it
+    // issues no request. What this establishes is the SHAPE. It was an `<a href="/">` and it is a
+    // `<button>` now, because it discards the attempt token before it leaves and a link has no moment
+    // before it navigates in which to do anything (`design.md` D3).
     const finish = finishControl();
 
-    expect(finish.tagName).toBe("A");
-    expect(finish.getAttribute("href")).toBe("/");
-    // INTERNAL, asserted as a shape rather than by spelling: the href must begin with a single
-    // slash and must not name another origin. A link off this origin is a link this project cannot
-    // vouch for, and `"//example.com"` and `"https://example.com"` are the two ways that happens
-    // without an `http` substring being present.
-    expect(finish.getAttribute("href")).toMatch(/^\/(?!\/)/);
+    expect(finish.tagName).toBe("BUTTON");
+    // `type="button"` is asserted rather than assumed: a `<button>` inside a form submits it, and
+    // "not a form" is only half of "does not submit" — an omitted `type` inside some ancestor's form
+    // would submit.
+    expect(finish.getAttribute("type")).toBe("button");
+    // It carries NO destination of its own any more. The destination lives in the component's exported
+    // `FINISH_HREF` and is asserted as the router's argument below, which is the only place it is
+    // observable now.
+    expect(finish.getAttribute("href")).toBeNull();
+    // And the screen has no form, so there is no submission path for either control to have.
     expect(view.container.querySelector("form")).toBeNull();
+    // The two controls are genuinely different elements, which is what "distinct controls" means here:
+    // a screen that rendered one control twice under two labels would satisfy every label assertion.
+    expect(finishControl()).not.toBe(continueControl());
   });
 
-  it("issues NO request and NO router navigation when finishing is chosen", async () => {
+  it("issues NO request, DISCARDS the attempt token, and asks to be navigated", async () => {
     await view.pressAndSettle(finishControl());
 
-    // Not one of the two things a write or a batch request would produce. A link is a navigation, and
-    // `happy-dom` does not perform one, so the honest claim is that NOTHING left the component: no
-    // Server Action, no `router.push`. What a real browser would then do is follow the href, and the
-    // href is a route that exists.
+    // Three things, and the order is part of the requirement rather than an incidental detail:
+    //
+    //   1. NO Server Action. Not one of the things a write or a batch request would produce, so
+    //      `h.requests` is empty. "Finishing writes nothing" is a claim about the SERVER and this is
+    //      the only observation here that can speak to it.
+    //   2. The token is DISCARDED — the attempt is retired in this browser session.
+    //   3. Navigation is REQUESTED, to the component's own exported destination.
+    //
+    // Asserted against the ordered event log rather than as three separate facts, because three
+    // separate facts cannot say "the discard came first" and D3 specifies exactly that.
+    expect(h.events).toEqual(["clear-token", `push:${FINISH_HREF}`]);
     expect(h.requests).toEqual([]);
-    expect(h.pushes).toEqual([]);
+    expect(h.clears).toBe(1);
+    expect(h.pushes).toEqual([FINISH_HREF]);
+    // The navigation target is read out of the component, not written out here, so a change to where
+    // finishing goes cannot leave this test agreeing with a stale copy of it.
+    expect(FINISH_HREF).toBe("/");
+  });
+
+  it("CAN FIRE: the ordered log distinguishes discard-first from navigate-first", () => {
+    // The control for the assertion above, and the reason it is not just "three facts that hold". If
+    // `h.events` could not tell the two orders apart, then `["clear-token", "push:/"]` would pass for a
+    // handler that navigates first and clears afterwards — a different implementation of the same
+    // requirement, and the one D3 rules out.
+    const navigateFirst = (): string[] => {
+      const seen: string[] = [];
+      seen.push("push:/", "clear-token");
+      return seen;
+    };
+
+    expect(navigateFirst()).not.toEqual(["clear-token", "push:/"]);
+    // And the ordering assertion above is anchored to something real: the log is non-empty before the
+    // comparison, so the equality above is not satisfied by two empty arrays.
+    expect(view.container.querySelectorAll("button").length).toBeGreaterThan(1);
+  });
+
+  it("never discards the attempt on UNMOUNT, or on any render", async () => {
+    // The alternative D3 rejects: clearing in a cleanup effect. Such an effect also fires when the
+    // component unmounts for any other reason — a changed key, a navigation past it, a parent
+    // conditional — and would retire attempts the participant never chose to finish.
+    //
+    // There is no way to observe a real unmount-driven clear in this harness without unmounting, so
+    // this asserts the half that is observable and names the half that is not: while the screen is
+    // alive, re-rendering and pressing CONTINUE (which navigates in a real router, and therefore
+    // unmounts this screen) leaves the token alone.
+    await view.pressAndSettle(continueControl());
+    expect(h.clears, "continuing must not retire the attempt").toBe(0);
+
+    view.unmount();
+    // `afterEach` unmounts again, which `happy-dom` accepts; the count is re-read after our own
+    // unmount because an unmount effect WOULD fire here if one existed. That is the real point of this
+    // test: it is the only assertion in the file that would go red if someone "tidied up" the handler
+    // into a cleanup.
+    expect(h.clears, "unmounting must not retire the attempt").toBe(0);
+    view = mount(<FinishedBatch locale="en" />);
   });
 
   it("FINISHING does not trigger continuing", async () => {
@@ -521,20 +688,20 @@ describe("CB-8/CB-9 — finishing writes nothing, and the two controls are indep
   });
 
   it("CONTINUING does not trigger finishing", async () => {
-    // The other direction, from a clean mount. Continuing issues its request; finishing's entire
-    // observable effect is a navigation, and `happy-dom` performs no navigation — so what is asserted
-    // is that finishing's href is untouched and that nothing was pushed as though it had been
-    // followed.
-    const hrefBefore = finishControl().getAttribute("href");
+    // The other direction, from a clean mount. Continuing issues its request; finishing's observable
+    // effects are the discard and the navigation, and neither may happen on continuing's account — a
+    // continuation that retired the attempt would strand the participant who asked for more work.
+    const finishBefore = finishControl();
     h.result = { status: "exhausted" };
     await view.pressAndSettle(continueControl());
 
     expect(h.requests).toHaveLength(1);
-    // Finishing was not repointed at the new batch and was not folded into the request.
-    expect(finishControl().getAttribute("href")).toBe(hrefBefore);
-    expect(finishControl().tagName).toBe("A");
-    // And no navigation was performed on finishing's behalf: the only push is continuing's own, which
-    // an exhausted outcome does not make.
+    // Finishing was not folded into the request and was not made to do continuing's work.
+    expect(finishControl()).toBe(finishBefore);
+    expect(finishControl().tagName).toBe("BUTTON");
+    // Neither of finishing's two effects occurred: no token discarded, and no navigation performed on
+    // its behalf — the only push would be continuing's own, which an exhausted outcome does not make.
+    expect(h.clears).toBe(0);
     expect(h.pushes).toEqual([]);
   });
 

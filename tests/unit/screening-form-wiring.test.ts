@@ -172,6 +172,20 @@ describe("the server still has no access to browser storage", () => {
 
     // All browser-storage access goes through `browser-identity`, so the one key this
     // project writes is provably the only one.
+    //
+    // SCOPE, STATED BECAUSE IT IS THE WHOLE POINT OF THE THREE `not.toMatch` LINES BELOW:
+    // this is a COMPONENT-scoped assertion over a LIST of storage names, and it has always been
+    // both. `tests/unit/guard-weakness.ts` recorded the defect this change discharged — the list
+    // is not a definition, so `indexedDB` or `document.cookie` passed it — and the closed-set
+    // claim now lives in `tests/unit/attempt-storage-enumeration.test.ts`, which is rooted at all
+    // of `src/` rather than at this one file and whose scanner separates code from prose so that
+    // the correct comments in this repository do not trip it.
+    //
+    // What is left here is the part that is specifically about THIS component and worth naming in
+    // place: it must reach storage only through the three helpers. That is a claim about which
+    // names appear, which is what a list is good at, and it is why this test was kept rather than
+    // deleted. Do not widen it into a general storage guard — that is the file that already tried,
+    // and widening it is how a component-scoped assertion becomes a guard that reads as total.
     expect(source).not.toMatch(/globalThis\./);
     expect(source).not.toMatch(/localStorage/);
     expect(source).not.toMatch(/sessionStorage/);

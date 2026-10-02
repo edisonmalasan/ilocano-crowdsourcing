@@ -88,7 +88,7 @@ export async function generateMetadata(): Promise<Metadata> {
  * An infinite loop, on a reachable and ordinary browser configuration.
  *
  * A client island reading the stored identifier has no cookie failure mode, but it has
- * an unavoidable one of its own: the server cannot read `localStorage`, so its first
+ * an unavoidable one of its own: the server cannot read browser storage, so its first
  * render has to be the safe variant and the confirmation appears one frame later. Every
  * participant who legitimately just enrolled would see "you have not started" flash
  * first. There is no browser in this project, so that behaviour could not be verified

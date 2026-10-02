@@ -18,7 +18,7 @@ import { decideResume } from "@/lib/validators/onboarding-flow";
  * identifier, so first-time visitors never see it. That design is rejected here,
  * and the reason is worth stating because it looks like a worse design:
  *
- * A load-time discovery needs a post-hydration `setState`, because `localStorage`
+ * A load-time discovery needs a post-hydration `setState`, because browser storage
  * does not exist during server rendering, and hiding it makes the control's
  * presence a function of state the server never saw.
  *

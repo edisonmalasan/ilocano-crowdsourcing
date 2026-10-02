@@ -146,11 +146,16 @@ export const ENGLISH_COPY = {
   "common.footer.research": "Sadino · Ilocano navigation research",
   "landing.footer.noAccounts": "No accounts. No name, no email, no student number.",
 
-  // -- Returning-validator resume island ------------------------------------
+  // -- Resume island, scoped to ONE browser session ---------------------------------------------
+  // The wording below used to promise recognition across VISITS — "if you have taken part on this
+  // browser before" — and under session-scoped storage that promise is false: once the tab closes the
+  // platform holds nothing, so there is no earlier visit left to recognise. Every string in this island
+  // therefore names the SESSION rather than the browser, the person, or the past, and a reload or a
+  // navigation within one session is exactly what it does still cover.
   "resume.title": "Already started?",
   "resume.body":
-    "If you have taken part on this browser before, you can carry on as the same anonymous " +
-    "validator.",
+    "If you have already started in this browser session, you can carry on as the same anonymous " +
+    "validator until you close the tab.",
   "resume.continue": "Continue as that validator",
   "resume.checking": "Checking…",
   "resume.noneHeld":
@@ -461,13 +466,19 @@ export const ENGLISH_COPY = {
   // It says what is happening rather than how long it is taking: no countdown, no "almost there".
   "validate.finished.continue.working": "Preparing your sentences…",
   // The stop control, and the sentence that says what it does. A label like "Finish" alone invites
-  // the reading that something was closed, and the sentence rules that out — nothing is written,
-  // nothing is reverted, and coming back is still possible. It says NOTHING about how many batches a
-  // participant ought to do, which the localization requirement forbids implying.
+  // the reading that something was closed, and the sentence rules that out — nothing is written and
+  // nothing is reverted. It used to end "and you can still come back another time", which under
+  // session-scoped attempts is the one clause that became FALSE: coming back is not a continuation,
+  // it is a new screened attempt. What replaces it says what finishing actually ends — this attempt,
+  // in this browser session — and that taking part again means starting one.
+  //
+  // It says NOTHING about how many batches a participant ought to do, which the localization
+  // requirement forbids implying, and it promises no resumption, which would be promising a stored
+  // identity this platform deliberately no longer keeps.
   "validate.finished.finish": "Finish for now",
   "validate.finished.finishNote":
-    "Stopping here changes nothing you have already submitted, and you can still come back another " +
-    "time.",
+    "Stopping here changes nothing you have already submitted. It ends this attempt in this browser " +
+    "session — to take part again, start a new one.",
   // The exhausted pool, in this screen's own words. `validateStart.exhausted` cannot be reused here:
   // it says every available sentence "has already been answered by the required number of people",
   // which is COVERAGE vocabulary, and this screen also shows a lifetime figure that is deliberately
@@ -606,11 +617,15 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "landing.footer.noAccounts":
     "Walang account. Walang pangalan, walang email, walang numero ng estudyante.",
 
-  // -- Returning-validator resume island ------------------------------------
+  // -- Resume island, scoped to ONE browser session ---------------------------------------------
+  // Itutumbas ng Filipino ang bawat pahayag sa itaas. Hindi ito ang mahinahang bersyon: sinasabi rin
+  // nito ang session, at ang pagkakapili ng "hanggang isasara mo ang tab" ay ang bahaging nagbibigay
+  // sa kahulugan nito — ang tinatamaan ay hindi lang ang "maaari kang magpatuloy", kundi ang hangganan
+  // nito. Isang session ang tinutukoy, hindi ang browser, hindi ang tao, at hindi ang nakaraan.
   "resume.title": "Nagsimula ka na ba?",
   "resume.body":
-    "Kung may ginawa ka na sa browser na ito, maaari mong magpatuloy bilang parehong anonymous " +
-    "na validator.",
+    "Kung may nagsimula ka na sa browser session na ito, maaari mong magpatuloy bilang parehong " +
+    "anonymous na validator hanggang isasara mo ang tab.",
   "resume.continue": "Magpatuloy bilang validator na iyon",
   "resume.checking": "Sinusuri…",
   "resume.noneHeld":
@@ -885,13 +900,17 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.finished.continue.working": "Inihahanda ang mga pangungusap…",
   // Ang control na tumitigil, at ang pangungusap na sinasabi kung ano ang ginagawa nito. Ang label
   // na "Tapusin" lamang ay nag-aanyaya ng pagbasa na may sarado na, at inaalis ng pangungusap na iyon
-  // ang tanawin — walang isinusulat, walang ibinabalik, at puwede pa ring bumalik. Walang sinasabi
-  // tungkol sa ilang batch ang dapat ang kalahok, at iyon ang ipinagbabawal ng kinakailangan sa
-  // lokalisasyon.
+  // ang tanawin — walang isinusulat, walang ibinabalik. Ang dating huling pangungusap ("puwede ka pa
+  // ring bumalik sa ibang pagkakataon") ang unang naging MALI, dahil sa session-scoped na attempt hindi
+  // na pagpapatuloy ang pagbalik kundi bagong pagsubok. Ang pumalit sa lugar nito ay sinasabi kung ano
+  // talaga ang tinatapos: ang pagsubok na ito, sa browser session na ito.
+  //
+  // Walang sinasabi tungkol sa ilang batch ang dapat ang kalahok, at iyon ang ipinagbabawal ng
+  // kinakailangan sa lokalisasyon.
   "validate.finished.finish": "Tapusin na muna",
   "validate.finished.finishNote":
-    "Walang binabago sa ipinasa mo kung tatapusin mo na dito, at puwede ka pa ring bumalik sa ibang " +
-    "pagkakataon.",
+    "Walang binabago sa ipinasa mo kung tatapusin mo na dito. Tinatapos nito ang pagsubok na ito sa " +
+    "browser session na ito — para makilahok muli, magsimula ng bago.",
   // Ang naubos na pool, sa sariling salita ng screen na ito. Hindi maaaring gamitin ang
   // `validateStart.exhausted`: sinasabi nito na "sagot na ng kinakailangang bilang ng tao" ang bawat
   // pangungusap, at iyon ay salitang COVERAGE — samantalang ang lifetime figure sa screen na ito ay

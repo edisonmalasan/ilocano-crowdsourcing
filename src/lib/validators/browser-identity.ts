@@ -3,16 +3,16 @@
 import { anonymousValidatorIdSchema, type AnonymousValidatorId } from "@/schemas/validator";
 
 /**
- * Browser-local anonymous identity.
+ * Browser-local PARTICIPATION ATTEMPT identity.
  *
  * ============================================================================
  * WHAT THIS IS AND IS NOT
  * ============================================================================
- * This is a CONVENIENCE TOKEN, not authority. It lets a returning visitor be
- * recognized without a database round trip on every page load. It decides
- * nothing: the server re-verifies that the identifier names a real validator
- * before restoring anyone, and a value that fails validation is discarded rather
- * than sent.
+ * This is a CONVENIENCE TOKEN, not authority. It lets a participant be recognised
+ * within the attempt they are already in, without a database round trip on every page
+ * load. It decides nothing: the server re-verifies that the identifier names a real
+ * validator before restoring anyone, and a value that fails validation is discarded
+ * rather than sent.
  *
  * It holds the identifier and nothing else — no screening answer, no batch, no
  * research response, no timestamp, no counter. That is asserted by test rather
@@ -20,28 +20,68 @@ import { anonymousValidatorIdSchema, type AnonymousValidatorId } from "@/schemas
  * research data on the client where the anonymity guarantee no longer covers it.
  *
  * ============================================================================
- * WHY localStorage AND NOT A COOKIE
+ * WHY sessionStorage AND NOT localStorage — THE ONE LINE THAT CHANGED
  * ============================================================================
- * An httpOnly cookie would let a Server Component read the identifier and render
- * "welcome back" with no client round trip. It would also transmit the identifier
- * to the server on *every* request to this origin, which is a worse fit for a
- * project whose headline property is anonymity than a value that leaves the
- * browser only when the participant asks to resume. The cost is paid deliberately:
- * the server cannot read this, so resume is an explicit client action rather than a
- * server-side render. See design.md D2.
+ * This module used to write to `localStorage`, and it used to be right for the
+ * model that was in force then: one browser profile was one long-lived
+ * "validator", and a return visit resumed that person. The approved thesis
+ * methodology was corrected, and the unit of participation is now an ATTEMPT —
+ * a fresh anonymous identity created at screening, retired when the participant
+ * finishes or when the browser session ends, and re-screened next time.
+ *
+ * `localStorage` therefore became the WRONG LIFETIME rather than a weaker
+ * implementation of the right one. An identifier in `localStorage` outlives every
+ * session, which silently reinstates the never-ending validator: one browser
+ * profile would answer entries for the life of the study under a single identity,
+ * and a person could never take part afresh. The defect is not that `localStorage`
+ * is less private. It is that its lifetime is the lifetime of the DEVICE.
+ *
+ * The three properties this module's storage must have, and why each is
+ * `sessionStorage`:
+ *
+ *   1. IT ENDS WITH THE ATTEMPT. Supplied by the platform, not by a rule the
+ *      client could decline to apply — see design.md D1 for the two alternatives
+ *      that were rejected (a cookie, which needs a server-side participation-end
+ *      fact the approved method forbids inventing; and `localStorage` plus an
+ *      expiry timestamp, which is a participation-end rule no requirement states
+ *      and which a client-held clock cannot enforce).
+ *   2. IT SURVIVES RELOAD AND NAVIGATION. `sessionStorage` does, within the tab.
+ *      This is why every caller reads the identifier at PRESS time and not during
+ *      render: storage does not exist while the server renders, and a read during
+ *      render would make the first client render disagree with the first server
+ *      one.
+ *   3. IT IS NEVER SENT ANYWHERE BY ITSELF. It leaves the browser only when the
+ *      participant asks to resume.
+ *
+ * ============================================================================
+ * THE COST, STATED RATHER THAN DISMISSED
+ * ============================================================================
+ * `sessionStorage` is scoped to a TAB. A participant who opens this study in a
+ * second tab is in a second browser session, and therefore in a second attempt.
+ * That is a real consequence and there is no mitigation that keeps property 1; it
+ * is recorded at design.md's Risks rather than discovered by a participant.
  *
  * The upside of that cost: a shared device never hands one person another's
- * session without a visible action.
+ * attempt without a visible action, and nothing survives the tab.
+ *
+ * ============================================================================
+ * WHAT THIS MODULE DELIBERATELY DOES NOT DO
+ * ============================================================================
+ * It does not read, migrate, or delete a `localStorage` value left by an earlier
+ * version of the platform. See design.md D5: removing it would require code that
+ * touches `localStorage`, which is exactly what the requirement forbids, and it
+ * would turn every page load into a write. The value is residue, it is unread,
+ * and it is asserted unread by test so it cannot quietly start being read.
  */
 
 /** The one key this module owns. Prefixed so it is unambiguous in a storage inspector. */
 const IDENTITY_KEY = "sadino.anonymous-validator-id";
 
 /**
- * `localStorage` access is the ONLY deliberately-caught failure in this module.
+ * `sessionStorage` access is the ONLY deliberately-caught failure in this module.
  *
  * Private browsing, disabled site data, and a sandboxed iframe all make
- * `localStorage` throw on ACCESS. Losing the resume convenience must never look
+ * `sessionStorage` throw on ACCESS. Losing the resume convenience must never look
  * like a failed enrollment, so access is guarded and reported as "absent".
  *
  * The guard is deliberately narrow: it wraps the accessors and nothing else, so a
@@ -58,7 +98,7 @@ const IDENTITY_KEY = "sadino.anonymous-validator-id";
  */
 function safeStorage(): Storage | null {
   try {
-    const candidate = globalThis.localStorage;
+    const candidate = globalThis.sessionStorage;
     if (!candidate) return null;
     if (typeof candidate.length !== "number") return null;
     return candidate;
@@ -107,7 +147,14 @@ export function writeStoredValidatorId(id: AnonymousValidatorId): void {
   }
 }
 
-/** Forgets the identifier. Used when the server does not recognise it. */
+/**
+ * Forgets the identifier.
+ *
+ * Used when the server does not recognise it, and when a participant chooses to
+ * finish — which is what RETIRES an attempt. Retiring one writes nothing to the
+ * server: see `batch-completion`'s finishing requirement, and design.md D3 for why
+ * this is a control rather than a link with a cleanup effect.
+ */
 export function clearStoredValidatorId(): void {
   const storage = safeStorage();
   if (storage === null) return;

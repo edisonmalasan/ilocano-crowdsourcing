@@ -9,6 +9,26 @@ import {
 import type { AnonymousValidatorId } from "@/schemas/validator";
 
 /**
+ * The browser-local PARTICIPATION ATTEMPT identity.
+ *
+ * This file used to test a `localStorage` token, and every case below is the same case against
+ * `sessionStorage` — same names, same fake, same assertions. **Only the storage changed, and the
+ * reason it had to is in design.md D1:** the approved methodology makes a *participation attempt*
+ * the unit of interest, and a token whose lifetime is the device's cannot be scoped to an attempt.
+ *
+ * Two cases are NEW and are the ones that could not have existed before:
+ *
+ *   - one that stubs BOTH storages and asserts the module reaches only the session-scoped one. The
+ *     old file could not have that test, because it was the `localStorage` module.
+ *   - one that seeds a legacy long-lived value and asserts it is left UNREAD and UNDELETED
+ *     (design.md D5). Deleting it would require code that touches `localStorage`, which is exactly
+ *     what the requirement forbids, so the residue is specified rather than quietly cleaned up.
+ *
+ * Every pre-existing case is retained with its name. Nothing here was dropped: the count is the
+ * previous count plus the two above.
+ */
+
+/**
  * A recording `Storage` that logs every operation, so a test can assert not just
  * what was read but WHICH KEYS were touched — the claim that this module owns
  * exactly one key is otherwise unverifiable.
@@ -48,10 +68,9 @@ function installStorage(value: unknown): ReturnType<typeof createFakeStorage> {
   if (value !== undefined) {
     fake.entries.set(ANONYMOUS_IDENTITY_STORAGE_KEY, value as string);
   }
-  vi.stubGlobal("localStorage", fake.storage);
+  vi.stubGlobal("sessionStorage", fake.storage);
   return fake;
 }
-
 const VALID_ID = "VAL_0000abcd" as AnonymousValidatorId;
 
 describe("browser-local anonymous identity", () => {
@@ -137,8 +156,8 @@ describe("browser-local anonymous identity", () => {
     }
   });
 
-  it("reports absent when localStorage is entirely unavailable", () => {
-    vi.stubGlobal("localStorage", undefined);
+  it("reports absent when sessionStorage is entirely unavailable", () => {
+    vi.stubGlobal("sessionStorage", undefined);
 
     expect(readStoredValidatorId()).toBeNull();
     expect(() => writeStoredValidatorId(VALID_ID)).not.toThrow();
@@ -147,7 +166,7 @@ describe("browser-local anonymous identity", () => {
 
   it("reports absent when accessing storage throws", () => {
     const throwing = createFakeStorage({ throwOn: "get" });
-    vi.stubGlobal("localStorage", throwing.storage);
+    vi.stubGlobal("sessionStorage", throwing.storage);
 
     expect(readStoredValidatorId()).toBeNull();
   });
@@ -158,15 +177,15 @@ describe("browser-local anonymous identity", () => {
   // the first: it gets past the availability check and fails on the read.
   //
   // The other two are the ones that actually fire in the wild. Safari in private mode,
-  // and any browser with third-party storage blocked, make ACCESSING `localStorage`
+  // and any browser with third-party storage blocked, make ACCESSING `sessionStorage`
   // throw a SecurityError on the property access itself - which is a getter, so it
   // throws before `length` is ever reached.
   // ---------------------------------------------------------------------------------
-  it("reports absent when ACCESSING localStorage throws, before any method is called", () => {
+  it("reports absent when ACCESSING sessionStorage throws, before any method is called", () => {
     // A throwing getter, exactly as a browser implements private-mode storage: the
     // property access itself raises a SecurityError, before any method is reached.
     const globalWithThrowingStorage = Object.create(globalThis) as typeof globalThis;
-    Object.defineProperty(globalWithThrowingStorage, "localStorage", {
+    Object.defineProperty(globalWithThrowingStorage, "sessionStorage", {
       configurable: true,
       get() {
         throw new DOMException("The operation is insecure.", "SecurityError");
@@ -184,7 +203,7 @@ describe("browser-local anonymous identity", () => {
   });
 
   it("reports absent when the storage object has no numeric length", () => {
-    // Some embedded and instrumented webviews expose a `localStorage` object whose
+    // Some embedded and instrumented webviews expose a `sessionStorage` object whose
     // `length` is not a number. `typeof` rather than a truthiness check, so a `length` of
     // 0 - a genuinely empty store - is still treated as usable.
     //
@@ -201,7 +220,7 @@ describe("browser-local anonymous identity", () => {
     // the single thing preventing it being read. Now deleting the guard returns the
     // identifier and this test goes red.
     const { storage } = createFakeStorage();
-    vi.stubGlobal("localStorage", storage);
+    vi.stubGlobal("sessionStorage", storage);
     writeStoredValidatorId(VALID_ID);
     expect(readStoredValidatorId()).toBe(VALID_ID); // the control: storage works
 
@@ -220,7 +239,7 @@ describe("browser-local anonymous identity", () => {
     // resume for a first-time visitor.
     const { storage } = createFakeStorage();
     Object.defineProperty(storage, "length", { get: () => 0 });
-    vi.stubGlobal("localStorage", storage);
+    vi.stubGlobal("sessionStorage", storage);
 
     expect(readStoredValidatorId()).toBeNull(); // nothing stored, but storage WORKED
     expect(() => writeStoredValidatorId(VALID_ID)).not.toThrow();
@@ -229,7 +248,7 @@ describe("browser-local anonymous identity", () => {
 
   it("does not fail enrollment when writing storage throws", () => {
     const throwing = createFakeStorage({ throwOn: "set" });
-    vi.stubGlobal("localStorage", throwing.storage);
+    vi.stubGlobal("sessionStorage", throwing.storage);
 
     // The caller has already enrolled successfully at this point; losing the
     // resume convenience must not surface as a failure.
@@ -238,7 +257,7 @@ describe("browser-local anonymous identity", () => {
 
   it("does not fail when removing storage throws", () => {
     const throwing = createFakeStorage({ throwOn: "remove" });
-    vi.stubGlobal("localStorage", throwing.storage);
+    vi.stubGlobal("sessionStorage", throwing.storage);
 
     expect(() => clearStoredValidatorId()).not.toThrow();
   });
@@ -247,10 +266,48 @@ describe("browser-local anonymous identity", () => {
     // A throwing read must not trigger a clear(): the value may be perfectly good
     // and the participant may still be able to resume on a future visit.
     const throwing = createFakeStorage({ throwOn: "get" });
-    vi.stubGlobal("localStorage", throwing.storage);
+    vi.stubGlobal("sessionStorage", throwing.storage);
 
     readStoredValidatorId();
 
     expect(throwing.operations.some((operation) => operation.op === "removeItem")).toBe(false);
+  });
+
+  // ---------------------------------------------------------------------------------
+  // The two cases this change adds. Neither could exist while the module wrote to
+  // `localStorage`, because in that world `localStorage` WAS the storage it was supposed to use.
+  // ---------------------------------------------------------------------------------
+  it("reaches only session-scoped storage, and never storage that outlives the session", () => {
+    // BOTH are stubbed, and the assertion is on the long-lived one's OPERATION LOG rather than on
+    // the return value. An assertion on the return value alone is satisfied by a module that read
+    // `localStorage` and happened to find nothing there.
+    const session = createFakeStorage();
+    const longLived = createFakeStorage();
+    vi.stubGlobal("sessionStorage", session.storage);
+    vi.stubGlobal("localStorage", longLived.storage);
+
+    writeStoredValidatorId(VALID_ID);
+    expect(readStoredValidatorId()).toBe(VALID_ID);
+    clearStoredValidatorId();
+
+    expect(session.operations.length).toBeGreaterThan(0);
+    expect(longLived.operations).toEqual([]);
+  });
+
+  it("leaves a legacy long-lived value UNREAD and UNDELETED", () => {
+    // Design.md D5. The residue is specified rather than cleaned up: deleting it needs code that
+    // touches `localStorage`, which is what the requirement forbids, and it would turn every page
+    // load into a write. Asserting UNREAD is what stops the residue from quietly becoming live.
+    const session = createFakeStorage();
+    const longLived = createFakeStorage();
+    // A value that is a perfectly VALID identifier, so a module that reached for it would find one
+    // and this test could not tell "did not look" from "looked and found nothing".
+    longLived.entries.set(ANONYMOUS_IDENTITY_STORAGE_KEY, VALID_ID);
+    vi.stubGlobal("sessionStorage", session.storage);
+    vi.stubGlobal("localStorage", longLived.storage);
+
+    expect(readStoredValidatorId()).toBeNull();
+    expect(longLived.operations).toEqual([]);
+    expect(longLived.entries.get(ANONYMOUS_IDENTITY_STORAGE_KEY)).toBe(VALID_ID);
   });
 });
