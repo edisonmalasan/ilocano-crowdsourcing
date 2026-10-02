@@ -114,7 +114,7 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
         setNotice(t("screening.resumed"));
       } else {
         // A fresh enrollment. Storing the identifier is the CLIENT's job, not the
-        // action's: the server has no localStorage, and a module that reached for it
+        // action's: the server has no browser storage, and a module that reached for it
         // could only ever run in a browser.
         writeStoredValidatorId(decision.validatorId);
       }
@@ -147,7 +147,7 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
    *
    * The check happens at SUBMIT time, not by revealing a resume affordance when the
    * screen loads. A load-time reveal needs a post-hydration `setState`, because
-   * `localStorage` does not exist during server rendering.
+   * browser storage does not exist during server rendering.
    *
    * An earlier version of this comment justified the choice by saying the resulting
    * "cascading render is the pattern the React lint rules rightly reject". Half of that

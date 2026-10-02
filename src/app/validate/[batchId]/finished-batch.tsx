@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
-import { Button, linkButtonClasses } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { requestBatchAction } from "@/lib/allocation/actions";
 import type { InterfaceLocale } from "@/lib/domain/locale";
 import { translatorFor } from "@/lib/i18n/copy";
@@ -14,7 +13,7 @@ import {
   decideContinueBatch,
   type ContinueBatchDecision,
 } from "@/lib/validation/continue-batch-flow";
-import { readStoredValidatorId } from "@/lib/validators/browser-identity";
+import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/browser-identity";
 
 /**
  * ============================================================================
@@ -32,20 +31,37 @@ import { readStoredValidatorId } from "@/lib/validators/browser-identity";
  *              it — two paths to allocation would be two paths that can disagree about what
  *              allocation does.
  *
- *   FINISH   — a `<Link>`, and it performs no write at all. No participation record, no completion
- *              marker, no abandonment flag, because the approved method defines no participation-end
- *              event and inventing one would create a fact about an anonymous participant that
- *              nothing asks for (`design.md` D3). Everything already submitted stays exactly as
- *              submitted, and a participant who returns tomorrow is still eligible to continue.
+ *   FINISH   — a `<button>` that discards the attempt token and then navigates to the same internal
+ *              `/`. It still issues NO Server Action and writes no participation record, no
+ *              completion marker and no abandonment flag, because the approved method defines no
+ *              participation-end event and inventing one would create a fact about an anonymous
+ *              participant that nothing asks for (`design.md` D3). What it does instead is END THE
+ *              ATTEMPT IN THIS BROWSER SESSION: the token is the whole of what makes a later visit a
+ *              continuation rather than a new participation, and leaving it behind would mean a
+ *              participant who pressed "Finish" was silently resumed into the same attempt when they
+ *              came back. Everything already submitted stays exactly as submitted, and taking part
+ *              again means screening again and being issued a fresh attempt.
  *
  * ============================================================================
- * WHY THE FINISH LINK IS AN INTERNAL HREF TO THE LANDING PAGE
+ * WHY FINISH GOES TO THE LANDING PAGE, AND WHY IT IS A CONTROL RATHER THAN A LINK
  * ============================================================================
  * `/` is the only route that is not part of the validation sequence, so it is the only destination
  * that neither asks for another batch nor implies one is waiting. `/validate` and `/ready` both
  * lead onward to a fresh batch, and putting "Finish for now" one click away from "and here is
- * another batch" would make the two controls say opposite things. It is an INTERNAL href on
+ * another batch" would make the two controls say opposite things. The destination is INTERNAL on
  * purpose: a link to somewhere outside this study is a link this project cannot vouch for.
+ *
+ * It was a `<Link>` until this change, because it had nothing to do but navigate. It is a
+ * `<button>` now because it has one more thing to do first, and a link cannot: it discards the
+ * attempt token (D3). **The clear happens before the navigation** — `router.push` is not awaited by
+ * this handler, so the order is specified rather than observed, and the alternative ordering is the
+ * kind of thing that silently becomes load-bearing the day the navigation is awaited.
+ *
+ * **There is deliberately no cleanup effect.** An effect that cleared the token on unmount would also
+ * fire when the component unmounts for any other reason — a re-render that changes its key, a
+ * navigation past it, a parent conditional — and would retire attempts the participant never chose
+ * to finish. That is the same "declining to continue records nothing" property this control exists
+ * to protect, so the token is discarded in exactly one place: the handler below.
  *
  * ============================================================================
  * WHAT THE CLIENT IS NOT TOLD
@@ -57,7 +73,7 @@ import { readStoredValidatorId } from "@/lib/validators/browser-identity";
  * back in. A DOM test pastes a real instruction into the action's response and asserts it never
  * reaches the document.
  *
- * The identity is read at PRESS time for the reason `start-batch.tsx` records: `localStorage` does
+ * The identity is read at PRESS time for the reason `start-batch.tsx` records: browser storage does
  * not exist while the server renders, so reading it during render would make the first client
  * render disagree with the first server render.
  */
@@ -169,22 +185,31 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
         </Button>
 
         {/*
-          The finish control. A LINK, with no handler at all: there is no `onClick`, no form, and
-          nothing to submit. That is the whole of `design.md` D3 — declining to continue is not a
-          datum, so the honest implementation is one that writes nothing because it has nothing to
-          say to the server.
+          The finish control, and the ONE place in the application where an attempt token is
+          discarded on purpose. It issues no Server Action — declining to continue is not a datum,
+          so there is nothing to say to the server — and it is not a link, because a link cannot
+          clear anything before it navigates. `design.md` D3.
+
+          The order inside the handler is the specification: discard, then navigate.
         */}
-        <Link
-          className={linkButtonClasses({ variant: "secondary", size: "lg", fullWidth: true })}
-          href={FINISH_HREF}
+        <Button
+          type="button"
+          variant="secondary"
+          size="lg"
+          fullWidth
+          onClick={() => {
+            clearStoredValidatorId();
+            router.push(FINISH_HREF);
+          }}
         >
           {t("validate.finished.finish")}
-        </Link>
+        </Button>
 
         {/*
           What finishing means, in words, because a control labelled "Finish for now" invites the
-          reading that something was closed. Nothing was. This is the sentence that keeps D3's
-          honest reading available, and it deliberately says nothing about how many batches a
+          reading that something was closed. Nothing was: no response is withdrawn and no entry is
+          unlocked. What it does end is THIS participation attempt in THIS browser session, and the
+          sentence says so in both catalogs. It deliberately says nothing about how many batches a
           participant should do — the localization requirement forbids implying that.
         */}
         <p className="text-small text-ink-faint">{t("validate.finished.finishNote")}</p>

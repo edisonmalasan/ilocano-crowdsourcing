@@ -32,7 +32,7 @@ import { readStoredValidatorId } from "@/lib/validators/browser-identity";
  * ============================================================================
  * WHY THE IDENTITY IS READ AT PRESS TIME AND NOT DURING RENDER
  * ============================================================================
- * `readStoredValidatorId()` reads `localStorage`, which does not exist while the server renders, so
+ * `readStoredValidatorId()` reads browser storage, which does not exist while the server renders, so
  * calling it in the component body would make the first server-rendered markup disagree with the
  * first client-rendered markup — a hydration mismatch whose visible symptom is the whole card
  * changing on arrival. The alternative of reading in an effect and rendering optimistically was
@@ -57,7 +57,7 @@ import { readStoredValidatorId } from "@/lib/validators/browser-identity";
  * ============================================================================
  * WHY THE LOOKUP IS AN EFFECT AND NOT PART OF RENDER
  * ============================================================================
- * The same reason the identity is not read during render: `localStorage` does not exist while the
+ * The same reason the identity is not read during render: browser storage does not exist while the
  * server renders, and `requestInterruptedBatchAction` is a Server Action that must not run there. An
  * effect runs once, after the participant's own browser has taken over, and it is a READ - so issuing
  * it on mount costs a query and writes nothing (`design.md` D8).
@@ -103,9 +103,9 @@ export function StartBatch({ locale }: StartBatchProps) {
    * Holding one value rather than a status enum is what makes that structural — a future edit cannot
    * branch on a distinction this state does not hold.
    *
-   * `storedId` is state rather than a fresh `localStorage` read, for the reason the effect's comment
+   * `storedId` is state rather than a fresh storage read, for the reason the effect's comment
    * gives: a value read during render makes the first client render disagree with the first server
-   * render, because `localStorage` does not exist on the server. The press-time read below is separate
+   * render, because browser storage does not exist on the server. The press-time read below is separate
    * and fresh; THIS one exists only so the decision has an identity to reason about.
    *
    * ONE OBJECT, not two `useState` calls, because the two are written together. Two would admit the

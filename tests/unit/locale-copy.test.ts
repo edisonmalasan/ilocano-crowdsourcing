@@ -1164,6 +1164,247 @@ describe("the finished screen's own copy", () => {
   });
 });
 
+/**
+ * The copy that used to describe a RETURNING PERSON, and now describes one browser SESSION.
+ *
+ * `validator-onboarding` gained a requirement in the `session-attempt-identity` change: the resume
+ * copy "SHALL NOT state or imply that the platform remembers a person from a previous visit", because
+ * under session-scoped storage it holds nothing from a previous session. Two strings said otherwise —
+ * `resume.body` opened with "If you have taken part on this browser before", and
+ * `validate.finished.finishNote` promised "you can still come back another time".
+ *
+ * A banned-phrase list is a poor guard on its own, and this block is built so the list is not the
+ * whole of it: the ENUMERATION below reads every catalog string that mentions coming back, continuing,
+ * returning, or being recognised, and pins the resulting key set as a CLOSED set. The count read is
+ * asserted too, because "no violations found" and "nothing was searched" print the same thing.
+ */
+describe("the copy that described a returning person, and now describes one session", () => {
+  /**
+   * Vocabulary that, in this project's copy, is how a claim about recognition ACROSS sessions gets
+   * made. Matched case-insensitively against every string in BOTH catalogs.
+   *
+   * A list, and stated as one: this is a set of idioms somebody chose, not a definition of "claims
+   * recognition". What closes it is the enumeration's own assertions below — the pinned key set makes
+   * a NEW string in this vocabulary fail by name, whatever it says, and the `CAN FIRE` control proves
+   * the vocabulary actually matches text rather than silently matching nothing.
+   */
+  const RECOGNITION_VOCABULARY = [
+    "come back",
+    "coming back",
+    "come back to",
+    "return",
+    "returning",
+    "recognis",
+    "recogniz",
+    "before",
+    "another time",
+    "resume",
+    "resum",
+    "bumalik",
+    "balik",
+    "kilala",
+    "kinikilala",
+    "na ba",
+    "muling",
+  ] as const;
+
+  const CATALOGS: ReadonlyArray<readonly [name: string, catalog: Record<string, string>]> = [
+    ["en", ENGLISH_COPY as unknown as Record<string, string>],
+    ["fil", FILIPINO_COPY as unknown as Record<string, string>],
+  ];
+
+  /** Every key whose string mentions any recognition idiom, as `locale:key`. */
+  function mentionsRecognition(): string[] {
+    const found: string[] = [];
+    for (const [locale, catalog] of CATALOGS) {
+      for (const [key, value] of Object.entries(catalog)) {
+        const lower = value.toLowerCase();
+        if (RECOGNITION_VOCABULARY.some((term) => lower.includes(term))) {
+          found.push(`${locale}:${key}`);
+        }
+      }
+    }
+    return found.sort();
+  }
+
+  it("READS a non-empty catalog through every vocabulary term, so the enumeration is a measurement", () => {
+    // The control for the whole block. A vocabulary list that matches nothing makes every other
+    // assertion here pass for the wrong reason, and this project has found four of those.
+    for (const term of RECOGNITION_VOCABULARY) {
+      const sample = `A sentence containing ${term} in the middle.`;
+      expect(sample.toLowerCase(), `the term ${JSON.stringify(term)} matches nothing`).toContain(
+        term,
+      );
+    }
+    const keys = Object.keys(ENGLISH_COPY);
+    expect(keys.length).toBeGreaterThan(50);
+    // And both catalogs are read: the same key set twice would be a guard that only ever looked at one.
+    expect(Object.keys(FILIPINO_COPY).sort()).toEqual([...keys].sort());
+  });
+
+  it("pins the CLOSED set of strings that use recognition vocabulary, so a new one fails by name", () => {
+    // THIS is the enumeration task 5.3 asks for, and the count read is asserted before the set so a
+    // failure says how many strings were examined rather than only which one changed. Re-derive the
+    // number by re-running this test after editing any string in either catalog: a change here is a
+    // deliberate decision to let a string use this vocabulary, and the reason belongs in a comment.
+    //
+    // **THE TWO HALVES ARE NOT THE SAME SIZE AND THAT IS NOT A BUG.** 11 English keys and 13 Filipino
+    // ones are selected, because roughly half the vocabulary is language-specific — `bumalik`,
+    // `kinikilala`, `na ba` and `muling` cannot occur in an English string, and `recognis`/`another
+    // time` are not how the Filipino catalog makes the same claims. That asymmetry is the useful part:
+    // it means the enumeration is really reading both catalogs rather than matching one list twice,
+    // and the `fil:` half containing keys the `en:` half does not is what shows it.
+    const found = mentionsRecognition();
+
+    expect(found.length).toBe(24);
+    expect(found).toEqual([
+      "en:common.beforeYouStart",
+      "en:ready.next.body1",
+      "en:ready.next.body2",
+      "en:ready.starting.item2",
+      "en:ready.title",
+      "en:resume.unknown",
+      "en:screening.resumeNote",
+      "en:start.beforeAnswer.item3",
+      "en:start.beforeAnswer.label",
+      "en:validate.finished.failure.invalid",
+      "en:validateStart.failure.invalid",
+      "fil:landing.before.item1",
+      "fil:notFound.cta",
+      "fil:ready.next.body1",
+      "fil:ready.next.body2",
+      "fil:ready.starting.item2",
+      "fil:resume.title",
+      "fil:resume.unknown",
+      "fil:start.beforeAnswer.item3",
+      "fil:validate.finished.failure.invalid",
+      "fil:validate.finished.failure.persistence",
+      "fil:validateStart.failure.invalid",
+      "fil:validateStart.noIdentity",
+      "fil:validateStart.resume.title",
+    ]);
+  });
+
+  it("CAN FIRE: the vocabulary finds a cross-session claim in either language", () => {
+    // The control for the closed set above. Hand-built strings rather than a mutated catalog, so this
+    // file does not have to edit `copy.ts` to prove its own detector works — the same reasoning
+    // `attempt-storage-enumeration.test.ts` uses for its fixtures.
+    const englishClaim =
+      "If you have taken part on this browser before, we will recognise you when you return.";
+    expect(englishClaim.toLowerCase()).toMatch(/before/);
+    expect(englishClaim.toLowerCase()).toMatch(/return|returning/);
+    const filipinoClaim = "Kung may ginawa ka na sa browser na ito, puwede ka pa ring bumalik.";
+    expect(filipinoClaim.toLowerCase()).toMatch(/bumalik/);
+    // And the guard's own predicate, applied to a one-entry catalog, selects it — the same code path
+    // the enumeration above takes.
+    const oneEntry: Record<string, string> = { "probe.key": englishClaim };
+    const selected = Object.entries(oneEntry)
+      .filter(([, value]) =>
+        RECOGNITION_VOCABULARY.some((term) => value.toLowerCase().includes(term)),
+      )
+      .map(([key]) => `en:${key}`);
+    expect(selected).toEqual(["en:probe.key"]);
+  });
+
+  it("CAN FIRE: a NEW string in this vocabulary would fail the closed set by name", () => {
+    // The closed set above is a guard, and a guard that cannot fail is a decoration. This proves it
+    // can: the enumeration is run over a copy of the real English catalog with one extra key added,
+    // and the selection grows by exactly that key. It does not touch `copy.ts`, so the real assertion
+    // above keeps measuring the real catalogs.
+    const withExtra: Record<string, string> = {
+      ...(ENGLISH_COPY as unknown as Record<string, string>),
+      "probe.onlyKey": "Come back to this browser whenever you like.",
+    };
+    const selected = Object.entries(withExtra)
+      .filter(([, value]) =>
+        RECOGNITION_VOCABULARY.some((term) => value.toLowerCase().includes(term)),
+      )
+      .map(([key]) => `en:${key}`);
+
+    // The real set has no `probe.onlyKey`, so the real assertion forbids it by name.
+    expect(mentionsRecognition()).not.toContain("en:probe.onlyKey");
+    expect(selected).toContain("en:probe.onlyKey");
+    // Compared against the REAL English half, not the combined total: `withExtra` holds one catalog,
+    // and comparing 12 against 24 would be a mismatch of measurement rather than of behaviour.
+    const realEnglishHalf = mentionsRecognition().filter((k) => k.startsWith("en:"));
+    expect(selected.length).toBe(realEnglishHalf.length + 1);
+    // And the Filipino half is genuinely absent from this selection, which is what shows the two
+    // catalogs are read separately rather than one standing in for the other.
+    expect(selected.some((k) => k.startsWith("fil:"))).toBe(false);
+  });
+
+  it("says nothing in EITHER language about having taken part on this browser BEFORE", () => {
+    // The specific clause `resume.body` carried, asserted as an absence in both catalogs rather than
+    // as the presence of a replacement — an absence is the property the requirement states, and a
+    // presence check would pass on any rewrite that kept the claim.
+    for (const [locale, catalog] of CATALOGS) {
+      const resume = catalog["resume.body"] ?? "";
+      expect(resume.length, `${locale} resume.body is empty`).toBeGreaterThan(20);
+      expect(resume.toLowerCase(), `${locale} resume.body claims a previous visit`).not.toMatch(
+        /before/,
+      );
+      expect(resume.toLowerCase(), `${locale} resume.body claims a previous visit`).not.toMatch(
+        /(take|taken|participat|gininawa|nagawa)/,
+      );
+      // And it DOES name the session, which is the half that makes it an answer rather than a deletion.
+      expect(resume.toLowerCase(), `${locale} resume.body does not name the session`).toMatch(
+        /session/,
+      );
+    }
+  });
+
+  it("tells a participant that finishing ends the ATTEMPT, and promises no resumption", () => {
+    for (const [locale, catalog] of CATALOGS) {
+      const note = catalog["validate.finished.finishNote"] ?? "";
+      // Unchanged in substance: nothing submitted is altered. This is the reassurance the sentence
+      // exists for, and losing it to satisfy the session requirement would be a real regression.
+      expect(note.length, `${locale} finishNote is empty`).toBeGreaterThan(20);
+      // The clause that became false: "you can still come back another time" is a promise of
+      // continuation, and under session-scoped attempts coming back is a new screened attempt.
+      expect(note.toLowerCase(), `${locale} finishNote promises a return`).not.toMatch(
+        /come back|coming back|another time|bumalik/,
+      );
+      // What it says instead, in each language's own words for it.
+      const sessionNamed = /session/.test(note.toLowerCase());
+      expect(sessionNamed, `${locale} finishNote does not name the session`).toBe(true);
+      const attemptNamed =
+        /attempt/.test(note.toLowerCase()) || /pagsubok/.test(note.toLowerCase());
+      expect(attemptNamed, `${locale} finishNote does not name what ended`).toBe(true);
+      const againNamed =
+        /again|new one/.test(note.toLowerCase()) || /muli|bago/.test(note.toLowerCase());
+      expect(againNamed, `${locale} finishNote does not say what taking part again means`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("renders both rewritten strings in the language actually rendered, not only in the catalog", () => {
+    // The catalog-level assertions above read the data. This one goes through `translatorFor`, because
+    // a catalog can be correct and a component can still render a different string — and the
+    // requirement is about what the participant is shown.
+    for (const locale of INTERFACE_LOCALES) {
+      const t = translatorFor(locale);
+      const body = t("resume.body");
+      const note = t("validate.finished.finishNote");
+      expect(body.length, `${locale} resume.body rendered empty`).toBeGreaterThan(20);
+      expect(note.length, `${locale} finishNote rendered empty`).toBeGreaterThan(20);
+      expect(
+        body.toLowerCase(),
+        `${locale} rendered resume.body claims a previous visit`,
+      ).not.toMatch(/before/);
+      expect(note.toLowerCase(), `${locale} rendered finishNote promises a return`).not.toMatch(
+        /come back|another time|bumalik/,
+      );
+      // And each language rendered its OWN string rather than falling back to English — the failure
+      // this project has already had to catch once, for a missing Filipino key.
+      if (locale === "fil") {
+        expect(body).not.toBe(ENGLISH_COPY["resume.body"]);
+        expect(note).not.toBe(ENGLISH_COPY["validate.finished.finishNote"]);
+      }
+    }
+  });
+});
+
 describe("translatorFor", () => {
   it("returns the English catalog for 'en' and the Filipino one for 'fil'", () => {
     for (const locale of INTERFACE_LOCALES) {

@@ -1437,14 +1437,20 @@ describe("the finished screen's two controls", () => {
     // Both labels, counted. Not `toContain`, because `toContain` is satisfied by one, two, and five.
     expect(countOccurrences(html, EN("validate.finished.continue")), "continue control").toBe(1);
     expect(countOccurrences(html, EN("validate.finished.finish")), "finish control").toBe(1);
-    // And counted as ELEMENTS, which is the structural half: one button and one link. If the labels
-    // were rendered in a paragraph as well as on a control, the label count would be 1 each and a
-    // participant would still have nothing to press.
-    expect(countOccurrences(html, "<button"), "buttons on the finished screen").toBe(1);
-    expect((html.match(/<a\b/g) ?? []).length, "links on the finished screen").toBe(1);
+    // And counted as ELEMENTS, which is the structural half. **TWO buttons and no links**, where this
+    // used to read "one button and one link": finishing is a `<button>` now, because it discards the
+    // attempt token before it leaves and a link cannot do anything before it navigates
+    // (`design.md` D3). The requirement this block enforces — two separate controls, pressing one
+    // never triggers the other — is unchanged by that, and the counts are what would catch a screen
+    // that quietly merged them back into one. If the labels were rendered in a paragraph as well as on
+    // a control, the label count would be 1 each and a participant would still have nothing to press.
+    expect(countOccurrences(html, "<button"), "buttons on the finished screen").toBe(2);
+    expect((html.match(/<a\b/g) ?? []).length, "links on the finished screen").toBe(0);
     // And NO form, which is the load-bearing half of `tasks.md` 3.1's verification: "assert the absence
     // of a write by asserting the control is not a form". A `<form>` anywhere on this screen would
-    // make a press a submission, and there is nothing here to submit.
+    // make a press a submission, and there is nothing here to submit. It is now the ONLY thing that
+    // rules out a submission for the finish control, which is why it stayed a counted assertion
+    // rather than becoming a comment.
     expect(countOccurrences(html, "<form"), "forms on the finished screen").toBe(0);
     // The two figures are still the only figures, and adding the controls added none. Counted as
     // `<dd>` rather than through the block's own `renderedFigures` reader, because that reader is
@@ -1468,51 +1474,60 @@ describe("the finished screen's two controls", () => {
     );
 
     // THE CONTROL, GREEN FIRST. One render must give exactly the counts the real assertion above
-    // makes, or the whole comparison is against a number that never held.
+    // makes, or the whole comparison is against a number that never held. Both controls are buttons,
+    // so the button count is 2 per render and the anchor count is 0 — asserted here rather than
+    // assumed, because a control block that pins numbers it has never observed is the defect this
+    // whole block exists to catch in the other direction.
     expect(countOccurrences(once, EN("validate.finished.continue"))).toBe(1);
     expect(countOccurrences(once, EN("validate.finished.finish"))).toBe(1);
-    expect(countOccurrences(once, "<button")).toBe(1);
-    expect((once.match(/<a\b/g) ?? []).length).toBe(1);
+    expect(countOccurrences(once, "<button")).toBe(2);
+    expect((once.match(/<a\b/g) ?? []).length).toBe(0);
 
-    // AND THEN RED: two renders must give 2, which is the value the real assertions forbid. If any of
-    // these stayed at 1, the counter is not reading what the screen renders and the three assertions in
-    // this block are reporting coverage they do not have.
+    // AND THEN RED: two renders must give 4 buttons, which is the value the real assertion forbids. If
+    // any of these stayed at its single-render figure, the counter is not reading what the screen
+    // renders and the assertions in this block are reporting coverage they do not have.
     expect(countOccurrences(twice, EN("validate.finished.continue"))).toBe(2);
     expect(countOccurrences(twice, EN("validate.finished.finish"))).toBe(2);
-    expect(countOccurrences(twice, "<button")).toBe(2);
-    expect((twice.match(/<a\b/g) ?? []).length).toBe(2);
+    expect(countOccurrences(twice, "<button")).toBe(4);
+    expect((twice.match(/<a\b/g) ?? []).length).toBe(0);
     // And the exact shape the real route test forbids for the form element: two renders, still zero,
     // because this component has no form in it at all. That is the difference between "there is no
     // form" and "a form was counted and found to be one".
     expect(countOccurrences(twice, "<form")).toBe(0);
   });
 
-  it("makes the finish control a LINK to the landing page, with an internal href", async () => {
-    // `tasks.md` 3.1. The href is asserted against the component's own exported constant rather than a
-    // literal repeated here, so a change to the destination cannot leave this test agreeing with a
-    // stale copy of it. And the href is read out of the rendered markup, not out of the component's
-    // props, because the claim is that the participant's browser is told where to go.
+  it("sends the finish control to the landing page, and nothing on this screen leaves the study", async () => {
+    // `tasks.md` 3.1, amended by D3. The destination is still asserted against the component's own
+    // exported constant rather than a literal repeated here, so a change to where finishing goes
+    // cannot leave this test agreeing with a stale copy of it.
+    //
+    // WHAT MOVED, and it is the honest limit of this file: finish used to be an `<a href="/">`, so
+    // `renderToStaticMarkup` could read the destination out of the rendered markup. It is a `<button>`
+    // now — it discards the attempt token before it navigates, and a link cannot do anything before it
+    // navigates — so **the destination is no longer in the markup and this file cannot see it.** The
+    // requirement it serves is asserted where a handler can actually be pressed, in
+    // `tests/dom/finished-batch.test.tsx`, which presses finish and asserts the router was asked for
+    // exactly this value. What remains here, and remains meaningful, is that the screen renders no
+    // link off this origin and that the finish label sits on a control rather than in a paragraph.
     const { FINISH_HREF } = await import("@/app/validate/[batchId]/finished-batch");
     const html = await renderFinished();
 
     expect(FINISH_HREF).toBe("/");
-    expect(html).toContain(`href="${FINISH_HREF}"`);
     // INTERNAL, and only internal: an absolute URL or a protocol-relative one would take a participant
-    // off this deployment, which is a link this project cannot vouch for. Checked over every href in
-    // the document rather than only the finish one, so a second link could not introduce one either.
+    // off this deployment, which is a destination this project cannot vouch for. Checked over every
+    // href in the document — and there are none left on this screen, so the loop below is empty and the
+    // count assertion is what makes that vacuity visible rather than hidden.
     const hrefs = [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1] ?? "");
-    expect(hrefs).toContain(FINISH_HREF);
+    expect(hrefs, "the finished screen renders no link at all").toEqual([]);
     for (const href of hrefs) {
       expect(href, "every link on the finished screen must stay inside this study").toMatch(/^\//);
       expect(href).not.toMatch(/^[a-z][a-z0-9+.-]*:/i);
       expect(href).not.toMatch(/^\/\//);
     }
-    // And it is a LINK, not a button: the continue control is the only `<button>`, which the count
-    // above established and which this line pins to the element that carries the finish label.
+    // And the finish label is on a `<button>`, pinned to the element that carries it — the same
+    // guarantee the anchor version gave, so a refactor that moved the label into prose still fails here.
     expect(html).toMatch(
-      new RegExp(
-        `<a[^>]*href="${FINISH_HREF}"[^>]*>\\s*${escapeForRegExp(EN("validate.finished.finish"))}`,
-      ),
+      new RegExp(`<button[^>]*>\\s*${escapeForRegExp(EN("validate.finished.finish"))}`),
     );
   });
 
@@ -1525,11 +1540,13 @@ describe("the finished screen's two controls", () => {
     const fil = translatorFor("fil");
     const html = await renderFinished();
 
-    // Counted for the same reason as in English: a presence check cannot see a second copy.
+    // Counted for the same reason as in English: a presence check cannot see a second copy. Both
+    // controls are buttons on this screen (D3), so 2 and 0 — the same numbers the English block
+    // asserts, which is the point of counting in both.
     expect(countOccurrences(html, fil("validate.finished.continue"))).toBe(1);
     expect(countOccurrences(html, fil("validate.finished.finish"))).toBe(1);
-    expect(countOccurrences(html, "<button")).toBe(1);
-    expect((html.match(/<a\b/g) ?? []).length).toBe(1);
+    expect(countOccurrences(html, "<button")).toBe(2);
+    expect((html.match(/<a\b/g) ?? []).length).toBe(0);
     // The two Filipino labels are genuinely different strings from each other AND from the English
     // ones. The second check is the one that matters: a component that read the translator from a
     // module-level default would render English here and pass a `toContain(fil(...))` never.
@@ -1599,7 +1616,10 @@ describe("the finished screen's two controls", () => {
     // Not a new requirement — the two figures block asserts this over the same screen — and it is
     // restated here for one reason: the finish control is the FIRST thing this change put on the
     // screen that could plausibly carry an identifier, because a link is somewhere an id could be put.
-    // `FINISH_HREF` is `/` and the component receives no id, so nothing should now be there.
+    // `FINISH_HREF` is `/` and the component receives no id, so nothing should now be there. It still
+    // holds as written now that finish is a `<button>`: a button that navigates is exactly as capable
+    // of putting an id in a URL as a link was, so the guard did not become unnecessary when the
+    // element changed.
     const html = await renderFinished();
 
     expect(identifiersIn(html)).toEqual([]);

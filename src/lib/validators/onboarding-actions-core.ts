@@ -46,7 +46,7 @@ import {
  * ============================================================================
  * THE SERVER NEVER TOUCHES BROWSER STORAGE
  * ============================================================================
- * `localStorage` does not exist on the server, so these functions neither read
+ * Browser storage does not exist on the server, so these functions neither read
  * nor write it. Storing the returned identifier, and clearing a stale one, is the
  * client component's job. That is not a workaround: it is the correct direction
  * of travel, and it keeps this module free of any client-module import.

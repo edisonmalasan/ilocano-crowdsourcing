@@ -320,18 +320,27 @@ describe("onboarding action core never reads browser storage", () => {
     vi.resetModules();
   });
 
-  it("has no localStorage call and no browser-identity import in its code", async () => {
-    // The server has no localStorage. A core that touched it would be a core that
+  it("has no browser-storage call and no browser-identity import in its code", async () => {
+    // The server has no browser storage. A core that touched it would be a core that
     // could only ever run in a browser, and therefore could not be unit tested.
     //
     // Comments are stripped first: this module's own header explains at length WHY
     // it never touches browser storage, and a scan that matched its prose would be
     // a scan that could only ever pass by deleting the explanation.
+    //
+    // The test's NAME used to say "no localStorage call", and that was a LIST rather than a
+    // definition for as long as the identity module used `localStorage` too — moving the application
+    // to session-scoped storage in this change would have left this guard green on a core that read
+    // the attempt token. Four names are now forbidden here, and the closed-set guard rooted at all of
+    // `src/` (`attempt-storage-enumeration.test.ts`) is what covers the ones neither of us thought of.
     const { readFileSync } = await import("node:fs");
     const source = readFileSync("src/lib/validators/onboarding-actions-core.ts", "utf8");
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 
     expect(code).not.toMatch(/localStorage/);
+    expect(code).not.toMatch(/sessionStorage/);
+    expect(code).not.toMatch(/indexedDB/);
+    expect(code).not.toMatch(/document\.cookie/);
     expect(code).not.toMatch(/browser-identity/);
     expect(code).not.toMatch(/globalThis\./);
   });

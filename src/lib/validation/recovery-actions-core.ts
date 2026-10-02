@@ -32,7 +32,7 @@ import { z } from "zod";
  * ============================================================================
  * WHY THE IDENTITY IS RE-CHECKED RATHER THAN TRUSTED
  * ============================================================================
- * The identifier arrives from `localStorage`, so it is whatever the browser says. A returning
+ * The identifier arrives from browser storage, so it is whatever the browser says. A returning
  * participant whose storage holds an identifier that was never enrolled would otherwise be told
  * "you have an interrupted batch" or offered a resume link into somebody else's batch — both of
  * which are answers to a question about an identity that does not exist. The re-check costs one read
