@@ -56,7 +56,13 @@ vi.mock("server-only", () => ({}));
  * `position` constraints are proven by `tests/integration/allocation-migration.test.ts` against a real
  * PostgreSQL engine; the Supabase translation is proven by `tests/unit/repositories-supabase.test.ts`
  * against a recording fake. Between them, still unproven: that any of it works against a hosted
- * project, because no credential exists.
+ * project.
+ *
+ * The clause this file used to end with was "because no credential exists", and it was false — three
+ * credentials do exist and have been in use since 2026-10-03. What is actually true is narrower and
+ * worth stating precisely: allocation has never been executed against a hosted project. The
+ * repository's query builders (`.in()`, `.range()`, `.eq()`) have still never reached a real
+ * PostgREST; the only builder call that has is `.rpc()`, reached by the dataset import.
  */
 
 const TIMESTAMP = "2026-09-30T00:00:00.000Z";

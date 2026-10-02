@@ -228,9 +228,12 @@ describe("submitting a validation when something else throws", () => {
 
 describe("submitting a validation on a CONFIGURED deployment", () => {
   it("delegates to the core with the repositories it built, and returns what the core returned", async () => {
-    // The path no test has ever exercised in this repository, because no credential exists. It is
-    // asserted here against mocks rather than against a database, and the honest limit of that is the
-    // `WEAKNESS` note at the foot of this file.
+    // The path no test has ever exercised in this repository. The reason this file used to give —
+    // "because no credential exists" — was false as of 2026-10-03: three credentials exist and are in
+    // use. The true reason is that this repository has no integration test that drives a Server
+    // Action against a database, which is a gap in the test suite rather than a fact about the
+    // environment. Asserted here against mocks rather than against a database; the honest limit of
+    // that is the `WEAKNESS` note at the foot of this file.
     getServerEnv.mockImplementation(() => undefined);
     const validations = { insert: vi.fn() };
     const batches = { findById: vi.fn() };
