@@ -107,4 +107,7 @@
       figure assertion, the unexamined segment in the per-validator scoping test, an assertion
       satisfied by an attribute rather than by the UI, three of four untested disqualify reasons,
       the hardcoded coverage threshold, and the missing per-entry ROUTE test.
-- [ ] 6.6 Merge with a merge commit only after 6.1–6.5 are green.
+- [x] 6.6 Merge with a merge commit only after 6.1–6.5 are green. Apply merged as **PR #64**,
+      merge commit `f7f02cb`; Sync merged as **PR #65**, merge commit `1938c3f`. Both CI runs read
+      back from their logs by step name (unit 63/1521, dom 7/87, integration 12/197, dataset guard
+      1/7) with full step lists present (16 real steps, none non-success).
