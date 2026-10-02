@@ -13,22 +13,39 @@
       reached. Corrected figures: 10 stored rows, 7 qualifying, buckets {zero: 7, one: 2, two: 1,
       complete: 1} over 11 entries, C2 the only flagged entry.
 
-      Verified with unit tests asserting: equal total qualifying validations, equal qualifying count
-      for EVERY entry, equal coverage-complete set, equal review-flag set — and each assertion
-      comparing the two consumers' actual outputs rather than their helpers.
-- [x] 1.2 Emptiness guards: the comparison asserts both consumers ran over the corpus, and an empty
-      corpus still compares both rather than skipping. Verified by asserting the consumer count and
-      the entry count explicitly.
+      Verified with unit tests asserting: equal total qualifying validations, equal coverage-bucket
+      distribution, equal complete-entry count, equal review-flag set — each comparing the two
+      consumers' actual outputs rather than their helpers.
+      **CORRECTION: the first draft of this task claimed "equal qualifying count for EVERY entry", and
+      no such assertion exists.** `DashboardOverview` exposes buckets and `reviewEntryIds` and no
+      per-entry qualifying map, so the claim was not implementable; the requirement, `design.md` and
+      this task were amended rather than the assertion faked. **A second claim here — that the emptiness
+      guards were verified — was itself partly vacuous and is corrected in 1.2.**
+- [x] 1.2 Emptiness guards, **and the vacuous ones removed**. The first version asserted
+      `expect([loadDashboardOverview, buildExportSummary]).toHaveLength(2)` — a statement about a
+      two-element array literal that cannot fail whatever either consumer does — and
+      `ENTRIES.filter(isActive)`, which is true by construction because the helper hardcodes
+      `isActive: true`. **Both reported coverage they did not provide**, and both are removed. What
+      replaced them: assertions about the corpus's own shape (more than one answered entry, at least
+      one unanswered entry) and an assertion that the comparison has actually RUN. The empty-corpus
+      case remains the substantive witness, and it runs both consumers rather than skipping.
 - [x] 1.3 Can-fire: each of the three agreement claims proved red by breaking ONE consumer — a
       qualifying count, the complete set, the review set — with green controls and byte-identical
       restores. This is the check's own evidence that it can see a disagreement.
 
 ## 2. Ledger integrity
 
-- [x] 2.1 Read the `Archived Changes` table BY STRUCTURE: located by its header cells, rows read as
-      rows, and a line that opens a row inside a known table treated as a row even if it has lost its
-      closing delimiter — reported as malformed, never skipped, and never ending the table.
-      Verified with unit tests including a malformed-row case and a row-appended-below-the-table case.
+- [x] 2.1 Read the `Archived Changes` table BY STRUCTURE: located by its header LINE, rows located
+      by the archive path they carry, a damaged row both COUNTED and REPORTED, and the read stopping
+      at the end of the table. Verified with **four in-suite tests over SYNTHETIC ledgers** — added
+      because the first draft of this task claimed a malformed-row case and a row-appended case that
+      did not exist. With no synthetic input, a test of either would have had to corrupt the real
+      ledger to produce the input it was testing.
+      **The reader is parameterised on its source text for exactly that reason.** Two clauses of the
+      original requirement were FALSE as implemented: an unclosed row with an intact path was counted
+      and never reported, and a row appended below the table was silently invisible. The first is now
+      implemented; the second is stated as the behaviour it has, because the appended change reads as
+      MISSING and therefore fails loudly — which is the property that matters.
 - [x] 2.2 Assert every archive directory is named in the ledger and every ledger entry exists on disk,
       and that the count the `Project Status` block quotes equals the directory's contents.
 - [x] 2.3 Emptiness guards: zero directories found, or zero rows read, is a FAILURE with its own

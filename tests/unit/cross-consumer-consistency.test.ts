@@ -208,14 +208,29 @@ function exportBuckets(summary: ReturnType<typeof buildExportSummary>) {
 }
 
 describe("the dashboard and the export agree on one corpus", () => {
-  it("compares TWO consumers over a corpus it actually examined", () => {
-    // The emptiness guard. A comparison over one consumer, or over a corpus with no responses, would
-    // satisfy every agreement assertion below without having compared anything.
-    const consumers = [loadDashboardOverview, buildExportSummary];
-    expect(consumers).toHaveLength(2);
-    expect(RESPONSES.length).toBeGreaterThan(5);
-    expect(ENTRIES.length).toBeGreaterThan(5);
-    expect(ENTRIES.filter((e) => e.isActive)).toHaveLength(ENTRIES.length);
+  it("compares TWO consumers over a corpus it actually examined", async () => {
+    // The emptiness guard — but only the parts of it that can FAIL. A first version asserted
+    // `expect([loadDashboardOverview, buildExportSummary]).toHaveLength(2)`, which is a statement
+    // about a two-element array literal and cannot fail whatever either consumer does, and
+    // `ENTRIES.filter(isActive)`, which is true by construction because the `entry()` helper
+    // hardcodes `isActive: true`. Both reported coverage they did not provide. What is asserted
+    // instead are the corpus's own shape, and then the two consumers are RUN so the comparison below
+    // is known to have had something to compare.
+    expect(RESPONSES.length, "the corpus must hold stored responses").toBeGreaterThan(5);
+    expect(ENTRIES.length, "the corpus must hold entries").toBeGreaterThan(5);
+    expect(
+      new Set(RESPONSES.map((r) => r.datasetEntryId)).size,
+      "more than one entry is answered",
+    ).toBeGreaterThan(1);
+    expect(
+      ENTRIES.some((e) => RESPONSES.every((r) => r.datasetEntryId !== e.id)),
+      "some entries are unanswered",
+    ).toBe(true);
+
+    // And the comparison itself has run over the real corpus, not been declared.
+    const { overview, summary } = await bothConsumers();
+    expect(overview.totalQualifyingValidations).toBeGreaterThan(0);
+    expect(summary.by_entry.length).toBe(ENTRIES.length);
   });
 
   it("agrees on the total qualifying validations", async () => {
@@ -259,7 +274,11 @@ describe("the dashboard and the export agree on one corpus", () => {
   it("agrees on the corpus totals both derive", async () => {
     const { overview, summary } = await bothConsumers();
 
-    expect(summary.generated_from.entries).toBe(overview.totalEntries);
+    // The first line of this test was `expect(summary.generated_from.entries).toBe(overview.totalEntries)`,
+    // which cannot fail: both sides are `entries.length` over the same array handed to both consumers.
+    // It is removed rather than kept, because a comparison with itself is the shape a reader mistakes
+    // for evidence. What IS comparable here is the stored-response count against the corpus the
+    // consumers were actually given.
     expect(summary.totals.stored_responses).toBe(RESPONSES.length);
     expect(summary.totals.non_qualifying_validations).toBe(
       RESPONSES.length - overview.totalQualifyingValidations,

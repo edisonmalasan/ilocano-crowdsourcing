@@ -2,36 +2,43 @@
  * Does the ledger describe the repository it lives in?
  *
  * `docs/ROADMAP.md` carries an `Archived Changes` table and a `Project Status` block that both quote
- * figures about the change archive. Both are HAND-MAINTAINED, and this repository has recorded three
+ * figures about the change archive. Both are HAND-MAINTAINED, and this repository has recorded four
  * consecutive archives in which one of them was stale on arrival — a count that read thirteen when the
- * directory held fifteen, a phase row still describing the previous phase as live, and a placeholder
- * that outlived its pull request. Each was caught by reading, which is not a mechanism.
+ * directory held fifteen, a phase row still describing the previous phase as live, a placeholder that
+ * outlived its pull request, and three archived changes the table never named. Each was caught by
+ * reading, which is not a mechanism. This file is the mechanism.
  *
- * So this is the assertion the file's own note asks for: *"a hand-maintained index drifts as a matter
- * of course, so an index that must stay correct needs an assertion, not a habit."*
+ * ============================================================================
+ * WHAT THE GUARD COVERS, AND WHAT IT DOES NOT
+ * ============================================================================
+ * It checks DIRECTORY NAMES and ONE COUNT SENTENCE. It does not check the `Merged as` column, the
+ * notes, or any prose — those were found wrong by an independent verification pass and are recorded
+ * as a known scope gap rather than pretended covered. A guard that cannot see a claim must not be
+ * described as if it could.
  *
  * ============================================================================
  * WHY THE TABLE IS READ BY STRUCTURE, NEVER BY LINE NUMBER
  * ============================================================================
  * An earlier table-shape checker in this repository decided "is this a row?" with
  * `startsWith("|") && endsWith("|")`, and that discarded the very row it existed to catch: a row that
- * had lost its closing delimiter failed `endsWith`, so it was not counted as a row — and the branch
- * that handled a non-row also reset the table header, so every row BELOW it stopped being checked too.
- * One malformed row blinded eight. Here the table is located by its own header line, a line that OPENS
- * a row inside a known table is a row whether or not it is closed, and anything unexpected is REPORTED
- * rather than skipped.
+ * had lost its closing delimiter failed `endsWith`, so it was not counted — and the branch that
+ * handled a non-row also reset the table header, so every row BELOW it stopped being checked too. One
+ * malformed row blinded eight.
  *
- * Two more rules, both earned:
+ * Three rules here, and each was written after measuring the alternative:
  *
- *   - ROWS ARE NOT DETECTED BY CELL COUNT. This ledger carries at least one literal pipe inside a cell,
- *     which makes a split-on-pipe report a different cell count than the row really has. That defect —
- *     a pipe inside a cell producing a "wrong" cell count — is recorded in this file's own tooling
- *     notes, and a cell-count rule here would flag correct rows.
- *   - THE HEADER IS LOCATED, NEVER CONSUMED. The first version of this reader treated the first line
- *     after the header as the header itself, so it silently consumed the first DATA row and reported
- *     `project-foundation` as missing from the ledger when the ledger names it. One row lost to an
- *     off-by-one is the same failure class as the checker above: a detector that discards the first
- *     instance of the thing it is counting.
+ *   - A ROW IS COUNTED AND REPORTED. A row that opens with `|` but has lost its closing `|` is
+ *     malformed, and it is STILL counted. Reporting without counting would let a damaged row hide a
+ *     change; counting without reporting would let it pass unnoticed. The verification pass measured
+ *     both halves of that: an unclosed row with an intact path was previously counted and never
+ *     reported.
+ *   - ROWS ARE NOT DETECTED BY CELL COUNT. This ledger carries at least one literal pipe inside a
+ *     cell, so splitting on `|` reports a different cell count than the row really has — a defect this
+ *     file's own tooling notes already record. Rows are located by the archive path they carry.
+ *   - THE READ STOPS AT THE TABLE'S END. A row appended BELOW the table is therefore not counted, so
+ *     its change appears MISSING and the check fails loudly. Continuing past the blank line to "find"
+ *     such a row would mean parsing unrelated tables further down the document, and a check that reads
+ *     more than its subject stops being a check of that subject.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -57,9 +64,18 @@ function archivedDirectories(): string[] {
     .sort();
 }
 
-/** The archived-change directory names the table names, plus anything wrong with the table's shape. */
-function rowsNamingArchivedChanges(): { listed: string[]; malformed: string[] } {
-  const lines = readFileSync(ROADMAP, "utf8").split(/\r?\n/);
+/**
+ * The archived-change directory names a ledger source names, plus anything wrong with its shape.
+ *
+ * Parameterised on the source text so the reader's own behaviour can be tested over synthetic ledgers.
+ * That is what makes the malformed-row and appended-row cases reachable at all: without a parameter,
+ * a test of either would have to corrupt the real ledger to produce the input it is testing.
+ */
+export function rowsNamingArchivedChanges(source: string): {
+  listed: string[];
+  malformed: string[];
+} {
+  const lines = source.split(/\r?\n/);
   const headerIndex = lines.findIndex((line) => line.trim() === TABLE_HEADER);
   if (headerIndex < 0) return { listed: [], malformed: [] };
 
@@ -71,23 +87,34 @@ function rowsNamingArchivedChanges(): { listed: string[]; malformed: string[] } 
   for (let i = headerIndex + 1; i < lines.length; i += 1) {
     const line = lines[i] as string;
     const trimmed = line.trim();
+    // The end of the table. A row appended below it is not counted, and its change therefore reads as
+    // missing — which is the loud failure, and is asserted as such below.
     if (trimmed === "") break;
 
-    if (!trimmed.startsWith("|")) {
+    const opensRow = trimmed.startsWith("|");
+    const closesRow = trimmed.endsWith("|");
+    const named = ARCHIVE_PATH.exec(line);
+
+    if (opensRow && named?.[1]) {
+      listed.push(named[1]);
+      // A row carrying its archive path but missing its closing delimiter is damaged. It is counted
+      // AND reported: counting alone would let a damaged row pass unnoticed, which is the defect the
+      // earlier checker had.
+      if (!closesRow) {
+        malformed.push(
+          `line ${i + 1} lost its closing delimiter but still names a change: ${trimmed.slice(0, 80)}`,
+        );
+      }
+      continue;
+    }
+
+    if (!opensRow) {
       malformed.push(
         `line ${i + 1} continues the archived-changes table without opening a row: ${trimmed.slice(0, 80)}`,
       );
       continue;
     }
 
-    const named = ARCHIVE_PATH.exec(line);
-    if (named?.[1]) {
-      listed.push(named[1]);
-      continue;
-    }
-
-    // Not a row, not a separator, and it names no change: report it. Dropping it silently would report
-    // the ledger as correct when it has lost a row.
     if (!/^\|[\s|:-]+\|?$/.test(trimmed)) {
       malformed.push(
         `line ${i + 1} sits inside the archived-changes table but names no archive path: ${trimmed.slice(0, 80)}`,
@@ -97,6 +124,98 @@ function rowsNamingArchivedChanges(): { listed: string[]; malformed: string[] } 
 
   return { listed, malformed };
 }
+
+/** The reader over the ledger as it actually is. */
+const readRealLedger = () => rowsNamingArchivedChanges(readFileSync(ROADMAP, "utf8"));
+
+/** A synthetic ledger table, for the reader's own behaviour. */
+const TICK = String.fromCharCode(96);
+const syntheticRow = (name: string) =>
+  `| ${TICK}${name}${TICK} | ${TICK}openspec/changes/archive/2026-01-01-${name}/${TICK} | PR #1 | note |`;
+
+describe("the table reader behaves as the requirement states", () => {
+  it("counts every well-formed row and reports none as malformed", () => {
+    const source = [
+      TABLE_HEADER,
+      "| --- | --- | --- | --- |",
+      syntheticRow("a"),
+      syntheticRow("b"),
+      "",
+    ].join("\n");
+
+    const { listed, malformed } = rowsNamingArchivedChanges(source);
+
+    expect(listed).toEqual(["2026-01-01-a", "2026-01-01-b"]);
+    expect(malformed).toEqual([]);
+  });
+
+  it("counts AND reports a row that lost its closing delimiter", () => {
+    // Both halves are the point. Counting alone would let a damaged row pass unnoticed; reporting
+    // alone would let it hide a change. The verification pass measured that an unclosed row with an
+    // intact path was previously counted and NEVER reported.
+    const damaged =
+      "  | " +
+      TICK +
+      "b" +
+      TICK +
+      " | " +
+      TICK +
+      "openspec/changes/archive/2026-01-01-b/" +
+      TICK +
+      " | PR #1 | truncated";
+    const source = [TABLE_HEADER, "| --- | --- | --- | --- |", syntheticRow("a"), damaged, ""].join(
+      "\n",
+    );
+
+    const { listed, malformed } = rowsNamingArchivedChanges(source);
+
+    expect(listed, "a damaged row must still be counted").toEqual(["2026-01-01-a", "2026-01-01-b"]);
+    expect(malformed, "a damaged row must be reported").toHaveLength(1);
+    expect(malformed[0]).toMatch(/lost its closing delimiter/);
+  });
+
+  it("stops at the table's end, so a row APPENDED BELOW it is not counted", () => {
+    // Stated as the behaviour it is, rather than as the behaviour the first draft of the requirement
+    // claimed. The consequence — the appended change reads as MISSING — is what makes this safe, and
+    // the next assertion is the one that matters.
+    const source = [
+      TABLE_HEADER,
+      "| --- | --- | --- | --- |",
+      syntheticRow("a"),
+      "",
+      syntheticRow("b"),
+      "",
+    ].join("\n");
+
+    const { listed, malformed } = rowsNamingArchivedChanges(source);
+
+    expect(listed, "the row below the table is outside the table").toEqual(["2026-01-01-a"]);
+    // And it is out of SCOPE rather than damaged: it is neither counted nor reported as malformed,
+    // because a reader that kept going would be reading past the end of its subject. Which is only
+    // safe because of the next assertion.
+    expect(malformed, "a row outside the table is out of scope, not damaged").toEqual([]);
+    // And it fails LOUDLY rather than silently: a directory on disk that this reader cannot see shows
+    // up as missing, which is the whole safety property.
+    const onDisk = archivedDirectories();
+    const seen = new Set(listed);
+    expect(onDisk.filter((directory) => !seen.has(directory)).length).toBeGreaterThan(0);
+  });
+
+  it("reports a line that sits inside the table without opening a row", () => {
+    const source = [
+      TABLE_HEADER,
+      "| --- | --- | --- | --- |",
+      syntheticRow("a"),
+      "not a row",
+      "",
+    ].join("\n");
+
+    const { malformed } = rowsNamingArchivedChanges(source);
+
+    expect(malformed).toHaveLength(1);
+    expect(malformed[0]).toMatch(/without opening a row/);
+  });
+});
 
 describe("the ledger describes the archive directory", () => {
   it("reads a NON-EMPTY archive directory, so a match over nothing cannot pass", () => {
@@ -108,7 +227,7 @@ describe("the ledger describes the archive directory", () => {
   });
 
   it("reads a NON-EMPTY enumeration, so a table that failed to parse cannot pass", () => {
-    const { listed, malformed } = rowsNamingArchivedChanges();
+    const { listed, malformed } = readRealLedger();
     expect(malformed.join("\n")).toBe("");
     expect(
       listed.length,
@@ -117,14 +236,13 @@ describe("the ledger describes the archive directory", () => {
   });
 
   it("reports NO malformed row in the archived-changes table", () => {
-    // Reported, never skipped — and skipping is what blinded eight rows in an earlier checker.
-    const { malformed } = rowsNamingArchivedChanges();
+    const { malformed } = readRealLedger();
     expect(malformed, `malformed rows:\n${malformed.join("\n")}`).toEqual([]);
   });
 
   it("names EVERY archived change, and no change that does not exist", () => {
     const onDisk = archivedDirectories();
-    const { listed } = rowsNamingArchivedChanges();
+    const { listed } = readRealLedger();
     const listedSet = new Set(listed);
 
     const missing = onDisk.filter((directory) => !listedSet.has(directory));
@@ -141,25 +259,21 @@ describe("the ledger describes the archive directory", () => {
   });
 
   it("names each archived change exactly once", () => {
-    // A duplicate row would let one missing change hide behind a repeated one.
-    const { listed } = rowsNamingArchivedChanges();
+    const { listed } = readRealLedger();
     const duplicates = listed.filter((name, index) => listed.indexOf(name) !== index);
     expect(duplicates, `listed more than once: ${duplicates.join(", ")}`).toEqual([]);
   });
 
   it("reports an archived count equal to the directory's contents", () => {
     const onDisk = archivedDirectories();
-    const { listed } = rowsNamingArchivedChanges();
+    const { listed } = readRealLedger();
 
     // The count is READ from the ledger's own sentence, then compared with the directory — so this
     // fails on a stale figure rather than restating whatever the ledger happens to say.
     //
-    // The pattern does NOT require bold markers before the number. A first version did
-    // (`/\*\*(\w+) changes are archived/`), and it reported "must state an archived count: null"
-    // against a ledger that stated the count correctly — because an earlier scripted edit had
-    // stripped the bold from that sentence's opening. A guard that reads the SENTENCE rather than
-    // its formatting is one fewer thing that has to be kept in step by hand, which is the entire
-    // subject of this file.
+    // The pattern does NOT require bold markers before the number. A first version did, and it reported
+    // "must state an archived count: null" against a ledger that stated the count correctly, because
+    // a scripted edit had stripped the bold from that sentence's opening.
     const roadmap = readFileSync(ROADMAP, "utf8");
     const claimed = /(\w+) changes are archived and readable/.exec(roadmap);
     expect(claimed, "the Project Status block must state an archived count").not.toBeNull();

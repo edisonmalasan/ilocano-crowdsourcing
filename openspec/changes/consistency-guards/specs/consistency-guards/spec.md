@@ -88,5 +88,6 @@ change exists to prevent in the repository's own guard rails.
 #### Scenario: The enumeration is read from a located table
 
 - **WHEN** the ledger's archived-changes enumeration is read
-- **THEN** it is located by its own table structure, so a row that loses its formatting is reported as
-  malformed rather than skipped, and a change appended below the table is still counted
+- **THEN** it is located by its own header line, a row that loses its formatting is both counted and
+  reported as malformed rather than skipped, and the read stops at the end of the table so a change
+  listed below it is not counted
