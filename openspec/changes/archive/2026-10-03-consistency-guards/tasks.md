@@ -127,4 +127,24 @@
       that returned UTF-16LE and matched nothing, and a markdown-table detector that reported 17 false
       "does not open a row" hits by keeping a table open into orphaned prose. Both are recorded because
       a checker that misreports its own subject is worse than no checker.
-- [ ] 3.5 Merge with a merge commit only after 3.1–3.4 are green.
+- [x] 3.5 Merge with a merge commit only after 3.1–3.4 are green. **Ticked in the Archive stage, not
+      before the merge, because a ticked "merged" box on an unmerged branch is a claim of a fact that
+      did not yet exist** — and both prior changes record the same handover. Apply merged as **PR #72**,
+      merge commit `8f55032`; spec sync as **PR #73**, merge commit `e8bb45e`; archive as this PR.
+      Both CI runs were read back from their logs **by step name** — `37044754882` (Apply) and
+      `37046313774` (Sync) — reporting unit **70/1598**, DOM **7/87**, integration **12/197**, dataset
+      guard **1/7**, with full step lists present on both jobs (11 and 5 real steps, none non-success)
+      and each run's `headSha` matching the branch tip it claims to test.
+      **The reader itself was wrong twice while doing this, and both are recorded because a reader
+      that reports a confident wrong number is worse than no reader.** Its first version matched a
+      step by name and read forward from the last line mentioning it — which, because every line `gh
+      emits carries `job\tstep\t…`, starts the window *after* that step's own summary and reported the
+      DOM project's `7/87` as the unit project's. It was rewritten to take the step from FIELD 2 of
+      the tab split, so a summary is attributed only when the line's own step field says so. Its
+      second version then demanded a sha-256 token in the immutability guard's output and reported
+      NOT-ATTRIBUTABLE against a good run: measured, that step emits **zero** 64-hex tokens, because
+      the dataset hash is asserted *inside* the test rather than printed by it. The predicate now
+      checks what the job actually exists to prove — the echoed command names exactly that one file
+      and the summary reports exactly one test file — which is also the only reading that would catch
+      the historic defect in this repository, a step whose name said "isolated" while its command ran
+      everything.

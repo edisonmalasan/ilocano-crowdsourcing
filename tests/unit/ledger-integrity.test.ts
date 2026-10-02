@@ -321,22 +321,28 @@ describe("the ledger describes the archive directory", () => {
       "the Project Status block must state an archived count in the live phrasing",
     ).toBeGreaterThan(0);
 
-    // COUPLING, stated rather than left to be discovered: this enumeration stops at sixteen and
-    // reports `null` for a seventeenth directory, which FAILS LOUDLY rather than silently accepting
-    // a count it has no word for. That is the safe direction — the next archive must edit this test,
-    // and the edit is the point — but it means the guard cannot be extended without touching it, and
-    // the test name does not advertise that. The alternative, deriving the word arithmetically, would
-    // make the guard agree with the ledger by construction and stop being a check of it.
-    const expected =
-      onDisk.length === 16
-        ? "Sixteen"
-        : onDisk.length === 15
-          ? "Fifteen"
-          : onDisk.length === 14
-            ? "Fourteen"
-            : onDisk.length === 13
-              ? "Thirteen"
-              : null;
+    // COUPLING, stated rather than left to be discovered, and **PAID ON THE VERY NEXT ARCHIVE** rather
+    // than in a probe. This enumeration stopped at sixteen and reported `null` for a seventeenth
+    // directory — which was recorded as a known limit when it was written, and then arrived for real:
+    // archiving `consistency-guards` took the directory to seventeen and this guard failed with
+    // "the archived-count sentence must be updated: the directory holds 17", naming itself. That is
+    // the intended behaviour — failing loudly rather than accepting a count it has no word for — but
+    // it means every seventeenth change must edit this test, and the edit is the point.
+    //
+    // What is recorded here is the SHAPE of the payment, because it is the generalisation: **a guard
+    // that hard-codes a fact about the world fails the first time the world moves, and that is not a
+    // defect in the guard, it is the guard being correct.** The alternative — deriving the word
+    // arithmetically, so the guard accepts whatever the ledger says — would make it agree with the
+    // ledger by construction and stop being a check of it. The cost is one edited line per archive,
+    // and the benefit is that this test can never be satisfied by a sentence that merely looks right.
+    const WORDS: Record<number, string> = {
+      13: "Thirteen",
+      14: "Fourteen",
+      15: "Fifteen",
+      16: "Sixteen",
+      17: "Seventeen",
+    };
+    const expected = WORDS[onDisk.length] ?? null;
 
     expect(
       expected,
