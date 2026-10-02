@@ -117,6 +117,15 @@ const WRITE_APIS = [
  * into different shapes — a directory scan that means "the directory" has to descend, or it means
  * "the files I remembered".
  */
+/**
+ * The one script permitted to touch the filesystem: the research export.
+ *
+ * Named as a constant rather than filtered by a substring, so a new command cannot inherit the
+ * exemption by containing a word. Adding a second exempt script is then a visible, deliberate edit to
+ * this line rather than a silent widening of what the scan ignores.
+ */
+const EXPORT_COMMAND = [path.join(ROOT, "scripts", "export-research.ts")];
+
 function scriptFiles(directory: string = SCRIPTS): string[] {
   const found: string[] = [];
   const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
@@ -193,13 +202,84 @@ describe("the operator command cannot write a file", () => {
     expect(found.join(" ")).toContain("writeFile");
   });
 
-  it("finds no write, rename, or delete call in any script", () => {
-    for (const file of scriptFiles()) {
+  it("finds no write, rename, or delete call in any script OTHER THAN the export", () => {
+    // SCOPE NARROWED, and the reason is a change in the invariant rather than a weakening of it.
+    //
+    // This used to read "no script writes anything", which was equivalent to "the import command
+    // writes nothing" only because `scripts/` held exactly one file. The `research-export` change
+    // added a second command whose approved requirement is that it WRITES its artifacts
+    // (`validations.json`, `validations.csv`, `summary.json`) into an operator-chosen directory, so
+    // the blanket form became false without anything about the import having changed.
+    //
+    // What replaces it is stronger, not weaker, and it is the invariant that actually mattered:
+    //   - no script may write, rename, move or delete ANYTHING except the export command;
+    //   - the export command's own filesystem writes are enumerated exactly, by count and by the
+    //     three names, in `tests/unit/export-read-only.test.ts`;
+    //   - and, asserted below, NO script may write into `data/`, which is the immutable research
+    //     source. That last check was never stated before and is the one that matters most: a script
+    //     that could rewrite the dataset would be far worse than one that could write its own output.
+    for (const file of scriptFiles().filter((candidate) => !EXPORT_COMMAND.includes(candidate))) {
       const relative = path.relative(ROOT, file).split(path.sep).join("/");
       expect(
         writesFound(readFileSync(file, "utf8")),
         `${relative} must not write anything`,
       ).toEqual([]);
+    }
+  });
+
+  it("PROVES THE RESEARCH-SOURCE CHECK CAN FIRE, including the constant-path form", () => {
+    // Without this the check below could pass on nothing, and it would pass just as happily on a
+    // rewrite expressed through a CONSTANT — which is exactly how `import-dataset.ts` spells its own
+    // path (`DEFAULT_SOURCE_PATH`). A check that only recognises a literal `"data/…"` would miss the
+    // most realistic way to destroy the immutable source.
+    const writesIntoData = (source: string): boolean =>
+      /(?:writeFile|appendFile|createWriteStream|truncate|rm|rename|copyFile|unlink|rmdir)\w*\s*\(\s*(?:[^)]*\bdata\b|DEFAULT_SOURCE_PATH)/.test(
+        stripComments(source),
+      );
+
+    for (const evasion of [
+      'writeFile("data/ilocano-synthetic-data.json", "{}");',
+      'writeFile(DEFAULT_SOURCE_PATH, "{}");',
+      'appendFile(`${ROOT}/data/out.json`, "x");',
+      'rm("data", { recursive: true });',
+    ]) {
+      expect(writesIntoData(evasion), `must detect: ${evasion}`).toBe(true);
+    }
+
+    // And a legitimate write elsewhere must NOT be flagged, or the check is too blunt to be trusted
+    // and will be disabled the first time it obstructs real work.
+    for (const innocent of [
+      'writeFile(path.join(options.destination, "validations.json"), text);',
+      'readFileSync(DEFAULT_SOURCE_PATH, "utf8");',
+    ]) {
+      expect(writesIntoData(innocent), `must not flag: ${innocent}`).toBe(false);
+    }
+  });
+
+  it("finds no script writing into the immutable research source", () => {
+    // The invariant the previous blanket scan only implied. Checked by looking for the research
+    // directory — or the constant that names it — in any filesystem call, and by asserting `data/`
+    // is real, so a typo in the path cannot make this pass on nothing.
+    expect(existsSync(path.join(ROOT, "data", "ilocano-synthetic-data.json"))).toBe(true);
+
+    for (const file of scriptFiles()) {
+      const relative = path.relative(ROOT, file).split(path.sep).join("/");
+      const code = readFileSync(file, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      // Every filesystem call in the file, with enough surrounding text to see its argument.
+      // The research source is named either literally or through `DEFAULT_SOURCE_PATH`, which is
+      // how `import-dataset.ts` spells it — and the can-fire control above covers both forms.
+      for (const call of code.matchAll(
+        /\b(?:writeFile|appendFile|createWriteStream|truncate|rm|rename|copyFile|unlink|rmdir)\w*\s*\(/g,
+      )) {
+        const context = code.slice(call.index, call.index + 200);
+        expect(
+          /["'`][^"'`]*\bdata\b[^"'`]*["'`]/.test(context) ||
+            /\(\s*DEFAULT_SOURCE_PATH/.test(context),
+          `${relative} appears to write into the research source: ${context.slice(0, 140)}`,
+        ).toBe(false);
+      }
     }
   });
 
