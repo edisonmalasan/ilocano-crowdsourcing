@@ -21,11 +21,12 @@
 
 ## 2. Bulk validator reads
 
-- [ ] 2.1 `ValidatorsRepository.listByIds(ids)` interface plus Supabase implementation with `.in()`,
-      returning profiles in no assumed order. Verify with unit tests against the recording fake
-      (argument shape, row mapping) and integration tests from the production migration directory
-      (round trip, empty-list behavior stated explicitly).
-- [ ] 2.2 Can-fire: the `.in()` call proved against a wrong-column variant going red.
+- [x] 2.1 `ValidatorsRepository.listByIds(ids)` interface plus Supabase implementation with `.in()`,
+      returning profiles in caller-asked order with unknown ids omitted (mirroring the entries
+      `listByIds`, so the order is deterministic rather than the wire's). Verified with unit tests
+      against the recording fake (argument shape, row mapping) and integration tests from the
+      production migration directory (round trip, empty-list behavior stated explicitly).
+- [x] 2.2 Can-fire: the `.in()` call proved against a wrong-column variant going red.
 
 ## 3. Dashboard data service (server-only)
 

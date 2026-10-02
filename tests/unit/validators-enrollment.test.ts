@@ -39,6 +39,10 @@ function createRecordingValidators() {
       if (findError) throw findError;
       return findResult as Awaited<ReturnType<ValidatorsRepository["findById"]>>;
     }),
+    listByIds: vi.fn(async (ids) => {
+      calls.push({ method: "listByIds", argument: ids });
+      return [];
+    }),
     touchLastActive: vi.fn(async (id) => {
       calls.push({ method: "touchLastActive", argument: id });
     }),

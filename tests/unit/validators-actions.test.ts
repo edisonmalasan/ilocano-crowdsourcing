@@ -32,6 +32,10 @@ function createHarness(options: { findResult?: unknown; createError?: unknown } 
       calls.push("findById");
       return findResult as Awaited<ReturnType<ValidatorsRepository["findById"]>>;
     }),
+    listByIds: vi.fn(async () => {
+      calls.push("listByIds");
+      return [];
+    }),
     touchLastActive: vi.fn(async () => {
       calls.push("touchLastActive");
     }),
