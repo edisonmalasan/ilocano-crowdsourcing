@@ -1,0 +1,47 @@
+/**
+ * CSV rendering of the export records, with RFC 4180 quoting.
+ *
+ * No CSV library, deliberately: the quoting rules are four lines, a dependency for them would be
+ * unauditable at a glance, and the round-trip test is what makes a hand-rolled serializer
+ * trustworthy rather than merely short (see `tests/unit/export-csv.test.ts`, which PARSES the output
+ * back and compares it to the original text).
+ *
+ * The rules, and why each exists:
+ *
+ *   - a field containing a comma, a double quote, CR, or LF is wrapped in double quotes — without
+ *     this a translation containing a comma silently becomes two columns, which is the classic way
+ *     a research export corrupts itself;
+ *   - an embedded double quote is DOUBLED (`"` → `""`) — the escape RFC 4180 defines, and the one a
+ *     naive implementation forgets;
+ *   - a field containing a newline is quoted, and the newline is kept literally — the alternative,
+ *     replacing it, would change a validator's text;
+ *   - a field that needs no quoting is emitted bare, so the common case stays readable.
+ *
+ * Nothing is dropped to make quoting easier. Every record carries the same columns in the same
+ * order, and `null` becomes an empty field — which is a real absence, not the string "null".
+ */
+
+import { EXPORT_RECORD_KEYS, type ExportRecord } from "./records";
+
+/** A field's CSV form. `null` is an empty field; it is never the four characters `null`. */
+export function csvField(value: string | null): string {
+  if (value === null) return "";
+  if (!/[",\r\n]/.test(value)) return value;
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+/** One record as a CSV line, in `EXPORT_RECORD_KEYS` order. */
+export function csvRow(record: ExportRecord): string {
+  return EXPORT_RECORD_KEYS.map((key) => csvField(record[key])).join(",");
+}
+
+/**
+ * The full CSV document: a header row from the key set, then one line per record, LF-separated.
+ *
+ * The trailing newline is included so the file ends on a line boundary — a POSIX text-file
+ * convention that some readers rely on and whose absence is invisible in a diff.
+ */
+export function buildCsv(records: readonly ExportRecord[]): string {
+  const lines = [EXPORT_RECORD_KEYS.join(","), ...records.map(csvRow)];
+  return `${lines.join("\n")}\n`;
+}
