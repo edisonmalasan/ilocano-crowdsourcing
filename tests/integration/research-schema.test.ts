@@ -77,6 +77,18 @@ const EXPECTED_MIGRATIONS = [
   // that make its increment atomic and unreachable by `anon`. Same reason as the one above — a
   // migration the list does not name must FAIL here.
   "20261002120000_researcher_signin_attempts.sql",
+  // Arrived with hosted-dataset-import: the single atomic, instruction-preserving upsert the
+  // operator command calls. It ADDS one function and changes no table, so it appears here and in
+  // neither table list below — which is the correct outcome rather than an omission. Same reason as
+  // the entries above: a migration this list does not name must FAIL here, which is what keeps a
+  // CLOSED list closed.
+  "20261003120000_dataset_entries_import.sql",
+  // Arrived with the hosted-dataset-import repair round: the corrected guard for the import
+  // migration above. The import file's own precondition has two arms that cannot fire in the states
+  // they name, and that file is applied and therefore immutable history — so the correction is
+  // forward-only, in this file, which creates NOTHING (a `DO` block only). Same reason as above:
+  // it appears here and in neither table list, because it adds no table and no function.
+  "20261004120000_dataset_entries_import_guard.sql",
 ] as const;
 
 /**

@@ -13,12 +13,12 @@
 | --- | --- |
 | Current roadmap phase | **Phases 1-6 are CLOSED and ARCHIVED — twelve changes — and Phase 7 is UNDERWAY on its second bounded slice.** Thirteen changes are archived and readable on disk under `openspec/changes/archive/`; the count is re-derived from that directory rather than carried forward. Phase 6 was two bounded slices, both archived: `batch-completion` as **#46** (`c067cf7`) and `interrupted-batch-recovery` as **#49** (`904ffd2`). **Phase 7, first bounded slice — `researcher-admin-access`, the researcher area's access boundary — is ARCHIVED** as `2026-10-03-researcher-admin-access` in **PR #57** (`02de160`). It was the access boundary **only**, deliberately not the dashboard: building an analytics surface before the boundary protecting it exists is the documented way this project goes wrong, and the coverage and disagreement figures remain deferred to the thesis team. **Phase 7, second bounded slice — `hosted-dataset-import` — is PROPOSED in this PR.** The cursor is no longer "the hosted dataset import" as an intention; it is a named change with a measured design and a gate that must be green before it merges. |
 | Current OpenSpec change | **`hosted-dataset-import` — PROPOSED, live, at `openspec/changes/hosted-dataset-import/`**, on branch `docs/hosted-dataset-import-proposal`. It is the bounded change that adds the missing production `DatasetEntrySink` and closes **gate item 3**, the only one of the six still not satisfied. **2 ADDED requirements, 10 scenarios, all in the existing `dataset-import` capability** — no new capability, because the capability's stated purpose already covers "how the immutable synthetic dataset becomes canonical `dataset_entries` rows" and an operator entry point is one of the ways that happens. `openspec change validate hosted-dataset-import --strict` exits **0**. Three design questions were decided against **measurement taken on this machine**, not against inspection, and the measurements are in `design.md` D2 and D5: plain Node runs `.ts` but **cannot resolve the `@/*` alias** and **does throw on `import "server-only"`**, so the command is unreachable without a TS runner and without a `server-only`-free construction site; and 20 real RPC round trips averaged **278 ms**, so 600 per-entry calls project to about **167 s** and a batch function is not worth its loss of per-record attribution. |
-| Lifecycle state | `proposed` — **`hosted-dataset-import`**, roadmap **Phase 7, second bounded slice**. The previous slice (`researcher-admin-access`) is ARCHIVED as `2026-10-03-researcher-admin-access`. **This change is gated the same way the previous one was, and the gate is stronger: gate item 3 must be measured GREEN on the hosted project before the merge, not merely satisfied before the work starts.** A gated change that merges with the gate still red would leave the repository claiming an imported dataset it does not have, and the roadmap already carries one such claim corrected after the fact. Its gate is stated as D8 and enumerated as tasks 7.1-7.4. **The two residuals from the previous change are NOT both discharged here, and the ledger no longer claims they are:** the no-browser-has-rendered-anything gap stays open, because this change adds no UI and no command can look at a screen; the query-builder gap narrows to `.rpc()` reaching the real gateway while `.in()`, `.range()`, `.neq()`, and `.eq()` remain fake-only. |
+| Lifecycle state | `proposed` — **`hosted-dataset-import`**, roadmap **Phase 7, second bounded slice**. The previous slice (`researcher-admin-access`) is ARCHIVED as `2026-10-03-researcher-admin-access`. **This change is gated the same way the previous one was, and the gate is stronger: gate item 3 must be measured GREEN on the hosted project before the merge, not merely satisfied before the work starts.** A gated change that merges with the gate still red would leave the repository claiming an imported dataset it does not have, and the roadmap already carries one such claim corrected after the fact. Its gate is stated as D8 and enumerated as tasks 7.1-7.4. **The two residuals from the previous change are NOT both discharged here, and the ledger no longer claims they are:** the no-browser-has-rendered-anything gap stays open, because this change adds no UI and no command can look at a screen; the query-builder gap narrows to `.rpc()` reaching the real gateway while `.eq()`, `.in()`, `.order()`, `.limit()`, `.range()`, `.select(cols, { count: "exact" })`, `.insert()`, `.insert().select().single()`, `.maybeSingle()`, and `.update()` remain fake-only. |
 | Completed milestones | Repository + roadmap + synthetic dataset bootstrap (`main` @ `81b3115`); Project Status ledger + roadmap reference reconciliation (PR #1, `567ab42`); `project-foundation` proposal (PR #2, `f451a01`); `project-foundation` implementation, review, sync, archive (PR #4, `b2128a4`); line-ending fix (PR #5, `53754de`); `od-dataset-schema-and-import` proposal (PR #6, `f14c0bb`); `od-dataset-schema-and-import` implementation + verification repairs (PR #7, `d2eea22`); `od-dataset-schema-and-import` Sync + Archive (PR #8, `1ed3340`); roadmap ledger reconciliation (PR #9, `1736b0b`); ledger self-reference fix (PR #10, `3518514`); `landing-and-screening` proposal (PR #11, `d111a9d`); **`landing-and-screening` Apply (PR #12, `e1390ba`)**; `landing-and-screening` Sync + Archive (PR #13, `411e18f`); bilingual requirements into this roadmap (PR #14, `523cfd0`); bilingual proposal (PR #15, `d4c40cd`); status reconciliation (PR #16, `0c042ed`); bilingual requirements into `AGENTS.md` `AGENTS.md` durable rules); `required-bilingual-translations` proposal (PR #15, `d4c40cd`), implementation (PR #18, `438b691`), spec sync (PR #19, `aaa8810`) and archive (PR #20, `76fd7a3`); `coverage-aware-allocation` proposal (PR #22, `d2fd596`), implementation (PR #23, `1134da9`), spec sync (PR #24, `304d450`) and archive (PR #25, `174fa2c`); `research-schema-guarantee-coverage` proposal (PR #26, `8ae4bc3`), spec sync (PR #27, `06dc92e`) and archive (PR #28, `5788383`); `interface-localization` proposal (PR #29, `50ff9eb`), implementation (PR #30, `2aaca46`), spec sync (PR #31, `f03bf65`) and archive (PR #32, `794aaf5`); **`thin-shell-call-sites` proposal (PR #33, `b5b59b2`), implementation (PR #34, `73ab777`) and archive (PR #35, `80a8dba`); `pending-state-specification` proposal (PR #36, `cb347cf`), implementation (PR #37, `bf76173`), spec sync (PR #38, `d3e1627`) and archive (PR #39, `ab1c7be`); `validation-experience` proposal (PR #40, `982dcea`), implementation (PR #41, `c527a4b`), spec sync (PR #42, `524bbbc`) and archive (PR #43, `acf5741`); `batch-completion` proposal (PR #44, `377a816`), implementation (PR #45, `cb197fe`) and Sync + Archive (PR #46, `c067cf7`); `interrupted-batch-recovery` proposal (PR #47, `5962521`), implementation (PR #48, `3faa312`) and Sync + Archive (PR #49, `904ffd2`); roadmap `Archived Changes` table reconciliation (PR #50, `cafced6`).  **This change adds four:** `researcher-admin-access` proposal (PR #53, `21484d0`), implementation (PR #55, `1bd6781`), spec sync (PR #56, `d7fca89`) and archive (PR #57, `02de160`), and the count is re-derived from the archive directory rather than carried forward — **thirteen** archived changes, up from twelve. **Every stage in that enumeration now names its pull request AND its commit, and the placeholder convention has been RETIRED rather than quietly dropped.** Two stages wrote it — the `researcher-admin-access` archive and the `hosted-dataset-import` proposal — each correctly, because at the moment each was written no merge commit existed yet and naming a guessed one would have been worse than naming none. Both have since merged, as `02de160` and `4df2731` through merge commit `00d5cad`, so both now carry their real identifiers. **The convention existed only because a merge commit did not yet exist, and the honest description of that is a placeholder, not a rule:** a row filled in with the pull request it happens to be inside is a row that is wrong the moment it is read from any other pull request, and it will read correctly from exactly one. The residual cost of retiring it is that the ARCHIVE stage of a change is now identified by its PR rather than by its merge commit, which is a real loss of one identifier per change and is the right trade against a field that silently misdirects a reader.**  **A second stage begins here, for `hosted-dataset-import`:** its proposal (PR #58, `4df2731`), after which its implementation, spec sync and archive will be added by their own stages. The thirteen-archived-changes figure above is **unchanged by a proposal** — a proposal creates no archive directory and moves no file — and it is stated as unchanged rather than left ambiguous, because "thirteen" is what the archive directory actually contains at this commit and a proposal that quietly made it fourteen would be a false entry. The distinction is the whole reason this row records archive-derived counts separately from merge-derived ones: **a merged pull request and an archived change are different events, and conflating them is how this row was wrong three times.**  **Fifty-eight merged pull requests, and every SHA in this row was re-derived from `gh pr list` during the stage that wrote this sentence rather than carried forward.** The count is **re-measured in this correction stage, not incremented**: `gh pr list --state merged --limit 200 --json number` returns **58** numbered records with **#58 the highest**, against the **Fifty-six** this row claimed one stage earlier. The error is again upward drift — two pull requests merged and the figure did not move — which is the **fifth** occasion this row has been corrected for the same cause, and the fifth is what converts the pattern from an accident into a property. and the direction of the error is the point — an enumeration only stays correct while somebody re-derives it, and this row's own history records four separate occasions on which it was not. **A stated total is a claim about a moment, and the moment has to be named or the number is a rumour.** **This row had been short by ELEVEN PRs — #40 through #50 — and it went stale within a single change**, which is the fourth instance of the same defect and the sharpest one yet: the previous sentence in this cell already recorded that the row had once ended "archive in flight in this PR" and had survived two changes uncorrected, so the note describing the defect was itself written at the moment the defect recurred. The generalisation is the one the `Archived Changes` note now states: **a hand-maintained index drifts as a matter of course, so an index that must stay correct needs an assertion, not a habit.** This row and that table are both hand-maintained, and neither has a guard; **the two were corrected in consecutive PRs (#50 and this one) only because each stage happened to edit the file while a stage that caused the drift was closing.** |
 | Last merged OpenSpec stage | **PR #58 — `4df2731` head, merged as `00d5cad` — `docs/hosted-dataset-import-proposal`, the PROPOSAL stage of `hosted-dataset-import`**, a **merge commit** whose parents are `02de160` and `4df2731` (both read with `git cat-file -p`, not assumed). Its CI run **`36974330179`** was **read back from its log by step name**: `Unit tests` **54 files / 1434 tests**, `DOM tests` **7 / 87**, `Integration tests` **10 / 170**, the dataset guard **1 file / 7 tests from the literal scoped command**, with `DOM tests` at position **9 of 11** and the observed order matching `.github/workflows/verify.yml`'s own declaration. Both jobs' full step lists are present (11 and 5 steps) and no summary line is unattributed. **A superseded run is not read and is not evidence:** run `36974207581` is green on `7bd25ae`, the commit that existed before a citation repair, and it was deliberately left unread because it describes a tree that is not the merged tree. Its existence is recorded here because a reader comparing the two runs should know one was skipped on purpose rather than overlooked. **The DOM figures were passed as required command-line arguments** (`7` and `87`), because a reader that takes its expectation from the run it is checking is not a check. This stage **moved 4 files under `openspec/` and 1 under `docs/`**, and was classified as an OpenSpec stage by that zone-file count read from `gh pr view 58 --json files`, not by intent. **The previous stage in this field was PR #56 (`d7fca89`, the `researcher-admin-access` Sync), and PR #57 — the `researcher-admin-access` archive, `02de160` — was skipped over by a correction made in this stage rather than by an omission:** the field names the most recent stage, and naming two would require a rule for which one "counts", which is a rule nobody has approved. Its own figures were read back when it was current and are recorded in `Completed milestones`. |
 | Doc-only PRs since that stage | **One: PR #59**, which is this correction and which therefore contains this sentence — the fixed point this cell was rebuilt to make visible. **Measured as of `00d5cad` (PR #58), the highest-numbered merged pull request at the moment this sentence was written**, with `gh pr list --state all` and not inferred. **PRs #57 and #58 are NOT counted, and the reason is measured rather than asserted:** both moved files under `openspec/`, so both are OpenSpec stages. #57 moved 1 file under `openspec/changes/archive/`; #58 moved 4 files under `openspec/changes/`. **A correction PR that edits this row becomes an entry in the row it is editing, which is why the enumeration cannot be maintained by the act of writing it** — so the count is stated together with the merge it is as-of, and the next stage must **re-derive** it rather than increment it. Incrementing is precisely how this cell was wrong three times. The prior record is kept because it was the correct thing to stop: PR #52 removed an earlier enumeration for this same reason, not carelessly. **The prior wrong figure is recorded too, because the wrongness was not hypothetical: the draft written during the `researcher-admin-access` archive stage first said "One: PR #54", which was true of PR #53's era and false of PR #56's — a figure carried forward rather than re-derived.** That sentence was dropped when this cell was rebuilt in the `hosted-dataset-import` proposal stage and restored in the correction stage that followed, and the drop is itself the lesson: **an audit trail that is rewritten whenever the entry it describes changes records nothing**, which is the same reason the enumeration was stopped in the first place. **Two derivation instructions, both re-measured in this stage rather than carried forward.** (1) To classify a stage: `git diff --name-only <merge>^1 <merge>^2`, **not** `git show --name-only <merge>` — a merge commit has no implicit single diff, so `--name-only` returns **zero files for every merge commit in this repository's history**, and a rule built on it would classify every implementation stage as doc-only. (2) To check that no test reads this ledger, search for the **path** `docs/ROADMAP.md`, not the word `roadmap` — the bare word matches 7 test files across 10 comment lines while the path matches 5 lines that are **all prose in comments, zero reads**. **The `Archived Changes` table has no automated guard at all**, and neither does this cell; both are hand-maintained, and the drift pattern in this repository is that a hand-maintained index is corrected only when a stage happens to edit the file. |
 | Next eligible objective | **Apply `hosted-dataset-import`. Do not start anything else first.** Its proposal is merged (PR #58, `00d5cad`); its Apply branch is `feat/hosted-dataset-import`, created from an updated `main` and pushed immediately. The Apply is **gated in a way no earlier stage in this project has been**: `design.md` D8 requires **gate item 3 to be measured GREEN on the hosted project before the merge**, not merely satisfied before the work starts. That means the migration must be applied to the real project, the operator command must actually run, `dataset_entries` must hold 600 rows whose id set equals the source id set with each stored instruction **byte-identical**, `anon`/`authenticated` must be **refused** by the real gateway with a refusal distinguished from an absent function, and a second run must report `0 inserted / 600 updated`. **A red gate blocks the merge and is not a warning.** After it, **Phase 7's third bounded slice: the researcher dashboard views**, which is blocked on a **thesis-team decision that no amount of engineering resolves** — which coverage and disagreement figures the dashboard must show, and what counts as a disagreement worth surfacing. The Phase 7 entry in this file lists the candidate figures, and this repository will not pick them unilaterally: the numbers on that screen are a research claim, and a figure chosen by an implementer is a figure nobody has approved. **That is the first genuine external gate in the project that is not a credential.** The slice after the dashboard is Phase 8, the research-data export pipeline, which is implementable without further decisions. |
-| Blockers | **The schema blocker is RESOLVED, and it was resolved by measurement rather than by a credential appearing.** It previously read: the hosted project is **EMPTY**, PostgREST exposes **0 relation paths**, the migrations have never been applied, no Supabase client has ever been constructed, and applying the SQL is a **MANUAL SUPABASE ACTION** needing a PAT, the `supabase` CLI, or `psql`/`docker`. **Every one of those claims is now false and is corrected here rather than left for a reader to discover.** The five production migrations were applied to the real project **unchanged, in filename order, one request per file**, through the Supabase Management API. PostgREST's OpenAPI root exposes **7 relation paths and 2 RPC paths**; `service_role` reads every research table over the real wire with the column counts derived from the live schema; the hosted `validations` table carries `english_translation` and `filipino_translation` and does **not** carry `translation_language` or `translation_text`, so the forward bilingual migration is confirmed on a real server and not only in PGlite. **The migration history was NOT rewritten to make the deploy easier.** **The blocked period was never about SQL, and the reason is the part worth keeping:** the Supabase SQL Editor runs a pasted script as a **single transaction**, so one failing statement rolls back all five migrations **and still reports success**, and a paste can land in the **wrong project**, which no in-database check can detect because the emptiness is identical either way. The project reference cannot be read from the new opaque key format, which carries no `ref` claim, so the two explanations were separable only by querying `pg_class` in the project the paste had actually run in. **All six gate items are now measured: 1 reachable, 2 schema present, 4 anon denied by the real gateway, 5 privileged reads work, 6 unauthenticated admin request refused by the real running app — all SATISFIED. Item 3 is the only one open**, and it needs the production `DatasetEntrySink` named in `Next eligible objective`. **RLS was measured in both available shapes and the distinction is load-bearing:** all seven `insert` probes are rejected with the **named** policy and PostgreSQL code `42501`, and `select`/`update`/`delete` were measured against a probe row that **demonstrably existed** — anonymous **0** rows against an `service_role` control of **exactly 1**, with the table confirmed returned to its prior count. The second measurement exists because **zero rows on an empty table cannot distinguish a deny-all policy from a permissive one**, and a probe that scored that as a pass would have been a vacuous guard on the project's single most important security property. **Two residuals are stated rather than implied away.** No desktop browser has ever rendered any screen in this project, so there is still no visual verification and a successful sign-in round trip is unexercised. And **the repository's own query builders — `.in()`, `.range()`, `.neq()`, `.eq()` — have still never executed against a real PostgREST**, because those reads were issued by a purpose-built gate probe using the service key as a raw header rather than by `factory.ts`; that gap closes when production code first reads or writes, which is the next change. **A credential problem is reported as `?? UNVERIFIED`, never as a migration refusal:** the Management API answers a bad token with `401` having evaluated no SQL at all, and conflating the two would send the next reader to debug the wrong thing. |
+| Blockers | **The schema blocker is RESOLVED, and it was resolved by measurement rather than by a credential appearing.** It previously read: the hosted project is **EMPTY**, PostgREST exposes **0 relation paths**, the migrations have never been applied, no Supabase client has ever been constructed, and applying the SQL is a **MANUAL SUPABASE ACTION** needing a PAT, the `supabase` CLI, or `psql`/`docker`. **Every one of those claims is now false and is corrected here rather than left for a reader to discover.** The five production migrations were applied to the real project **unchanged, in filename order, one request per file**, through the Supabase Management API. PostgREST's OpenAPI root exposes **7 relation paths and 2 RPC paths**; `service_role` reads every research table over the real wire with the column counts derived from the live schema; the hosted `validations` table carries `english_translation` and `filipino_translation` and does **not** carry `translation_language` or `translation_text`, so the forward bilingual migration is confirmed on a real server and not only in PGlite. **The migration history was NOT rewritten to make the deploy easier.** **The blocked period was never about SQL, and the reason is the part worth keeping:** the Supabase SQL Editor runs a pasted script as a **single transaction**, so one failing statement rolls back all five migrations **and still reports success**, and a paste can land in the **wrong project**, which no in-database check can detect because the emptiness is identical either way. The project reference cannot be read from the new opaque key format, which carries no `ref` claim, so the two explanations were separable only by querying `pg_class` in the project the paste had actually run in. **All six gate items are now measured: 1 reachable, 2 schema present, 4 anon denied by the real gateway, 5 privileged reads work, 6 unauthenticated admin request refused by the real running app — all SATISFIED. Item 3 is the only one open**, and it needs the production `DatasetEntrySink` named in `Next eligible objective`. **RLS was measured in both available shapes and the distinction is load-bearing:** all seven `insert` probes are rejected with the **named** policy and PostgreSQL code `42501`, and `select`/`update`/`delete` were measured against a probe row that **demonstrably existed** — anonymous **0** rows against an `service_role` control of **exactly 1**, with the table confirmed returned to its prior count. The second measurement exists because **zero rows on an empty table cannot distinguish a deny-all policy from a permissive one**, and a probe that scored that as a pass would have been a vacuous guard on the project's single most important security property. **Two residuals are stated rather than implied away.** No desktop browser has ever rendered any screen in this project, so there is still no visual verification and a successful sign-in round trip is unexercised. And **the repository's own query builders — `.eq()`, `.in()`, `.order()`, `.limit()`, `.range()`, `.select(cols, { count: "exact" })`, `.insert()`, `.insert().select().single()`, `.maybeSingle()`, `.update()` — have still never executed against a real PostgREST**, because those reads were issued by a purpose-built gate probe using the service key as a raw header rather than by `factory.ts`; that gap closes when production code first reads or writes, which is the next change. **A credential problem is reported as `?? UNVERIFIED`, never as a migration refusal:** the Management API answers a bad token with `401` having evaluated no SQL at all, and conflating the two would send the next reader to debug the wrong thing. |
 directive** — newly discovered by the Phase 5 verification pass on 2026-10-01, **pre-existing**, and
 deliberately **not repaired** by the change that found it, because `AGENTS.md` puts CI/CD and security
 tooling outside a change's scope. `eslint.config.mjs:74` gates on
@@ -439,17 +439,34 @@ What this evidence explicitly does **not** establish:
     server's error verbatim, which removes the paste, the transaction, and the wrong-project failure
     classes at once. A `401` from that endpoint is a credential problem and is reported as
     `?? UNVERIFIED` rather than as a migration refusal, because no SQL was evaluated.
-  - **What is now the real blocker: the OD dataset has not been imported.** `dataset_entries` exists
-    and is readable as `service_role`, and holds **0 rows**. Verifying it needs a **production
-    `DatasetEntrySink`** — `importDatasetEntries` still has no production entry point and is reachable
-    only from two test files. That is deliberately a **separate bounded change**, not folded into a
-    change that was already gated: a gated change should not absorb a second unfinished boundary.
-    **That change now exists and is named: `hosted-dataset-import`, PROPOSED on
-    `docs/hosted-dataset-import-proposal`.** It adds one forward migration carrying the upsert, a
-    production `SupabaseDatasetEntrySink`, and an operator command that no HTTP route can reach.
-    **The blocker is NOT resolved by the proposal** — `dataset_entries` still holds 0 rows, and it is
-    resolved only when gate item 3 is measured green on the real wire. A proposal that closed a
-    blocker would be precisely the kind of claim this ledger keeps catching.
+  - **RESOLVED 2026-10-03 by measurement, on the real wire: gate item 3 is SATISFIED.**
+    `dataset_entries` holds **600 rows**. The stored id set equals the source id set exactly (0 missing,
+    0 unexpected), and all **600 stored instructions are byte-identical to the source by SHA-256**.
+    `public.dataset_entries_import` is deployed and callable — the production sink wrote through it and
+    reported `inserted`, then `updated` on each of three further runs, so the idempotence
+    discriminator is measured over the wire rather than only in PGlite. The anonymous role is **refused
+    by the real gateway**: a write through the *production sink* returned PostgreSQL `42501`, "new row
+    violates row-level security policy for table `dataset_entries`", and a direct read returned status
+    200 with **zero rows**. The row count was printed **before and after** every access probe (600
+    before, 600 after), because a denial measured against an empty table is indistinguishable from a
+    denial measured against a real one.
+    - The former blocker text said the dataset had not been imported and that the change was
+      "PROPOSED". It is kept as history rather than deleted, and the reason it survived a reader is the
+      point: **a proposal that closed a blocker would have been exactly the kind of claim this ledger
+      keeps catching**, and because it did not, the gate was measurable at all.
+    - **A credential was disclosed during this measurement, and it is recorded here rather than only
+      in a transcript. `SUPABASE_SERVICE_ROLE_KEY` must be treated as compromised and rotated in the
+      Supabase dashboard.** A throwaway diagnostic probe printed it into its own output, and a hash
+      comparison against `.env.local` confirmed the printed string was byte-identical to that key. The
+      cause was the probe's own code: a helper with `(label, path, key, init)` positional parameters
+      was called with **three** arguments, so the key landed in the `path` slot and a log line that read
+      like a URL printed it. Repaired by taking a single object parameter and asserting `path` starts
+      with `/` before any request is made. **The general form: a helper with a credential in one of its
+      positional slots will eventually be called with the wrong arity, and the wrong arity stays
+      invisible until something prints.** It was *found* only because a redaction harness re-ran the
+      probe with a secret-shaped pattern in front of the output — and that harness refuses to report a
+      run with **zero** substitutions as clean, because "no secret was emitted" and "the patterns do
+      not work" are different findings.
   - **The consequence for Phase 7, updated 2026-10-03: the boundary is now proved to WORK, not only to
     refuse.** Gate item 1 (project reachable), item 2 (schema present), item 4 (anonymous access
     denied by the **real gateway**), and item 5 (privileged server-side PostgREST reads) are all
@@ -460,18 +477,31 @@ What this evidence explicitly does **not** establish:
     table confirmed returned to its prior count. Both attempt-counter functions were exercised on the
     real wire. **Two gaps are stated rather than implied away:** no desktop browser has ever rendered
     any screen in this project, so a successful sign-in round trip remains unexercised; and the
-    repository's own query builders (`.in()`, `.range()`, `.neq()`, `.eq()`) have still never run
-    against a real PostgREST, because the reads above were issued by a gate probe rather than by
-    `factory.ts`. **These are now SPLIT, because "both close with the next change" was wrong and was
+    repository's own query builders (`.eq()`, `.in()`, `.order()`, `.limit()`, `.range()`,
+    `.select(cols, { count: "exact" })`, `.insert()`, `.single()`, `.maybeSingle()`, `.update()`) have
+    still never run against a real PostgREST, because the reads above were issued by a gate probe
+    rather than by `factory.ts`. (An earlier version of this list named `.neq()`; no such member
+    exists on the narrow client and no caller uses one.) **These are now SPLIT, because "both close with the next change" was wrong and was
     written without checking what the next change contains.** `hosted-dataset-import` adds no UI, so
     the browser gap does **not** close there and will not close until someone opens the app in a
     desktop browser — no amount of local checking substitutes, and a design verified only by rendered
     HTML and emitted CSS has still never been looked at. That gap is now stated as **open and
     unclosable by any command.** The PostgREST gap **narrows** rather than closes: the import path
-    uses `.rpc()`, so the RPC surface reaches the real gateway for the first time, while `.in()`,
-    `.range()`, `.neq()`, and `.eq()` stay proved only against the recording fake. **"Has reached a
+    uses `.rpc()`, so the RPC surface reaches the real gateway for the first time, while `.eq()`,
+    `.in()`, `.order()`, `.limit()`, `.range()`, `.single()`, and `.maybeSingle()` stay proved only
+    against the recording fake. **"Has reached a
     real PostgREST" is a per-method property, not a property of a file** — the claim is only meaningful
     with the method named, and the same sentence claiming it for a file is what made it useless.
+    **`factory.ts` itself has still never been executed**, so no repository it constructs has reached
+    the wire. Its header claimed "No Supabase project and no credential exist in this environment"
+    until 2026-10-03, which was false — it mistook the absence of a local Supabase RUNTIME for the
+    absence of a hosted project. Rewritten against measurements: `.rpc()` has reached a real PostgREST
+    via `SupabaseDatasetEntrySink`; `.eq()`, `.in()`, `.order()`, `.limit()`, `.range()`,
+    `.select(cols, {count})`, `.insert()`, `.single()`, `.maybeSingle()`, and `.update().eq()` have
+    not, and each still rests on a recording fake plus PGlite.
+    Two further absences are named there rather than left to a reader's inference: the `authenticated`
+    role has not been exercised on the dataset table (it needs a signed-in JWT no probe holds), and the
+    `23505` payload the uniqueness branch depends on has not been observed on the wire.
   - **Older sections of this file still say the three variables are absent, and they have been left
     saying so on purpose.** Each `What this evidence explicitly does not establish` list is a record of
     what was true **at the phase it belongs to**, and three of them name the absent credentials. Those
@@ -509,6 +539,159 @@ What this evidence explicitly does **not** establish:
     strips both headers, every request without a forwarded header shares **one** counter, so one party
     can exhaust a bucket others share. **This is a RATE LIMIT and not an authorization control**: the
     authorization decision is the credential comparison, and nothing in this path participates in it.
+### Local Verification Evidence — `hosted-dataset-import` (2026-10-03, Apply stage)
+
+Every figure below was produced by running the command named. Nothing here is incremented from a
+previous row; where a figure changed, the old one is named so the change is visible rather than
+silent.
+
+| Command | Result | Proves | Does **not** prove |
+| --- | --- | --- | --- |
+| `pnpm run lint` | exit 0, no errors and no warnings | Every file lints. The `sadino/no-privileged-imports` rule fires only on client modules (a `"use client"` directive or a path under `src/components/`), so `scripts/` is outside its scope by construction — the separation there is enforced by the write-scan and credential unit tests, not by the linter. The two new `PRIVILEGED_SPECIFIERS` entries protect every client module they can see. | That the boundary rule would catch a *new* violation, or that it covers `scripts/`; its probe file was deleted after the `project-foundation` change proved it fires on a client module. |
+| `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" | Every formatter-owned file matches the committed configuration. | Anything about correctness. `AGENTS.md`, `openspec/`, `docs/`, `data/`, and `.agents/` are excluded by `.prettierignore`. |
+| `pnpm run typecheck` | exit 0 | `tsc --noEmit` over `src/`, `tests/`, **and `scripts/`** — the last was measured rather than assumed, by inserting a `string` where a `number` is declared in `scripts/import-dataset.ts` and confirming `tsc` exits **2** naming that file and line, then restoring byte-identical with the control back at exit 0. | Any runtime behaviour. |
+| `pnpm run test:unit` | exit 0 — **58 files, 1476 tests** | The domain contracts, the sink against a recording fake, the sink's **loadability in plain Node**, the one-construction-site boundary, the operator command's reporting and exit codes, and — added by the repair round — the four no-request-path tests behind scenario 2. Previously 54 files / 1434 tests at the change's start; the repair added **4** tests and no files. | Anything needing a database or a browser. |
+| `pnpm run test:dom` | exit 0 — **7 files, 87 tests** | Unchanged by this change, which adds no UI. | Anything about a real browser. **No human has ever rendered any screen in this project**, and this change does not alter that. |
+| `pnpm run test:integration` | exit 0 — **11 files, 194 tests** | The migration's inserted/updated discriminator, that `instruction`/`source_payload`/`created_at` survive a re-run unchanged, the named refusal on a differing instruction, the EXECUTE grants, **all 600 records** through the production sink against a real PostgreSQL engine, and — added by the repair round — one behavioural test per arm of the corrected guard in `20261004120000_dataset_entries_import_guard.sql` (clean apply, missing column named, wrong key named, absent key, absent table, absent function). Previously 10 files / 170 tests at the change's start. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the engine evaluates them*, and does not cover PostgREST, Auth, or RLS as the Supabase gateway enforces it. |
+| `pnpm run build` | exit 0, "Compiled successfully" | The application compiles for production under the committed TypeScript and Tailwind configuration. | That any test passed. A successful build is not a behavioural result. |
+| `openspec change validate hosted-dataset-import --strict` | exit 0, 'Change "hosted-dataset-import" is valid' | The change's proposal, design, and its capability delta satisfy the OpenSpec schema strictly. The deprecation warning recommending verb-first commands is **expected and is not a failure**; judge by the exit code and the verdict line. | That the implementation matches the change. That is verified by inspecting the code and tests. |
+| `openspec validate --specs --strict` | exit 0, "Totals: **13** passed, 0 failed (13 items)" | All thirteen in-force capabilities satisfy the schema. **Still 13, unchanged** — and that is the measurement that matters here: during an Apply the delta must live only under `openspec/changes/`, so a new directory appearing under `openspec/specs/` would mean the delta had been written to the wrong place. | That the implementation matches the specs. |
+| `pnpm run import:dataset` (against the real project) | exit 0, three runs: `600 inserted / 0 updated`, then `0 inserted / 600 updated` twice | The command reads 600 records, writes every one through the production sink, and is **idempotent on the wire**. `parsed`, `inserted`, `updated`, and `refused` are printed from counts the run actually took; the credential line prints a variable NAME and a LENGTH and nothing else. | That the data is correct. A row count says nothing about content — that is the separate probe below. |
+| gate probe, `dataset_entries_import` | exit 0 — **7 claims, 7 satisfied, 0 not satisfied, 0 unverified**, measured twice: once before and once after the guard migration was applied | Gate item 3, against the real project: 600 rows; the stored id set equals the source id set (0 missing, 0 unexpected); all 600 stored instructions byte-identical to the source by SHA-256; function presence proven **through the production sink as `service_role`** *before* any access probe; the anonymous role refused with `42501` "new row violates row-level security policy"; a direct anonymous read returning **0 rows**; and the row count **600 before / 600 after** the access probes. The second run confirms the guard deploy changed no data. | Anything about the `authenticated` role — it needs a signed-in JWT no probe holds. Nor Auth, Storage, or Realtime. |
+
+**Four defects were found in my own new tooling and are recorded because three of them would have been
+reported as findings about the system rather than about the harness.**
+
+1. **A gate probe reported a deployed function as absent, and the function was not absent.** It built
+   its own eight-argument RPC payload from the **raw source record**, whose keys are `id`,
+   `instruction`, and `output` — so four arguments were `undefined`, and `JSON.stringify` **drops a
+   key whose value is `undefined`**. PostgREST received four arguments, searched for a four-argument
+   overload, found none, and returned `404 PGRST202`; its own `hint` field named the correct eight.
+   The database confirmed `proargnames` were exactly those eight. The probe rewrote itself to import
+   `parseSyntheticDataset` and `SupabaseDatasetEntrySink`, so the payload is produced by production
+   code and the only variable under test is the credential — which is also a **stronger** claim. **The
+   lesson is the one this ledger keeps re-learning in a new place: a probe carrying its own copy of a
+   mapping will disagree with the code, and the disagreement gets reported as a fact about the system.**
+2. **A probe classified `PGRST202` as absence, which is PostgREST's masking of a permission failure
+   too** — it returns the same code for an object that does not exist and for one the calling role may
+   not execute, because distinguishing them would leak the existence of objects a role cannot use. The
+   classification rule was **conservative in the right direction and that is why this surfaced at
+   all**: it refused to score the claim and reported `?? UNVERIFIED` rather than closing the gate. A
+   probe that scored `PGRST202` as a denial would have closed gate item 3 on a function that was never
+   called.
+3. **A probe function name was hard-coded and wrong** (`import_dataset_entry` for
+   `dataset_entries_import`). It now reads the constant out of `supabase-sink.ts`, which removes the
+   class rather than the instance.
+4. **A wrapper reported `DID-NOT-RUN` on two runs that had plainly succeeded.** It read
+   `const status = error?.status` and treated `undefined` as a spawn failure — the rule this project
+   has used for a year, and it is correct for `execFileSync`'s `catch` block. It is **wrong in the
+   callback form, where success passes `error === null`**, so `error?.status` is `undefined` on
+   success. The instrument could not tell "it worked" from "it never ran". **A discriminator copied
+   between two API shapes is a new rule, not a ported one: check what the value is in the case you
+   have not yet seen, which here was the success case.**
+
+**Two new unit guards went red on first run, and one was my assertion being wrong rather than the
+code.** The write scan over `scripts/` failed on the command's own documentation, because
+`/\brename(?:Sync)?\b/` matches the English word "rename". Three repairs were available — strip
+comments, drop `rename` from the list, or reword the documentation — and only the first is a fix. **The
+third is the one refused:** it is this repository's recorded lesson that a guard whose subject is prose
+forces the prose to change, and the documentation is correct. The credential test asserted that
+`readImportEnvironment`'s **return value** did not contain the key, and went red — because that value
+carries `credentials` on purpose, so the caller can build a client with them. The assertion was
+nonsense, not the code, which is why `formatCredentialDescription` is now exported and pure: an output
+promise is only checkable if the formatter can be reached without a credential.
+
+**Can-fire, with a green control before and after every probe and a byte-identical restore.** Eleven
+probes, all RED with the intended test named: S1 a second `createClient` site · S2 the constructor
+reading the credential variable · S3 renaming the `key` parameter · S4 removing `server-only` from a
+marked module · S5 handing the service-role key to the cookie-backed server client · S6 removing the
+credential read from the module behind the marker · S6b a direct `process.env` read in the sink · S8 a
+second caller of the privileged constructor · S9 a real filesystem write in the command · S10 the
+credential name printed in place of its length · S11 the refused record no longer named.
+
+**Three of those eleven probes were themselves defective on first run and produced a GREEN, which is
+the more instructive half.** S3 renamed the parameter and then rebound a local named `key`, leaving the
+`createClient` argument list byte-identical — and the mutant's sha256 had **changed**, so the hash was
+not sufficient to catch it; what was needed was reading the mutant in the region the assertion
+inspects. S6 took two attempts, and the second left the variable named in a `return` statement below
+the line it replaced. S7 — adding the env **import** to the sink — did go red, but as a **collection
+failure**, `server-only` throwing while the module loaded: the strongest possible evidence that the
+marker is transitive and the weakest possible attribution for an import assertion. It was replaced by
+**S6b**, which adds no import at all, and that probe found a real gap: `server-only` is only ever
+pulled in **transitively**, so an import assertion cannot see a module that reads `process.env`
+directly. `dataset-sink.test.ts` now asserts that too. A fourth probe defect: S8's anchor
+`import { createClient } from "@supabase/supabase-js"` occurred **zero** times in `browser.ts`, which
+uses `createBrowserClient` from `@supabase/ssr`; the harness's occurrence-count assertion reported
+`?? INCONCLUSIVE` and refused to mutate, which is the behaviour it exists for. **Guessing which of a
+file's import lines to mutate instead would have made it a different experiment wearing this one's
+name.**
+
+**Repair round, 2026-10-04: the independent verification failed this change, and it was right to.**
+Two CRITICAL findings — the import migration's column arm and primary-key arm cannot fire in the
+states they name — plus five WARNINGs, one of which (the `.neq()` phantom) named a method that does
+not exist anywhere in `src/`. The repairs, each with its own can-fire:
+
+- **New forward migration `20261004120000_dataset_entries_import_guard.sql`.** The defective file is
+  applied and therefore immutable history, so the correction is a second file, not an edit: columns
+  by set difference with every missing name in the refusal, the primary key by exact column set
+  (`<> 'id'` names the actual key), and a `to_regprocedure` check that the function exists. One
+  behavioural test per arm, six in all. Can-fire M1/M2/M3: each arm removed → the named test goes
+  red (`expected '' to contain 'dataset_entries_import guard failed'` — the guard goes silent, which
+  is exactly the old file's defect reproduced on purpose), green controls before and after,
+  byte-identical restores. Applied to the hosted project (status 201), and the gate probe re-run
+  after it: still 7/7, 600 rows intact.
+- **Scenario 2 finally has tests.** "No HTTP route, Server Action, or page performs the write" is
+  enforced by enumerating `src/app/**` and every `"use server"` module from the filesystem and by
+  asserting no module under `src/` imports the sink implementation. Can-fire P1: a route importing
+  the sink → both tests red by name. The old file's substring-only coverage of its own precondition
+  stays as history; the new arms rest on behaviour, not substrings.
+- **The write-scan control now covers all sixteen patterns**, with one real call per pattern in the
+  fixture and an exact-length assertion. Can-fire P2: one call removed → red. The scan itself is now
+  recursive, so a command in a subdirectory is covered.
+- **The instruction-absence check is now a real test**: a full `importEntries` run over entries with
+  distinctive instructions, asserting the text appears in no output line. Can-fire P3: printing the
+  instruction → red. The decorative `formatProgress` regex it replaces could never fail.
+- **The sink's import regex now reads to the semicolon**, so a multi-line forbidden import is
+  captured. Can-fire P-IMPORT: a five-line `supabase-js` import in the sink → the named test red,
+  with the module still loading (no collection failure to hide behind).
+- **Corrections to prose that was false**: the stripping-cost paragraph had the failure direction
+  backwards (a string-only identifier MATCHES — noisy, not missed; the real hole is an opener inside
+  a string); the lint row no longer claims the boundary rule covers `scripts/`; `factory.ts`,
+  `AGENTS.md`, and the roadmap no longer name `.neq()` as a live method — the string survives
+  only in dated notes recording that it was removed — and now list the methods actually called
+  (`.order()`, `.limit()`, `.insert().select().single()`, `.maybeSingle()`); `tasks.md` 2.1, 4.1, and 6.4 describe what
+  actually holds.
+- **Two defects in the repair's own probes, recorded because both reported working guards as
+  unattributable.** The ANSI strip was written without the escape byte, so `FAIL` lines matched
+  nothing while the run reported "1 failed" — the repository's fifth occurrence of that defect, this
+  time in its own newest harness. Then the FAIL-line regex assumed one token before the first `>`,
+  but the line carries the project label AND the file path. Both were caught because the probes
+  refuse to score an unnamed red, which is the behaviour that justifies the machinery.
+
+### Local Verification Evidence — `hosted-dataset-import` (measurement instruments)
+
+The tools used above live outside the repository, in `%TEMP%\opencode`, and four of their rules are
+worth carrying forward because each was learned by getting it wrong.
+
+- **Redaction is a filter, not a control.** `redacted-rerun.mjs` wraps a probe's output in
+  secret-shaped patterns and prints only the redacted text — which is the only way to diagnose a
+  disclosure without repeating it. It reports the **number** of substitutions, treats any surviving
+  `sb_`-prefixed token as a failure, and **refuses to score a run with zero substitutions as clean**,
+  returning `?? UNVERIFIED` instead. That refusal is the difference between "no secret was emitted"
+  and "the patterns do not work", which look identical in the output.
+- **Compare a suspected secret by hash, and report a near-match as a near-match.** `compare-key.mjs`
+  compares a candidate against every secret-shaped variable in `.env.local` and prints lengths and
+  SHA-256 prefixes. It never prints a value. An inline `node -e` was tried first and PowerShell
+  mangled it into a syntax error — the recorded hazard, hit again, and the reason every one of these
+  is a file.
+- **Verify a probe against a fixture, not against a string built inside it.**
+  `tests/fixtures/write-capable-sample.ts` is a real module containing a real `writeFileSync`, and it
+  lives outside `scripts/` precisely so the guard over `scripts/` is not made to fail for the right
+  reason at the wrong time.
+- **`node --check` before trusting any verdict from a probe.** It caught a TypeScript non-null
+  assertion inside a `.mjs` file — where `!` is a **syntax error**, not a type annotation — and the
+  run correctly reported `DID-NOT-PARSE` rather than a confident `GREEN`.
+
 - **No local container/PostgreSQL runtime.** `docker`, `psql`, and the `supabase` CLI are not
   installed on this machine, so `supabase start` (local Supabase) is not available as a
   substitute.

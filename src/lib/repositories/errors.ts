@@ -34,6 +34,12 @@ export type RepositoryOperation =
   | "dataset_entries.list"
   | "dataset_entries.findById"
   | "dataset_entries.listByIds"
+  /**
+   * The operator import, NOT a request-path read. Distinct from the three above because nothing in a
+   * request may reach it: `src/lib/repositories/supabase/dataset-entries.ts` is deliberately a read
+   * interface, and a validator request has no path to the write that populates this table.
+   */
+  | "dataset_entries.import"
   | "validators.insert"
   | "validators.findById"
   | "validators.touchLastActive"

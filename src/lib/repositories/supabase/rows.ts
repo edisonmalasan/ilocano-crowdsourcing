@@ -8,10 +8,27 @@ import {
   type RepositoryOperation,
 } from "@/lib/repositories";
 
-import type { PostgrestErrorLike, PostgrestResultLike } from "./client";
+import type { PostgrestResultLike } from "./client";
+import { awaitQuery, describePostgrestError, expectNoError, persistenceFailure } from "./rpc";
 
 /**
- * Row ⇄ domain translation, and the only place a persistence failure becomes a `RepositoryError`.
+ * Re-exported, not redefined. These four moved to `./rpc` — a module WITHOUT `import "server-only"`
+ * — so the hosted dataset import, which runs in a plain-Node command where the `server-only`
+ * package throws, can share this mapping instead of copying it. Every existing importer in this
+ * directory keeps importing them from here, so no call site changed.
+ */
+export { awaitQuery, describePostgrestError, expectNoError, persistenceFailure };
+export type { PostgrestErrorLike, SupabaseRpcResultLike } from "./rpc";
+
+/**
+ * Row ⇄ domain translation.
+ *
+ * CORRECTION TO THIS FILE'S OWN HEADER, made when the hosted dataset import moved half of it out.
+ * It used to read "and the only place a persistence failure becomes a `RepositoryError`". That
+ * stopped being true the moment `describePostgrestError`, `persistenceFailure`, `expectNoError`,
+ * and `awaitQuery` moved to the sibling `./rpc` module, and a header that over-claims is worse
+ * than one that makes no claim — a reader uses it to decide where to look. The mapping lives in
+ * `./rpc` now, and this file re-exports it so no existing importer had to change.
  *
  * Every helper here takes the `RepositoryOperation` of the call that produced the value, so a
  * failure is always attributed to a specific call rather than to "the repository". Nothing in
@@ -59,87 +76,6 @@ import type { PostgrestErrorLike, PostgrestResultLike } from "./client";
  * implementations below keep importing the name from here.
  */
 export { POSTGREST_UNIQUE_VIOLATION_CODE };
-
-/** Renders a PostgREST error for `RepositoryError.detail`: a code and a message, never a value. */
-export function describePostgrestError(error: PostgrestErrorLike): string {
-  return `PostgREST ${error.code}: ${error.message}`;
-}
-
-/**
- * Builds the `RepositoryError` for a failed call.
- *
- * The PostgREST error object is kept as `cause` and its code/message reduced to `detail`, because
- * `RepositoryErrorOptions.detail` is documented as diagnosis-only material that must never be
- * surfaced verbatim to a user-facing message.
- */
-export function persistenceFailure(
-  operation: RepositoryOperation,
-  context: string,
-  error: PostgrestErrorLike,
-  message?: string,
-): RepositoryError {
-  return new RepositoryError(
-    operation,
-    message ??
-      `${context} failed: PostgREST reported ${error.code} (${error.message}). The original error is on \`cause\`.`,
-    { cause: error, detail: describePostgrestError(error) },
-  );
-}
-
-/** Fails when a result carries an error. The only other outcome of a write is "no rows to read". */
-export function expectNoError(
-  result: PostgrestResultLike,
-  operation: RepositoryOperation,
-  context: string,
-): void {
-  if (result.error === null) return;
-  throw persistenceFailure(operation, context, result.error);
-}
-
-/**
- * Awaits a query and converts a REJECTED call into a `RepositoryError`.
- *
- * A PostgREST call fails in two different ways and both have to leave through the same typed door.
- * A request that reached the server comes back as `{ data, error }` and is handled by the
- * `read*` helpers. A request that never got an answer — a refused connection, a DNS failure, an
- * aborted fetch — rejects, and an unhandled rejection would escape as whatever the HTTP client
- * threw, with no operation name on it. Under the error contract a caller must always be able to
- * ask which call failed, so the rejection is wrapped here rather than at each call site.
- *
- * Only the query itself is wrapped. Translation happens outside this helper, so a bug in the
- * mapping is not misreported as a persistence failure.
- */
-/**
- * Awaits a PostgREST call and converts a REJECTION into a `RepositoryError`.
- *
- * GENERIC over the envelope rather than fixed to `PostgrestResultLike`, because the repository
- * client has two shapes: a table operation returns `{ data, error, count }` and an `rpc` call
- * returns `{ data, error }` with no count to report. The one thing they share is the field this
- * function actually reads, and the constraint names exactly that field — so a shape is accepted
- * precisely when it can carry an error, and there is still only ONE place that turns a rejection
- * into a typed failure.
- */
-export async function awaitQuery<T extends { readonly error: PostgrestErrorLike | null }>(
-  operation: RepositoryOperation,
-  context: string,
-  query: () => PromiseLike<T>,
-): Promise<T> {
-  try {
-    return await query();
-  } catch (cause) {
-    throw new RepositoryError(
-      operation,
-      `${context} failed before PostgREST returned a response (${describeCause(cause)}). The ` +
-        "original error is on `cause`.",
-      { cause, detail: describeCause(cause) },
-    );
-  }
-}
-
-/** A value-free description of a thrown value, for error messages. Never includes a message. */
-function describeCause(cause: unknown): string {
-  return cause instanceof Error ? cause.name : `a thrown ${typeof cause}`;
-}
 
 /**
  * Reads the row array out of a result.

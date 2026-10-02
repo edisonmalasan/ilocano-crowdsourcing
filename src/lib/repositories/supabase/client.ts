@@ -1,15 +1,23 @@
 import "server-only";
 
+import type { PostgrestErrorLike, SupabaseRpcClientLike } from "./rpc";
+
+/**
+ * Re-exported, not redefined. The RPC slice moved to `./rpc` — a module WITHOUT
+ * `import "server-only"` — because the hosted dataset import runs in a plain-Node operator command
+ * where the `server-only` package throws, and it must be able to name the function-call shape.
+ * {@link SupabaseClientLike} below is still this plus `from(...)`, so nothing else moved.
+ */
+export type { PostgrestErrorLike, SupabaseRpcResultLike, SupabaseRpcClientLike } from "./rpc";
+
 /**
  * The narrow structural slice of the Supabase client these repositories depend on.
  *
  * WHY A NARROW INTERFACE AND NOT `SupabaseClient`
  * ----------------------------------------------
- * There is no Supabase project and no credential in this repository's environment, so a test
- * cannot construct a real client and cannot make a network call. Typing the constructors against
- * the concrete `SupabaseClient` would make these classes untestable until credentials exist, and
- * the result would be either untested code or a cast to `any` — both worse than a small,
- * explicitly-declared contract. This mirrors the precedent of `QueryExecutor` in
+ * Typing the constructors against the concrete `SupabaseClient` makes these classes untestable
+ * without credentials, and the result would be either untested code or a cast to `any` — both worse
+ * than a small, explicitly-declared contract. This mirrors the precedent of `QueryExecutor` in
  * `tests/integration/support/pglite.ts`, where the harness depends on the two PGlite methods it
  * uses rather than on `PGlite` itself.
  *
@@ -30,20 +38,28 @@ import "server-only";
  *
  * WHAT THIS DOES NOT PROVE
  * ------------------------
- * A structural interface can only describe the members that exist. It cannot prove that
- * PostgREST interprets `.in()`, `.range()`, `.select(cols, { count: "exact" })`, or
- * `.insert().select().single()` the way this code assumes, nor that a service-role request
- * returns rows at all. Every behavioural claim about the wire protocol is unverified until a
- * hosted Supabase project exists. The unit tests prove the *translation and error-mapping logic*
- * against a fake; they prove nothing about PostgREST.
+ * A structural interface can only describe the members that exist. It cannot prove that PostgREST
+ * interprets `.in()`, `.range()`, `.select(cols, { count: "exact" })`, or `.insert().select().single()`
+ * the way this code assumes, nor that a service-role request returns rows at all.
+ *
+ * **THE `rpc` MEMBER IS THE EXCEPTION, AND THE EXCEPTION IS MEASURED.** The hosted project exists,
+ * its five migrations are applied, and the hosted dataset import has since driven `rpc` against the
+ * real PostgREST gateway with the service-role key. So `rpc` — argument passing, the
+ * `{ data, error }` envelope, and a `service_role` call succeeding where `anon` is refused — is
+ * backed by the wire, not by a fake. **`.in()`, `.range()`, `.eq()`, and `.insert()` are still
+ * proved only against fakes and against PGlite**, which is a real PostgreSQL engine but not
+ * PostgREST. `docs/ROADMAP.md` carries the same statement; a reader who trusts one should trust
+ * the other.
  *
  * `upsert` is deliberately absent. `ValidatorsRepository.create` must fail on a duplicate id
  * rather than quietly overwrite, and leaving `upsert` out of the type means the requirement is
  * enforced by the compiler for the fake and by review for the real client, instead of resting on
- * remembering not to call it.
+ * remembering not to call it. The hosted dataset import needed an idempotent write and therefore
+ * had to reach a DATABASE FUNCTION rather than an `ON CONFLICT` clause PostgREST would express as
+ * a REPLACE — which is why `rpc` is here at all.
  *
- * `rpc` arrived with the researcher sign-in attempt limit, and the reasoning is recorded here
- * because "we removed upsert on purpose" and "we added rpc on purpose" would otherwise look like an
+ * It arrived with the researcher sign-in attempt limit, and the reasoning is recorded here because
+ * "we removed upsert on purpose" and "we added rpc on purpose" would otherwise look like an
  * inconsistency. The sign-in counter must be incremented atomically: a read-modify-write from the
  * application loses updates when two requests race, and a lost update means the stored count
  * under-reports and a determined party never reaches the limit. PostgREST cannot express
@@ -53,18 +69,10 @@ import "server-only";
  * function is reached through `rpc`.
  *
  * It is narrower than it looks: the client cannot name an arbitrary function at a call site in this
- * directory, because the only two callers pass constants declared beside them, and `revoke` in
- * `20261002120000_researcher_signin_attempts.sql` means no other role can execute either one.
+ * directory, because the only callers pass constants declared beside them, and every such function's
+ * migration ends with `revoke all … from public` plus `grant execute … to service_role`, so no
+ * other role can execute any of them.
  */
-
-/** The PostgREST error fields this code reads. `code` is the only one it branches on. */
-export interface PostgrestErrorLike {
-  /** PostgREST code (`PGRST116`) or PostgreSQL SQLSTATE (`23505`, `23503`, `23514`). */
-  code: string;
-  message: string;
-  details?: string | null;
-  hint?: string | null;
-}
 
 /**
  * The PostgREST response envelope.
@@ -147,20 +155,12 @@ export interface FilterHandleLike extends PromiseLike<PostgrestResultLike> {
 }
 
 /**
- * `client.rpc(function, args)` — a single-row scalar function call.
+ * The only client members used: a table handle, and the RPC slice this file extends.
  *
- * A plain `PromiseLike` rather than a chainable builder, because a function's return value is
- * whatever the function returns and there is nothing further to filter. `SupabaseRpcResultLike` is
- * the same two-field envelope every other call returns, so `expectNoError` and
- * `persistenceFailure` apply unchanged and no new error-handling path is introduced.
+ * `extends SupabaseRpcClientLike` rather than declaring `rpc` again, so the two shapes cannot
+ * drift apart — a change to the RPC contract is made once, in `./rpc`, and every implementation
+ * that presents a client as this interface is checked against it.
  */
-export interface SupabaseRpcResultLike {
-  data: unknown;
-  error: PostgrestErrorLike | null;
-}
-
-/** The only client members used: a table handle, and a scalar function call. */
-export interface SupabaseClientLike {
+export interface SupabaseClientLike extends SupabaseRpcClientLike {
   from(table: string): TableHandleLike;
-  rpc(fn: string, args: Record<string, unknown>): PromiseLike<SupabaseRpcResultLike>;
 }

@@ -1949,18 +1949,69 @@ describe("the operation name each method reports", () => {
 describe("the privileged boundary of this directory", () => {
   const directory = fileURLToPath(new URL("../../src/lib/repositories/supabase/", import.meta.url));
 
-  it('declares `import "server-only"` as the very first import of every module', () => {
+  /**
+   * The modules here that must NOT carry `import "server-only"`, and why each one is exempt.
+   *
+   * Written as a NAMED list rather than as a rule of the shape "every file except…", because an
+   * exemption expressed as a pattern is an exemption that widens by itself. This list was added
+   * when the hosted dataset import arrived and `rpc.ts` had to become loadable by a plain-Node
+   * operator command — the `server-only` package's entry point THROWS outside a React Server
+   * Component render, so a module carrying the marker cannot be imported by `scripts/import-dataset.ts`
+   * at all. Until that, the guard below read "every module" and was TRUE by having nothing to
+   * except.
+   *
+   * `rpc.ts` holds no credential and reads no environment variable; it is the shared PostgREST
+   * error vocabulary, and its specifier is listed in `eslint.config.mjs` so a client import fails
+   * lint by name. Adding a module here is a deliberate widening of what a browser bundle may
+   * reach, which is exactly why it requires a line in this array and a sentence above it.
+   */
+  const WITHOUT_SERVER_ONLY = ["rpc.ts"];
+
+  const filesInDirectory = () => readdirSync(directory).filter((name) => name.endsWith(".ts"));
+
+  it('declares `import "server-only"` as the very first import of every module EXCEPT a named one', () => {
     // `server-only` is stubbed in this file, so the marker cannot prove anything at runtime here.
     // Reading the source is the same approach `tests/unit/supabase-clients.test.ts` uses, and it is
     // the only way to check "first" rather than "present".
-    const files = readdirSync(directory).filter((name) => name.endsWith(".ts"));
+    const files = filesInDirectory();
 
     expect(files.length).toBeGreaterThan(0);
-    for (const file of files) {
+    for (const file of files.filter((name) => !WITHOUT_SERVER_ONLY.includes(name))) {
       const source = readFileSync(`${directory}${file}`, "utf8");
       const firstImport = /^\s*import\s+["'][^"']+["'];?/m.exec(source)?.[0];
       expect(firstImport, `${file} must import "server-only" first`).toBe('import "server-only";');
     }
+  });
+
+  it("exempts only files that genuinely LACK the marker, so the list cannot rot into a permission", () => {
+    // The half that makes the array above meaningful. Without it, `WITHOUT_SERVER_ONLY` could name
+    // a module that HAS the marker, the loop above would skip it, and the directory's boundary
+    // would silently shrink — an exemption list that grants protection it does not check for is
+    // worse than no list, because a reader counts it as coverage.
+    for (const file of WITHOUT_SERVER_ONLY) {
+      const source = readFileSync(`${directory}${file}`, "utf8");
+      expect(source, `${file} is exempted but does import "server-only"`).not.toContain(
+        'from "server-only"',
+      );
+      expect(source, `${file} is exempted but does declare the marker`).not.toMatch(
+        /^\s*import\s+["']server-only["'];?/m,
+      );
+      // And the file it was created for must still exist, or the exemption names nothing.
+      expect(filesInDirectory(), `${file} is exempted but does not exist`).toContain(file);
+    }
+  });
+
+  it("names every marker-less module in the directory, so a NEW one fails instead of passing quietly", () => {
+    // This is what makes the first test a guard rather than a convention. A module added without
+    // `import "server-only"` and without a line above is simply not in the list, so it is checked
+    // — and fails. MEASURED, not assumed: adding `src/lib/repositories/supabase/extra.ts` with no
+    // marker turns this file red with the new module named.
+    const unmarked = filesInDirectory().filter((file) => {
+      const source = readFileSync(`${directory}${file}`, "utf8");
+      return !/^\s*import\s+["']server-only["'];?/m.test(source);
+    });
+
+    expect(unmarked.sort()).toEqual([...WITHOUT_SERVER_ONLY].sort());
   });
 
   it("resolves ids and profiles through the domain schemas, not through loose casts", () => {
