@@ -26,7 +26,19 @@ See `proposal.md` for why. The facts constraining the how:
 ### D1 — Compare outputs, not helpers
 
 The consistency check builds one corpus, runs the dashboard service and the export summary over it,
-and asserts their figures are equal per entry and in total. It deliberately does NOT assert that both
+and asserts their AGGREGATE figures are equal: the qualifying total, the coverage-bucket distribution
+derived from the export's per-entry counts, the complete-entry count, and the review-flag set.
+
+**It compares AGGREGATES, and the requirement was amended to match.** The first draft required a
+per-entry qualifying comparison, which is not implementable against the current API:
+`DashboardOverview` exposes buckets and `reviewEntryIds` and no per-entry qualifying map. Adding one
+would be a product change, and this change is tests-only, so the requirement was narrowed rather than
+the assertion faked. For the corpus here the loss is nil — the four distinct qualifying counts present
+map to four distinct buckets at target 3, so a mix-up between different-count entries necessarily
+changes the distribution. At a target of 2 the aggregate would be weaker, which is stated rather than
+glossed.
+
+It deliberately does NOT assert that both
 call `countQualifyingValidations` — that is a statement about implementation, it would break on a
 harmless refactor, and it would pass even if a consumer pre-filtered its inputs wrongly. Two modules
 can share a predicate and disagree about *which responses to include*; only comparing their outputs
@@ -41,11 +53,44 @@ row that exercises it, and a corpus that only agrees trivially is a corpus that 
 
 ### D3 — Read the ledger's table by structure, never by a remembered line number
 
-The `Archived Changes` table is located by its header cells, and rows are read as rows. This is the
-repair of a defect this repository has already found once: a checker that decided "is this a row?"
-by `startsWith("|") && endsWith("|")` silently discarded the very row that had lost its closing
-delimiter — and ended the table, blinding every row beneath it. Here a line that opens a row inside a
-known table IS a row, whether or not it is closed, and a malformed one is reported rather than skipped.
+The `Archived Changes` table is located by its header LINE, and rows are located by the archive path
+they carry. This is the repair of a defect this repository has already found once: a checker that
+decided "is this a row?" by `startsWith("|") && endsWith("|")` silently discarded the very row that had
+lost its closing delimiter — and ended the table, blinding every row beneath it.
+
+Three rules, each written after measuring the alternative:
+
+- **A damaged row is COUNTED and REPORTED.** Counting alone lets a damaged row pass unnoticed; reporting
+  alone lets it hide a change. Both halves are needed, and both are tested.
+- **Rows are NOT detected by cell count.** This ledger carries a literal pipe inside a cell, so
+  splitting on `|` reports a different cell count than the row really has — a defect the ledger's own
+  tooling notes already record.
+- **The read STOPS at the table's end.** A change listed below the table is not counted, so it reads as
+  MISSING and the check fails loudly. That loudness is the safety property; continuing past the blank
+  line to "find" such a row would mean parsing unrelated tables further down the document.
+
+**CORRECTION, because the first draft of this change asserted the opposite.** The original delta
+required that "a change appended below the table is still counted", and an independent verification
+pass measured that it is not — the reader breaks at the blank line. Two options existed: make the
+reader continue, or state the behaviour it has. **It stops, and the requirement was amended to say
+so** — the loud failure is better than a check that reads more than its own subject, and the
+appended change is still caught.
+
+**A CORRECTION INSIDE THIS CORRECTION, found by the verification pass that reviewed it, and it is
+the reason this paragraph is quoted rather than summarised.** The first draft of this paragraph ended
+"It continues; the loud failure is better…". **That sentence was false**, and false in the specific
+way this project keeps finding: three lines above it says the reader BREAKS at the blank line, the
+amended requirement says the read STOPS at the end of the table, and the code says
+`if (trimmed === "") break;`. Proved by mutation — reversing `break` to `continue` turns the file
+red. So a reader consulting the one place that explains *why* the requirement was amended would have
+been told the opposite decision was taken, and the only defence would have been to go read the SQL
+of a TypeScript loop. **A correction that leaves a second, contradicting copy of itself in the same
+paragraph has not corrected anything.**
+
+The safety argument is unchanged and does not depend on the reader continuing: an archived directory
+the reader cannot see is simply absent from `listed`, so it appears in `missing` and
+`names EVERY archived change` fails naming it. That was proved on the REAL ledger by moving a row
+out of the table — **red, naming that test**, rather than argued here.
 
 ### D4 — Assert the guards are looking at something
 

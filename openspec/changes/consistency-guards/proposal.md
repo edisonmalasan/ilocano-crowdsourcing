@@ -24,9 +24,11 @@ two parts of it that have direct measured evidence of being unguarded.
 ## What Changes
 
 - A **cross-consumer consistency suite**: given one hand-built corpus, the dashboard's overview and
-  the export's summary must report the same qualifying counts, the same coverage-complete set, and
-  the same review flags — computed by two independently written code paths that share only the domain
-  predicate. This is the "one definition" claim turned into an assertion.
+  the export's summary must report the same qualifying total, the same coverage-bucket distribution,
+  the same complete-entry count, and the same review-flag set — computed by two independently written
+  code paths that share only the domain predicate. This is the "one definition" claim turned into an
+  assertion. Compared as **aggregates, not per entry**: the dashboard exposes no per-entry qualifying
+  figure, and adding one would be a product change inside a tests-only change.
 - A **ledger-integrity suite** asserting that the `Archived Changes` table in `docs/ROADMAP.md` lists
   exactly the directories in `openspec/changes/archive/`, and that the count the `Project Status`
   block quotes matches that directory. Reads only files on disk; no network, no `gh`.

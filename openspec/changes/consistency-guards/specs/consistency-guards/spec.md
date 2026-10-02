@@ -11,23 +11,28 @@ repository they describe.
 ### Requirement: Independent consumers of the qualifying rule agree on one corpus
 
 Given a single corpus of stored responses, every consumer that reports coverage SHALL report the same
-qualifying count, the same set of coverage-complete entries, and the same set of entries requiring
-reviewer review. Consumers SHALL be compared by running them over the same inputs and asserting the
-results are equal, not by asserting that they share a helper — two modules can call the same predicate
-and still disagree about which responses to include, which bucket to place them in, or how to total
-them.
+qualifying total, the same distribution of entries across coverage buckets, the same number of entries
+with coverage complete, and the same set of entries requiring researcher review. Consumers SHALL be
+compared by running them over the same inputs and asserting the results are equal, not by asserting
+that they share a helper — two modules can call the same predicate and still disagree about which
+responses to include, which bucket to place them in, or how to total them.
 
-#### Scenario: Dashboard and export agree on qualifying counts
-
-- **WHEN** the dashboard overview and the export summary are computed from the same corpus
-- **THEN** they report the same total qualifying validations, and the same qualifying count for every
-  entry individually
-
-#### Scenario: Dashboard and export agree on which entries are complete and which need review
+#### Scenario: Dashboard and export agree on the qualifying total
 
 - **WHEN** the dashboard overview and the export summary are computed from the same corpus
-- **THEN** the set of entries each reports as coverage-complete is identical, and the set each reports
-  as requiring researcher review is identical
+- **THEN** they report the same total number of qualifying validations
+
+#### Scenario: Dashboard and export agree on the coverage-bucket distribution
+
+- **WHEN** the dashboard overview and the export summary are computed from the same corpus
+- **THEN** the number of entries each places in every coverage bucket is identical, derived from the
+  export's per-entry counts
+
+#### Scenario: Dashboard and export agree on which entries need review
+
+- **WHEN** the dashboard overview and the export summary are computed from the same corpus
+- **THEN** the set of entry identifiers each reports as requiring researcher review is identical, and
+  the number each reports as coverage-complete is identical
 
 #### Scenario: Disagreement is detected, not assumed away
 
@@ -83,5 +88,6 @@ change exists to prevent in the repository's own guard rails.
 #### Scenario: The enumeration is read from a located table
 
 - **WHEN** the ledger's archived-changes enumeration is read
-- **THEN** it is located by its own table structure, so a row that loses its formatting is reported as
-  malformed rather than skipped, and a change appended below the table is still counted
+- **THEN** it is located by its own header line, a row that loses its formatting is both counted and
+  reported as malformed rather than skipped, and the read stops at the end of the table so a change
+  listed below it is not counted
