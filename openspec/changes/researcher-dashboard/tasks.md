@@ -2,15 +2,22 @@
 
 ## 1. Review-flag domain logic
 
-- [ ] 1.1 `src/lib/domain/review-flags.ts`: `evaluationsDisagree` and `correctionsDiverge` as pure
-      functions over stored-response shapes, reusing `isQualifyingValidation` and taking no
-      translation input. Verify with unit tests covering: disagreement among qualifying responses
-      flags; `cannot_evaluate` alongside qualifying responses does not flag; two distinct
-      corrections flag even when evaluations agree; identical corrections do not flag;
-      whitespace-only correction differences do not flag; translation-only differences do not flag
-      (assert at the type layer that the input shape has no translation field).
-- [ ] 1.2 Can-fire: each predicate proved red by breaking it (e.g. comparing all responses instead
-      of qualifying ones; folding case), with green controls and byte-identical restores.
+- [x] 1.1 `src/lib/domain/review-flags.ts`: `evaluationsDisagree` and `correctionsDiverge` as pure
+      functions over the shared `QualifyingResponseShape`, reusing `isQualifyingValidation`.
+      Translations are excluded by enforcement, not by shape: a behavioural test proves differing
+      translations do not flag, and a source-text test proves the module contains no translation
+      reference at all. (An earlier draft used a narrower local shape; it was unworkable — the
+      qualifying check needs the translations to determine qualifying — so the shape is shared
+      and the exclusion is tested instead.) Verified with unit tests covering: disagreement among
+      qualifying responses flags; `cannot_evaluate` alongside qualifying responses does not flag;
+      two distinct corrections flag even when evaluations agree; identical corrections do not
+      flag; whitespace-only correction differences do not flag; case differences flag
+      (conservative direction, thesis-team call to change).
+- [x] 1.2 Can-fire: each predicate proved red by breaking it (raw-evaluation counting, case
+      folding, translation reads — each naming its test), with green controls and byte-identical
+      restores. One probe defect found and repaired: the first R3 mutant nested its translation
+      read inside the correction-present branch, so the behavioural test passed while the
+      structural one fired; the corrected mutant reads unconditionally.
 
 ## 2. Bulk validator reads
 
