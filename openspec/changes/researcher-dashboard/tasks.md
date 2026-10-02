@@ -46,23 +46,29 @@
 
 ## 4. Overview page
 
-- [ ] 4.1 `(protected)/page.tsx` renders the eleven figures from the service, with the coverage
+- [x] 4.1 `(protected)/page.tsx` renders the eleven figures from the service, with the coverage
       denominator labeled next to the percentage. Soft neo-brutalism, mobile-first, no placeholder
-      numbers. Verify with rendered-markup unit tests (every figure label present, values from an
-      injected service) and dom tests for the review-list navigation.
-- [ ] 4.2 Review list: flagged entries link to their review routes; bucket counts link to nothing
-      that does not exist (no dead links). Verify with markup tests asserting exact link targets.
+      numbers. Verified with rendered-markup unit tests (every figure label present, values from an
+      injected service) and page-level wiring tests (mocked factory proving the page reads its
+      repositories). CORRECTION: no dom tests — the dashboard ships zero client JavaScript (plain
+      anchors, no handlers, no state), so there is no click behavior for `happy-dom` to observe
+      that markup assertions do not already cover. A dom test asserting an href exists would prove
+      nothing beyond the markup test beside it.
+- [x] 4.2 Review list: flagged entries link to their review routes; bucket counts link to nothing
+      that does not exist (no dead links). Verified with markup tests asserting exact link targets.
 
 ## 5. Per-entry review page
 
-- [ ] 5.1 `(protected)/entries/[id]/page.tsx` renders source fields plus every response separately:
+- [x] 5.1 `(protected)/entries/[id]/page.tsx` renders source fields plus every response separately:
       proficiency as stored, evaluation, correction, both translations, qualifying status with
-      reason. Unknown id renders not-found. Verify with rendered-markup unit tests (all fields
+      reason. Unknown id renders not-found. Verified with rendered-markup unit tests (all fields
       present per response, unmerged) and a test asserting translations of one validator never
       appear under another.
-- [ ] 5.2 Read-only scan: no dashboard module under `src/app/researcher/` imports a repository
-      write path or defines a Server Action mutating research data. Verify with a source-text unit
-      test plus a can-fire control pointed at a fixture that does.
+- [x] 5.2 Read-only scan: no dashboard module under `src/app/researcher/` performs a repository
+      write call or defines a Server Action. Verified with a source-text unit test (write-call
+      patterns plus directive scan, comments stripped) with can-fire controls pointed at real
+      production writers (a `.insert(` caller and a `"use server"` module), plus a P-WRITE probe
+      smuggling `.insert()` into the dashboard page going red by name.
 
 ## 6. Close out
 

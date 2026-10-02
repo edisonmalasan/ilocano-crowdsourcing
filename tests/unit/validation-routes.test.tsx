@@ -1213,6 +1213,7 @@ describe("the two figures the finished screen reports", () => {
       "",
       "ready",
       "researcher/(protected)",
+      "researcher/(protected)/entries/[id]",
       "researcher/sign-in",
       "start",
       "validate",
@@ -1235,7 +1236,15 @@ describe("the two figures the finished screen reports", () => {
     //   - the full list above is asserted exactly, so a ninth route fails here by name;
     //   - every route is assigned to exactly one of the two groups below; and
     //   - the researcher group is asserted to be covered by a test file that DOES render it.
-    const AUTHENTICATED_ROUTES = ["researcher/(protected)", "researcher/sign-in"];
+    // Three authenticated routes since the dashboard change added per-entry review: the new
+    // route sits beneath the same `(protected)` layout, so it belongs in this group for the same
+    // reason — behind the boundary, not part of the public validator experience, and its markup
+    // is rendered by `dashboard-views.test.tsx` instead.
+    const AUTHENTICATED_ROUTES = [
+      "researcher/(protected)",
+      "researcher/(protected)/entries/[id]",
+      "researcher/sign-in",
+    ];
     const validatorRoutes = routes.filter((route) => !AUTHENTICATED_ROUTES.includes(route));
     const skippedRoutes = routes.filter((route) => AUTHENTICATED_ROUTES.includes(route));
 
