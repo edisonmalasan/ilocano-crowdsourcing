@@ -46,23 +46,53 @@
 
 ## 3. The operator command
 
-- [ ] 3.1 `scripts/export-research.ts` + `pnpm run export:research`: validates its environment locally
-      (documented duplication of the env contract, as `import:dataset` does), reads the corpus through
-      the repositories, writes `validations.json`, `validations.csv` and `summary.json` into a
-      caller-named directory. Verify with unit tests over injected fakes: the file set written, the
-      destination used, and a refusal carrying the destination when the write fails.
-- [ ] 3.2 Read-only assertion: no route, page, or Server Action invokes the export, and the command
-      performs no insert/update/delete against a research table. Verify with a source-text unit test
-      plus can-fire controls pointed at real production writers.
+- [x] 3.1 `scripts/export-research.ts` + `pnpm run export:research`: validates its environment
+      locally (documented duplication of the env contract, as `import-dataset` does), reads the
+      corpus through the repositories, writes `validations.json`, `validations.csv` and
+      `summary.json` into a caller-named directory. Verified with 17 unit tests over injected
+      sources and a temporary directory: the file set written, the destination used and created, the
+      refusal naming the destination when a write cannot happen, and every `main` refusal.
+      **The gate probe against the real hosted project found a bug a unit test over a hand-built argv
+      could not**: `pnpm run <script> -- <args>` forwards the `--` separator as a literal argument, so
+      the command refused the exact invocation its own error message tells the operator to type. The
+      separator is now dropped explicitly, and the reason is recorded at the code.
+      **The command runs with `--conditions=react-server`**, which is how it reaches the `server-only`
+      repository implementations at all: that package's entry point THROWS outside a Server Component
+      render (measured), and its own `exports` map sends the `react-server` condition to `empty.js`.
+      The alternatives were measured and rejected in the header — importing `@/lib/env/server` has
+      the same problem, and widening the `WITHOUT_SERVER_ONLY` exemption list would have meant new
+      query logic outside the repository boundary rather than reusing it.
+- [x] 3.2 Read-only assertion: no route, page, or Server Action imports the export or its module,
+      and the command performs no insert/update/delete against a research table. Verified with a
+      source-text unit test (shape-tolerant write-call patterns, both directive quote styles, an
+      enumerated filesystem-call count, and an exact list of the three artifact names) plus can-fire
+      controls pointed at real production writers.
+      **An existing guard in `tests/unit/import-dataset-command.test.ts` failed on this file and was
+      right to.** It asserted "no script under `scripts/` writes anything", which was equivalent to
+      "the import writes nothing" only while `scripts/` held exactly one file; the approved export
+      requirement makes the blanket form false. It was narrowed by NAMING the one exempt script, and
+      STRENGTHENED with a check that was never stated before and matters more: **no script may write
+      into `data/`**, the immutable research source.
 
 ## 4. Close out
 
-- [ ] 4.1 `pnpm run lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`,
-      `build` — all run, all reported with the figures they actually produced.
-- [ ] 4.2 Gate: run the real command against the hosted project and read the produced artifacts,
-      asserting the record count matches the corpus and that both forms describe the same records.
-      Report artifact paths and counts; never print research text.
-- [ ] 4.3 `openspec change validate research-export --strict` exits 0.
+- [x] 4.1 `pnpm run lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`,
+      `build` — all run, all reported with the figures they actually produced. Measured: lint 0,
+      format 0, typecheck 0, unit **68 files / 1577 tests**, dom **7 / 87**, integration **12 / 197**,
+      build "Compiled successfully", change valid, `--specs` **14/14**.
+- [x] 4.2 Gate: the real command run against the hosted project. Exit 0; **600 active dataset
+      entries read, 0 stored validation responses, 0 validator profiles**; the three artifacts
+      written into a temporary directory and verified to agree with each other (summary's stored
+      count equals the JSON record count, the qualifying total equals the records flagged qualifying,
+      the CSV line count equals records + 1 header, the CSV header equals the declared key set, and
+      no key name implies a merge). **PARTIAL, and recorded as such: the hosted corpus holds ZERO
+      validations** — no validator has submitted yet — so no record-level behaviour was exercised
+      against real data. Record content is proven by unit tests over a fixture only. The probe was
+      deleted afterward and never committed, and it prints counts, keys and shapes: no research text,
+      no instruction, and no credential value.
+- [x] 4.3 `openspec change validate research-export --strict` exits 0. **It caught a real mistake
+      first**: a scripted edit of this file dropped the `## 4. Close out` heading, and the validator
+      reported six `tasks.md` warnings about group numbering before that. Repaired, not waived.
 - [ ] 4.4 Update `docs/ROADMAP.md` `## Project Status`.
 - [ ] 4.5 Independent verification pass. No CRITICAL finding may survive, and no WARNING may be
       silently waived.

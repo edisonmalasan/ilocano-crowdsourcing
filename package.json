@@ -21,6 +21,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "import:dataset": "tsx scripts/import-dataset.ts",
+    "export:research": "tsx --conditions=react-server scripts/export-research.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
