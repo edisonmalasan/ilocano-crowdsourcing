@@ -72,12 +72,19 @@
 
 ## 6. Close out
 
-- [ ] 6.1 `pnpm run lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`,
-      `build` — all run, all reported with the figures they actually produced.
-- [ ] 6.2 Gate: sign in on the local dev server with the operator credential and read every
-      dashboard figure and one entry review off rendered HTML; record that no desktop browser has
-      rendered them (residual stands).
-- [ ] 6.3 `openspec change validate researcher-dashboard --strict` exits 0.
+- [x] 6.1 `pnpm run lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`,
+      `build` — all run, all reported with the figures they actually produced. Final tree: lint 0,
+      format 0, typecheck 0, unit 62/1514, dom 7/87, integration 12/197, build compiled with
+      `/researcher` and `/researcher/entries/[id]` routes present.
+- [x] 6.2 Gate: signed in on the local dev server with the operator credential (real
+      `runResearcherSignIn` comparison: real credential accepted, wrong one refused) and read the
+      dashboard (HTTP 200, every figure label) and one entry review (HTTP 200, source fields) off
+      rendered HTML; unknown entry 404, unsessioned dashboard 403. Measured with a temporary gate
+      probe, deleted afterward — never committed, never part of the suite. The browser-to-server
+      Server Action flight protocol was not exercised (no browser exists to speak it); the form
+      submission path is covered by `tests/dom/researcher-sign-in.test.tsx`. No desktop browser
+      has rendered these screens (residual stands).
+- [x] 6.3 `openspec change validate researcher-dashboard --strict` exits 0.
 - [ ] 6.4 Update `docs/ROADMAP.md` `## Project Status`: change state, figures, residuals.
 - [ ] 6.5 Independent verification pass. No CRITICAL finding may survive, and no WARNING may be
       silently waived.
