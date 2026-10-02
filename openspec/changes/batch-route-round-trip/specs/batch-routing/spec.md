@@ -24,12 +24,26 @@ whether or not any producer was rewritten first.
 > so the two mechanisms compose into `%253A`. Both halves were measured separately, because fixing only
 > the half a report happens to name leaves the other in place.
 
+Because a producer emits the identifier RAW, the address it builds is the route prefix followed by the
+identifier itself, and an identifier containing a path separator would therefore address a different
+route. **A batch identifier accepted anywhere in the platform SHALL NOT contain a path separator.**
+This is a consequence of removing the pre-encoding rather than a new restriction on the identifier
+scheme: the pre-change producers happened to block such an identifier as a side effect of
+`encodeURIComponent`, and a "non-empty string" schema does not.
+
 #### Scenario: An identifier containing reserved characters survives the round trip
 
 - **WHEN** a stored batch identifier contains characters that a URL must encode, and the platform
   navigates to it and the dynamic route then reads it back
 - **THEN** the value the route derives is exactly equal to the stored identifier, with the same characters
   in the same places, and the batch is opened rather than reported as not found
+
+#### Scenario: An identifier that could address a different route is refused
+
+- **WHEN** a value containing a path separator is offered as a batch identifier
+- **THEN** it is refused as an identifier, and no address the platform builds can leave the batch route
+- **AND** every identifier the platform's own mint produces is still accepted, because a rule that
+  rejected real identifiers would be a worse failure than the one it prevents
 
 #### Scenario: A stored batch is openable by its own address
 

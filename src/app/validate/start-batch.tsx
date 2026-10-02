@@ -14,6 +14,7 @@ import {
   recoveryAllowsStartingABatch,
   type RecoveryDecision,
 } from "@/lib/validation/recovery-flow";
+import { batchRouteHref, batchRoutePath } from "@/lib/validation/batch-route";
 import type { RecoveryOutcome } from "@/lib/validation/recovery-actions-core";
 import { requestInterruptedBatchAction } from "@/lib/validation/recovery-actions";
 import { decideStartBatch, type StartBatchDecision } from "@/lib/validation/start-batch-flow";
@@ -74,13 +75,17 @@ export interface StartBatchProps {
 /**
  * Where the resume link points.
  *
- * Built here rather than written inline so a test asserts the value rather than a literal repeated
- * beside it, and so `encodeURIComponent` is visibly applied to the batch id — the id embeds the
- * validator's own anonymous identifier, which is why `tasks.md` 6.3 requires the rendered start screen
- * to be counted for it rather than merely checked for its absence.
+ * A named function rather than an inline expression so a test asserts the value the ROUTE
+ * CONTRACT produces rather than a literal repeated beside it, and so the start screen has one
+ * reviewable place where a batch address is built.
+ *
+ * The id is emitted EXACTLY as the server stored it — no `encodeURIComponent` — which is the
+ * producer half of `src/lib/validation/batch-route.ts`. The route decodes it once; pre-encoding
+ * here composed with the framework's own encoding into `%253A` and produced an address naming no
+ * batch.
  */
 export function resumeHref(batchId: string): string {
-  return `/validate/${encodeURIComponent(batchId)}`;
+  return batchRoutePath(batchId);
 }
 
 export function StartBatch({ locale }: StartBatchProps) {
@@ -239,7 +244,7 @@ export function StartBatch({ locale }: StartBatchProps) {
                 stored === null ? null : await requestBatchAction({ validatorId: stored });
 
               if (result !== null && result.status === "allocated") {
-                router.push(`/validate/${encodeURIComponent(result.batchId)}`);
+                router.push(batchRouteHref(result.batchId));
                 return;
               }
 

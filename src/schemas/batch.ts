@@ -109,11 +109,36 @@ export function resolveBatchSize(
 }
 
 /**
- * An opaque, non-empty batch identifier. Not a `uuid`, for the same reason the other research
- * identifiers are not: no validator is an authenticated user, so nothing here has a subject to
- * derive one from, and the identifiers are read in logs and matched by hand during review.
+ * An opaque, non-empty batch identifier that can be carried in a URL PATH SEGMENT.
+ *
+ * Not a `uuid`, for the same reason the other research identifiers are not: no validator is an
+ * authenticated user, so nothing here has a subject to derive one from, and the identifiers are read
+ * in logs and matched by hand during review.
+ *
+ * **The no-`/` rule was ADDED by `batch-route-round-trip`, and the reason is worth reading rather
+ * than inheriting.** Producers emit the identifier RAW — encoding is the transport's business and the
+ * route decodes it once — which is correct for the production scheme `VAL_<hex8>-<ISO>`. It does mean
+ * the address a producer builds is exactly `/validate/` followed by whatever this schema accepts, so
+ * an identifier containing a path separator would make the router address a DIFFERENT route.
+ *
+ * The pre-change code did not have this problem, and the reason is instructive rather than lucky: it
+ * called `encodeURIComponent` on every producer, so the injection was blocked *incidentally*, as a
+ * side effect of the encoding bug this change removes. Deleting the bug therefore deleted the
+ * protection with it, and `min(1)` alone does not restore it — a value of `batch/../../admin` is
+ * non-empty and perfectly valid to a `min(1)`.
+ *
+ * So the invariant is asserted where it belongs: an identifier that cannot appear in a stored batch
+ * cannot be turned into an address that leaves `/validate`. `defaultBatchId` builds
+ * `<validatorId>-<ISO>`, `AnonymousValidatorId` is `VAL_` plus eight hex characters, and an ISO
+ * instant contains no solidus — so every identifier this platform can mint passes, and the rule
+ * constrains nothing real while closing the hole.
  */
-export const batchIdSchema = z.string().min(1, "batch id must not be empty");
+export const batchIdSchema = z
+  .string()
+  .min(1, "batch id must not be empty")
+  .refine((value) => !value.includes("/"), {
+    message: "batch id must not contain a path separator",
+  });
 
 /**
  * Where one entry sits in the order the SERVER chose for its batch.

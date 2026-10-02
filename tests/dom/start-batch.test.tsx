@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StartBatch } from "@/app/validate/start-batch";
 import { ENGLISH_COPY, FILIPINO_COPY, translatorFor, type CopyKey } from "@/lib/i18n/copy";
 
+import { batchIdFromAddress } from "./support/batch-address";
 import { mount, type Mounted } from "./support/dom-harness";
 
 /**
@@ -228,9 +229,10 @@ describe("RC-2 — what an offer shows", () => {
 
     expect(link).not.toBeNull();
     expect(link!.tagName).toBe("A");
-    // `encodeURIComponent`, because a real `defaultBatchId` embeds a timestamp and the route resolves
-    // on the encoded form. `start-batch.tsx` documents why the round trip matters.
-    expect(link!.getAttribute("href")).toBe(`/validate/${encodeURIComponent(REAL_BATCH)}`);
+    // The address names the stored batch, asserted through a ROUND TRIP rather than against a
+    // literal — see `batchIdFromAddress`. A real `defaultBatchId` embeds a timestamp, so this is the
+    // case where an encoding mistake actually changes the address.
+    expect(batchIdFromAddress(link!.getAttribute("href") ?? "")).toBe(REAL_BATCH);
     // No handler at all: `design.md` D6. Asserted by pressing it below and watching nothing leave.
     expect(link!.getAttribute("role")).toBeNull();
   });
@@ -376,9 +378,11 @@ describe("RC-4/RC-6 — the existing control is untouched", () => {
 
     expect(h.allocations).toHaveLength(1);
     expect((h.allocations[0] as Record<string, unknown>)["validatorId"]).toBe("VAL_a81d92c1");
-    expect(h.pushes).toEqual([
-      `/validate/${encodeURIComponent("VAL_fresh99-2026-10-02T00:00:00.000Z")}`,
-    ]);
+    expect(h.pushes).toHaveLength(1);
+    // The round trip, not a literal: the address the button navigates to must name the batch the
+    // SERVER chose. The literal this replaces could not distinguish "navigates to the allocated
+    // batch" from "navigates to a hand-written string that happens to be shaped like one".
+    expect(batchIdFromAddress(h.pushes[0] as string)).toBe("VAL_fresh99-2026-10-02T00:00:00.000Z");
     // The resume link is still on screen — starting a new batch does not clear the offer, because the
     // offer describes a batch that still exists.
     expect(resumeLink()).not.toBeNull();
@@ -433,16 +437,17 @@ describe("RC-5 — what the offer may reveal", () => {
     // is counting SUBSTRING matches — so a second identifier anywhere in the document would push it
     // past one, and a whole extra identifier-bearing string could not hide.
     //
-    // The fragment searched for is the part of the instant that `encodeURIComponent` leaves alone.
-    // Searching for the WHOLE instant returns zero and would assert nothing, because the href holds
-    // `20%3A14%3A03` — the first draft of this line searched for the full id and reported a green
-    // `expected +0 to be 1`, which is a failure that looks like a pass if only the exit code is read.
+    // The fragment searched for is a prefix of the instant, and the count above is counting
+    // SUBSTRING matches. The earlier form of this line searched for the WHOLE id and reported a
+    // green `expected +0 to be 1`, because the href used to hold `20%3A14%3A03` — a failure that
+    // looks like a pass if only the exit code is read. A PREFIX is used rather than the whole
+    // instant so this assertion keeps measuring what it is meant to measure either way.
     expect(countOccurrences(view.container.innerHTML, "2026-09-30T20")).toBe(1);
-    // And the encoded href really does contain the encoded instant, so the count above is measuring a
-    // rendered value rather than a coincidence.
-    expect(resumeLink()!.getAttribute("href")).toContain(
-      encodeURIComponent("2026-09-30T20:14:03.117Z"),
-    );
+    // And the href really does carry the batch's own instant, so the count above is measuring a
+    // rendered value rather than a coincidence. Asserted through the round trip, which is stronger
+    // than the `toContain(encodeURIComponent(…))` this replaces: it proves the WHOLE id is
+    // recoverable, not merely that one substring of it appears.
+    expect(batchIdFromAddress(resumeLink()!.getAttribute("href") ?? "")).toBe(REAL_BATCH);
   });
 
   it("reveals no proficiency, no screening answer, and no activity timestamp", async () => {

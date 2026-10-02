@@ -71,10 +71,19 @@ while a validator cannot reach the first sentence of a batch.
   `encodeURIComponent`, and none of them shares code with the others.
 - **Tests:** a unit file for the contract itself, plus updates to the existing assertions in
   `tests/dom/start-batch.test.tsx`, `tests/dom/validation-form.test.tsx`,
-  `tests/dom/finished-batch.test.tsx`, and `tests/unit/validation-routes.test.tsx`, which currently pin
+  `tests/dom/finished-batch.test.tsx`, which currently pin
   the double-encoding shape rather than a round trip. **These assertions change deliberately, and the
   requirement supports the change** — but each is replaced by a stronger assertion (a round trip through
   the real parse function with a production-shaped identifier), not by a literal copied beside the
   implementation.
+
+  `tests/unit/validation-routes.test.tsx` is listed here too, and **it was not changed during the
+  Apply** — so the list above was inaccurate when the verification pass read it, and is corrected
+  rather than quietly dropped. It turned out to need no change, because it contains no assertion of
+  the address a producer builds. One assertion in it did become permanently satisfied as a *result* of
+  this change: it asserted the ready screen does not link to `/validate/${encodeURIComponent(…)}`, a
+  spelling no producer may now emit, so the string became unreachable by construction. That assertion
+  was rewritten rather than left standing — a guard that can no longer fail reports coverage it is not
+  providing. Recorded in `tasks.md` 5.3 because the mismatch was the finding, not the repair.
 - **Not affected:** `data/ilocano-synthetic-data.json`, every migration, the repository layer, and the
   allocation rule. The stored identifier is correct today; only the URL hop is wrong.

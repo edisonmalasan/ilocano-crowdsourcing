@@ -9,6 +9,7 @@ import { INTERFACE_LOCALE_COOKIE_NAME } from "@/lib/i18n/interface-locale-cookie
 import { EVALUATION_DESCRIPTION_KEYS, EVALUATION_LABEL_KEYS } from "@/lib/i18n/copy";
 import type { ValidationSessionOutcome } from "@/lib/validation/session";
 import type { ValidationSessionDependencies } from "@/lib/validation/session-service";
+import { batchRoutePath } from "@/lib/validation/batch-route";
 import { EVALUATION_CHOICES } from "@/schemas/validation";
 import { ANONYMOUS_VALIDATOR_ID_PATTERN, ILOCANO_PROFICIENCY_CHOICES } from "@/schemas/validator";
 
@@ -1639,11 +1640,22 @@ describe("the start route", () => {
     expect(countOccurrences(html, "<h1")).toBe(1);
     expect(html).toContain("<main");
     expect(html).not.toMatch(/href="\/validate\//);
-    // Named explicitly, so a reader can see WHICH prefix was assumed and check it against the minting
-    // code rather than having to trust the regex. Derived from the source, not hardcoded, so a change
-    // to the id scheme cannot leave this comment quietly false.
-    expect(html).not.toContain(
-      `/validate/${encodeURIComponent("VAL_a81d92c1-2026-09-30T20:14:03.117Z")}`,
+    // REWRITTEN by `batch-route-round-trip`, because the regex above is the assertion that carries
+    // this claim and the one below had become permanently satisfied.
+    //
+    // This used to read
+    //   expect(html).not.toContain(`/validate/${encodeURIComponent("VAL_a81d92c1-…")}`)
+    // asserting the ready screen does not link to the ENCODED spelling of a batch. After this change
+    // no producer may emit that spelling — it is precisely the address the defect produced — so the
+    // string became unreachable by construction and the assertion could never fail again. It was
+    // reporting coverage it was not providing, which is worse than reporting nothing.
+    //
+    // Replaced rather than deleted because the underlying claim is still worth making, and it is now
+    // made about the spelling that actually exists. The prefix is derived from the contract module
+    // rather than typed here, so a change to the route prefix cannot leave this assertion quietly
+    // checking a string nothing produces — the defect the old line had.
+    expect(batchRoutePath("VAL_a81d92c1-2026-09-30T20:14:03.117Z")).toBe(
+      "/validate/VAL_a81d92c1-2026-09-30T20:14:03.117Z",
     );
   });
 
