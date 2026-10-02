@@ -160,8 +160,8 @@ functions were exercised end to end and the table re-confirmed empty afterwards.
   *production code* at the moment of writing, and the reason matters: the privileged reads above were
   issued by a purpose-built gate probe using the service key as a raw header, **not** by
   `src/lib/supabase/factory.ts`. So the repository's own query builders — `.eq()`, `.in()`,
-  `.order()`, `.limit()`, `.range()`, `.select(cols, { count: "exact" })`, `.insert()`, `.single()`,
-  `.maybeSingle()`, `.update()` — have still never executed against a real PostgREST, and the claim
+  `.order()`, `.limit()`, `.range()`, `.select(cols, { count: "exact" })`, `.insert()`,
+  `.insert().select().single()`, `.maybeSingle()`, `.update()` — have still never executed against a real PostgREST, and the claim
   in the ledger row about them is unchanged. (An earlier version of this list named `.neq()`; no
   such member exists on the narrow client and no caller uses one. It is removed here and in the
   roadmap rather than left standing.) The gap closes when production code first reads or writes.
