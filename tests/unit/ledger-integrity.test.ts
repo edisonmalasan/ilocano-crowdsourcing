@@ -355,6 +355,18 @@ describe("the ledger describes the archive directory", () => {
       // cost is one edited line per archive; the benefit is that no sentence merely *looking* right can
       // satisfy it.
       18: "Eighteen",
+      // Added for `session-attempt-identity`, the NINETEENTH archived change, so this coupling has now
+      // been paid THREE times — `consistency-guards` (17), `batch-route-round-trip` (18), and this.
+      //
+      // A third payment is worth one more sentence, because the pattern is now unmistakable and the
+      // temptation it creates is specific: **the third time is the point at which a guard that has
+      // fired three times looks like a tax rather than a check.** The correct response is still to edit
+      // the table, and the reason is the one recorded above and now bears out again — deriving the word
+      // from `onDisk.length` would make this assertion agree with the ledger by construction, which is
+      // the failure mode this whole file exists to prevent. Three payments is not a coincidence worth
+      // generalising from; it is the same one-line edit three times, which is the cheapest possible
+      // price for being unable to accept a sentence that merely looks right.
+      19: "Nineteen",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
