@@ -341,6 +341,20 @@ describe("the ledger describes the archive directory", () => {
       15: "Fifteen",
       16: "Sixteen",
       17: "Seventeen",
+      // Added for `batch-route-round-trip`, the EIGHTEENTH archived change, so this coupling has now
+      // been paid twice — once for `consistency-guards` (17) and once here (18).
+      //
+      // A correction to the note above, because that note states the coupling wrongly and the second
+      // payment is what made it visible: it reads "every seventeenth change must edit this test", and
+      // **there is no seventeenth change that has to do anything** — the edit is owed by every change
+      // from the seventeenth ONWARD, and each one owes it again. The right generalisation is the one
+      // this file's own reason for existing already states: **a guard that hard-codes a fact about the
+      // world fails each time the world moves, and that is the guard being correct rather than stale.**
+      // The alternative — deriving the word from `onDisk.length` — would make the assertion agree with
+      // the ledger by construction, which is the failure mode this whole file exists to prevent. The
+      // cost is one edited line per archive; the benefit is that no sentence merely *looking* right can
+      // satisfy it.
+      18: "Eighteen",
     };
     const expected = WORDS[onDisk.length] ?? null;
 

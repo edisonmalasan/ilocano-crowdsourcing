@@ -250,8 +250,44 @@
       and why they are dated. It also could not confirm `VAL_720f59cd-…` is a real storage row from
       inside the suite; that was read off the hosted project directly and is recorded as a measurement,
       not asserted as a test.
-- [ ] 5.4 Merge with a merge commit after 5.1-5.3 are green. **Ticked in the Archive stage, not before
-      the merge** — a ticked "merged" box on an unmerged branch claims a fact that does not yet exist.
+- [x] 5.4 Merge with a merge commit after 5.1-5.3 are green. **PR #77**, merged as `8d0ef2d`
+      (`Merge pull request #77 from edisonmalasan/fix/batch-route-encoding`), apply commit `7591195`.
+      CI run `37066677312` read back **per job, from the logs and not from the checkmarks**:
+      `lint, types, and tests` reported lint exit 0, "All matched files use Prettier code style!",
+      `tsc --noEmit`, unit **73 files / 1639 tests**, dom **7 / 87**, integration **12 / 197**, and
+      `✓ Compiled successfully in 6.1s`; `immutable research source` reported **1 file / 7 tests** on
+      the literal command naming only `immutable-dataset.test.ts`. Seven summaries attributed, **zero
+      UNVERIFIED**.
+
+      **The CI reader needed three repairs before it could attribute anything, and each was an
+      instrument defect rather than a code problem — recorded because a reader that silently reports
+      the wrong number is worse than one that reports none.**
+
+      1. **Step output was being collected from the wrong span.** GitHub emits `##[endgroup]` *before*
+         a step's real output, so "everything between group and endgroup" collected five lines of
+         shell preamble and none of the results. Every step then reported "produced no Tests summary
+         line" — a shape **identical to a truncated job**, which is the exact failure this reader
+         exists to catch, so a reader with this bug would have cried wolf on a healthy run. Output is
+         now attributed to the step whose group header precedes it and whose next group header has not
+         arrived.
+      2. **`map(cond && value).pop()` returns `false`, not `undefined`.** The build step reported "no
+         build evidence" while printing `✓ Compiled successfully` forty lines earlier, because
+         `.pop()` on an array of mostly-`false` returns `false`, so the `??` fallback never engaged.
+         This is the empty-capture family for the fourth time and the quietest instance yet: `false`
+         and "nothing found" are different values that both read as "no evidence" to a caller. Fixed
+         with `.filter(Boolean)`.
+      3. **Keying test steps on `test:` excluded the dataset guard.** The guard runs
+         `pnpm exec vitest run …`, not a `pnpm run test:*` script, so it was classified as a
+         non-test step, no summary was demanded, and the one job that must never be skippable reported
+         **UNVERIFIED**. Keyed on `vitest` instead. This repository has previously seen that job
+         report `success` without running at all, so a reader that cannot attribute its summary is
+         not a formality.
+
+      Also fixed, and it is the reason the reader refuses rather than reporting: a step is now verified
+      by the evidence **its own kind of step** emits. Demanding a vitest summary from `lint` or
+      `build` is the reader's error, not a truncated job — the same class of mistake as matching
+      summaries positionally. The reader exits non-zero when any requested summary cannot be
+      attributed, which is what makes a green reading mean something.
 
 ---
 
