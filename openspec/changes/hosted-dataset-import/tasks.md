@@ -120,11 +120,15 @@
 
 ## 8. Close out
 
-- [ ] 8.1 `pnpm run lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`,
-      `build` — all run, all reported with the figures they actually produced.
-- [ ] 8.2 `openspec change validate hosted-dataset-import --strict` exits 0.
-- [ ] 8.3 Update `docs/ROADMAP.md` `## Project Status` and `### Active Blockers`: gate item 3 closed,
+- [x] 8.1 `pnpm run lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`,
+      `build` — all run, all reported with the figures they actually produced. Final tree: lint 0,
+      format 0, typecheck 0, unit 58/1476, dom 7/87, integration 11/194, build compiled.
+- [x] 8.2 `openspec change validate hosted-dataset-import --strict` exits 0.
+- [x] 8.3 Update `docs/ROADMAP.md` `## Project Status` and `### Active Blockers`: gate item 3 closed,
       the two residuals updated, next objective moved to the dashboard slice.
-- [ ] 8.4 Independent verification pass. No CRITICAL finding may survive, and no WARNING may be
-      silently waived.
-- [ ] 8.5 Merge with a merge commit only after 7.4 is green.
+- [x] 8.4 Independent verification pass, twice. First pass FAILED the change (two unfireable arms,
+      five warnings); all repaired in the forward guard migration round. Second pass
+      PASS-WITH-FINDINGS with one prose warning (a stale `.neq()` in a status row), fixed and
+      committed. No CRITICAL survives; no WARNING waived.
+- [x] 8.5 Merge with a merge commit only after 7.4 is green. 7.4 measured green on the wire twice
+      (before and after the guard deploy): `0 inserted / 600 updated`, 600 rows, byte-identical.
