@@ -64,27 +64,47 @@ const bilingual = {
  *   V1 answers E1 (natural) and E2 (incorrect, correction A)
  *   V2 answers E1 (natural) and E2 (incorrect, correction A)
  *   V3 answers E2 (natural, NO correction)
- *   V4 answers E3 (cannot_evaluate)
+ *   V4 answers E3 (cannot_evaluate)                          — abstention
+ *   V5 answers E3 (natural, ENGLISH ONLY, no Filipino)        — partial
+ *   V6 answers E3 (unnatural, correction, NO translations)   — partial
+ *   V7 answers X1 (natural)                                   — second category
  *
  *   E1: 2 rows, 2 qualifying, 2 distinct validators, complete at target 2, no review
- *   E2: 3 rows, 3 qualifying, 3 distinct validators, complete at target 2, NO review
- *       (three qualifying responses, evaluations  incorrect/incorrect/natural DO disagree —
- *        so this entry IS flagged; see the assertion, which is the point of picking this fixture)
- *   E3: 1 row, 0 qualifying, 1 distinct, NOT complete, no review (an abstention is not disagreement)
- *   E4: 0 rows, 0 qualifying, 0 distinct, not complete, no review
+ *   E2: 3 rows, 3 qualifying, 3 distinct validators, complete at target 2, FLAGGED
+ *       (two `incorrect` with the same correction and one `correct_natural` — the qualifying
+ *        evaluations disagree, which is the review rule's first clause)
+ *   E3: 3 rows, 0 qualifying, 3 distinct, NOT complete, no review. All three are NON-QUALIFYING:
+ *       an abstention and two partials. None can disagree, so this entry is not flagged.
+ *   E4, short_greeting: 0 rows each
+ *   X1: 1 row, 1 qualifying, 1 distinct, SECOND CATEGORY (landmark_guidance), not complete@2
  *
- *   Totals: 6 stored rows, 5 qualifying, 4 distinct validators in the corpus (V1..V4), 2 complete,
- *   1 flagged. Note the two different "distinct validators" figures and that both are correct:
- *   `generated_from.distinct_validators` counts every validator that responded (4, including V4),
+ *   Totals: 9 stored rows, 6 qualifying, 3 non-qualifying, 7 distinct validators in the corpus
+ *   (V1..V7), 2 entries complete at target 2, 1 flagged.
+ *
+ *   TWO DIFFERENT "distinct validators" FIGURES, both correct: `generated_from.distinct_validators`
+ *   counts every validator that responded (7, including the three whose responses do not qualify),
  *   while coverage counts distinct validators among QUALIFYING responses only.
  *
- *   THE TRAP, and the reason V1 answers two entries: `countQualifyingValidations` over ALL SIX rows
- *   returns 3 — the number of DISTINCT QUALIFYING validators — not 5. The summary must sum per entry
- *   instead. This fixture was written predicting 4 and MEASURED 3, because the predicate skips
- *   non-qualifying responses before counting and V4 abstained; the trap is unaffected in kind (3 is
- *   not 5), and the correction is recorded rather than smoothed over.
- */
-const entries = [entry("E1"), entry("E2"), entry("E3"), entry("E4"), entry("short_greeting")];
+ *   THE TRAP, and the reason V1 answers two entries: `countQualifyingValidations` over ALL NINE rows
+ *   returns 4 — the number of DISTINCT QUALIFYING validators (V1, V2, V3, V7) — not 6. The summary
+ *   must sum per entry instead.
+ *
+ *   WHY THE PARTIAL ROWS ARE HERE: the requirement names three non-qualifying cases, and before they
+ *   existed only ONE of the three was represented in this fixture, so a second rule written as
+ *   `evaluation !== "cannot_evaluate"` produced byte-identical output on every row. V5 and V6 each
+ *   defeat that restatement on their own. */
+const entries = [
+  entry("E1"),
+  entry("E2"),
+  entry("E3"),
+  entry("E4"),
+  entry("short_greeting"),
+  // A SECOND CATEGORY, so the per-category merge arithmetic runs rather than being asserted as
+  // `5 === 5`. The verification pass measured that every previous fixture entry used the default
+  // category, which left the scenario "WHEN entries from more than one category are exported"
+  // without a fixture at all.
+  entry("X1", "landmark_guidance"),
+];
 
 const sources: ExportSourceWithQualifying[] = [
   source(
@@ -119,6 +139,31 @@ const sources: ExportSourceWithQualifying[] = [
     entries[1]!,
   ),
   source(response("r06", "VAL_00000004", "E3", "cannot_evaluate"), null, entries[2]!),
+  // W1: an EVALUABLE response carrying English but no Filipino. It is non-qualifying, and a rule
+  // written as "not cannot_evaluate" would call it qualifying — so this row alone is what stops the
+  // fixture from being satisfied by a naive restatement of the shared rule.
+  source(
+    response("r07", "VAL_00000005", "E3", "correct_natural", {
+      englishTranslation: "English present, Filipino deliberately absent.",
+    }),
+    null,
+    entries[2]!,
+  ),
+  // W1: an evaluable response with NEITHER translation, and with a correction supplied — the shape
+  // a partial submit produces.
+  source(
+    response("r08", "VAL_00000006", "E3", "correct_unnatural", {
+      correctedInstruction: "balikas c",
+    }),
+    null,
+    entries[2]!,
+  ),
+  // W5: one qualifying response in the second category.
+  source(
+    response("r09", "VAL_00000007", "X1", "correct_natural", bilingual),
+    "native",
+    entries[5]!,
+  ),
 ];
 
 function source(
@@ -138,7 +183,7 @@ describe("buildExportRecords", () => {
   const records = buildExportRecords(sources);
 
   it("emits one record per stored response, in order, and drops none", () => {
-    expect(records).toHaveLength(6);
+    expect(records).toHaveLength(9);
     expect(records.map((record) => record.validation_id)).toEqual([
       "r01",
       "r02",
@@ -146,6 +191,9 @@ describe("buildExportRecords", () => {
       "r04",
       "r05",
       "r06",
+      "r07",
+      "r08",
+      "r09",
     ]);
   });
 
@@ -181,14 +229,21 @@ describe("buildExportRecords", () => {
       "native",
       "conversational",
       null,
+      null,
+      null,
+      "native",
     ]);
   });
 
-  it("carries the entry's category on every record", () => {
-    for (const record of records) {
-      expect(record.category).toBe("origin_destination");
-      expect(record.dataset_entry_id).toMatch(/^E\d$/);
-    }
+  it("carries the entry's category on every record, including a second category", () => {
+    // Per record rather than one expected value for all of them: a single-category assertion over a
+    // now-two-category fixture would pass while every record silently carried the default.
+    const byCategory = new Map(records.map((record) => [record.dataset_entry_id, record.category]));
+
+    expect(byCategory.get("E1")).toBe("origin_destination");
+    expect(byCategory.get("E3")).toBe("origin_destination");
+    expect(byCategory.get("X1")).toBe("landmark_guidance");
+    expect(new Set(records.map((record) => record.category)).size).toBe(2);
   });
 });
 
@@ -211,10 +266,12 @@ describe("buildExportSummary", () => {
     });
     expect(byId.get("E3")).toMatchObject({
       qualifying_validations: 0,
-      non_qualifying_validations: 1,
-      stored_responses: 1,
+      non_qualifying_validations: 3,
+      stored_responses: 3,
+      distinct_validators: 3,
       coverage_complete: false,
-      // An abstention is not an opinion, so it cannot disagree with anything.
+      // None of the three qualifies, so none can disagree: an abstention is not an opinion, and a
+      // partial response is not a weaker opinion.
       requires_researcher_review: false,
     });
     expect(byId.get("E4")).toMatchObject({
@@ -255,15 +312,15 @@ describe("buildExportSummary", () => {
   });
 
   it("sums the qualifying total PER ENTRY rather than counting globally", () => {
-    // The trap, pinned. Counted globally over all six rows, `countQualifyingValidations` returns 3 —
-    // the number of DISTINCT QUALIFYING validators — because it dedupes by validator across its
-    // whole input. The correct total is 5, from summing per entry.
+    // The trap, pinned. Counted globally over all nine rows, `countQualifyingValidations` returns 4 —
+    // the number of DISTINCT QUALIFYING validators (V1, V2, V3, V7) — because it dedupes by validator
+    // across its whole input. The correct total is 6, from summing per entry.
     const globalCount = countQualifyingForTest(sources.map((item) => item.response));
-    expect(globalCount).toBe(3);
+    expect(globalCount).toBe(4);
 
-    expect(summary.totals.qualifying_validations).toBe(5);
+    expect(summary.totals.qualifying_validations).toBe(6);
     // And the two distinct-validator figures are deliberately different numbers, both correct.
-    expect(summary.generated_from.distinct_validators).toBe(4);
+    expect(summary.generated_from.distinct_validators).toBe(7);
   });
 
   it("reports totals that the exported records reproduce", () => {
@@ -286,19 +343,36 @@ describe("buildExportSummary", () => {
         category: "origin_destination",
         entries: 5,
         qualifying_validations: 5,
-        non_qualifying_validations: 1,
-        stored_responses: 6,
+        non_qualifying_validations: 3,
+        stored_responses: 8,
+      },
+      {
+        category: "landmark_guidance",
+        entries: 1,
+        qualifying_validations: 1,
+        non_qualifying_validations: 0,
+        stored_responses: 1,
       },
     ]);
-    // Per-category figures must sum to the totals, or the grouping is decorative.
-    expect(summary.by_category.reduce((sum, row) => sum + row.qualifying_validations, 0)).toBe(
-      summary.totals.qualifying_validations,
-    );
+    // Per-category figures must sum to the totals, or the grouping is decorative. With TWO
+    // categories this is now an assertion that can fail: before the second category existed it
+    // reduced to `5 === 5`, an identity no implementation could break.
+    for (const field of [
+      "qualifying_validations",
+      "non_qualifying_validations",
+      "stored_responses",
+      "entries",
+    ] as const) {
+      expect(summary.by_category.reduce((sum, row) => sum + row[field], 0)).toBe(
+        field === "entries" ? summary.by_entry.length : summary.totals[field],
+      );
+    }
   });
 
   it("reports an entry with no responses without inventing one", () => {
     const rows = summary.by_entry;
     expect(rows).toHaveLength(entries.length);
+    expect(rows).toHaveLength(6);
     expect(rows.find((row) => row.dataset_entry_id === "E4")).toMatchObject({
       stored_responses: 0,
     });
@@ -312,8 +386,10 @@ describe("buildExportSummary", () => {
 
     expect(byId.get("E1")?.coverage_complete).toBe(false);
     expect(byId.get("E2")?.coverage_complete).toBe(true);
+    expect(byId.get("X1")?.coverage_complete).toBe(false);
     expect(atThree.generated_from.coverage_target).toBe(3);
     expect(byId.get("E2")?.coverage_target).toBe(3);
+    expect(byId.get("X1")?.coverage_target).toBe(3);
   });
 });
 
@@ -323,6 +399,7 @@ describe("the two artifacts describe the same records", () => {
     const csv = buildCsv(records);
 
     expect(csv.trimEnd().split("\n")).toHaveLength(records.length + 1);
+    expect(csv.trimEnd().split("\n")).toHaveLength(10);
     expect(csv.split("\n")[0]).toBe(EXPORT_RECORD_KEYS.join(","));
   });
 });

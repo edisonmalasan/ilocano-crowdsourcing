@@ -93,7 +93,22 @@
 - [x] 4.3 `openspec change validate research-export --strict` exits 0. **It caught a real mistake
       first**: a scripted edit of this file dropped the `## 4. Close out` heading, and the validator
       reported six `tasks.md` warnings about group numbering before that. Repaired, not waived.
-- [ ] 4.4 Update `docs/ROADMAP.md` `## Project Status`.
-- [ ] 4.5 Independent verification pass. No CRITICAL finding may survive, and no WARNING may be
-      silently waived.
+- [x] 4.4 Update `docs/ROADMAP.md` `## Project Status`.
+- [x] 4.5 Independent verification pass. Verdict **PASS-WITH-FINDINGS**: all 14 scenarios have
+      named tests, every measured figure matched the ledger, and research integrity was verified in
+      implementation rather than prose — no merged field, no adjudication, no second implementation of
+      the qualifying rule, no write reachable from the command's type. **Both CRITICAL findings were
+      guards that could not see what they claimed to**, and both were re-confirmed by measurement here
+      before repair: a filesystem-API **count** that nine realistic mutations left green (the sibling
+      16-pattern scan exempts this command, so it was the only guard there was), and an
+      unreachability scan covering **30 of 110 modules and none of the six Server Actions** while the
+      requirement it discharges names Server Actions explicitly. Both are repaired and re-proved by
+      can-fire mutants. **The repair had its own defect, found by its own probe**: the first allow-list
+      matched with a trailing `\w*`, so a `writeFileSync` mutant matched under its old name and
+      came back green; the matcher is now exact. Seven warnings repaired too — the fixture could not
+      tell the shared qualifying predicate from `evaluation !== "cannot_evaluate"` (two partial rows
+      added, and the naive restatement is now proved RED), the per-category assertion had been
+      `5 === 5`, `EXIT_REFUSED` was a dead export, the CSV parser's header overstated its
+      strictness, the `data/` check had no can-fire control and missed the `DEFAULT_SOURCE_PATH`
+      form, and two ledger rows were stale. Nothing was waived.
 - [ ] 4.6 Merge with a merge commit only after 4.1–4.5 are green.

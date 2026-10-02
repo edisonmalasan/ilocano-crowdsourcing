@@ -227,10 +227,39 @@ describe("the operator command cannot write a file", () => {
     }
   });
 
+  it("PROVES THE RESEARCH-SOURCE CHECK CAN FIRE, including the constant-path form", () => {
+    // Without this the check below could pass on nothing, and it would pass just as happily on a
+    // rewrite expressed through a CONSTANT — which is exactly how `import-dataset.ts` spells its own
+    // path (`DEFAULT_SOURCE_PATH`). A check that only recognises a literal `"data/…"` would miss the
+    // most realistic way to destroy the immutable source.
+    const writesIntoData = (source: string): boolean =>
+      /(?:writeFile|appendFile|createWriteStream|truncate|rm|rename|copyFile|unlink|rmdir)\w*\s*\(\s*(?:[^)]*\bdata\b|DEFAULT_SOURCE_PATH)/.test(
+        stripComments(source),
+      );
+
+    for (const evasion of [
+      'writeFile("data/ilocano-synthetic-data.json", "{}");',
+      'writeFile(DEFAULT_SOURCE_PATH, "{}");',
+      'appendFile(`${ROOT}/data/out.json`, "x");',
+      'rm("data", { recursive: true });',
+    ]) {
+      expect(writesIntoData(evasion), `must detect: ${evasion}`).toBe(true);
+    }
+
+    // And a legitimate write elsewhere must NOT be flagged, or the check is too blunt to be trusted
+    // and will be disabled the first time it obstructs real work.
+    for (const innocent of [
+      'writeFile(path.join(options.destination, "validations.json"), text);',
+      'readFileSync(DEFAULT_SOURCE_PATH, "utf8");',
+    ]) {
+      expect(writesIntoData(innocent), `must not flag: ${innocent}`).toBe(false);
+    }
+  });
+
   it("finds no script writing into the immutable research source", () => {
     // The invariant the previous blanket scan only implied. Checked by looking for the research
-    // directory named in any filesystem call, and by asserting `data/` is real, so a typo in the
-    // path cannot make this pass on nothing.
+    // directory — or the constant that names it — in any filesystem call, and by asserting `data/`
+    // is real, so a typo in the path cannot make this pass on nothing.
     expect(existsSync(path.join(ROOT, "data", "ilocano-synthetic-data.json"))).toBe(true);
 
     for (const file of scriptFiles()) {
@@ -238,18 +267,18 @@ describe("the operator command cannot write a file", () => {
       const code = readFileSync(file, "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/^\s*\/\/.*$/gm, "");
-      for (const pattern of WRITE_APIS) {
-        if (!pattern.test(code)) continue;
-        // Every filesystem call in the file, with enough surrounding text to see its argument.
-        for (const call of code.matchAll(
-          /\b(?:writeFile|mkdir|rm|rename|cp|copyFile|rmdir|unlink)\w*\s*\(/g,
-        )) {
-          const context = code.slice(call.index, call.index + 160);
-          expect(
-            /["'`][^"'`]*\bdata\b[^"'`]*["'`]/.test(context),
-            `${relative} appears to write into the research source: ${context.slice(0, 120)}`,
-          ).toBe(false);
-        }
+      // Every filesystem call in the file, with enough surrounding text to see its argument.
+      // The research source is named either literally or through `DEFAULT_SOURCE_PATH`, which is
+      // how `import-dataset.ts` spells it — and the can-fire control above covers both forms.
+      for (const call of code.matchAll(
+        /\b(?:writeFile|appendFile|createWriteStream|truncate|rm|rename|copyFile|unlink|rmdir)\w*\s*\(/g,
+      )) {
+        const context = code.slice(call.index, call.index + 200);
+        expect(
+          /["'`][^"'`]*\bdata\b[^"'`]*["'`]/.test(context) ||
+            /\(\s*DEFAULT_SOURCE_PATH/.test(context),
+          `${relative} appears to write into the research source: ${context.slice(0, 140)}`,
+        ).toBe(false);
       }
     }
   });

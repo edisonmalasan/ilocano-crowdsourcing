@@ -63,7 +63,6 @@ import type { ValidatorsRepository } from "@/lib/repositories/validators-reposit
 import type { DatasetEntry } from "@/schemas/dataset";
 
 export const EXIT_OK = 0;
-export const EXIT_REFUSED = 1;
 export const EXIT_MISCONFIGURED = 2;
 
 /** The output file names. Fixed, so a consumer can find them without reading the summary. */

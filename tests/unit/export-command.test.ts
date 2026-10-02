@@ -280,4 +280,16 @@ describe("main", () => {
   it("exposes a distinct exit code for a misconfigured run", () => {
     expect(EXIT_MISCONFIGURED).not.toBe(EXIT_OK);
   });
+
+  it("declares no exit code it never returns", () => {
+    // There is no refusal code here, deliberately. `import-dataset.ts` exports three because it
+    // distinguishes a REFUSAL (the dataset would have changed the research record) from a
+    // MISCONFIGURED run, and this command has no first case: every failure — a missing variable, a
+    // bad argument, an unwritable destination — is a misconfiguration of how the operator invoked
+    // it, and all of them exit 2. An earlier draft exported `EXIT_REFUSED` for symmetry with the
+    // import, and grep found its only occurrence was its own declaration — the same "export with no
+    // caller" shape AGENTS.md records removing `isTranslatableContent` for.
+    expect(EXIT_MISCONFIGURED).toBe(2);
+    expect(EXIT_OK).toBe(0);
+  });
 });

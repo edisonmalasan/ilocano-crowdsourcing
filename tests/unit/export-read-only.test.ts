@@ -10,7 +10,7 @@
  * a pattern list with no real writer behind it is a list nobody has tested, which is exactly how
  * `.create(` reached the dashboard scan as an untested pattern in the first place.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -33,6 +33,42 @@ const KNOWN_WRITERS = [
 ] as const;
 
 const KNOWN_SERVER_ACTION = path.join(SRC, "lib", "validation", "actions.ts");
+
+/**
+ * The sixteen filesystem-mutating APIs, the same list `import-dataset-command.test.ts` uses.
+ *
+ * Duplicated rather than imported on purpose: that file's list is scoped to prove the IMPORT writes
+ * nothing, and this command is deliberately EXEMPT from it, because writing its artifacts is the
+ * export's approved job. So the list is restated here and turned into an ALLOW-LIST — this command
+ * may name `writeFile` and `mkdir` and nothing else. A count of two call sites is not a guard; a
+ * closed set of API names is.
+ */
+const FILESYSTEM_APIS = [
+  "writeFile",
+  "writeFileSync",
+  "appendFile",
+  "appendFileSync",
+  "createWriteStream",
+  "open",
+  "truncate",
+  "truncateSync",
+  "unlink",
+  "unlinkSync",
+  "rm",
+  "rmSync",
+  "rename",
+  "renameSync",
+  "cp",
+  "copyFile",
+  "copyFileSync",
+  "chmod",
+  "chown",
+  "rmdir",
+  "mkdir",
+  "mkdirSync",
+  "link",
+  "symlink",
+] as const;
 
 /**
  * The same shape-tolerant pattern list the dashboard scan uses, for the same reason: the tighter
@@ -102,26 +138,40 @@ describe("the export performs no writes", () => {
     }
   });
 
-  it("is unreachable from any route, page, or Server Action in the application", () => {
-    // Enumerated from the application tree rather than asserted as a list, so a new route cannot
-    // quietly gain an import of the command.
-    const applicationRoots = [path.join(SRC, "app"), path.join(SRC, "components")];
+  it("is unreachable from ANY module in the application, including every Server Action", () => {
+    // SCOPE, and this is the correction an independent verification pass forced. The first version
+    // walked `src/app` and `src/components` — 30 of this repository's 110 modules — and so covered
+    // NONE of the six modules carrying `"use server"`. The requirement this discharges names Server
+    // Actions explicitly, and a Server Action is a request path: `import { runExport } from
+    // "@/lib/export/…"` dropped into `src/lib/validation/actions.ts` would have failed no test here.
+    //
+    // The walk is over ALL of `src/`, and the two counts below are the empty-capture guards that
+    // make the scope visible: the module total, and the number of Server Actions the walk actually
+    // reached. Without the second, a walk that somehow stopped descending would still pass.
     const files: string[] = [];
     const walk = (directory: string): void => {
-      for (const entry of readdirSyncSafe(directory)) {
+      for (const entry of readdirSyncSync(directory, { withFileTypes: true })) {
         const full = path.join(directory, entry.name);
         if (entry.isDirectory()) walk(full);
         else if (/\.tsx?$/.test(entry.name)) files.push(full);
       }
     };
-    for (const root of applicationRoots) walk(root);
+    walk(SRC);
 
-    expect(files.length, "the application tree must not be empty").toBeGreaterThan(10);
-    expect(files.some((file) => file.includes(`${path.sep}app${path.sep}page.tsx`))).toBe(true);
+    expect(files.length, "the scan must reach the whole application tree").toBeGreaterThan(50);
+    expect(files.some((file) => file.endsWith(path.join("app", "page.tsx")))).toBe(true);
+
+    const serverModules = files.filter((file) => SERVER_DIRECTIVE.test(readFileSync(file, "utf8")));
+    // The assertion that would have caught the original scope bug: the walk must actually REACH the
+    // Server Actions, or "no Server Action imports the export" is a claim about nothing.
+    expect(
+      serverModules.length,
+      "the scan must reach the Server Actions it claims to exclude",
+    ).toBeGreaterThan(0);
 
     for (const file of files) {
       const source = readFileSync(file, "utf8");
-      expect(source, `${relative(file)} must not import the export`).not.toContain(
+      expect(source, `${relative(file)} must not import the export command`).not.toContain(
         "export-research",
       );
       expect(source, `${relative(file)} must not import the export module`).not.toContain(
@@ -130,23 +180,64 @@ describe("the export performs no writes", () => {
     }
   });
 
-  it("writes only its own output files, by name", () => {
-    const command = readFileSync(path.join(ROOT, "scripts", "export-research.ts"), "utf8");
-    const code = stripComments(command);
-    const fsWrites = [...code.matchAll(/\b(writeFile|mkdir)\s*\(/g)].map((m) => m[1] as string);
+  it("uses ONLY the two filesystem APIs it needs, checked by NAME not by call count", () => {
+    // A COUNT is not a guard. The first version of this test counted `writeFile`/`mkdir` calls and
+    // asserted the total, and a can-fire probe measured that nine realistic mutations of the command
+    // left it GREEN: `appendFile`, `rm`, `unlink`, `rename`, `copyFile`, `createWriteStream`,
+    // `truncate`, `open(…, "w")` and `writeFileSync`. A count of the two names it watches cannot see
+    // any of them — and the sibling scan in `import-dataset-command.test.ts`, which lists all sixteen
+    // of those APIs, EXEMPTS this command because writing files is the export's approved job. So for
+    // this one file the two-name count was the only guard there was, and it was nine holes wide.
+    //
+    // What replaces it is an ALLOW-LIST over the same sixteen patterns: the set of filesystem APIs
+    // the command names must be exactly {writeFile, mkdir}. `appendFile` would add a third name and
+    // fail; `writeFileSync` would rename one and fail; a sixth `writeFile` for a fourth artifact
+    // would still name an allowed API but is caught by the per-call name assertion below.
+    const command = stripComments(
+      readFileSync(path.join(ROOT, "scripts", "export-research.ts"), "utf8"),
+    );
 
-    // Exactly three document writes and one directory creation, and nothing else that touches the
-    // filesystem. A fourth would be an artifact nobody listed.
-    expect(fsWrites.sort()).toEqual(["mkdir", "writeFile", "writeFile", "writeFile"]);
+    // The Sync variants are listed SEPARATELY and matched EXACTLY, and that detail is the repair's
+    // own lesson: the first version of this allow-list used a trailing `\w*`, and a `writeFileSync`
+    // mutant came back GREEN — `writeFile\w*` matched `writeFileSync` as though it were `writeFile`,
+    // so the renamed API was reported under its old name and the set never changed.
+    const apisPresent = [
+      ...new Set(FILESYSTEM_APIS.filter((api) => new RegExp(`\\b${api}\\s*\\(`).test(command))),
+    ];
+    expect(apisPresent.sort()).toEqual(["mkdir", "writeFile"]);
+  });
+
+  it("writes only the three declared artifact names, and nothing else", () => {
+    // The per-call half. Every `writeFile` must name one of the three artifacts, so a fourth write
+    // of a file nobody listed cannot hide behind an allowed API name.
+    const command = stripComments(
+      readFileSync(path.join(ROOT, "scripts", "export-research.ts"), "utf8"),
+    );
+    const writeCalls = [...command.matchAll(/\bwriteFile\w*\s*\(([\s\S]{0,200}?)\)/g)].map(
+      (match) => match[1] ?? "",
+    );
+
+    expect(writeCalls.length).toBeGreaterThan(0);
+    for (const call of writeCalls) {
+      expect(call, `a writeFile call must name a declared artifact: ${call.slice(0, 80)}`).toMatch(
+        /VALIDATIONS_JSON|VALIDATIONS_CSV|SUMMARY_JSON/,
+      );
+    }
+    // The three names are read from the command's own constants rather than restated, so this
+    // assertion cannot pass while the command's file names drift away from what ships.
     for (const name of ["validations.json", "validations.csv", "summary.json"]) {
       expect(command).toContain(name);
     }
   });
 });
 
-/** `readdirSync` with `withFileTypes`, isolated so the walk above stays readable. */
-function readdirSyncSafe(directory: string): { name: string; isDirectory(): boolean }[] {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { readdirSync } = require("node:fs") as typeof import("node:fs");
-  return readdirSync(directory, { withFileTypes: true });
+/** `readdirSync` with `withFileTypes`, isolated so the walks above stay readable. */
+function readdirSyncSync(directory: string, options: { withFileTypes: true }): Dirent[] {
+  return readdirSync(directory, options) as unknown as Dirent[];
+}
+
+/** The subset of `Dirent` this file uses. */
+interface Dirent {
+  name: string;
+  isDirectory(): boolean;
 }

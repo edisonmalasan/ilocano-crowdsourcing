@@ -32,9 +32,18 @@ const FULL: ExportRecord = {
 
 /**
  * A minimal RFC 4180 parser: fields separated by commas, records by LF, fields optionally quoted with
- * `""` meaning a literal quote. Deliberately not tolerant of malformed input — this parser THROWS on
- * a stray quote or an unterminated field, so a writer that emits invalid CSV fails loudly here rather
- * than producing a quietly wrong reading.
+ * `""` meaning a literal quote.
+ *
+ * WHAT IT REJECTS, measured rather than assumed: a quote opened MID-FIELD (`a,b"c,d` → throws) and an
+ * unterminated quoted field (`a,"bc,d` → throws). What it does NOT reject — recorded because a comment
+ * claiming otherwise was measured false — is text after a closing quote: `a,"b"c,d` parses to
+ * `["a","bc","d"]` without complaint.
+ *
+ * That leniency is harmless HERE because the assertions it serves are stricter than the parser: every
+ * cell is compared against the original value, and row counts are asserted. A writer emitting `"b"c`
+ * for an original `bc` would round-trip to `bc` here, so the round trip is not what rules that out —
+ * the per-cell equality is. The parser's job is to give the assertions a faithful value to compare,
+ * not to be the test.
  */
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
