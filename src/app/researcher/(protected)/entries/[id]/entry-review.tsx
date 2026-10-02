@@ -51,7 +51,7 @@ export function EntryReviewView({ review }: { review: EntryReview }) {
               <Field label="Destination" value={review.entry.destination ?? "—"} />
               <Field label="Transit mode" value={review.entry.transitMode ?? "—"} />
               <p className="text-small text-ink-muted">
-                {review.qualifyingCount} of 3 qualifying validations
+                {review.qualifyingCount} of {review.coverageTarget} qualifying validations
                 {review.needsReview ? " · flagged for researcher review" : ""}
               </p>
             </div>

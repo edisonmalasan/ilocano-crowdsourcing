@@ -31,6 +31,7 @@
  */
 
 import type { DatasetEntry } from "@/schemas/dataset";
+import { INDEPENDENT_VALIDATION_TARGET_DEFAULT } from "@/schemas/batch";
 import type { ValidationResponse } from "@/schemas/validation";
 import type { AnonymousValidatorId, IlocanoProficiency } from "@/schemas/validator";
 
@@ -60,12 +61,19 @@ export interface DashboardRepositories {
   readonly validators: Pick<ValidatorsRepository, "listByIds">;
 }
 
-/** Coverage buckets keyed by qualifying validations from distinct validators. */
+/**
+ * Coverage buckets keyed by qualifying validations from distinct validators.
+ *
+ * `complete` is the only bucket whose boundary is a research parameter rather than a literal: it
+ * is "reached the configured target", which is the same rule allocation uses to retire an entry
+ * from the pool. The other three are literal counts because the thesis team's approved figure list
+ * names 0, 1, and 2 specifically.
+ */
 export interface CoverageBuckets {
   readonly zero: number;
   readonly one: number;
   readonly two: number;
-  /** Entries with 3 qualifying validations: coverage complete. */
+  /** Entries that have reached the configured independent-validation target. */
   readonly complete: number;
 }
 
@@ -74,6 +82,14 @@ export type ProficiencyBreakdown = Record<IlocanoProficiency | "unrecorded", num
 
 /** Every approved overview figure, computed — never placeholder. */
 export interface DashboardOverview {
+  /**
+   * ACTIVE dataset entries — the approved figure is "total dataset entries", and this counts the
+   * active subset. The two are equal today because no code path retires an entry (the only writers
+   * of `is_active` are the column default and the import function's `coalesce(…, true)`), but they
+   * would diverge the moment retirement is introduced, and the coverage denominator would then
+   * exclude retired entries from the total while their responses still counted. Recorded here
+   * rather than left for a reader to discover.
+   */
   readonly totalEntries: number;
   readonly totalQualifyingValidations: number;
   readonly totalValidators: number;
@@ -83,6 +99,13 @@ export interface DashboardOverview {
   readonly proficiencyBreakdown: ProficiencyBreakdown;
   /** Entry ids flagged for review, in dataset order. */
   readonly reviewEntryIds: readonly string[];
+  /**
+   * The target these figures were computed against, so a screen can label the bucket rather than
+   * assert a number. Carried in the result instead of hardcoded in the view because the approved
+   * figure list says "entries with 3 (coverage complete)" and that 3 is CONFIGURATION pending
+   * adviser approval — a view hardcoding it would go stale silently the day the target changes.
+   */
+  readonly coverageTarget: number;
 }
 
 /**
@@ -114,6 +137,7 @@ function toOneDecimal(value: number): number {
 
 export async function loadDashboardOverview(
   repositories: DashboardRepositories,
+  coverageTarget: number = INDEPENDENT_VALIDATION_TARGET_DEFAULT,
 ): Promise<DashboardOverview> {
   const entries = await repositories.entries.listActive();
   const validations = await repositories.validations.listForEntries(
@@ -124,10 +148,17 @@ export async function loadDashboardOverview(
   for (const entry of entries) byEntry.set(entry.id, []);
   for (const response of validations) {
     const list = byEntry.get(response.datasetEntryId);
-    // A response pointing at an entry outside the active set (retired after validating) does not
-    // belong to any bucket on this screen. Dropping it silently would be wrong; counting it
-    // would be wronger — so it is excluded from entry-scoped figures and INCLUDED in the
-    // response-scoped ones below, and the distinction is this comment.
+    // A response for an entry OUTSIDE the active set. Reachable in principle — `listForEntries` is
+    // asked only for active ids, so the database should never return one — and the handling is the
+    // conservative one: excluded from entry-scoped figures below (it has no entry to be counted
+    // against) and still INCLUDED in the response-scoped ones further down, because a validator
+    // did submit it.
+    //
+    // It is currently UNREACHABLE in production, and that is a measurement, not a guess: the only
+    // writers of `is_active` are the column default and the import function's
+    // `coalesce(p_is_active, true)`, so no code path retires an entry today. The branch is kept
+    // because `listActive()` is a FILTER, not a promise about what the validations table holds, and
+    // the alternative — indexing straight in — would throw on exactly the row this guard absorbs.
     if (list !== undefined) list.push(response);
   }
 
@@ -141,7 +172,9 @@ export async function loadDashboardOverview(
   for (const entry of entries) {
     const responses = byEntry.get(entry.id) ?? [];
     const qualifying = countQualifyingValidations(responses);
-    if (qualifying >= 3) {
+    // "Reached", not "exceeds" — the same wording allocation uses, because retiring an entry at
+    // the target and reporting it complete one validation later would disagree on the wire.
+    if (qualifying >= coverageTarget) {
       buckets.complete += 1;
     } else if (qualifying === 2) {
       buckets.two += 1;
@@ -181,6 +214,7 @@ export async function loadDashboardOverview(
       entries.length === 0 ? 0 : toOneDecimal((buckets.complete / entries.length) * 100),
     evaluationDistribution,
     proficiencyBreakdown,
+    coverageTarget,
     reviewEntryIds,
   };
 }
@@ -201,11 +235,14 @@ export interface EntryReview {
   readonly needsReview: boolean;
   /** In creation order (oldest first): the order the conversation happened in. */
   readonly responses: readonly ReviewedResponse[];
+  /** Carried, not hardcoded in the view, for the reason on {@link DashboardOverview.coverageTarget}. */
+  readonly coverageTarget: number;
 }
 
 export async function loadEntryReview(
   repositories: DashboardRepositories,
   entryId: string,
+  coverageTarget: number = INDEPENDENT_VALIDATION_TARGET_DEFAULT,
 ): Promise<EntryReview | null> {
   const entry = await repositories.entries.findById(entryId);
   if (entry === null) return null;
@@ -232,5 +269,6 @@ export async function loadEntryReview(
     qualifyingCount: countQualifyingValidations(responses),
     needsReview: requiresResearcherReview(responses),
     responses: reviewed,
+    coverageTarget,
   };
 }

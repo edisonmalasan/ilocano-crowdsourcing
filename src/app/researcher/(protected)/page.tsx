@@ -14,9 +14,22 @@ import { createSupabaseRepositories } from "@/lib/repositories/supabase";
  *   2. assemble the overview with the dashboard service;
  *   3. render the pure view.
  *
- * No step here writes. The repositories are destructured to the three reads the service needs,
- * so even the construction cannot hand this page a write it has no business holding — the same
- * return-shape separation `factory.ts` documents for public validator requests.
+ * No step here writes, and the guarantee is asserted rather than asserted ABOUT — see the three
+ * layers that actually hold it, and the one earlier comment that overstated them:
+ *
+ *   1. `loadDashboardOverview`'s parameter type is `Pick<…>` of the read methods only, so the
+ *      SERVICE cannot reach a write: the narrowing is the type layer, not a convention.
+ *   2. `tests/unit/dashboard-read-only.test.ts` scans every researcher route and this service for
+ *      write calls and for a `"use server"` directive, with real production writers as its
+ *      can-fire controls.
+ *   3. No route beneath the guard defines a Server Action, so there is no second mechanism.
+ *
+ * WHAT DOES NOT HOLD, stated because a comment here previously claimed it did: destructuring the
+ * factory result narrows which REPOSITORIES this page holds, not which METHODS. The factories
+ * return concrete instances, and `SupabaseValidatorsRepository` exposes a public `create(profile)`
+ * that writes — so `validators.create(…)` would typecheck here and would be a real write. The
+ * page's discipline is what keeps it read-only; layers 1–3 are what make a violation of that
+ * discipline fail the suite. "Even the construction cannot hand this page a write" was false.
  */
 export default async function ResearcherDashboardPage() {
   const { datasetEntries, validators, validations } = createSupabaseRepositories();

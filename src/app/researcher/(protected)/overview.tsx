@@ -51,12 +51,15 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           <Figure
             label="Overall coverage"
             value={`${overview.coveragePercentage}%`}
-            hint={`Entries with 3 qualifying validations, out of ${overview.totalEntries} entries`}
+            hint={`Entries with ${overview.coverageTarget} qualifying validations, out of ${overview.totalEntries} entries`}
           />
           <Figure label="Entries with 0 qualifying" value={String(overview.buckets.zero)} />
           <Figure label="Entries with 1 qualifying" value={String(overview.buckets.one)} />
           <Figure label="Entries with 2 qualifying" value={String(overview.buckets.two)} />
-          <Figure label="Coverage complete (3 of 3)" value={String(overview.buckets.complete)} />
+          <Figure
+            label={`Coverage complete (${overview.coverageTarget} of ${overview.coverageTarget})`}
+            value={String(overview.buckets.complete)}
+          />
           <Figure label="Needs researcher review" value={String(overview.reviewEntryIds.length)} />
         </div>
       </section>

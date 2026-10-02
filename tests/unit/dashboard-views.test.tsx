@@ -26,6 +26,7 @@ const OVERVIEW: DashboardOverview = {
   totalValidators: 5,
   buckets: { zero: 1, one: 1, two: 1, complete: 3 },
   coveragePercentage: 50,
+  coverageTarget: 3,
   evaluationDistribution: {
     correct_natural: 8,
     correct_unnatural: 0,
@@ -43,6 +44,23 @@ const OVERVIEW: DashboardOverview = {
   reviewEntryIds: ["E5", "E6"],
 };
 
+/**
+ * Every figure card's label and value, read as ADJACENT pairs.
+ *
+ * Scoped to the coverage-totals section so the evaluation-distribution and proficiency `<dt>`
+ * rows — which also render label-then-value — cannot satisfy a totals assertion. The section is
+ * located by its own `aria-label`, and the run of cards is bounded by the section's `</section>`, so
+ * a figure added to a LATER section is not counted here by accident.
+ */
+function figurePairs(html: string): string[][] {
+  const section =
+    html.split('aria-label="Coverage totals"')[1]?.split("</section>")[0] ?? /* not found */ "";
+  return [...section.matchAll(/>([^<>]+)<\/p><p[^>]*>([^<>]+)<\/p>/g)].map((match) => [
+    match[1] ?? "",
+    match[2] ?? "",
+  ]);
+}
+
 const REVIEW: EntryReview = {
   entry: {
     id: "E5",
@@ -56,6 +74,7 @@ const REVIEW: EntryReview = {
   },
   qualifyingCount: 3,
   needsReview: true,
+  coverageTarget: 3,
   responses: [
     {
       response: {
@@ -94,10 +113,27 @@ const REVIEW: EntryReview = {
 };
 
 describe("OverviewView", () => {
-  it("renders every approved figure with its computed value", () => {
+  it("renders every approved figure with its OWN value, paired to its own label", () => {
     const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
 
-    for (const [label, value] of [
+    // PAIRED, not two independent assertions over the whole document.
+    //
+    // An earlier draft asserted `html.toContain(label)` and `html.toContain(">" + value + "<")`
+    // separately for each figure. That form is PERMUTATION-INVARIANT: the asserted value multiset
+    // is {6, 12, 5, "50%", 1, 1, 1, 3, 2}, so swapping any two figures' values — rendering
+    // `buckets.complete` under "Dataset entries" and `totalEntries` under "Coverage complete" —
+    // leaves the suite fully green while the screen reports two materially wrong research
+    // figures. The fix is to read each figure's card and require the label and value to be
+    // ADJACENT inside it, which is the only arrangement that can distinguish the two orderings.
+    //
+    // The regex is anchored on the rendered structure measured from this view: a label `<p>`
+    // immediately followed by the value `<p>`. It is asserted against a known fixture FIRST, so a
+    // structure change that breaks the regex fails here loudly rather than silently matching
+    // nothing — a pairing assertion that finds zero pairs is a vacuous assertion.
+    const pairs = figurePairs(html);
+
+    expect(pairs.length, "the pairing regex must find every figure").toBeGreaterThan(0);
+    expect(pairs).toEqual([
       ["Dataset entries", "6"],
       ["Qualifying validations", "12"],
       ["Validators who submitted responses", "5"],
@@ -107,10 +143,24 @@ describe("OverviewView", () => {
       ["Entries with 2 qualifying", "1"],
       ["Coverage complete (3 of 3)", "3"],
       ["Needs researcher review", "2"],
-    ] as const) {
-      expect(html).toContain(label);
-      expect(html).toContain(`>${value}<`);
-    }
+    ]);
+  });
+
+  it("labels the coverage figure against the target the service used, not a literal", () => {
+    // The approved figure list says "entries with 3 (coverage complete)" and that 3 is
+    // CONFIGURATION pending adviser approval. A view that hardcoded it would report "3 of 3"
+    // against figures computed for a target of 2 — two numbers on one screen disagreeing, with
+    // no failing test. Rendering a changed target is the assertion that the label follows the
+    // computation.
+    const html = renderToStaticMarkup(
+      <OverviewView
+        overview={{ ...OVERVIEW, coverageTarget: 2, buckets: { ...OVERVIEW.buckets, complete: 0 } }}
+      />,
+    );
+
+    expect(html).toContain("Coverage complete (2 of 2)");
+    expect(html).toContain("Entries with 2 qualifying validations");
+    expect(html).not.toContain("3 of 3");
   });
 
   it("labels the coverage denominator next to the percentage", () => {
@@ -179,22 +229,77 @@ describe("EntryReviewView", () => {
 
     // Split the markup on the validator scope the view itself declares: each validator's texts
     // must appear inside that validator's card and nowhere else.
+    //
+    // `segments[0]` IS asserted, and that is the correction to an earlier draft of this test. The
+    // comment claimed the scoping held "and nowhere else", but only segments 1 and 2 were
+    // examined — segment 0 is everything before the first response card, which is the source-entry
+    // region. A regression that rendered every validator's translations up there, merged, would
+    // have satisfied both `not.toContain` assertions in the response segments while violating the
+    // requirement outright. Asserting segment 0 carries none of the research text closes that.
     const segments = html.split("data-validator=");
     expect(segments).toHaveLength(3);
-    const [first, second] = [segments[1] ?? "", segments[2] ?? ""];
+    const [before, first, second] = [segments[0] ?? "", segments[1] ?? "", segments[2] ?? ""];
 
-    expect(first).toContain("VAL_00000001");
+    // No validator's research text anywhere outside a per-validator card.
+    for (const leaked of [
+      "Validator one&#x27;s English.",
+      "Validator three&#x27;s English.",
+      "Filipino ni validator one.",
+      "Filipino ni validator three.",
+      "naurnos a balikas",
+    ]) {
+      expect(before, `source region must not contain ${leaked}`).not.toContain(leaked);
+    }
+
+    // The validator id must be DISPLAYED, not merely present as the attribute that opened this
+    // segment — `expect(first).toContain("VAL_00000001")` was satisfied by `data-validator="VAL_…"`
+    // itself, so it proved the attribute existed rather than that a researcher could read whose
+    // response this was.
+    expect(first).toContain("<code>VAL_00000001</code>");
+    expect(first).toContain("<code>fluent</code>");
     expect(first).toContain("Validator one&#x27;s English.");
     expect(first).not.toContain("Validator three&#x27;s English.");
-    expect(first).toContain("fluent");
     // A `correct_natural` response carries no correction, so no correction row renders for it —
     // absence, not an empty field.
     expect(first).not.toContain("Corrected Ilocano");
 
-    expect(second).toContain("VAL_00000003");
+    expect(second).toContain("<code>VAL_00000003</code>");
     expect(second).toContain("naurnos a balikas");
     expect(second).toContain("not recorded");
     expect(second).not.toContain("Validator one&#x27;s English.");
+  });
+
+  it("renders each of the four disqualify reasons, not only the abstention", () => {
+    // Every reason string in the view, driven by the fixture that produces it. The earlier version
+    // of this test covered `unevaluable` alone, which left three of the four copy strings in
+    // `entry-review.tsx` asserted nowhere — a researcher reading "The English translation is
+    // missing or blank" had no test behind that sentence at all.
+    const cases = [
+      { reason: "unevaluable", expected: "abstentions never count toward coverage" },
+      { reason: "missing-correction", expected: "A correction was required" },
+      { reason: "missing-english", expected: "English translation is missing or blank" },
+      { reason: "missing-filipino", expected: "Filipino translation is missing or blank" },
+    ] as const;
+
+    for (const { reason, expected } of cases) {
+      const review: EntryReview = {
+        ...REVIEW,
+        responses: [
+          {
+            response: { ...REVIEW.responses[0]!.response, id: `r-${reason}` },
+            proficiency: "fluent",
+            qualifies: false,
+            disqualifyReason: reason,
+          },
+        ],
+      };
+
+      const html = renderToStaticMarkup(<EntryReviewView review={review} />);
+
+      expect(html, `reason ${reason} must be rendered`).toContain(expected);
+      expect(html).toContain("Does not count");
+      expect(html).not.toContain("Counts toward coverage");
+    }
   });
 
   it("states the qualifying verdict with its reason on each response", () => {

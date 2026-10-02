@@ -52,9 +52,29 @@ New `src/lib/domain/review-flags.ts` beside `validation-response.ts`, importing 
 - `correctionsDiverge(responses)`: distinct corrected instructions among responses that carry
   one, compared after trimming surrounding whitespace and otherwise exact. No case folding, no
   punctuation normalization: normalization hides real differences, and the safe direction for a
-  review flag is over-flagging to a human, never silent agreement. Translations are never inputs
-  to either predicate — the spec forbids it, and the module takes no translation parameter at
-  all, so a future edit cannot "just also compare" them without changing the signature.
+  review flag is over-flagging to a human, never silent agreement.
+
+Translations are never READ as inputs to either predicate — the spec forbids it, and that is
+enforced by TEST rather than by the signature, which is a correction to what this decision
+originally claimed. Both predicates take `readonly QualifyingResponseShape[]`, and that shape
+DOES carry `englishTranslation` and `filipinoTranslation`: determining *whether a response
+qualifies* requires reading them, so a translation-free parameter type is not available. A
+narrower local shape was written first and discarded as unworkable for exactly that reason.
+
+The enforcement that replaced the type-layer claim is two halves, because neither alone is
+enough:
+
+- BEHAVIOURAL — a test passes rows whose evaluations and corrections agree and whose translations
+  differ, and asserts no flag. This half is independent of field names, so it survives a rename.
+- STRUCTURAL — a test reads this module's comment-stripped source and asserts it contains no
+  translation FIELD ACCESS in any casing. Weaker than the type layer and honest about it: it is
+  anchored on today's field names, so a coordinated rename could defeat it. A whole-object
+  comparison (`JSON.stringify(response)`) would also slip past it — the behavioural half is what
+  covers that case.
+
+Because naming a *missing* translation requires reading translation presence, that logic lives in
+a separate `review-reasons.ts`. One module cannot both be forbidden from reading translations and
+be asked to say which one is missing.
 
 ### D4 — Two routes under the existing guard, both Server Components
 

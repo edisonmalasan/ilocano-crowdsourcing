@@ -1221,9 +1221,9 @@ describe("the two figures the finished screen reports", () => {
     ]);
 
     // =============================================================================================
-    // WHY TWO ROUTES ARE ENUMERATED BUT NOT RENDERED, AND WHY THAT IS NOT A SILENT SKIP
+    // WHY THREE ROUTES ARE ENUMERATED BUT NOT RENDERED, AND WHY THAT IS NOT A SILENT SKIP
     // =============================================================================================
-    // The two `researcher/**` routes are behind an authenticated boundary, they are not part of the
+    // The three `researcher/**` routes are behind an authenticated boundary, they are not part of the
     // PUBLIC validator experience, and this file's mocks do not stand in for them — rendering them
     // here would mean either mocking a cookie and a privileged client into a validation-route test,
     // or letting the render fail on a missing request scope. Neither belongs in this file.
@@ -1238,29 +1238,42 @@ describe("the two figures the finished screen reports", () => {
     //   - the researcher group is asserted to be covered by a test file that DOES render it.
     // Three authenticated routes since the dashboard change added per-entry review: the new
     // route sits beneath the same `(protected)` layout, so it belongs in this group for the same
-    // reason — behind the boundary, not part of the public validator experience, and its markup
-    // is rendered by `dashboard-views.test.tsx` instead.
+    // reason — behind the boundary, not part of the public validator experience.
+    //
+    // Each entry names the FILE that renders that route's markup, and the handover check below
+    // asserts every one of those files exists. The earlier version of this list was a bare
+    // `string[]` checked by asserting ONE file existed, which meant adding a fourth skipped route
+    // would have been covered by no assertion at all: the file could be deleted and the handover
+    // would still pass on the strength of a different route's test. Naming the witness per route
+    // is what makes the exclusion per-route rather than per-file-existence.
     const AUTHENTICATED_ROUTES = [
-      "researcher/(protected)",
-      "researcher/(protected)/entries/[id]",
-      "researcher/sign-in",
+      { route: "researcher/(protected)", witness: "tests/unit/admin-routes.test.tsx" },
+      {
+        route: "researcher/(protected)/entries/[id]",
+        witness: "tests/unit/entry-review-page.test.tsx",
+      },
+      { route: "researcher/sign-in", witness: "tests/unit/admin-routes.test.tsx" },
     ];
-    const validatorRoutes = routes.filter((route) => !AUTHENTICATED_ROUTES.includes(route));
-    const skippedRoutes = routes.filter((route) => AUTHENTICATED_ROUTES.includes(route));
+    const AUTHENTICATED_ROUTE_NAMES = AUTHENTICATED_ROUTES.map((entry) => entry.route);
+    const validatorRoutes = routes.filter((route) => !AUTHENTICATED_ROUTE_NAMES.includes(route));
+    const skippedRoutes = routes.filter((route) => AUTHENTICATED_ROUTE_NAMES.includes(route));
 
     // The partition is total and disjoint, which is what makes the exclusion an assertion rather than
     // a filter. If a route were in neither list it would simply not be rendered or counted.
     expect([...validatorRoutes, ...skippedRoutes].sort()).toEqual(routes);
     expect(validatorRoutes).toEqual(["", "ready", "start", "validate", "validate/[batchId]"]);
-    expect(skippedRoutes).toEqual(AUTHENTICATED_ROUTES);
+    expect(skippedRoutes).toEqual(AUTHENTICATED_ROUTE_NAMES);
 
-    // And the handover is real rather than asserted in prose: the file that renders those two
-    // routes' markup exists. A missing file would make the exclusion unmonitored.
+    // And the handover is real rather than asserted in prose: for every skipped route, the file
+    // named as its witness must exist. A missing witness makes that route's exclusion unmonitored,
+    // which is the only thing this handover is for.
     const { existsSync } = await import("node:fs");
-    expect(
-      existsSync(join(process.cwd(), "tests", "unit", "admin-routes.test.tsx")),
-      "the researcher routes are excluded from this enumeration, so some test must render them",
-    ).toBe(true);
+    for (const { route, witness } of AUTHENTICATED_ROUTES) {
+      expect(
+        existsSync(join(process.cwd(), witness)),
+        `${route} is excluded from this enumeration, so ${witness} must render it`,
+      ).toBe(true);
+    }
 
     const lifetimeLabel = EN("validate.finished.lifetimeFigureLabel");
     const screensWithALifetimeTotal: string[] = [];
