@@ -19,6 +19,7 @@ import {
   parseDomainValue,
   persistenceFailure,
   POSTGREST_UNIQUE_VIOLATION_CODE,
+  readRows,
   readSingleRow,
   toIsoDateTime,
 } from "./rows";
@@ -160,6 +161,30 @@ export class SupabaseValidatorsRepository implements ValidatorsRepository {
     );
     const row = readSingleRow(result, OPS.findById, "validators.findById");
     return row === null ? null : toDomain(row, "validators.findById", OPS.findById);
+  }
+
+  /**
+   * Several profiles by ID. Missing IDs are omitted, in caller-asked order.
+   *
+   * An empty `ids` list short-circuits to `[]` without a query. `.in("id", [])` is not an empty
+   * filter, it is a malformed one, so issuing it would turn a legitimately empty request — a
+   * dashboard over an entry nobody has touched — into a server error.
+   */
+  async listByIds(ids: readonly AnonymousValidatorId[]): Promise<ValidatorProfile[]> {
+    if (ids.length === 0) return [];
+
+    const result = await awaitQuery(OPS.listByIds, "validators.listByIds", () =>
+      this.client.from("validators").select(VALIDATOR_COLUMNS.join(",")).in("id", ids),
+    );
+    const rows = readRows(result, OPS.listByIds, "validators.listByIds");
+
+    const byId = new Map(
+      rows.map((row) => [String(row.id), toDomain(row, "validators.listByIds", OPS.listByIds)]),
+    );
+    return ids.flatMap((id) => {
+      const found = byId.get(id);
+      return found ? [found] : [];
+    });
   }
 
   /**

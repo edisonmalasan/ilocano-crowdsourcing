@@ -170,6 +170,10 @@ function createFakes(
       record("validators.findById", id);
       return known.has(id) ? profile : null;
     },
+    async listByIds(ids) {
+      record("validators.listByIds", ids);
+      return ids.flatMap((id) => (known.has(id) ? [profile] : []));
+    },
     async touchLastActive(id, at) {
       record("validators.touchLastActive", { id, at });
     },

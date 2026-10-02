@@ -741,6 +741,38 @@ describe("SupabaseValidatorsRepository", () => {
       new SupabaseValidatorsRepository(fake.client).create(PROFILE),
     ).rejects.toMatchObject({ name: "RepositoryError", operation: "validators.insert" });
   });
+
+  it("returns listByIds in the order the caller asked for, omitting the ids that do not exist", async () => {
+    const fake = createFakeClient();
+    // Deliberately out of request order, which is what a database is free to do.
+    fake.enqueue(
+      rows([
+        { ...VALIDATOR_ROW, id: "VAL_00000002", ilocano_proficiency: "native" },
+        VALIDATOR_ROW,
+      ]),
+    );
+
+    const profiles = await new SupabaseValidatorsRepository(fake.client).listByIds([
+      "VAL_a81d92c1",
+      "VAL_missing",
+      "VAL_00000002",
+    ]);
+
+    expect(profiles.map((profile) => profile.id)).toEqual(["VAL_a81d92c1", "VAL_00000002"]);
+    expect(profiles[1]).toMatchObject({ ilocanoProficiency: "native" });
+    expect(fake.lastCall().filters).toEqual([
+      { kind: "in", column: "id", value: ["VAL_a81d92c1", "VAL_missing", "VAL_00000002"] },
+    ]);
+  });
+
+  it("issues no query for an empty id list, because `.in([])` is malformed rather than empty", async () => {
+    const fake = createFakeClient();
+
+    const profiles = await new SupabaseValidatorsRepository(fake.client).listByIds([]);
+
+    expect(profiles).toEqual([]);
+    expect(fake.calls).toHaveLength(0);
+  });
 });
 
 describe("SupabaseValidationsRepository", () => {
@@ -1923,6 +1955,10 @@ describe("the operation name each method reports", () => {
       "dataset_entries.listByIds",
       "validators.insert",
       "validators.findById",
+      // Arrived with the dashboard's bulk profile read, and this row is what proves the union and
+      // the method map were BOTH updated: adding the method without the union entry fails the
+      // compiler, and adding the union entry without the method fails HERE.
+      "validators.listByIds",
       "validators.touchLastActive",
       "validations.insert",
       "validations.findById",

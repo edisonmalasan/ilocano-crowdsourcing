@@ -42,6 +42,7 @@ export type RepositoryOperation =
   | "dataset_entries.import"
   | "validators.insert"
   | "validators.findById"
+  | "validators.listByIds"
   | "validators.touchLastActive"
   | "validations.insert"
   | "validations.findByEntry"

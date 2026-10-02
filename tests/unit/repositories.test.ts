@@ -101,6 +101,12 @@ function createInMemoryRepositories() {
     async findById(id) {
       return profiles.get(id) ?? null;
     },
+    async listByIds(ids) {
+      return ids.flatMap((id) => {
+        const found = profiles.get(id);
+        return found ? [found] : [];
+      });
+    },
     async touchLastActive(id, at) {
       const existing = profiles.get(id);
       if (!existing) return;
@@ -376,6 +382,7 @@ describe("failing repository", () => {
       validators: {
         create: async () => fail("validators.insert", "down"),
         findById: async () => fail("validators.findById", "down"),
+        listByIds: async () => fail("validators.listByIds", "down"),
         touchLastActive: async () => fail("validators.touchLastActive", "down"),
       },
       validations: {

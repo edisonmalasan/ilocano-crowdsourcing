@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+import type { DatasetEntry } from "@/schemas/dataset";
+import type { ValidationResponse } from "@/schemas/validation";
+import type { AnonymousValidatorId } from "@/schemas/validator";
 
 vi.mock("server-only", () => ({}));
 
@@ -373,41 +377,152 @@ describe("the sign-in page", () => {
   });
 });
 
-describe("the protected home page", () => {
-  const html = render(ProtectedHome);
+/**
+ * The dashboard's data source, stubbed at the repository seam.
+ *
+ * The page constructs its own repositories from the privileged client, which no test may do —
+ * there is no credential here and must never be one. So the factory module is stubbed and the
+ * page is rendered against two hand-counted entries: OD_0001 with one qualifying response, OD_0002
+ * with three disagreeing ones (flagged, complete). What these tests prove is the WIRING —
+ * repositories into service into markup — while `dashboard-views.test.tsx` proves the markup
+ * itself. A page test that re-asserted every figure would duplicate that file; a view test cannot
+ * prove the page called `listActive`.
+ */
+const dashboardCalls: string[] = [];
+const DASHBOARD_ENTRIES: DatasetEntry[] = [
+  {
+    id: "OD_0001",
+    category: "origin_destination",
+    instruction: "instruction for OD_0001",
+    origin: "origin of OD_0001",
+    destination: "destination of OD_0001",
+    transitMode: "walking",
+    createdAt: "2026-09-01T12:00:00.000Z",
+    isActive: true,
+  },
+  {
+    id: "OD_0002",
+    category: "origin_destination",
+    instruction: "instruction for OD_0002",
+    origin: "origin of OD_0002",
+    destination: "destination of OD_0002",
+    transitMode: "walking",
+    createdAt: "2026-09-01T12:00:00.000Z",
+    isActive: true,
+  },
+];
+
+const dashboardResponse = (
+  id: string,
+  validatorId: string,
+  entryId: string,
+  evaluation: ValidationResponse["evaluation"],
+  extra: Partial<ValidationResponse> = {},
+): ValidationResponse => ({
+  id,
+  validatorId: validatorId as AnonymousValidatorId,
+  datasetEntryId: entryId,
+  batchId: "batch_01",
+  evaluation,
+  englishTranslation: "Go north past the market.",
+  filipinoTranslation: "Dumiretso ka sa hilaga lagpas ng palengke.",
+  createdAt: "2026-09-02T12:00:00.000Z",
+  updatedAt: "2026-09-02T12:00:00.000Z",
+  ...extra,
+});
+
+const DASHBOARD_RESPONSES: ValidationResponse[] = [
+  dashboardResponse("dr01", "VAL_00000001", "OD_0001", "correct_natural"),
+  dashboardResponse("dr02", "VAL_00000001", "OD_0002", "correct_natural"),
+  dashboardResponse("dr03", "VAL_00000002", "OD_0002", "correct_natural"),
+  dashboardResponse("dr04", "VAL_00000003", "OD_0002", "incorrect", {
+    correctedInstruction: "naurnos a balikas",
+  }),
+];
+
+const DASHBOARD_PROFILES = new Map([
+  ["VAL_00000001", "fluent"],
+  ["VAL_00000002", "native"],
+  ["VAL_00000003", "basic"],
+]);
+
+vi.mock("@/lib/repositories/supabase", () => ({
+  createSupabaseRepositories: () => ({
+    datasetEntries: {
+      listActive: async () => {
+        dashboardCalls.push("entries.listActive");
+        return DASHBOARD_ENTRIES;
+      },
+      findById: async (id: string) => DASHBOARD_ENTRIES.find((entry) => entry.id === id) ?? null,
+    },
+    validations: {
+      listForEntries: async (ids: readonly string[]) => {
+        dashboardCalls.push("validations.listForEntries");
+        return DASHBOARD_RESPONSES.filter((response) => ids.includes(response.datasetEntryId));
+      },
+    },
+    validators: {
+      listByIds: async (ids: readonly string[]) => {
+        dashboardCalls.push("validators.listByIds");
+        return ids.flatMap((id) => {
+          const proficiency = DASHBOARD_PROFILES.get(id);
+          return proficiency === undefined
+            ? []
+            : [
+                {
+                  id,
+                  ilocanoProficiency: proficiency,
+                  createdAt: "2026-09-01T12:00:00.000Z",
+                  lastActiveAt: "2026-09-02T12:00:00.000Z",
+                  totalValidations: 1,
+                },
+              ];
+        });
+      },
+    },
+  }),
+}));
+
+describe("the protected home page renders the dashboard from its repositories", () => {
+  // The placeholder block above pinned the ABSENCE of figures as an explicit Non-Goal of the
+  // access change. The approved dashboard spec requires figures on this page, which directly
+  // contradicts those tests — so they were replaced, not weakened. A test changed because the
+  // behavior changed is legitimate only with the approved requirement behind it, and here there
+  // is one. What remains from that era is the discipline (visible-text assertions, exact link
+  // targets), not the assertions.
+  let html: string;
+
+  beforeAll(async () => {
+    html = await renderAsync(ProtectedHome);
+  });
 
   it("has one top-level heading and a sign-out control", () => {
-    expect(h1Texts(html)).toHaveLength(1);
+    expect(h1Texts(html)).toEqual(["Researcher dashboard"]);
     expect(html).toContain("Sign out");
   });
 
-  it("shows NO figures, counts, or placeholder zeroes", () => {
-    // Dashboard views are an explicit Non-Goal of this change. A zero on a research dashboard reads
-    // as a measurement, and a researcher has no way to tell a placeholder from a real count — so the
-    // page says the views are not built instead of showing an empty state that looks like data.
-    //
-    // Read through {@link visibleText}: asserted over raw markup this could never pass, because the
-    // class names are full of digits.
+  it("shows figures the service computed from the repositories, not placeholders", () => {
+    // OD_0001 in bucket one, OD_0002 complete and flagged: 2 entries, 4 qualifying of 4 stored,
+    // 50% coverage.
     const shown = visibleText(html);
-    expect(shown).not.toMatch(/\d/);
-
-    // A first draft of this test asserted that the words "coverage" and "export" never appear, and it
-    // was wrong: the page NAMES both, in the sentence explaining that they are built in a later
-    // change. An assertion a page cannot pass while doing the right thing teaches its reader to
-    // ignore it. The claim that actually matters is that nothing is DISPLAYED as a value — so this
-    // checks for the structures a figure would arrive in.
-    expect(html).not.toMatch(/<table|<ul|<ol|<dl/);
-    // No element whose accessible text would be read as a measurement.
-    expect(html).not.toMatch(/aria-valuenow|<meter|<progress/);
-
-    // And the absence is explained rather than left to be inferred from an empty screen, which is
-    // the correction `src/app/ready/page.tsx` records having needed.
-    expect(shown).toContain("No research content is served here yet.");
+    expect(shown).toContain("Dataset entries");
+    expect(shown).toContain("Overall coverage");
+    expect(shown).toContain("50%");
+    expect(shown).toContain("Needs researcher review");
   });
 
-  it("links nowhere but to nothing it does not serve", () => {
-    // It renders no navigation into views that do not exist yet.
-    expect(hrefs(html)).toEqual([]);
+  it("links the flagged entry to its review route", () => {
+    expect(hrefs(html)).toContain("/researcher/entries/OD_0002");
+    expect(hrefs(html)).not.toContain("/researcher/entries/OD_0001");
+  });
+
+  it("reads the repositories to render, which is the wiring only the page can prove", () => {
+    // The view tests prove markup from data; nothing but this page proves the page asked for
+    // the data. A page that rendered canned figures without reading would pass every other
+    // test in this file.
+    expect(dashboardCalls).toContain("entries.listActive");
+    expect(dashboardCalls).toContain("validations.listForEntries");
+    expect(dashboardCalls).toContain("validators.listByIds");
   });
 
   it("targets the skip link's `#main` landmark", () => {

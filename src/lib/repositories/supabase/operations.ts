@@ -81,6 +81,7 @@ export const VALIDATORS_OPERATIONS = {
   // Divergence 2 of 2: the method is `create`, the union is named after the persistence call.
   create: "validators.insert",
   findById: "validators.findById",
+  listByIds: "validators.listByIds",
   touchLastActive: "validators.touchLastActive",
 } as const satisfies Record<keyof ValidatorsRepository, RepositoryOperation>;
 
