@@ -477,24 +477,28 @@ What this evidence explicitly does **not** establish:
     table confirmed returned to its prior count. Both attempt-counter functions were exercised on the
     real wire. **Two gaps are stated rather than implied away:** no desktop browser has ever rendered
     any screen in this project, so a successful sign-in round trip remains unexercised; and the
-    repository's own query builders (`.in()`, `.range()`, `.neq()`, `.eq()`) have still never run
-    against a real PostgREST, because the reads above were issued by a gate probe rather than by
-    `factory.ts`. **These are now SPLIT, because "both close with the next change" was wrong and was
+    repository's own query builders (`.eq()`, `.in()`, `.order()`, `.limit()`, `.range()`,
+    `.select(cols, { count: "exact" })`, `.insert()`, `.single()`, `.maybeSingle()`, `.update()`) have
+    still never run against a real PostgREST, because the reads above were issued by a gate probe
+    rather than by `factory.ts`. (An earlier version of this list named `.neq()`; no such member
+    exists on the narrow client and no caller uses one.) **These are now SPLIT, because "both close with the next change" was wrong and was
     written without checking what the next change contains.** `hosted-dataset-import` adds no UI, so
     the browser gap does **not** close there and will not close until someone opens the app in a
     desktop browser — no amount of local checking substitutes, and a design verified only by rendered
     HTML and emitted CSS has still never been looked at. That gap is now stated as **open and
     unclosable by any command.** The PostgREST gap **narrows** rather than closes: the import path
-    uses `.rpc()`, so the RPC surface reaches the real gateway for the first time, while `.in()`,
-    `.range()`, `.neq()`, and `.eq()` stay proved only against the recording fake. **"Has reached a
+    uses `.rpc()`, so the RPC surface reaches the real gateway for the first time, while `.eq()`,
+    `.in()`, `.order()`, `.limit()`, `.range()`, `.single()`, and `.maybeSingle()` stay proved only
+    against the recording fake. **"Has reached a
     real PostgREST" is a per-method property, not a property of a file** — the claim is only meaningful
     with the method named, and the same sentence claiming it for a file is what made it useless.
     **`factory.ts` itself has still never been executed**, so no repository it constructs has reached
     the wire. Its header claimed "No Supabase project and no credential exist in this environment"
     until 2026-10-03, which was false — it mistook the absence of a local Supabase RUNTIME for the
     absence of a hosted project. Rewritten against measurements: `.rpc()` has reached a real PostgREST
-    via `SupabaseDatasetEntrySink`; `.in()`, `.range()`, `.neq()`, `.eq()`, `.select(cols, {count})`,
-    `.insert()`, and `.update().eq()` have not, and each still rests on a recording fake plus PGlite.
+    via `SupabaseDatasetEntrySink`; `.eq()`, `.in()`, `.order()`, `.limit()`, `.range()`,
+    `.select(cols, {count})`, `.insert()`, `.single()`, `.maybeSingle()`, and `.update().eq()` have
+    not, and each still rests on a recording fake plus PGlite.
     Two further absences are named there rather than left to a reader's inference: the `authenticated`
     role has not been exercised on the dataset table (it needs a signed-in JWT no probe holds), and the
     `23505` payload the uniqueness branch depends on has not been observed on the wire.
@@ -543,17 +547,17 @@ silent.
 
 | Command | Result | Proves | Does **not** prove |
 | --- | --- | --- | --- |
-| `pnpm run lint` | exit 0, no errors and no warnings | Every file lints, including the `sadino/no-privileged-imports` boundary rule over the new `scripts/` directory and the two new specifiers added to `PRIVILEGED_SPECIFIERS`. | That the boundary rule would catch a *new* violation; its probe file was deleted after the `project-foundation` change proved it fires. |
+| `pnpm run lint` | exit 0, no errors and no warnings | Every file lints. The `sadino/no-privileged-imports` rule fires only on client modules (a `"use client"` directive or a path under `src/components/`), so `scripts/` is outside its scope by construction — the separation there is enforced by the write-scan and credential unit tests, not by the linter. The two new `PRIVILEGED_SPECIFIERS` entries protect every client module they can see. | That the boundary rule would catch a *new* violation, or that it covers `scripts/`; its probe file was deleted after the `project-foundation` change proved it fires on a client module. |
 | `pnpm run format:check` | exit 0, "All matched files use Prettier code style!" | Every formatter-owned file matches the committed configuration. | Anything about correctness. `AGENTS.md`, `openspec/`, `docs/`, `data/`, and `.agents/` are excluded by `.prettierignore`. |
 | `pnpm run typecheck` | exit 0 | `tsc --noEmit` over `src/`, `tests/`, **and `scripts/`** — the last was measured rather than assumed, by inserting a `string` where a `number` is declared in `scripts/import-dataset.ts` and confirming `tsc` exits **2** naming that file and line, then restoring byte-identical with the control back at exit 0. | Any runtime behaviour. |
-| `pnpm run test:unit` | exit 0 — **58 files, 1472 tests** | The domain contracts, the sink against a recording fake, the sink's **loadability in plain Node**, the one-construction-site boundary, and the operator command's reporting and exit codes. Previously 54 files / 1434 tests; this change added **4** files and **38** tests. | Anything needing a database or a browser. |
+| `pnpm run test:unit` | exit 0 — **58 files, 1476 tests** | The domain contracts, the sink against a recording fake, the sink's **loadability in plain Node**, the one-construction-site boundary, the operator command's reporting and exit codes, and — added by the repair round — the four no-request-path tests behind scenario 2. Previously 54 files / 1434 tests at the change's start; the repair added **4** tests and no files. | Anything needing a database or a browser. |
 | `pnpm run test:dom` | exit 0 — **7 files, 87 tests** | Unchanged by this change, which adds no UI. | Anything about a real browser. **No human has ever rendered any screen in this project**, and this change does not alter that. |
-| `pnpm run test:integration` | exit 0 — **11 files, 188 tests** | The migration's inserted/updated discriminator, that `instruction`/`source_payload`/`created_at` survive a re-run unchanged, the named refusal on a differing instruction, the EXECUTE grants, and **all 600 records** through the production sink against a real PostgreSQL engine. Previously 10 files / 170 tests. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the engine evaluates them*, and does not cover PostgREST, Auth, or RLS as the Supabase gateway enforces it. |
+| `pnpm run test:integration` | exit 0 — **11 files, 194 tests** | The migration's inserted/updated discriminator, that `instruction`/`source_payload`/`created_at` survive a re-run unchanged, the named refusal on a differing instruction, the EXECUTE grants, **all 600 records** through the production sink against a real PostgreSQL engine, and — added by the repair round — one behavioural test per arm of the corrected guard in `20261004120000_dataset_entries_import_guard.sql` (clean apply, missing column named, wrong key named, absent key, absent table, absent function). Previously 10 files / 170 tests at the change's start. | That this is Supabase. PGlite is PostgreSQL compiled to WebAssembly: it proves SQL, constraints, and RLS *as the engine evaluates them*, and does not cover PostgREST, Auth, or RLS as the Supabase gateway enforces it. |
 | `pnpm run build` | exit 0, "Compiled successfully" | The application compiles for production under the committed TypeScript and Tailwind configuration. | That any test passed. A successful build is not a behavioural result. |
 | `openspec change validate hosted-dataset-import --strict` | exit 0, 'Change "hosted-dataset-import" is valid' | The change's proposal, design, and its capability delta satisfy the OpenSpec schema strictly. The deprecation warning recommending verb-first commands is **expected and is not a failure**; judge by the exit code and the verdict line. | That the implementation matches the change. That is verified by inspecting the code and tests. |
 | `openspec validate --specs --strict` | exit 0, "Totals: **13** passed, 0 failed (13 items)" | All thirteen in-force capabilities satisfy the schema. **Still 13, unchanged** — and that is the measurement that matters here: during an Apply the delta must live only under `openspec/changes/`, so a new directory appearing under `openspec/specs/` would mean the delta had been written to the wrong place. | That the implementation matches the specs. |
 | `pnpm run import:dataset` (against the real project) | exit 0, three runs: `600 inserted / 0 updated`, then `0 inserted / 600 updated` twice | The command reads 600 records, writes every one through the production sink, and is **idempotent on the wire**. `parsed`, `inserted`, `updated`, and `refused` are printed from counts the run actually took; the credential line prints a variable NAME and a LENGTH and nothing else. | That the data is correct. A row count says nothing about content — that is the separate probe below. |
-| gate probe, `dataset_entries_import` | exit 0 — **7 claims, 7 satisfied, 0 not satisfied, 0 unverified** | Gate item 3, against the real project: 600 rows; the stored id set equals the source id set (0 missing, 0 unexpected); all 600 stored instructions byte-identical to the source by SHA-256; function presence proven **through the production sink as `service_role`** *before* any access probe; the anonymous role refused with `42501` "new row violates row-level security policy"; a direct anonymous read returning **0 rows**; and the row count **600 before / 600 after** the access probes. | Anything about the `authenticated` role — it needs a signed-in JWT no probe holds. Nor Auth, Storage, or Realtime. |
+| gate probe, `dataset_entries_import` | exit 0 — **7 claims, 7 satisfied, 0 not satisfied, 0 unverified**, measured twice: once before and once after the guard migration was applied | Gate item 3, against the real project: 600 rows; the stored id set equals the source id set (0 missing, 0 unexpected); all 600 stored instructions byte-identical to the source by SHA-256; function presence proven **through the production sink as `service_role`** *before* any access probe; the anonymous role refused with `42501` "new row violates row-level security policy"; a direct anonymous read returning **0 rows**; and the row count **600 before / 600 after** the access probes. The second run confirms the guard deploy changed no data. | Anything about the `authenticated` role — it needs a signed-in JWT no probe holds. Nor Auth, Storage, or Realtime. |
 
 **Four defects were found in my own new tooling and are recorded because three of them would have been
 reported as findings about the system rather than about the harness.**
@@ -621,6 +625,47 @@ uses `createBrowserClient` from `@supabase/ssr`; the harness's occurrence-count 
 `?? INCONCLUSIVE` and refused to mutate, which is the behaviour it exists for. **Guessing which of a
 file's import lines to mutate instead would have made it a different experiment wearing this one's
 name.**
+
+**Repair round, 2026-10-04: the independent verification failed this change, and it was right to.**
+Two CRITICAL findings — the import migration's column arm and primary-key arm cannot fire in the
+states they name — plus five WARNINGs, one of which (the `.neq()` phantom) named a method that does
+not exist anywhere in `src/`. The repairs, each with its own can-fire:
+
+- **New forward migration `20261004120000_dataset_entries_import_guard.sql`.** The defective file is
+  applied and therefore immutable history, so the correction is a second file, not an edit: columns
+  by set difference with every missing name in the refusal, the primary key by exact column set
+  (`<> 'id'` names the actual key), and a `to_regprocedure` check that the function exists. One
+  behavioural test per arm, six in all. Can-fire M1/M2/M3: each arm removed → the named test goes
+  red (`expected '' to contain 'dataset_entries_import guard failed'` — the guard goes silent, which
+  is exactly the old file's defect reproduced on purpose), green controls before and after,
+  byte-identical restores. Applied to the hosted project (status 201), and the gate probe re-run
+  after it: still 7/7, 600 rows intact.
+- **Scenario 2 finally has tests.** "No HTTP route, Server Action, or page performs the write" is
+  enforced by enumerating `src/app/**` and every `"use server"` module from the filesystem and by
+  asserting no module under `src/` imports the sink implementation. Can-fire P1: a route importing
+  the sink → both tests red by name. The old file's substring-only coverage of its own precondition
+  stays as history; the new arms rest on behaviour, not substrings.
+- **The write-scan control now covers all sixteen patterns**, with one real call per pattern in the
+  fixture and an exact-length assertion. Can-fire P2: one call removed → red. The scan itself is now
+  recursive, so a command in a subdirectory is covered.
+- **The instruction-absence check is now a real test**: a full `importEntries` run over entries with
+  distinctive instructions, asserting the text appears in no output line. Can-fire P3: printing the
+  instruction → red. The decorative `formatProgress` regex it replaces could never fail.
+- **The sink's import regex now reads to the semicolon**, so a multi-line forbidden import is
+  captured. Can-fire P-IMPORT: a five-line `supabase-js` import in the sink → the named test red,
+  with the module still loading (no collection failure to hide behind).
+- **Corrections to prose that was false**: the stripping-cost paragraph had the failure direction
+  backwards (a string-only identifier MATCHES — noisy, not missed; the real hole is an opener inside
+  a string); the lint row no longer claims the boundary rule covers `scripts/`; `factory.ts`,
+  `AGENTS.md`, and the roadmap no longer name `.neq()` and now list the methods actually called
+  (`.order()`, `.limit()`, `.single()`, `.maybeSingle()`); `tasks.md` 2.1, 4.1, and 6.4 describe what
+  actually holds.
+- **Two defects in the repair's own probes, recorded because both reported working guards as
+  unattributable.** The ANSI strip was written without the escape byte, so `FAIL` lines matched
+  nothing while the run reported "1 failed" — the repository's fifth occurrence of that defect, this
+  time in its own newest harness. Then the FAIL-line regex assumed one token before the first `>`,
+  but the line carries the project label AND the file path. Both were caught because the probes
+  refuse to score an unnamed red, which is the behaviour that justifies the machinery.
 
 ### Local Verification Evidence — `hosted-dataset-import` (measurement instruments)
 

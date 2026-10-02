@@ -15,8 +15,9 @@
  *   - reads CODE, with comments stripped, because the first draft did not and went RED on this file's
  *     own header — the word "rename" appears in a sentence about rename, and `/\brename(?:Sync)?\b/`
  *     matched it. See THE COMMENT-STRIPPING MEASUREMENT below; and
- *   - runs over the DIRECTORY, not a hand-listed set of files, so a second command is covered the
- *     moment it exists; and
+ *   - runs over the DIRECTORY, recursively, not a hand-listed set of files, so a second
+ *     command is covered the moment it exists — including one in a subdirectory, which a flat
+ *     listing would skip without a word; and
  *   - carries a positive control that points the same patterns at a real file on disk which really
  *     does write.
  *
@@ -36,10 +37,16 @@
  * file's documentation is correct and the pattern was over-broad; changing the documentation would
  * have made a green suite out of a false negative while destroying the explanation.
  *
- * WHAT THE STRIPPING COSTS, stated rather than hidden: **a string literal containing `writeFileSync`
- * would be missed**, because a naive stripper cannot tell a comment from a string. That is a narrow
- * hole — it needs an identifier literally named `writeFileSync` inside a string — and the SHA-256
- * comparison in `tests/integration/immutable-dataset.test.ts` would catch an implementation that
+ * WHAT THE STRIPPING COSTS, stated rather than hidden, and stated CORRECTLY — the first
+ * version of this paragraph had it backwards. The stripper removes block comments and full-line
+ * `//` comments, and it never touches string-literal content. So an identifier appearing ONLY
+ * inside a string still MATCHES: that is a false positive (a noisy failure on a file that merely
+ * mentions the API in data), not a miss. The genuinely unrepresentable hole is the other way
+ * round: a block-opener inside a STRING swallows everything up to the next closer, so a real
+ * write sitting between a fake opener and a later closer would be deleted along with the
+ * "comment". That needs a string containing an opener ahead of a write — narrow, but real, unlike
+ * the version first written here. The SHA-256 comparison in
+ * `tests/integration/immutable-dataset.test.ts` is the backstop for an implementation that
  * actually altered the dataset. The scan's claim is correspondingly narrowed in its test name from
  * "the command cannot write" to "the command contains no write API call".
  *
@@ -63,7 +70,6 @@ import {
   EXIT_REFUSED,
   describeRefusal,
   formatCredentialDescription,
-  formatProgress,
   importEntries,
   main,
   readImportEnvironment,
@@ -102,12 +108,29 @@ const WRITE_APIS = [
   /\bsymlink(?:Sync)?\b/,
 ];
 
-/** Every `.ts` file under `scripts/`, read from the directory. */
-function scriptFiles(): string[] {
-  return readdirSync(SCRIPTS, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-    .map((entry) => path.join(SCRIPTS, entry.name))
-    .sort();
+/**
+ * Every `.ts` file under `scripts/`, RECURSIVELY, read from the directory.
+ *
+ * Non-recursive is how a scan silently stops covering a second command: `scripts/sub/command.ts`
+ * would be skipped without a word. The recursion mirrors the `walk()` in
+ * `tests/unit/admin-client-construction.test.ts` deliberately, so the two enumerations cannot drift
+ * into different shapes — a directory scan that means "the directory" has to descend, or it means
+ * "the files I remembered".
+ */
+function scriptFiles(directory: string = SCRIPTS): string[] {
+  const found: string[] = [];
+  const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  );
+  for (const entry of entries) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...scriptFiles(full));
+    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+      found.push(full);
+    }
+  }
+  return found;
 }
 
 /**
@@ -160,9 +183,13 @@ describe("the operator command cannot write a file", () => {
 
     const found = writesFound(readFileSync(FIXTURE_WITH_A_WRITE, "utf8"));
 
-    expect(found.length).toBeGreaterThan(0);
-    // Named, so a scanner that stopped matching `writeFile` but matched something else would be
-    // visible as a change here rather than as a still-green test.
+    // EVERY pattern, not just one. The fixture carries one real call per pattern, so a pattern
+    // that stops matching — a renamed API, a narrowed regex — fails here rather than degrading
+    // the scan silently. `found` is per-pattern, so overlapping matches cannot inflate the count
+    // past the list's length; the assertion is exact, not a lower bound.
+    expect(found).toHaveLength(WRITE_APIS.length);
+    // Named as well, so a scanner that stopped matching `writeFile` but matched something else
+    // would be visible as a change here rather than as a still-green test.
     expect(found.join(" ")).toContain("writeFile");
   });
 
@@ -242,13 +269,28 @@ describe("the operator command never prints a credential", () => {
     );
   });
 
-  it("prints no progress or report line that contains an instruction", () => {
-    // An entry's `instruction` is research material. Progress carries counts only, and this asserts
-    // it: a future change that helpfully showed the text being imported would fail here.
-    const progress = formatProgress({ done: 50, total: 600, inserted: 50, updated: 0 });
-    expect(progress).toContain("50/600");
-    expect(progress).toContain("50 inserted");
-    expect(progress).not.toMatch(/iti |nang |ayanko|makadanon/);
+  it("prints no progress or report line that contains entry text", async () => {
+    // An entry's `instruction` is research material. Progress and the report carry counts and ids
+    // only — and this is asserted against the REAL output of `importEntries`, not against a
+    // formatter called with numbers. The previous version of this test called `formatProgress`
+    // directly and asserted the result did not match an Ilocano-shaped regex, which cannot fail
+    // for any implementation consistent with the type: a decorative assertion dressed as a
+    // research-integrity check. Here the entries carry a distinctive instruction, the whole run's
+    // output is captured, and the instruction must be absent from every line while the id is
+    // present — so a future change that "helpfully" showed the text being imported fails here.
+    const lines: string[] = [];
+    const entries = [entry("OD_0001"), entry("OD_0002")];
+
+    await importEntries(entries, cleanReport, { upsert: async () => "inserted" as const }, (line) =>
+      lines.push(line),
+    );
+
+    const output = lines.join("\n");
+    // Non-empty, or the absence below would prove nothing: an output that said nothing contains
+    // no instruction either.
+    expect(output).toContain("parsed:");
+    expect(output).not.toContain("instruction for OD_0001");
+    expect(output).not.toContain("instruction for OD_0002");
   });
 
   it("refuses an argument rather than ignoring it, so a typo cannot import the wrong file", async () => {
@@ -369,5 +411,103 @@ describe("the operator command's exit codes are a report, not a hope", () => {
     // What IS asserted here: the constants are values, so the module finished evaluating.
     expect(typeof EXIT_OK).toBe("number");
     expect(DEFAULT_SOURCE_PATH).toBeTypeOf("string");
+  });
+});
+
+describe("no request-reachable module performs the write", () => {
+  /**
+   * The load-bearing half of the delta's scenario "The import runs as an operator command, not as
+   * a page": *"no HTTP route, Server Action, or page performs the write"*. The scenario's first
+   * half is enforced structurally — the read repository exposes three methods and no write, closed
+   * by `tests/unit/repositories.test.ts:507` — and this is the second half, which had NO test
+   * behind it. A spec scenario with no implementation evidence is the "claim of coverage is not
+   * coverage" condition, and this scenario guards the change's central architectural promise, so
+   * it is enforced here rather than left to per-page review.
+   *
+   * Two enumerations, because "request-reachable" has two shapes in this codebase: files served as
+   * routes or UI under `src/app/**`, and `"use server"` modules, which are the only other code a
+   * browser can invoke. Both are read from the filesystem, so a route or action added tomorrow is
+   * covered the moment it exists.
+   */
+  const SINK_MARKERS = [
+    "SupabaseDatasetEntrySink",
+    "dataset_entries_import",
+    "supabase-sink",
+    "DatasetEntrySink",
+  ];
+
+  const SRC = path.resolve(process.cwd(), "src");
+
+  function walkModules(directory: string): string[] {
+    const found: string[] = [];
+    const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
+    for (const entry of entries) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        found.push(...walkModules(full));
+      } else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))) {
+        found.push(full);
+      }
+    }
+    return found;
+  }
+
+  const relative = (file: string): string => path.relative(ROOT, file).split(path.sep).join("/");
+
+  function referencesSink(file: string): string[] {
+    const code = stripComments(readFileSync(file, "utf8"));
+    return SINK_MARKERS.filter((marker) => code.includes(marker));
+  }
+
+  it("scans a non-empty route tree, so the enumeration cannot pass on nothing", () => {
+    // The empty-capture guard, stated once for the three tests below: a renamed `src/app`, a
+    // typo, or a runner whose cwd is elsewhere would reduce every scan to zero files and report
+    // a clean tree.
+    const appFiles = walkModules(path.join(SRC, "app"));
+    expect(appFiles.length).toBeGreaterThan(0);
+    expect(appFiles.map(relative)).toContain("src/app/page.tsx");
+  });
+
+  it("finds no sink reference in any route, page, or component under `src/app/**`", () => {
+    for (const file of walkModules(path.join(SRC, "app"))) {
+      expect(referencesSink(file), `${relative(file)} must not reach the dataset sink`).toEqual([]);
+    }
+  });
+
+  it('finds no sink reference in any `"use server"` module', () => {
+    // `"use server"` at the TOP of the file, which is the directive form. A mention in prose —
+    // of which this file is full — is not a directive, and the strip-then-match order matters:
+    // markers are matched against code, the directive against the raw source.
+    const serverModules = walkModules(SRC).filter((file) =>
+      /^("use server"|'use server';?)/m.test(readFileSync(file, "utf8")),
+    );
+    // Non-empty, or the scan below proves nothing: the `"use server"` modules this project
+    // actually has (allocation, admin, i18n, validators, validation actions) must be among them.
+    expect(serverModules.length).toBeGreaterThan(0);
+    expect(serverModules.map(relative)).toContain("src/lib/validation/actions.ts");
+
+    for (const file of serverModules) {
+      expect(referencesSink(file), `${relative(file)} must not reach the dataset sink`).toEqual([]);
+    }
+  });
+
+  it("finds no importer of the sink implementation anywhere under `src/`", () => {
+    // The import is the act: a module that never imports the sink module cannot perform the
+    // write, whatever strings it mentions. This matches import specifiers rather than markers,
+    // because the sink's own definition file contains its own class name in code and would fail
+    // a marker scan for the right reason at the wrong time. `scripts/import-dataset.ts` is the
+    // single allowed importer and lives OUTSIDE `src/`, so it is out of this walk's scope by
+    // construction — a route that "just calls the sink once" would have to import it here, and
+    // that is exactly what fails.
+    const importers = walkModules(SRC)
+      .filter((file) =>
+        /from\s+["'][^"']*supabase-sink["']|import\s*\(\s*["'][^"']*supabase-sink["']/.test(
+          stripComments(readFileSync(file, "utf8")),
+        ),
+      )
+      .map(relative);
+    expect(importers).toEqual([]);
   });
 });

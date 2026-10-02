@@ -47,6 +47,7 @@ import {
 
 const SOURCE_PATH = path.resolve(process.cwd(), "data", "ilocano-synthetic-data.json");
 const IMPORT_MIGRATION = "20261003120000_dataset_entries_import.sql";
+const GUARD_MIGRATION = "20261004120000_dataset_entries_import_guard.sql";
 
 /**
  * The eight parameters, in the migration's own declaration order.
@@ -572,6 +573,142 @@ describe("the dataset_entries_import function", () => {
     // value the earlier `ADD CONSTRAINT` precondition in this repository was measured to add.
     const sql = (await readMigrations()).find((m) => m.filename === IMPORT_MIGRATION)!.sql;
     expect(sql).toContain("dataset_entries_import precondition failed");
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // The guard migration: the corrected precondition, task 6.4 repaired.
+  // ---------------------------------------------------------------------------------------------
+  //
+  // `20261003120000_dataset_entries_import.sql` carries a precondition whose column arm and
+  // primary-key arm CANNOT FIRE in the states they name — `not exists (... in (nine columns))`
+  // is true only when zero of the nine match, and `contype = 'p'` asks "any primary key?" rather
+  // than "the key on `id`?". That file is applied and therefore immutable history, so the
+  // correction is forward-only, in `20261004120000_dataset_entries_import_guard.sql`. Every test
+  // below puts a database into the state an arm names and asks whether it fires — the control
+  // first, so a harness that cannot report a pass is caught before any probe is trusted.
+  describe("the import guard migration", () => {
+    const guardSql = async (): Promise<string> =>
+      (await readMigrations()).find((m) => m.filename === GUARD_MIGRATION)!.sql;
+
+    async function guardedDatabase(): Promise<TestDatabase> {
+      // Every predecessor INCLUDING the import migration, so the database under test holds the
+      // function this guard checks for. `applyMigrationsUntil` stops BEFORE the named file, which
+      // is the guard itself here.
+      const bare = await createTestDatabase();
+      await applyMigrationsUntil(bare, GUARD_MIGRATION);
+      return bare;
+    }
+
+    it("applies cleanly to a correct schema, so the guard is a CONDITION and not a blanket refusal", async () => {
+      // THE NEGATIVE CONTROL. Without it, every refusal below proves only that the file refuses
+      // SOMETHING — a guard that fired on a correct schema too would satisfy all of them, and the
+      // only way to tell the two apart is to run the same file where its condition holds.
+      const bare = await guardedDatabase();
+      try {
+        expect(await execFailure(bare, await guardSql())).toBe("");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses when a column is missing, and NAMES it", async () => {
+      // The arm the old file could not fire: `source_payload` is gone, the other eight remain, and
+      // the old `not exists (... in (...))` form would have applied cleanly here. The refusal must
+      // name the column, because "a column is missing" without a name sends the operator to go and
+      // find out, which is the whole value of failing fast.
+      const bare = await guardedDatabase();
+      try {
+        await applySql(
+          bare,
+          "alter table public.dataset_entries drop column source_payload",
+          "drop source_payload",
+        );
+
+        const failure = await execFailure(bare, await guardSql());
+        expect(failure).toContain("dataset_entries_import guard failed");
+        expect(failure).toContain("source_payload");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses when the primary key is on the wrong column, and NAMES the actual key", async () => {
+      // The second arm the old file could not fire: a primary key EXISTS, so `contype = 'p'`
+      // passes, but it is on `category` rather than `id` and `on conflict (id)` has no arbiter.
+      // `cascade` is required because two foreign keys point at this key; dropping them in a test
+      // database that is about to be closed is the state under test, not collateral damage.
+      const bare = await guardedDatabase();
+      try {
+        await applySql(
+          bare,
+          "alter table public.dataset_entries drop constraint dataset_entries_pkey cascade",
+          "drop the id primary key",
+        );
+        await applySql(
+          bare,
+          "alter table public.dataset_entries add primary key (category)",
+          "re-key on category",
+        );
+
+        const failure = await execFailure(bare, await guardSql());
+        expect(failure).toContain("dataset_entries_import guard failed");
+        expect(failure).toContain("category");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses when there is no primary key at all", async () => {
+      // The one arm of the old file that DID fire, kept here so the guard is whole: three arms in
+      // the artefact, three behavioural tests, no arm resting on a substring.
+      const bare = await guardedDatabase();
+      try {
+        await applySql(
+          bare,
+          "alter table public.dataset_entries drop constraint dataset_entries_pkey cascade",
+          "drop the id primary key",
+        );
+
+        const failure = await execFailure(bare, await guardSql());
+        expect(failure).toContain("dataset_entries_import guard failed");
+        expect(failure).toContain("no primary key");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses when the table itself is absent", async () => {
+      const bare = await guardedDatabase();
+      try {
+        await applySql(bare, "drop table public.dataset_entries cascade", "drop dataset_entries");
+
+        const failure = await execFailure(bare, await guardSql());
+        expect(failure).toContain("dataset_entries_import guard failed");
+        expect(failure).toContain("does not exist");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses when the function it guards is absent", async () => {
+      // "The table is right" and "the function is deployed" are different facts, and the guard is
+      // the last file that can check both together. Dropping the function with its full signature,
+      // so there is no ambiguity about which overload is meant.
+      const bare = await guardedDatabase();
+      try {
+        await applySql(
+          bare,
+          "drop function public.dataset_entries_import(text, text, text, text, text, text, jsonb, boolean)",
+          "drop the import function",
+        );
+
+        const failure = await execFailure(bare, await guardSql());
+        expect(failure).toContain("dataset_entries_import guard failed");
+        expect(failure).toContain("does not exist");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
   });
 });
 

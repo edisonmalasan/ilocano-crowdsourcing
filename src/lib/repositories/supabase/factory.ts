@@ -26,8 +26,10 @@ import { SupabaseValidatorsRepository } from "./validators";
  * repositories below rather than about docker.
  *
  * ── NOW TRUE, MEASURED AGAINST THE REAL HOSTED PROJECT ON 2026-10-03 ─────────────────────────────
- *   - Six production migrations are applied to a real project, unchanged, in filename order, one
- *     request per file, through the Supabase Management API.
+ *   - Seven production migrations are applied to a real project, unchanged, in filename order,
+ *     one request per file, through the Supabase Management API — six schema and function files
+ *     plus the corrected import guard, which is a second file because the file it corrects is
+ *     already applied and applied migrations are not rewritten.
  *   - `dataset_entries` holds 600 rows. The stored id set equals the source id set exactly, and all
  *     600 stored instructions are byte-identical to the source by SHA-256.
  *   - `public.dataset_entries_import` is deployed and callable: the production sink wrote through it
@@ -39,11 +41,17 @@ import { SupabaseValidatorsRepository } from "./validators";
  *     That is the ONLY builder method in this repository's own code with that status.
  *
  * ── STILL NOT VERIFIED, and nothing below should be read as claiming otherwise ──────────────────────
- *   - `.in()`, `.range()`, `.neq()`, `.eq()`, `.select(cols, { count: "exact" })`,
- *     `.insert(arrayOfRows)`, `.insert().select().single()`, and `.update().eq()`. Every one of these
- *     is proved against a RECORDING FAKE in `tests/unit/repositories-supabase.test.ts` and against
- *     real SQL in PGlite, and by neither against a real PostgREST. **`factory.ts` itself has never
- *     been executed**, so no repository it constructs has reached the wire.
+ *   - `.eq()`, `.in()`, `.order()`, `.limit()`, `.range()`, `.select(cols, { count: "exact" })`,
+ *     `.insert(arrayOfRows)`, `.insert().select().single()`, `.maybeSingle()`, and `.update().eq()`.
+ *     Every one of these is CALLED by a repository in this directory — counted off comment-stripped
+ *     source, not off this comment — is proved against a RECORDING FAKE in
+ *     `tests/unit/repositories-supabase.test.ts` and against real SQL in PGlite, and by neither
+ *     against a real PostgREST. (There is no `.neq()` in this repository: `FilterHandleLike`
+ *     declares no such member and no caller uses one. An earlier version of this list named it, and
+ *     the name propagated into the roadmap and the agent instructions before anyone counted the
+ *     call sites. It is removed here rather than left standing, because a residual list that names
+ *     a method nobody calls overstates the surface that has not been measured.) **`factory.ts`
+ *     itself has never been executed**, so no repository it constructs has reached the wire.
  *   - whether an ARRAY insert is returned in request order or reordered by the planner, which
  *     `SupabaseBatchesRepository.create` never assumes: it compares row COUNT and then reads the
  *     batch back through `findById`, which asks for `order("position")`.

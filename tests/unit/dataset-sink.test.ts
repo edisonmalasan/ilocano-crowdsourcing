@@ -241,7 +241,13 @@ describe("SupabaseDatasetEntrySink", () => {
         "utf8",
       ),
     );
-    const imports = source.match(/^\s*import\s[\s\S]*?;?$/gm)?.join("\n") ?? "";
+    // From `import` to the FIRST `;`, spanning lines. The previous pattern —
+    // `/^\s*import\s[\s\S]*?;?$/gm` — was lazy with a line-anchored end, so it stopped at the end
+    // of the FIRST line: a multi-line `import {\n … \n} from "…"` was captured as `import {`, and
+    // the specifier it actually imports was never examined. That is not hypothetical: this
+    // module's own `rpc` import spans five lines. `[^;]*` cannot stop early because a statement
+    // ends at its semicolon, and an import specifier cannot contain one.
+    const imports = source.match(/^\s*import\b[^;]*;/gm)?.join("\n") ?? "";
 
     expect(imports).not.toContain("@supabase/supabase-js");
     expect(imports).not.toContain("@/lib/env/server");

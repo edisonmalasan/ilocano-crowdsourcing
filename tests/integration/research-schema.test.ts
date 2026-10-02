@@ -83,6 +83,12 @@ const EXPECTED_MIGRATIONS = [
   // the entries above: a migration this list does not name must FAIL here, which is what keeps a
   // CLOSED list closed.
   "20261003120000_dataset_entries_import.sql",
+  // Arrived with the hosted-dataset-import repair round: the corrected guard for the import
+  // migration above. The import file's own precondition has two arms that cannot fire in the states
+  // they name, and that file is applied and therefore immutable history — so the correction is
+  // forward-only, in this file, which creates NOTHING (a `DO` block only). Same reason as above:
+  // it appears here and in neither table list, because it adds no table and no function.
+  "20261004120000_dataset_entries_import_guard.sql",
 ] as const;
 
 /**

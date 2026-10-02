@@ -18,7 +18,13 @@
 
 - [x] 2.1 Write the migration with a precondition block, matching the convention of the five
       existing migrations: it asserts the state it depends on and raises **by name** if it does not
-      hold, rather than proceeding from a schema it did not find.
+      hold, rather than proceeding from a schema it did not find. CORRECTION 2026-10-04, kept on the
+      checked box rather than hidden: two of this block's three arms could not fire in the states
+      they named — the column arm's `not exists (... in (...))` is true only when ZERO columns
+      match, and the key arm's `contype = 'p'` asks "any primary key?" rather than "the key on
+      `id`?". That file is applied and therefore immutable history. The corrected guard is
+      `20261004120000_dataset_entries_import_guard.sql`, applied to the hosted project, with one
+      behavioural test per arm. See 6.4.
 - [x] 2.2 `public.dataset_entries_import(...)` with `security invoker` and `set search_path = ''`.
       Repeat, in this file, why invoker is load-bearing: a definer function runs as `postgres` on a
       hosted project and therefore bypasses row-level security.
@@ -52,7 +58,11 @@
 
 - [x] 4.1 `src/lib/supabase/admin-client.ts` — `createSupabaseAdminClient(url, key)`, the single
       `createClient(…, SERVICE_ROLE_KEY)` call in the repository. It carries no `server-only` marker
-      because it must be loadable by a command; it is instead protected by the ESLint boundary rule.
+      because it must be loadable by a command. CORRECTION 2026-10-04: the original text said it "is
+      instead protected by the ESLint boundary rule". The rule fires only on client modules (a
+      `"use client"` directive or a path under `src/components/`), and this module is neither, so
+      the rule never sees it. What protects the single-construction-site property is the unit
+      enumeration in 4.4, which fails on any second site.
 - [x] 4.2 `src/lib/supabase/admin.ts` keeps its `import "server-only"`, keeps reading the environment,
       and delegates. The existing unit test that asserts the marker must still pass unchanged.
 - [x] 4.3 Add the new specifiers to `PRIVILEGED_SPECIFIERS` in `eslint.config.mjs`.
@@ -82,7 +92,13 @@
       first.
 - [x] 6.3 Unit: the sink against a fake — function name, argument shape, outcome mapping including
       an unrecognised return value, and error mapping.
-- [x] 6.4 Unit: the migration's precondition, with the negative control that actually fires.
+- [x] 6.4 The migration's precondition, with the negative control that actually fires, AND one
+      behavioural test per arm of the corrected guard in
+      `20261004120000_dataset_entries_import_guard.sql`: clean apply, missing column named, wrong
+      primary key named, absent primary key, absent table, absent function. Each firing was proved
+      by a mutation probe (arm removed → the named test goes red, green controls before and after,
+      byte-identical restore). The original 2.1 box overstated this for two of three arms; the
+      guard migration is what makes it true.
 - [x] 6.5 Prove the can-fire for every new guard in this change, each with a green control before
       and after and a byte-identical restore. A guard that has never been seen red is not a guard.
 
