@@ -111,4 +111,7 @@
       `5 === 5`, `EXIT_REFUSED` was a dead export, the CSV parser's header overstated its
       strictness, the `data/` check had no can-fire control and missed the `DEFAULT_SOURCE_PATH`
       form, and two ledger rows were stale. Nothing was waived.
-- [ ] 4.6 Merge with a merge commit only after 4.1–4.5 are green.
+- [x] 4.6 Merge with a merge commit only after 4.1–4.5 are green. Apply merged as **PR #68**, merge
+      commit `cff96c8`; spec sync as **PR #69**, merge commit `3c0ad8f`. Both CI runs read back from
+      their logs by step name (unit 68/1580, dom 7/87, integration 12/197, dataset guard 1/7) with
+      full step lists present (16 real steps, none non-success).
