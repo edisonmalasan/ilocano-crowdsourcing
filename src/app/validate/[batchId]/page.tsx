@@ -8,6 +8,7 @@ import type { InterfaceLocale } from "@/lib/domain/locale";
 import { ServerEnvError } from "@/lib/env/server";
 import { translatorFor } from "@/lib/i18n/copy";
 import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
+import { parseBatchRouteParam } from "@/lib/validation/batch-route";
 import type { ValidationSessionOutcome } from "@/lib/validation/session";
 import { openValidationSession, sessionDependencies } from "@/lib/validation/session-service";
 
@@ -70,23 +71,47 @@ function readRequestedPosition(raw: string | string[] | undefined): number | und
 }
 
 export default async function ValidatePage({ params, searchParams }: ValidatePageProps) {
-  const { batchId } = await params;
+  const { batchId: batchIdSegment } = await params;
   const query = await searchParams;
   const locale = await getInterfaceLocale();
   const t = translatorFor(locale);
+
+  /**
+   * THE SEGMENT IS NOT THE IDENTIFIER, AND RECOVERING IT IS NOT A STRING OPERATION.
+   *
+   * Next.js percent-encodes the dynamic route parameter before this component sees it — measured on
+   * this repository's own route, even when the request path spelled the colons literally — so the
+   * segment arrives in the once-encoded form regardless of how the address was written. Applying
+   * `decodeURIComponent` exactly once therefore recovers the stored identifier for a raw address
+   * AND for an already-encoded one, with no case in which this has to guess which it is looking at.
+   *
+   * `parseBatchRouteParam` is the only place that decoding happens, and it does NOT retry: a
+   * twice-encoded segment or one that is not valid percent-encoding is REFUSED rather than repaired.
+   *
+   * A refusal reports the route's existing `absent` state and performs **no lookup at all** — not
+   * `sessionDependencies()` either, so no environment check and no query runs for an address that
+   * cannot name a batch. `absent` is the honest sentence here: it is the same state a well-formed
+   * address naming a batch that is not in storage produces, and this platform has no way to tell the
+   * two apart that a participant would care about.
+   */
+  const parsed = parseBatchRouteParam(batchIdSegment);
 
   // The environment check lives in `sessionDependencies`, and a missing deployment is a NORMAL
   // state for this route rather than a crash: the participant gets a plain explanation and nothing
   // is lost, which is the same treatment the screening form gives a missing database.
   let outcome: ValidationSessionOutcome;
-  try {
-    outcome = await openValidationSession(
-      { batchId, position: readRequestedPosition(query["position"]) },
-      sessionDependencies(),
-    );
-  } catch (error) {
-    if (!(error instanceof ServerEnvError)) throw error;
-    outcome = { status: "failed", reason: "not_configured" };
+  if (!parsed.ok) {
+    outcome = { status: "absent" };
+  } else {
+    try {
+      outcome = await openValidationSession(
+        { batchId: parsed.batchId, position: readRequestedPosition(query["position"]) },
+        sessionDependencies(),
+      );
+    } catch (error) {
+      if (!(error instanceof ServerEnvError)) throw error;
+      outcome = { status: "failed", reason: "not_configured" };
+    }
   }
 
   return (

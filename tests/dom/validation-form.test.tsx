@@ -5,6 +5,7 @@ import { translatorFor } from "@/lib/i18n/copy";
 import { resolveSessionEntry } from "@/lib/validation/session";
 import { EVALUATION_CHOICES } from "@/schemas/validation";
 
+import { batchIdFromAddress, positionFromAddress } from "./support/batch-address";
 import { mount, type Mounted } from "./support/dom-harness";
 
 /**
@@ -513,7 +514,13 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
 
     await view.submitFormAndSettle(form());
 
-    expect(h.pushes).toEqual([`/validate/${BATCH_ID}?position=${h.position + 1}`]);
+    // The segment is recovered through the route's OWN parse function and the position through a
+    // reader, so this asserts what the ROUTE will receive rather than comparing a template beside
+    // the implementation. `BATCH_ID` carries no reserved character, so the round trip is the
+    // identity here — which is exactly the half the other DOM files cannot cover.
+    expect(h.pushes).toHaveLength(1);
+    expect(batchIdFromAddress(h.pushes[0] as string)).toBe(BATCH_ID);
+    expect(positionFromAddress(h.pushes[0] as string)).toBe(String(h.position + 1));
   });
 
   it("does NOT navigate before the write has resolved", async () => {
@@ -536,7 +543,9 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
 
     await view.submitFormAndSettle(form());
 
-    expect(h.pushes).toEqual([`/validate/${BATCH_ID}?position=${h.position + 1}`]);
+    expect(h.pushes).toHaveLength(1);
+    expect(batchIdFromAddress(h.pushes[0] as string)).toBe(BATCH_ID);
+    expect(positionFromAddress(h.pushes[0] as string)).toBe(String(h.position + 1));
     expect(view.container.textContent).not.toMatch(/nothing was saved/i);
   });
 
@@ -585,18 +594,37 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
     expect(h.submitted).toHaveLength(2);
     expect(h.submitted[0]).toEqual(firstPayload);
     expect((h.submitted[1] as { datasetEntryId: string }).datasetEntryId).toBe("OD_0008");
-    expect(h.pushes).toEqual([
-      `/validate/${BATCH_ID}?position=${h.position + 1}`,
-      "/validate/batch-7f3a1c?position=5",
+    expect(h.pushes).toHaveLength(2);
+    // Both addresses recovered through the route's parse function, in order, with their positions.
+    expect(h.pushes.map((push) => batchIdFromAddress(push as string))).toEqual([
+      BATCH_ID,
+      "batch-7f3a1c",
+    ]);
+    expect(h.pushes.map((push) => positionFromAddress(push as string))).toEqual([
+      String(h.position + 1),
+      "5",
     ]);
   });
 
-  it("URL-encodes the batch id, so an identifier with a slash cannot escape the path", async () => {
-    // Measured, not assumed: the batch id is server-minted, and an unencoded one interpolated into a
-    // path is a client-side route injection. The form receives it as a prop and this asserts what it
-    // does with it.
+  it("navigates to an address whose segment round-trips back to the batch id", async () => {
+    // REWRITTEN by `batch-route-round-trip`, and the rewrite is a correction rather than a
+    // convenience. This test used to be titled "URL-encodes the batch id, so an identifier with a
+    // slash cannot escape the path", and it passed because the component called
+    // `encodeURIComponent` — which is the very mechanism that made the route unopenable. The
+    // protection it measured was INCIDENTAL: a side effect of the encoding bug.
+    //
+    // Producers now emit the identifier raw, so encoding is no longer available as a defence and the
+    // invariant has to be held where it belongs. It is held by `batchIdSchema`, which refuses an
+    // identifier containing a path separator — asserted as the CAN FIRE control below rather than
+    // here, because it is a property of the schema and not of this component.
+    //
+    // What is asserted here is the ROUND TRIP, which is the property that survives the change: the
+    // component builds `/validate/` plus the identifier, and the route's parse function recovers that
+    // identifier exactly. `encodeURIComponent` is deliberately absent from this assertion — asserting
+    // the presence or absence of an encoding call by string is a source-shaped check that cannot see
+    // a semantic change, and the one it replaces was exactly that.
     view.unmount();
-    h.batchId = "batch/../../admin";
+    h.batchId = "batch-7f3a1c";
     view = mount(
       <ValidationForm
         locale="en"
@@ -609,10 +637,8 @@ describe("VF-6 — advancing, and only after the answer is stored", () => {
     await completeAnEvaluableAnswer(CORRECT_NATURAL);
     await view.submitFormAndSettle(form());
 
-    expect(h.pushes[0]).toBe(
-      `/validate/${encodeURIComponent(h.batchId)}?position=${h.position + 1}`,
-    );
-    expect(h.pushes[0]).not.toContain("/admin");
+    expect(h.pushes).toHaveLength(1);
+    expect(batchIdFromAddress(h.pushes[0] as string)).toBe("batch-7f3a1c");
     h.batchId = BATCH_ID;
   });
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FinishedBatch } from "@/app/validate/[batchId]/finished-batch";
 import { translatorFor } from "@/lib/i18n/copy";
 
+import { batchIdFromAddress } from "./support/batch-address";
 import { mount, type Mounted } from "./support/dom-harness";
 
 /**
@@ -167,10 +168,15 @@ describe("CB-1/CB-2 — continuing asks the server, and sends nothing but who it
 
     expect(h.requests).toHaveLength(1);
     // The new batch is PRESENTED — a navigation to the route that renders it, not a batch id parked
-    // in component state. `encodeURIComponent` is applied because a real `defaultBatchId` embeds a
-    // timestamp, and a raw `:` in a path segment is legal but the route is matched on the encoded
-    // form, so an unencoded push would be a different URL than the one the router resolves back.
-    expect(h.pushes).toEqual([`/validate/${encodeURIComponent(NEW_BATCH)}`]);
+    // in component state. Asserted through a ROUND TRIP through the route's own parse function
+    // rather than against an `encodeURIComponent` literal, which is STRICTLY STRONGER: the literal
+    // passed whether or not the component navigated to the batch the SERVER chose, and the reason it
+    // passed before is that the component pre-encoded — which is exactly what made the address
+    // unopenable.
+    // The push COUNT is asserted too, so an extra navigation cannot hide behind a passing round trip
+    // on the first one. `h.requests` above is a different array and does not cover this.
+    expect(h.pushes).toHaveLength(1);
+    expect(batchIdFromAddress(h.pushes[0] as string)).toBe(NEW_BATCH);
     // The batch the participant just finished is NOT part of the request, and neither is anything
     // about their progress: the server chose this batch, and a request that named the previous one
     // would be a client asking to continue a specific batch rather than asking for the next one.
@@ -255,7 +261,10 @@ describe("CB-3 — the continued batch's contents never reach the participant", 
     await view.pressAndSettle(continueControl());
 
     // Navigated, and nothing of the batch is in the document on either side of the navigation.
-    expect(h.pushes).toEqual([`/validate/${encodeURIComponent(NEW_BATCH)}`]);
+    // Count first: a round trip on `pushes[0]` alone is satisfied by a first push alongside a
+    // second, unwanted one.
+    expect(h.pushes).toHaveLength(1);
+    expect(batchIdFromAddress(h.pushes[0] as string)).toBe(NEW_BATCH);
     expect(view.container.innerHTML).not.toContain(instruction);
     expect(view.container.innerHTML).not.toContain(entries[1].instruction);
     expect(view.container.innerHTML).not.toContain(entries[0].id);

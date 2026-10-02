@@ -8,6 +8,7 @@ import { Button, linkButtonClasses } from "@/components/ui/button";
 import { requestBatchAction } from "@/lib/allocation/actions";
 import type { InterfaceLocale } from "@/lib/domain/locale";
 import { translatorFor } from "@/lib/i18n/copy";
+import { batchRouteHref } from "@/lib/validation/batch-route";
 import {
   continueControlState,
   decideContinueBatch,
@@ -96,7 +97,7 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
     inFlight.current = false;
 
     if (outcome !== null && outcome.status === "allocated") {
-      router.push(`/validate/${encodeURIComponent(outcome.batchId)}`);
+      router.push(batchRouteHref(outcome.batchId));
       return;
     }
 

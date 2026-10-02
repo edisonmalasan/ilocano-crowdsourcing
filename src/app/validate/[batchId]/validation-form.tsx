@@ -9,6 +9,7 @@ import { AnswerGroup } from "@/components/validation/answer-option";
 import type { InterfaceLocale } from "@/lib/domain/locale";
 import { EVALUATION_DESCRIPTION_KEYS, EVALUATION_LABEL_KEYS, translatorFor } from "@/lib/i18n/copy";
 import { submitValidationAction } from "@/lib/validation/actions";
+import { batchRouteHref } from "@/lib/validation/batch-route";
 import {
   EMPTY_ENTRY_FORM_INPUT,
   checkEntryForm,
@@ -132,7 +133,11 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
       // to choose. A `?position` one past the current one cannot itself decide what is next — the
       // server intersects it with the completed set — so a stale or hand-edited value lands on the
       // first entry that still needs an answer rather than on nothing.
-      router.push(`/validate/${encodeURIComponent(batchId)}?position=${position + 1}`);
+      // The next sentence is the NEXT ONE AFTER THIS ONE, expressed as a position the route
+      // resolves against the order the server chose — never as "which id comes next" from here,
+      // which would put the batch order in the client. The address itself comes from the one route
+      // contract, so this site holds no encoding knowledge of its own.
+      router.push(batchRouteHref(batchId, position + 1));
       return;
     }
 
