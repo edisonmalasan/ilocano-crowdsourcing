@@ -214,8 +214,8 @@ describe("the dashboard and the export agree on one corpus", () => {
     // about a two-element array literal and cannot fail whatever either consumer does, and
     // `ENTRIES.filter(isActive)`, which is true by construction because the `entry()` helper
     // hardcodes `isActive: true`. Both reported coverage they did not provide. What is asserted
-    // instead are the corpus's own shape, and then the two consumers are RUN so the comparison below
-    // is known to have had something to compare.
+    // instead are the corpus's own shape, and then the two consumers are RUN, so this test witnesses
+    // that both were invoked over that corpus rather than merely declared.
     expect(RESPONSES.length, "the corpus must hold stored responses").toBeGreaterThan(5);
     expect(ENTRIES.length, "the corpus must hold entries").toBeGreaterThan(5);
     expect(
@@ -227,7 +227,11 @@ describe("the dashboard and the export agree on one corpus", () => {
       "some entries are unanswered",
     ).toBe(true);
 
-    // And the comparison itself has run over the real corpus, not been declared.
+    // Both consumers, actually run. This is two ONE-SIDED shape checks — the agreement between them
+    // is asserted in the tests that follow, which is where a two-sided comparison belongs. Its job
+    // here is narrower and stated as such: to make it impossible for this suite to be green because
+    // a consumer was never called, or was called over nothing. Measured: breaking the dashboard's
+    // qualifying accumulation turns this file red at `4 failed | 4 passed`, naming this test.
     const { overview, summary } = await bothConsumers();
     expect(overview.totalQualifyingValidations).toBeGreaterThan(0);
     expect(summary.by_entry.length).toBe(ENTRIES.length);

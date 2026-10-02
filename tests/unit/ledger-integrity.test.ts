@@ -84,11 +84,22 @@ export function rowsNamingArchivedChanges(source: string): {
 
   // The header is already located, so the loop starts BELOW it: every line examined here is a
   // candidate row, and nothing in this loop can consume the header.
+  //
+  // A MEASURED LIMIT OF THAT CLAIM, recorded because the comment above would otherwise overstate
+  // it. Shifting the start by exactly ONE line (`+1` to `+2`) survives the whole file — every
+  // fixture, synthetic and real, carries a `| --- |` separator at `+1`, so a one-line shift skips
+  // only the separator. A shift of TWO (`+3`) is caught immediately, red at `5 failed | 5 passed`,
+  // because it drops a data row. So the reader cannot consume the header by construction, but it
+  // also cannot notice losing the separator row, and that is a property of the fixtures rather than
+  // a property of the reader. The generalisation, which has cost this project three separate
+  // checkers: **a header consumed as data, a separator consumed as data, and a row consumed as a
+  // header are the same defect, and only the third of them is caught here.**
   for (let i = headerIndex + 1; i < lines.length; i += 1) {
     const line = lines[i] as string;
     const trimmed = line.trim();
     // The end of the table. A row appended below it is not counted, and its change therefore reads as
-    // missing — which is the loud failure, and is asserted as such below.
+    // missing — which is the loud failure, and is proved on the REAL ledger by the test named in
+    // `stops at the table's end`, because that is the only place both inputs are real.
     if (trimmed === "") break;
 
     const opensRow = trimmed.startsWith("|");
@@ -191,14 +202,21 @@ describe("the table reader behaves as the requirement states", () => {
 
     expect(listed, "the row below the table is outside the table").toEqual(["2026-01-01-a"]);
     // And it is out of SCOPE rather than damaged: it is neither counted nor reported as malformed,
-    // because a reader that kept going would be reading past the end of its subject. Which is only
-    // safe because of the next assertion.
+    // because a reader that kept going would be reading past the end of its subject.
     expect(malformed, "a row outside the table is out of scope, not damaged").toEqual([]);
-    // And it fails LOUDLY rather than silently: a directory on disk that this reader cannot see shows
-    // up as missing, which is the whole safety property.
-    const onDisk = archivedDirectories();
-    const seen = new Set(listed);
-    expect(onDisk.filter((directory) => !seen.has(directory)).length).toBeGreaterThan(0);
+
+    // WHERE THE SAFETY PROPERTY IS ACTUALLY PROVED, because a first draft of this test asserted it
+    // here and the assertion was vacuous. It compared `listed` — which holds the SYNTHETIC name
+    // "2026-01-01-a" — against the REAL archive directory, whose sixteen directories are none of
+    // them that, so "some directory is missing" was true by construction and insensitive to every
+    // property of the reader, including the one this test is named for. It could only fail if the
+    // archive emptied, which a different test already covers.
+    //
+    // The property is real and it is proved where its inputs are real: on the actual ledger, an
+    // archive row moved BELOW the table's end leaves that change out of `listed`, so it appears in
+    // `missing` and `names EVERY archived change, and no change that does not exist` fails naming
+    // it. Measured on the real file: red, naming that test. A synthetic test may not stand in for
+    // it, because the property is about the real directory and a fixture cannot contain it.
   });
 
   it("reports a line that sits inside the table without opening a row", () => {
@@ -274,11 +292,41 @@ describe("the ledger describes the archive directory", () => {
     // The pattern does NOT require bold markers before the number. A first version did, and it reported
     // "must state an archived count: null" against a ledger that stated the count correctly, because
     // a scripted edit had stripped the bold from that sentence's opening.
+    //
+    // ============================ READ EVERY MATCH, NOT THE FIRST ============================
+    // A first version used a NON-GLOBAL regex and read occurrence 1 only. The ledger carried TWO
+    // sentences in this exact phrasing, and the verification pass measured that a stale figure in
+    // the SECOND one passed the guard unchanged (`10 passed (10)`), while the same edit to the
+    // first turned it red — the control that distinguishes "the guard missed it" from "the guard
+    // cannot see it".
+    //
+    // That is not hypothetical here. `tasks.md` 3.3 claimed this guard had FOUND a stale "Fifteen"
+    // sentence, and the stale word was in occurrence 2 — so the guard provably could not have found
+    // it, and the claim attributed discovery to a mechanism that could not perform it. Both the
+    // claim and the guard were corrected; the claim is in the change's `tasks.md`, this is the
+    // guard.
+    //
+    // THE RULE THIS ENFORCES, stated because it is a rule and not an accident: **every sentence in
+    // this phrasing is a LIVE claim and must state the current count.** A historical figure must be
+    // worded differently — which is what the ledger's own parenthetical now does
+    // ("(That slice ended with **fifteen** archived changes…)"). That is not a stylistic
+    // preference: one phrasing cannot be both a live claim and a historical one, so the phrasing is
+    // reserved for the live claim and history is marked as history.
     const roadmap = readFileSync(ROADMAP, "utf8");
-    const claimed = /(\w+) changes are archived and readable/.exec(roadmap);
-    expect(claimed, "the Project Status block must state an archived count").not.toBeNull();
+    const claims = [...roadmap.matchAll(/(\w+) changes are archived and readable/g)].map(
+      (match) => match[1] ?? "",
+    );
+    expect(
+      claims.length,
+      "the Project Status block must state an archived count in the live phrasing",
+    ).toBeGreaterThan(0);
 
-    const word = claimed?.[1] ?? "";
+    // COUPLING, stated rather than left to be discovered: this enumeration stops at sixteen and
+    // reports `null` for a seventeenth directory, which FAILS LOUDLY rather than silently accepting
+    // a count it has no word for. That is the safe direction — the next archive must edit this test,
+    // and the edit is the point — but it means the guard cannot be extended without touching it, and
+    // the test name does not advertise that. The alternative, deriving the word arithmetically, would
+    // make the guard agree with the ledger by construction and stop being a check of it.
     const expected =
       onDisk.length === 16
         ? "Sixteen"
@@ -294,7 +342,11 @@ describe("the ledger describes the archive directory", () => {
       expected,
       `the archived-count sentence must be updated: the directory holds ${onDisk.length}`,
     ).not.toBeNull();
-    expect(word).toBe(expected);
+    // Every claim, each naming its position, so a failure says WHICH sentence is stale rather than
+    // only that one of them is.
+    for (const [index, word] of claims.entries()) {
+      expect(word, `archived-count claim ${index + 1} of ${claims.length} is stale`).toBe(expected);
+    }
     expect(new Set(listed).size).toBe(onDisk.length);
   });
 });

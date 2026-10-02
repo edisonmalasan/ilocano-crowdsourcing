@@ -64,9 +64,16 @@
 
 - [x] 3.1 `pnpm run lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`,
       `build` — all run, all reported with the figures they actually produced. Measured: lint 0,
-      format 0, typecheck 0, unit **70 files / 1594 tests**, dom **7 / 87**, integration **12 / 197**,
+      format 0, typecheck 0, unit **70 files / 1598 tests**, dom **7 / 87**, integration **12 / 197**,
       build "Compiled successfully". The roadmap's 12 markdown tables were checked for well-formedness
       independently of the new guard: 12 tables, 0 malformed.
+      **AND THE UNIT FIGURE WAS STALE IN BOTH PLACES WHEN FIRST WRITTEN — 1594, measured 1598 — which
+      is recorded here because this change exists to catch exactly that.** The repair commit added four
+      synthetic-ledger tests and inherited the earlier figure without re-running the command, so a
+      ticked close-out task and the change's own evidence table were both reporting a number that had
+      stopped being true, and neither guard in this change can see a number in prose. An independent
+      verification pass found it by measuring. Re-derived rather than incremented: `1594 + 4 = 1598`,
+      and the verifier independently confirmed the arithmetic by counting `it(` in the changed file.
 - [x] 3.2 `openspec change validate consistency-guards --strict` exits 0, and
       `openspec validate --specs --strict` reports 16. **Measured 15, and the difference is the point**:
       the live capability count is 15 because this change's delta has not been synced yet — the delta
@@ -74,14 +81,50 @@
       command cannot produce. The delta's own scenario text is unchanged; what was wrong was this
       task's expected number.
 - [x] 3.3 Update `docs/ROADMAP.md` `## Project Status`, including the archive count and this change's
-      own stages. **Two prose defects of mine were found by the new guard while doing it and are
-      recorded rather than hidden**: an earlier scripted patch had MANGLED a cell — the sentence was
-      left glued to a fragment of its own replacement ("COMPLETE on its first bounded slice** on its
-      first bounded slice") — and a historical sentence still read "Fifteen changes are archived" while
-      the live count was sixteen. Both repaired, and the count sentence is now marked as historical so
-      a reader need not work out which sentence is current. The guard's own pattern was relaxed
-      because of the first: it had required bold markers before the number and so reported "must state
-      an archived count: null" against a ledger that stated it correctly.
-- [ ] 3.4 Independent verification pass. No CRITICAL finding may survive, and no WARNING may be
-      silently waived.
+      own stages. **Two prose defects of mine surfaced while doing it, and how each was found is now
+      part of the record rather than a detail**: an earlier scripted patch had MANGLED a cell — the
+      sentence was left glued to a fragment of its own replacement ("COMPLETE on its first bounded
+      slice** on its first bounded slice") — and a historical sentence still read "Fifteen changes are
+      archived" while the live count was sixteen.
+      **The second claim in the first version of this task was FALSE and is corrected here: it said
+      BOTH defects "were found by the new guard". Measurement showed the guard provably could not have
+      found the second one.** The count guard used a NON-GLOBAL regex and read occurrence 1 only, and
+      the stale "Fifteen" was in occurrence 2. A probe proved it: editing only the SECOND sentence left
+      the suite green at `10 passed (10)`, while the same edit to the FIRST turned it red — which is the
+      control that separates "the guard missed it" from "the guard cannot see it". Three repairs
+      followed. (a) The guard now reads EVERY sentence in that phrasing and checks each, so a duplicate
+      cannot hide a stale figure; the rule it enforces is stated in the test — that phrasing is reserved
+      for the LIVE claim, and history is marked as history. (b) The first repair to that sentence had
+      replaced a correct historical statement with a verbatim duplicate of the live one, making the
+      paragraph self-contradictory, so the duplicate was removed and the parenthetical historical
+      marker left standing. (c) This attribution was corrected.
+      **The lesson is the one this change is built on, turned on its own artifacts: a stale
+      hand-maintained figure is found by measuring, and attributing the finding to a guard that cannot
+      see it is worse than the stale figure was.** The guard's own pattern had also been relaxed
+      because of the mangled cell: it had required bold markers before the number and so reported "must
+      state an archived count: null" against a ledger that stated it correctly.
+- [x] 3.4 Independent verification pass. No CRITICAL finding may survive, and no WARNING may be
+      silently waived. **Ran on the repair commit and returned PASS-WITH-FINDINGS: 2 CRITICAL, 5
+      WARNING, 6 NIT. Both CRITICALs and all five WARNINGs are repaired above; nothing is waived.**
+      The verifier ran 21 mutation probes, every one with a green control before and after and a
+      sha256-verified byte-identical restore, and re-derived the change's own can-fire list rather than
+      inheriting it. What it established: **every test in both new files can fail** (it produced a
+      named red for all 18), the scope claim is true (zero files under `src/`, `scripts/`,
+      `supabase/`, `data/`), and all five corrected `Merged as` cells are real two-parent merges that
+      each moved the archive directory their row names.
+      The two CRITICALs were both **claims that did not hold, not missing behaviour**: a ticked task
+      and the change's own evidence table reporting `1594` where the command prints `1598` (see 3.1),
+      and `design.md` D3 asserting the table reader "continues" three lines after recording that it
+      "breaks" — proved by mutation, since reversing `break` to `continue` turns the file red.
+      **Both were claim defects in a change whose entire subject is claims that are not measured.**
+      The five WARNINGs: the first-occurrence-only count guard and its consequence (see 3.3); the
+      self-contradicting paragraph the first repair created (see 3.3); a real-repo assertion inside a
+      synthetic-ledger test, true by construction and therefore insensitive to the reader it claimed to
+      be testing, now removed with a pointer to where the property is actually proved; the reader's
+      measured one-line blind spot, recorded at the loop; and the count guard's 13–16 enumeration,
+      recorded at the guard.
+      **The verifier also caught two defects in its own instruments** — a `git show > file` redirect
+      that returned UTF-16LE and matched nothing, and a markdown-table detector that reported 17 false
+      "does not open a row" hits by keeping a table open into orphaned prose. Both are recorded because
+      a checker that misreports its own subject is worse than no checker.
 - [ ] 3.5 Merge with a merge commit only after 3.1–3.4 are green.

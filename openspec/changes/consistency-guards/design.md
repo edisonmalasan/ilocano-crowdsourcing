@@ -72,8 +72,25 @@ Three rules, each written after measuring the alternative:
 **CORRECTION, because the first draft of this change asserted the opposite.** The original delta
 required that "a change appended below the table is still counted", and an independent verification
 pass measured that it is not — the reader breaks at the blank line. Two options existed: make the
-reader continue, or state the behaviour it has. It continues; the loud failure is better than a check
-that reads more than its own subject, and the appended change is still caught.
+reader continue, or state the behaviour it has. **It stops, and the requirement was amended to say
+so** — the loud failure is better than a check that reads more than its own subject, and the
+appended change is still caught.
+
+**A CORRECTION INSIDE THIS CORRECTION, found by the verification pass that reviewed it, and it is
+the reason this paragraph is quoted rather than summarised.** The first draft of this paragraph ended
+"It continues; the loud failure is better…". **That sentence was false**, and false in the specific
+way this project keeps finding: three lines above it says the reader BREAKS at the blank line, the
+amended requirement says the read STOPS at the end of the table, and the code says
+`if (trimmed === "") break;`. Proved by mutation — reversing `break` to `continue` turns the file
+red. So a reader consulting the one place that explains *why* the requirement was amended would have
+been told the opposite decision was taken, and the only defence would have been to go read the SQL
+of a TypeScript loop. **A correction that leaves a second, contradicting copy of itself in the same
+paragraph has not corrected anything.**
+
+The safety argument is unchanged and does not depend on the reader continuing: an archived directory
+the reader cannot see is simply absent from `listed`, so it appears in `missing` and
+`names EVERY archived change` fails naming it. That was proved on the REAL ledger by moving a row
+out of the table — **red, naming that test**, rather than argued here.
 
 ### D4 — Assert the guards are looking at something
 
