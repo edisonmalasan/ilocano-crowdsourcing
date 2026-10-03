@@ -380,6 +380,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `completion-metrics-and-export`, the TWENTY-FIRST archived change, so this coupling has now
       // been paid FIVE times. Same one-line edit, same reason.
       21: "Twenty-one",
+      // Added for `attempt-scoped-allocation`, the TWENTY-SECOND archived change, so this coupling has now
+      // been paid SIX times. Same one-line edit, same reason.
+      22: "Twenty-two",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
