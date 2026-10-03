@@ -289,6 +289,11 @@ describe("the dashboard and the export agree on one corpus", () => {
     expect(validatedIds).toEqual(new Set(["C1", "C2", "C3", "X1"]));
     expect(validated.records).toHaveLength(overview.buckets.complete);
     expect(validated.derivation.omitted_incomplete_entries).toBe(overview.buckets.incomplete);
+    // The omission figure is stated twice — once in the validated derivation block, once in the
+    // raw summary totals — so the two statements are asserted equal, not merely present.
+    expect(summary.totals.omitted_from_validated).toBe(
+      validated.derivation.omitted_incomplete_entries,
+    );
   });
 
   it("flags every review entry in the validated records, plus timestamp ties", async () => {
