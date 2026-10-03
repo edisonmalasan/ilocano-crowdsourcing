@@ -9,10 +9,17 @@ own owner, recognised from the work that remains rather than from any stored fla
 This is a change to the participant's continuity of experience, not a rescue of lost research data. That
 distinction is measured in `proposal.md` and is load-bearing: an abandoned batch's unanswered entries stay
 **eligible for allocation**, because the only two conditions `selectBatchEntries` tests are that the
-validator has already **answered** the entry and that it has already reached the coverage target. A third
+validator has already **answered** the entry and that it already holds a validating package. A third
 exclusion applies equally to everybody and is not an effect of abandonment: an entry marked inactive is not
-in the pool at all. **No coverage is destroyed by abandonment**, and this capability must not be described
-as though it recovers coverage it never lost.
+in the pool at all. **No completion is destroyed by abandonment**, and this capability must not be described
+as though it recovers a package it never lost.
+
+> **Edited by the `single-validation-package` change, which owns no delta for this capability because
+> OpenSpec deltas cannot express a Purpose change.** The sentence above previously read "has already
+> reached the coverage target" and "No coverage is destroyed by abandonment". Under the corrected
+> methodology there is no target to reach: an entry is complete when one stored response establishes
+> the complete bilingual package, and abandonment destroys no such package. No requirement in this
+> capability changes — every one is untouched — so there is no delta file for it.
 
 ## Requirements
 

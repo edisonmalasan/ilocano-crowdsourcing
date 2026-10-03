@@ -13,8 +13,8 @@ import type { AllocationOutcome } from "@/schemas/batch";
  * ones a participant actually takes. Four of the five are testable with no rendering at all.
  *
  * `exhausted` is the branch that matters most and is the easiest to get wrong. It is an ordinary
- * research outcome — every remaining entry was already answered by this validator or has reached
- * the coverage target — and reporting it as a FAILURE would tell someone who has finished the study
+ * research outcome — every remaining entry was already answered by this validator or is already
+ * complete — and reporting it as a FAILURE would tell someone who has finished the study
  * that something is broken. It gets its own sentence, and that sentence is thanks rather than an
  * apology.
  */

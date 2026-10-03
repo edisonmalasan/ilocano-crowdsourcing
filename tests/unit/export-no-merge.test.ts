@@ -87,7 +87,7 @@ function artifactDocuments(): Record<string, unknown> {
   const records = buildExportRecords(SOURCES);
   return {
     validations: JSON.parse(JSON.stringify(records)) as unknown,
-    summary: JSON.parse(JSON.stringify(buildExportSummary([entry("E1")], SOURCES, 3))) as unknown,
+    summary: JSON.parse(JSON.stringify(buildExportSummary([entry("E1")], SOURCES))) as unknown,
   };
 }
 
@@ -207,7 +207,7 @@ describe("disagreement is exported, not resolved", () => {
       VALIDATOR_TWO_ENGLISH,
     ]);
     // The summary flags the entry rather than resolving it, and reports both validators.
-    const summary = buildExportSummary([entry("E1")], SOURCES, 3);
+    const summary = buildExportSummary([entry("E1")], SOURCES);
     expect(summary.by_entry[0]).toMatchObject({
       requires_researcher_review: false,
       stored_responses: 2,

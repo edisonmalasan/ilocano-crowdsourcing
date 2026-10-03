@@ -22,13 +22,11 @@ import { describe, expect, it } from "vitest";
 import { loadDashboardOverview } from "@/lib/admin/dashboard";
 import { buildExportSummary, isQualifyingValidation } from "@/lib/export/records";
 import type { ExportSourceWithQualifying } from "@/lib/export/records";
-import { INDEPENDENT_VALIDATION_TARGET_DEFAULT } from "@/schemas/batch";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
 import type { AnonymousValidatorId, ValidatorProfile } from "@/schemas/validator";
 
 const AT = (day: string): string => `2026-09-${day}T12:00:00.000Z`;
-const TARGET = INDEPENDENT_VALIDATION_TARGET_DEFAULT;
 
 const entry = (id: string, category = "origin_destination"): DatasetEntry => ({
   id,
@@ -66,20 +64,21 @@ const bilingual = {
 /**
  * ONE CORPUS, with every clause of the agreement claim given a row that exercises it.
  *
- *   C1  two `correct_natural` (V1, V2)                     -> 2 qualifying, bucket "two"
+ *   C1  two `correct_natural` (V1, V2)                     -> 2 qualifying, COMPLETE
  *   C2  three `incorrect`, corrections A / A / B            -> 3 qualifying, COMPLETE, and the two
  *                                                              distinct corrections flag it
- *   C3  one `correct_natural` (V4) + one `cannot_evaluate`  -> 1 qualifying, and the abstention must
- *                                                              NOT be read as disagreement
- *   C4  `correct_natural` with English but NO Filipino (V6)  -> NOT qualifying
- *   C5  `correct_unnatural` + correction, NO translations   -> NOT qualifying
- *   C6  no responses at all
- *   X1  SECOND CATEGORY, one `correct_natural` (V8)          -> 1 qualifying, bucket "one"
- *   C7, E9, E10, E11: no responses at all
+ *   C3  one `correct_natural` (V4) + one `cannot_evaluate`  -> 1 qualifying, COMPLETE, and the
+ *                                                              abstention must NOT be read as disagreement
+ *   C4  `correct_natural` with English but NO Filipino (V6)  -> NOT qualifying, INCOMPLETE
+ *   C5  `correct_unnatural` + correction, NO translations   -> NOT qualifying, INCOMPLETE
+ *   C6  no responses at all                                  -> INCOMPLETE
+ *   X1  SECOND CATEGORY, one `correct_natural` (V8)          -> 1 qualifying, COMPLETE
+ *   C7, E9, E10, E11: no responses at all                    -> INCOMPLETE
  *
  *   TOTALS: 10 stored rows; qualifying = C1(2) + C2(3) + C3(1) + X1(1) = 7.
- *   BUCKETS at target 3, over 11 entries: zero = 7 (C4, C5, C6, C7, E9, E10, E11); one = 2 (C3, X1);
- *   two = 1 (C1); complete = 1 (C2). 7 + 2 + 1 + 1 = 11.
+ *   PARTITION over 11 entries: complete = 4 (C1, C2, C3, X1); incomplete = 7 (C4, C5, C6, C7,
+ *   E9, E10, E11). 4 + 7 = 11. One validating package is the whole of completion, so C1 with two
+ *   and C2 with three are exactly as complete as C3 and X1 with one each.
  *   FLAGGED: C2 only — its corrections differ. C3 is NOT flagged despite differing evaluations,
  *   because the `cannot_evaluate` does not qualify and an abstention is not an opinion.
  *
@@ -187,22 +186,26 @@ function exportSources(): ExportSourceWithQualifying[] {
   });
 }
 
-/** Both consumers, run over the SAME corpus, with the same target. */
+/** Both consumers, run over the SAME corpus. There is no target to hold equal. */
 async function bothConsumers() {
-  const overview = await loadDashboardOverview(dashboardRepositories(), TARGET);
-  const summary = buildExportSummary(ENTRIES, exportSources(), TARGET);
+  const overview = await loadDashboardOverview(dashboardRepositories());
+  const summary = buildExportSummary(ENTRIES, exportSources());
   return { overview, summary };
 }
 
-/** The export's per-entry counts, folded into the dashboard's bucket shape. */
+/**
+ * The export's per-entry flags, folded into the dashboard's partition shape.
+ *
+ * A genuine second implementation, not an echo: it reads the export's `coverage_complete` flag —
+ * the artifact's own answer — while the dashboard computes its partition from its own repository
+ * reads. If either consumer filtered its inputs differently, the two partitions disagree here even
+ * when both totals happen to agree.
+ */
 function exportBuckets(summary: ReturnType<typeof buildExportSummary>) {
-  const buckets = { zero: 0, one: 0, two: 0, complete: 0 };
+  const buckets = { incomplete: 0, complete: 0 };
   for (const row of summary.by_entry) {
-    const count = row.qualifying_validations;
-    if (count >= TARGET) buckets.complete += 1;
-    else if (count === 2) buckets.two += 1;
-    else if (count === 1) buckets.one += 1;
-    else buckets.zero += 1;
+    if (row.coverage_complete) buckets.complete += 1;
+    else buckets.incomplete += 1;
   }
   return buckets;
 }
@@ -244,13 +247,13 @@ describe("the dashboard and the export agree on one corpus", () => {
     expect(overview.totalQualifyingValidations).toBe(summary.totals.qualifying_validations);
   });
 
-  it("agrees on the coverage-bucket distribution", async () => {
+  it("agrees on the complete/incomplete partition", async () => {
     const { overview, summary } = await bothConsumers();
 
-    expect(overview.buckets).toEqual({ zero: 7, one: 2, two: 1, complete: 1 });
-    // The second assertion is the one that matters: it is the export's OWN per-entry counts folded
-    // into the dashboard's bucket shape, so a divergence between the two consumers fails here even
-    // when both totals happen to agree.
+    expect(overview.buckets).toEqual({ incomplete: 7, complete: 4 });
+    // The second assertion is the one that matters: it is the export's OWN per-entry flags folded
+    // into the dashboard's partition shape, so a divergence between the two consumers fails here
+    // even when both totals happen to agree.
     expect(overview.buckets).toEqual(exportBuckets(summary));
   });
 
@@ -292,15 +295,12 @@ describe("the dashboard and the export agree on one corpus", () => {
   it("agrees when the corpus holds NO responses at all", async () => {
     // An empty corpus is a real state on the hosted project today. A consistency check that skipped
     // the empty case would leave the one state this project is actually in unverified.
-    const overview = await loadDashboardOverview(
-      {
-        entries: { listActive: async () => [], findById: async () => null },
-        validations: { listForEntries: async () => [] },
-        validators: { listByIds: async () => [] },
-      },
-      TARGET,
-    );
-    const summary = buildExportSummary([], [], TARGET);
+    const overview = await loadDashboardOverview({
+      entries: { listActive: async () => [], findById: async () => null },
+      validations: { listForEntries: async () => [] },
+      validators: { listByIds: async () => [] },
+    });
+    const summary = buildExportSummary([], []);
 
     expect(overview.totalQualifyingValidations).toBe(summary.totals.qualifying_validations);
     expect(overview.totalQualifyingValidations).toBe(0);

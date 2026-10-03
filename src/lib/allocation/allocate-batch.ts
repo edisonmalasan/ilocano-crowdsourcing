@@ -3,12 +3,9 @@ import "server-only";
 import {
   selectBatchEntries,
   type AllocationCandidate,
-  type CoverageByEntryId,
+  type CompletedEntryIds,
 } from "@/lib/domain/allocation";
-import {
-  countQualifyingValidations,
-  type CoverageResponseShape,
-} from "@/lib/domain/validation-response";
+import { isEntryComplete, type CoverageResponseShape } from "@/lib/domain/validation-response";
 import {
   isRepositoryError,
   type BatchesRepository,
@@ -34,38 +31,39 @@ import type { AnonymousValidatorId } from "@/schemas/validator";
  * ============================================================================
  * The request carries an identifier and, at most, a *preference* for how many entries it would
  * like. Everything that decides the batch — which entries are eligible, what order they come back
- * in, which of them are near the coverage target, how many are served — is derived here. There is
- * no parameter through which a caller could supply an entry list, an order, a per-entry coverage
- * figure, or a coverage target, and that is the guarantee rather than a convenience: a parameter a
- * caller "cannot really" forge would be a convention, whereas an absent parameter is structural.
+ * in, how many are served — is derived here. There is no parameter through which a caller could
+ * supply an entry list, an order, a per-entry coverage figure, or a coverage target, and that is
+ * the guarantee rather than a convenience: a parameter a caller "cannot really" forge would be a
+ * convention, whereas an absent parameter is structural. There is not even a target to supply —
+ * the corrected methodology has none.
  *
  * `requestedSize` is capped by `resolveBatchSize` against the server's configuration, so a client
  * can ask for FEWER entries and never for more.
  *
  * ============================================================================
- * WHY COVERAGE IS COMPUTED HERE AND NOWHERE ELSE
+ * WHY COMPLETION IS COMPUTED HERE AND NOWHERE ELSE
  * ============================================================================
- * The pool's stored responses are read ONCE and reduced with `countQualifyingValidations`, the one
- * in-force definition of a qualifying validation. Three things were available instead and all three
- * are wrong:
+ * The pool's stored responses are read ONCE and reduced with `isEntryComplete`, the one in-force
+ * definition of entry completion. Three things were available instead and all three are wrong:
  *
  *   - `countForEntry` per entry. A raw row count. Three `cannot_evaluate` responses would read as
- *     full coverage and retire an entry that nobody has judged, which is the scenario the spec
+ *     a judged entry and retire one that nobody has validated, which is the scenario the spec
  *     names first. There is a test here that fails if this is ever substituted back in.
  *   - a `where` clause on the repository read. That would be the same rule expressed in SQL, a
  *     second implementation in a second language, and a drifted copy fails by producing a plausible
- *     wrong number rather than an error.
+ *     wrong answer rather than an error.
  *   - counting rows and de-duplicating here. Self-evidently correct and also wrong at scale, because
  *     a capped response would silently under-count.
  *
  * ============================================================================
- * WHY THE COVERAGE MAP IS BUILT FOR EVERY POOL ENTRY, INCLUDING UNANSWERED ONES
+ * WHY THE COMPLETION SET IS DERIVED FROM THE WHOLE POOL, NOT FROM THE RESPONSES ALONE
  * ============================================================================
- * `selectBatchEntries` treats a missing coverage key as 0, and this service always supplies one. It
- * has to: a `Map` built only from the returned responses would leave an entry with no responses at
- * all absent, and the rule would then read it as eligible for a reason that is correct but
- * accidental. Building the map over the whole pool makes "uncovered means eligible" an explicit
- * statement here rather than a fallback the rule happens to have.
+ * `selectBatchEntries` treats an entry absent from the completion set as incomplete, and this
+ * service derives the set from every pool entry's stored responses. It has to: a set built only
+ * from the returned responses would leave an entry with no responses at all absent, and the rule
+ * would then read it as eligible for a reason that is correct but accidental. Deriving completion
+ * over the whole pool makes "no validating package means eligible" an explicit statement here
+ * rather than a fallback the rule happens to have.
  *
  * ============================================================================
  * WHY THE BATCH IS READ BACK RATHER THAN THE REQUEST ECHOED
@@ -84,11 +82,11 @@ import type { AnonymousValidatorId } from "@/schemas/validator";
  */
 
 /**
- * One stored response, as far as coverage is concerned: the fields
- * {@link countQualifyingValidations} reads, plus the entry it belongs to.
+ * One stored response, as far as completion is concerned: the fields {@link isEntryComplete}
+ * reads, plus the entry it belongs to.
  *
  * Declared here as an intersection rather than reusing `ValidationResponse` because the grouping key
- * is what this module adds and nothing else in the coverage path carries it. `datasetEntryId` is the
+ * is what this module adds and nothing else in the completion path carries it. `datasetEntryId` is the
  * ONLY addition, and the repository's return type satisfies it structurally — a `ValidationResponse`
  * from `ValidationsRepository.listForEntries` is assignable to `PoolResponse` with no cast, which is
  * what makes the structural declaration honest rather than a loosening. Naming the field the domain
@@ -115,10 +113,9 @@ export interface AllocationDependencies {
   /**
    * The research parameters, injected rather than imported as constants.
    *
-   * Both are pending thesis-team and adviser approval, so hard-coding either would freeze a
-   * provisional number into code. It also makes the spec scenario "the coverage target is
-   * configuration rather than a fixed constant" a property of the signature: there is no parameter
-   * a future caller could pass a different target *around*.
+   * `batchSize` is pending thesis-team and adviser approval, so hard-coding it would freeze a
+   * provisional number into code. The corrected methodology holds no other research parameter:
+   * there is no target for a future caller to pass *around*, because there is no target at all.
    */
   readonly config: AllocationConfig;
   /**
@@ -180,18 +177,20 @@ export function defaultBatch(validatorId: AnonymousValidatorId, now: Date): Mint
 }
 
 /**
- * Builds the per-entry qualifying coverage for a whole pool.
+ * The pool entries that already hold a validating package.
  *
- * A `Map` rather than `Record<string, number>` because `Record` makes every string a legal key and
- * every read a `number | undefined` by type accident — the same argument `CoverageByEntryId` makes.
+ * A `Set` rather than `Record<string, boolean>` because `Record` makes every string a legal key —
+ * the same argument `CompletedEntryIds` makes — and because absence from the set is the eligible
+ * direction, which the selection rule's header decides on purpose.
  *
- * Every pool entry gets a key, including those with no stored responses, so that eligibility does
- * not depend on the fallback in `selectBatchEntries` (see the header).
+ * Every pool entry is considered, including those with no stored responses: an entry with nothing
+ * stored holds no validating package and is therefore eligible, stated here rather than left to
+ * the fallback in `selectBatchEntries` (see the header).
  */
-function coverageByEntry(
+function completedEntryIds(
   candidates: readonly AllocationCandidate[],
   responses: readonly PoolResponse[],
-): CoverageByEntryId {
+): CompletedEntryIds {
   const responsesByEntry = new Map<string, PoolResponse[]>();
 
   for (const response of responses) {
@@ -200,17 +199,17 @@ function coverageByEntry(
     else existing.push(response);
   }
 
-  // Built as a mutable `Map` and returned through the read-only alias. `CoverageByEntryId` is a
-  // `ReadonlyMap` because that is what the selection rule needs; a builder that could not insert
+  // Built as a mutable `Set` and returned through the read-only alias. `CompletedEntryIds` is a
+  // `ReadonlySet` because that is what the selection rule needs; a builder that could not insert
   // would have to go through a cast, and a cast here is exactly the kind of unchecked widening
   // `AGENTS.md` warns about at a domain boundary.
-  const coverage = new Map<string, number>();
+  const completed = new Set<string>();
   for (const candidate of candidates) {
     const stored = responsesByEntry.get(candidate.id) ?? [];
-    coverage.set(candidate.id, countQualifyingValidations(stored));
+    if (isEntryComplete(stored)) completed.add(candidate.id);
   }
 
-  return coverage;
+  return completed;
 }
 
 /**
@@ -225,9 +224,9 @@ function coverageByEntry(
  *   2. Resolve the effective size against the server's configuration.
  *   3. Read the active pool. Not paged: the whole pool is the candidate set by definition, and a
  *      truncated pool would silently exclude the entries that sort last.
- *   4. Read the pool's stored responses ONCE and reduce them to per-entry qualifying coverage.
+ *   4. Read the pool's stored responses ONCE and reduce them to the set of completed entries.
  *   5. Exclude the entries this validator already answered.
- *   6. Select, with the coverage map and the configured target.
+ *   6. Select, with the completion set.
  *   7. Persist with 1-based positions derived from the selected order.
  *   8. Read back, and project to `AllocatedEntry`.
  *
@@ -266,8 +265,7 @@ export async function allocateBatch(
     const selected = selectBatchEntries(
       pool,
       answered,
-      coverageByEntry(pool, responses),
-      dependencies.config.independentValidationTarget,
+      completedEntryIds(pool, responses),
       size,
       dependencies.random,
     );

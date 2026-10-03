@@ -363,7 +363,7 @@ describe("which entry a session presents", () => {
  * the placement position, so a participant who reached `?position=7` and answered it is next sent to
  * `?position=8`, leaving position 1 outstanding. Nothing is lost — the resolver falls back to the
  * first remaining entry once the requested position passes the end, so an earlier entry is never
- * permanently skipped and can still reach its coverage target.
+ * permanently skipped and remains available for the validating package that completes it.
  *
  * But NO SCENARIO specifies which behaviour is correct here. "The next entry in the order the server
  * allocated" is satisfied by both readings when a validator answers in order, which is the only way

@@ -93,9 +93,7 @@ function isPresent(value: string | null | undefined): boolean {
 /**
  * Whether one stored response counts toward qualifying coverage.
  *
- * RESEARCH INTEGRITY, stated once. An entry leaves the allocation pool when it has the configured
- * number of qualifying responses from DISTINCT validators, and a response qualifies only if all of
- * the following hold:
+ * RESEARCH INTEGRITY, stated once. A response qualifies only if all of the following hold:
  *
  *   - the evaluation supplies translatable content (so not `cannot_evaluate`);
  *   - any required correction is actually present;
@@ -105,7 +103,12 @@ function isPresent(value: string | null | undefined): boolean {
  * The consequence that matters: **this is not a row count.** A `cannot_evaluate` response counts
  * zero. A partial response counts zero. A stored row that predates the bilingual requirement and is
  * missing either translation counts zero. Three raw rows of which only two carry a complete
- * bilingual pair is TWO qualifying validations, and the entry stays in the pool.
+ * bilingual pair is TWO qualifying validations.
+ *
+ * Whether that count completes an entry is a separate question, answered by
+ * {@link isEntryComplete} rather than here. A single qualifying validation completes the entry, so
+ * this predicate decides *which responses count* and the completion rule decides *what the count
+ * means*.
  *
  * The rejected alternative is a SQL expression. It would be a second, independent implementation of
  * the same rule in another language, and the two would drift — and a drifted coverage count is
@@ -151,13 +154,14 @@ export interface CoverageResponseShape extends QualifyingResponseShape {
  *
  *   1. **Not every response qualifies.** A `cannot_evaluate` response, a partial response, and a
  *      legacy row missing a translation all count zero. Three stored rows of which only two carry
- *      a complete bilingual pair is TWO, and the entry stays in the allocation pool.
- *   2. **A validator counts once.** The methodology retires an entry at the configured number of
- *      qualifying validations from DISTINCT validators, so two responses from the same person are
- *      one validator's opinion, not two. The database makes this structurally impossible for one
- *      entry via `UNIQUE (validator_id, dataset_entry_id)`, and this function does not rely on
- *      that: it deduplicates explicitly, because a consumer that assembled its list some other way
- *      would otherwise silently get a different answer from the same rule.
+ *      a complete bilingual pair is TWO.
+ *   2. **A validator counts once.** Two qualifying rows from the same validator are one validator's
+ *      opinion, not two. The database makes this structurally impossible for one entry via
+ *      `UNIQUE (validator_id, dataset_entry_id)`, and this function does not rely on that: it
+ *      deduplicates explicitly, because a consumer that assembled its list some other way would
+ *      otherwise silently get a different answer from the same rule. What nothing compares this
+ *      count against any more is a target — a single qualifying validation completes the entry, so
+ *      the count is a diagnostic and {@link isEntryComplete} is the decision.
  *
  * The duplicate branch is unreachable through the repository and is tested anyway. An unreachable
  * branch that is never exercised is an untested branch, and a research metric's failure mode is
@@ -171,4 +175,28 @@ export function countQualifyingValidations(responses: readonly CoverageResponseS
   }
 
   return validators.size;
+}
+
+/**
+ * Whether a dataset entry is complete: at least one of its stored responses establishes the
+ * complete bilingual package.
+ *
+ * This is the whole of completion, in one function, and it is deliberately a BOOLEAN rather than a
+ * count compared against a target. There is no three-validator target, no three-attempt target, and
+ * no 0/1/2/3 coverage level: an entry with one qualifying validation and an entry with fifty are
+ * both complete, and an entry whose only responses are `cannot_evaluate`, partial, or missing a
+ * translation is incomplete however many rows it holds. The raw count of stored rows plays no part
+ * in the decision.
+ *
+ * The function is `some(isQualifyingValidation)` and says so openly, rather than re-implementing
+ * the qualifying rule. A second implementation of which responses qualify would be the drift this
+ * module's header warns about; the decision here is only what one qualifying response *means*.
+ *
+ * Like {@link countQualifyingValidations}, this takes the entry's stored responses and nothing
+ * else: no validator count, no target, no configuration. Every consumer that reports completion —
+ * allocation eligibility, dashboard figures, and export status — calls this function, so
+ * disagreement is impossible rather than merely detectable.
+ */
+export function isEntryComplete(responses: readonly QualifyingResponseShape[]): boolean {
+  return responses.some(isQualifyingValidation);
 }

@@ -30,18 +30,18 @@ vi.mock("server-only", () => ({}));
  * =============================================================================
  * WHY THIS FILE IS NOT A DUPLICATE OF `allocation.test.ts`
  * =============================================================================
- * `allocation.test.ts` proves the ORDER the pure rule imposes, in isolation. It is handed a coverage map
- * and never derives one, so nothing in it can catch the failure this file exists to catch: a service
- * that feeds the rule the wrong NUMBERS.
+ * `allocation.test.ts` proves the ORDER the pure rule imposes, in isolation. It is handed a
+ * completion set and never derives one, so nothing in it can catch the failure this file exists
+ * to catch: a service that feeds the rule the wrong MEMBERSHIP.
  *
  * =============================================================================
  * THE TEST THAT MATTERS MOST, and why it is written the way it is
  * =============================================================================
- * "An entry whose stored responses are all `cannot_evaluate` is offered with zero coverage" is the spec
+ * "An entry whose stored responses are all `cannot_evaluate` is still offered" is the spec
  * scenario an implementation is most likely to pass by accident. `ValidationsRepository` exposes a
  * convenient `countForEntry`, a single call that returns a number, while the correct path is a read
- * plus a reduce through `countQualifyingValidations`. Substituting the convenient method makes three
- * `cannot_evaluate` responses look like full coverage and retires an entry nobody has judged — and
+ * plus a reduce through `isEntryComplete`. Substituting the convenient method makes three
+ * `cannot_evaluate` responses look like a judged entry and retires one nobody has validated — and
  * the resulting over-collection is invisible: it looks like diligence.
  *
  * So the fake below makes the two paths produce DIFFERENT answers for the same stored data. If anyone
@@ -319,21 +319,21 @@ beforeEach(() => {
 });
 
 describe("an entry whose stored responses are all non-qualifying stays in the pool", () => {
-  it("offers the entry at zero coverage despite three stored response rows", async () => {
-    // The scenario the whole coverage rule exists for. Three rows, three distinct validators, and
-    // NONE of them a qualifying completed validation — so coverage is 0 and the entry is still the
-    // most under-covered thing in the pool.
-    const target = entry("OD_0001");
+  it("offers the entry as incomplete despite three stored response rows", async () => {
+    // The scenario the whole completion rule exists for. Three rows, three distinct validators, and
+    // NONE of them a qualifying completed validation — so the entry is incomplete and still in the
+    // pool, however many rows it holds.
+    const judged = entry("OD_0001");
     const other = entry("OD_0002");
     const fakes = createFakes({
-      pool: [other, target],
-      responses: cannotEvaluateOnly(target.id),
+      pool: [other, judged],
+      responses: cannotEvaluateOnly(judged.id),
     });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
     const ids = allocated(outcome).entries.map((candidate) => candidate.id);
-    expect(ids[0]).toBe(target.id);
+    expect(ids[0]).toBe(judged.id);
   });
 
   it("proves it reads the responses and reduces them rather than counting rows", async () => {
@@ -350,11 +350,11 @@ describe("an entry whose stored responses are all non-qualifying stays in the po
     expect(fakes.countOf("validations.countForEntry")).toBe(0);
   });
 
-  it("counts repeated qualifying responses from ONE validator once", async () => {
+  it("treats repeated qualifying responses from ONE validator as completing the entry", async () => {
     // Structurally impossible in production — `UNIQUE (validator_id, dataset_entry_id)` refuses the
     // second row — so it is exercised here to pin what the reduce does if the constraint is ever
-    // dropped. Two rows, one validator, coverage 1, so the entry is still eligible against a target
-    // of 3 but outranks an entry with no responses at all.
+    // dropped. Two qualifying rows mean a validating package exists, so the entry is complete and
+    // leaves the pool even though only one validator ever judged it.
     const twice = entry("OD_0001");
     const untouched = entry("OD_0002");
     const fakes = createFakes({
@@ -367,14 +367,55 @@ describe("an entry whose stored responses are all non-qualifying stays in the po
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
-    const ids = allocated(outcome).entries.map((candidate) => candidate.id);
-    expect(ids[0]).toBe(untouched.id);
-    expect(ids).toContain(twice.id);
+    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual([untouched.id]);
+  });
+
+  it("keeps offering an entry whose only responses are cannot_evaluate, however many", async () => {
+    // The count of rows has no part in the decision: five non-qualifying rows are still no
+    // validating package. If the reduce ever degenerated into a row count, this entry would read
+    // as judged five times over and leave the pool.
+    const judged = entry("OD_0001");
+    const other = entry("OD_0002");
+    const validators = [
+      "VAL_0000bbb1",
+      "VAL_0000bbb2",
+      "VAL_0000bbb3",
+      "VAL_0000bbb4",
+      "VAL_0000bbb5",
+    ];
+    const fakes = createFakes({
+      pool: [judged, other],
+      responses: validators.map((validatorId) =>
+        response({ datasetEntryId: judged.id, validatorId, evaluation: "cannot_evaluate" }),
+      ),
+    });
+
+    const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toContain(judged.id);
   });
 });
 
-describe("the coverage target", () => {
-  it("does not offer an entry that has reached the configured target", async () => {
+describe("completion retires the entry", () => {
+  it("does not offer an entry that holds a validating package", async () => {
+    // ONE qualifying response is enough: the entry is complete and leaves the pool for everyone,
+    // not just for the validator who supplied it.
+    const retired = entry("OD_0001");
+    const live = entry("OD_0002");
+    const fakes = createFakes({
+      pool: [retired, live],
+      responses: [response({ datasetEntryId: retired.id, validatorId: "VAL_0000ccc1" })],
+    });
+
+    const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+    const ids = allocated(outcome).entries.map((candidate) => candidate.id);
+    expect(ids).toEqual([live.id]);
+  });
+
+  it("keeps a complete entry out of the pool when further qualifying responses arrive", async () => {
+    // A second and third validating package do not bring a retired entry back. The entry stays
+    // complete and stays out, however many qualifying responses accumulate behind it.
     const retired = entry("OD_0001");
     const live = entry("OD_0002");
     const fakes = createFakes({
@@ -386,41 +427,33 @@ describe("the coverage target", () => {
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
-    const ids = allocated(outcome).entries.map((candidate) => candidate.id);
-    expect(ids).toEqual([live.id]);
+    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual([live.id]);
   });
 
-  it("compares against the CONFIGURED target, so a changed target changes the pool", async () => {
-    // "Reached", not "exceeds": at a target of 3 the third qualifying validation retires the entry. At
-    // a target of 4 the same data leaves it eligible. A rule with `>` hard-coded would serve every entry
-    // one extra time, and the resulting over-collection is invisible in the data.
-    const retired = entry("OD_0001");
-    const live = entry("OD_0002");
+  it("serves the whole requested size from the incomplete pool", async () => {
+    // Five incomplete entries and a requested size of five: the batch is full, with no tier to
+    // fill past and no target to consult.
+    const pool = [
+      entry("OD_0001"),
+      entry("OD_0002"),
+      entry("OD_0003"),
+      entry("OD_0004"),
+      entry("OD_0005"),
+    ];
     const fakes = createFakes({
-      pool: [retired, live],
-      responses: ["VAL_0000ccc1", "VAL_0000ccc2", "VAL_0000ccc3"].map((validatorId) =>
-        response({ datasetEntryId: retired.id, validatorId }),
-      ),
-    });
-
-    const outcome = await allocateBatch(
-      request,
-      dependenciesFor(fakes, { config: config({ independentValidationTarget: 4 }) }),
-    );
-
-    // Under the higher target the retired entry is eligible again. It is NOT first — the other entry
-    // has coverage 0 against its 3 — and the ordering assertion belongs to the rule's own tests.
-    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toContain(retired.id);
-  });
-
-  it("serves the whole requested size even when it means going past the lowest-coverage group", async () => {
-    const lowest = [entry("OD_0001"), entry("OD_0002")];
-    const higher = [entry("OD_0003"), entry("OD_0004"), entry("OD_0005")];
-    const fakes = createFakes({
-      pool: [...lowest, ...higher],
-      responses: higher.flatMap((candidate) => [
-        response({ datasetEntryId: candidate.id, validatorId: "VAL_0000ddd1" }),
-      ]),
+      pool,
+      responses: [
+        response({
+          datasetEntryId: "OD_0003",
+          validatorId: "VAL_0000ddd1",
+          evaluation: "cannot_evaluate",
+        }),
+        response({
+          datasetEntryId: "OD_0004",
+          validatorId: "VAL_0000ddd2",
+          evaluation: "cannot_evaluate",
+        }),
+      ],
     });
 
     const outcome = await allocateBatch(
@@ -428,7 +461,6 @@ describe("the coverage target", () => {
       dependenciesFor(fakes, { config: config({ batchSize: 5 }) }),
     );
 
-    // All three higher-coverage entries are included, so the batch is not short.
     expect(allocated(outcome).entries).toHaveLength(5);
   });
 
@@ -460,11 +492,11 @@ describe("an entry the validator already answered", () => {
     expect(ids).toContain(theirs.id);
   });
 
-  it("excludes it even when the stored response does not qualify toward coverage", async () => {
-    // Two independent rules that must not be confused. `cannot_evaluate` contributes ZERO to coverage,
-    // so it would not retire the entry on its own — but the validator who submitted it must still never
-    // be asked again, because the methodology forbids one person judging an entry twice. Reading
-    // exclusion off the coverage figure would get this wrong.
+  it("excludes it even when the stored response does not qualify", async () => {
+    // Two independent rules that must not be confused. `cannot_evaluate` never completes an entry,
+    // so it would not retire it on its own — but the validator who submitted it must still never
+    // be asked again, because one attempt never answers one entry twice. Reading exclusion off the
+    // completion figure would get this wrong.
     const mine = entry("OD_0001");
     const theirs = entry("OD_0002");
     const fakes = createFakes({
@@ -483,9 +515,10 @@ describe("an entry the validator already answered", () => {
     expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual([theirs.id]);
   });
 
-  it("excludes an entry even when its coverage is BELOW the target", async () => {
-    // The two rules again, at the boundary: OD_0001 has one qualifying validation against a target of
-    // 3, so it is under-covered and eligible by coverage — and still excluded for this validator.
+  it("excludes an entry that is already complete, by the answered rule rather than the completion rule", async () => {
+    // The two rules again, at the boundary: OD_0001 holds a validating package, so it is complete
+    // and out of the pool for everyone — and still excluded for this validator by the answered
+    // rule independently, which is what this test witnesses.
     const mine = entry("OD_0001");
     const theirs = entry("OD_0002");
     const fakes = createFakes({
@@ -549,7 +582,9 @@ describe("an exhausted pool", () => {
     expect(outcome).toEqual({ status: "exhausted" });
   });
 
-  it("reports exhausted when every remaining entry has reached the target", async () => {
+  it("reports exhausted when the only remaining entry is complete", async () => {
+    // Three qualifying responses behind one complete entry: further packages do not bring it back,
+    // so there is nothing left to offer.
     const fakes = createFakes({
       pool: [entry("OD_0001")],
       responses: ["VAL_0000eee1", "VAL_0000eee2", "VAL_0000eee3"].map((validatorId) =>
@@ -879,8 +914,8 @@ describe("what the requesting validator is shown", () => {
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
-    // Internal coverage is a research variable no validator has any business seeing: it would tell them
-    // which entries are under-collected.
+    // Internal completion figures are a research variable no validator has any business seeing:
+    // they would tell them which entries are still uncollected.
     const serialized = JSON.stringify(allocated(outcome));
     expect(serialized).not.toContain("VAL_0000fff1");
     expect(serialized).not.toContain("ilocanoProficiency");
@@ -950,7 +985,7 @@ describe("the read pattern", () => {
     await allocateBatch(request, dependenciesFor(fakes));
 
     // Per-entry reads would be up to 600 round trips for one request, and each a separate chance to
-    // observe a different snapshot of coverage.
+    // observe a different snapshot of completion.
     const call = fakes.calls.find((candidate) => candidate.method === "validations.listForEntries");
     expect((call?.argument as DatasetEntryId[]).length).toBe(25);
   });
@@ -960,8 +995,8 @@ describe("the read pattern", () => {
 
     await allocateBatch(request, dependenciesFor(fakes));
 
-    // Category-conditional allocation would let a category with no under-covered entries starve while
-    // another had them, and that is a coverage-reporting question rather than an allocation one.
+    // Category-conditional allocation would let a category with no incomplete entries starve while
+    // another had them, and that is a completion-reporting question rather than an allocation one.
     expect(
       fakes.calls.find((call) => call.method === "datasetEntries.listActive")?.argument,
     ).toBeUndefined();

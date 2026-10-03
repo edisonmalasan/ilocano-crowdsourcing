@@ -26,7 +26,7 @@ const FULL: ExportRecord = {
   corrected_instruction: null,
   english_translation: "Go north past the market.",
   filipino_translation: "Dumiretso ka sa hilaga.",
-  qualifies_toward_coverage: "true",
+  qualifies_toward_completion: "true",
   submitted_at: "2026-09-30T12:00:00.000Z",
 };
 

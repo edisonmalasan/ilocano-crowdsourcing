@@ -204,11 +204,27 @@ describe("a rejected payload", () => {
     expect(calls).toEqual([]);
   });
 
-  it("rejects a submitted order or coverage target for the same reason", async () => {
+  it("rejects a submitted order for the same reason", async () => {
     const { dependencies } = createRecordingDependencies();
 
     const outcome = await runAllocateBatch(
-      { validatorId: "VAL_a81d92c1", order: ["OD_0002", "OD_0001"], coverageTarget: 1 },
+      { validatorId: "VAL_a81d92c1", order: ["OD_0002", "OD_0001"] },
+      dependencies,
+    );
+
+    expect(outcome).toEqual({ status: "failed", reason: "invalid" });
+  });
+
+  it("rejects a submitted coverage target, because no such setting exists", async () => {
+    // The one deliberate exception to "no fixture carries a target": this test's whole point is to
+    // submit one. The intake is a `strictObject`, so an unrecognised key is rejected rather than
+    // stripped — and a coverage target is unrecognised by design, since the corrected methodology
+    // holds no number for it to set. Deleting this fixture would delete the only runtime witness
+    // of the ADDED scenario "A client cannot supply a coverage target".
+    const { dependencies } = createRecordingDependencies();
+
+    const outcome = await runAllocateBatch(
+      { validatorId: "VAL_a81d92c1", coverageTarget: 1 },
       dependencies,
     );
 
@@ -349,7 +365,7 @@ describe("continuing after a finished batch, through the action the continue con
    *   - it supplies the exclusion through the REPOSITORY seam (`listEntryIdsForValidator`) rather than
    *     by calling the selection rule, so the assertion is about what the action's callers observe.
    *
-   * What it does NOT do is re-test `selectBatchEntries`' ordering or coverage weighting. Those belong
+   * What it does NOT do is re-test `selectBatchEntries`' ordering or shuffling. Those belong
    * to the allocation unit and are not restated here.
    */
 

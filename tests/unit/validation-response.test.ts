@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   countQualifyingValidations,
+  isEntryComplete,
   isQualifyingValidation,
   requiresBilingualTranslations,
   type CoverageResponseShape,
@@ -796,6 +797,95 @@ describe("qualifying coverage over a set of responses", () => {
     }
 
     expect(cells).toBe(shapes.length ** 3);
+  });
+});
+
+describe("entry completion is a predicate, not a count", () => {
+  /**
+   * Local builders, deliberately NOT shared with the coverage block above. That block's helpers
+   * return `CoverageResponseShape` (they carry a `validatorId`); the completion predicate takes
+   * `QualifyingResponseShape` and must be exercised as taking it, so that a future edit which
+   * starts reading the validator id fails the type-check here instead of silently changing what
+   * completion depends on.
+   */
+  function completePackage(
+    overrides: Partial<QualifyingResponseShape> = {},
+  ): QualifyingResponseShape {
+    return {
+      evaluation: "correct_natural",
+      englishTranslation: ENGLISH,
+      filipinoTranslation: FILIPINO,
+      ...overrides,
+    };
+  }
+
+  function unevaluable(): QualifyingResponseShape {
+    return { evaluation: "cannot_evaluate" };
+  }
+
+  it("is complete with one qualifying response", () => {
+    expect(isEntryComplete([completePackage()])).toBe(true);
+  });
+
+  it("stays complete when further qualifying responses arrive", () => {
+    // A second response from another attempt does not make a complete entry less complete, and
+    // must not make it MORE complete either — there is no level above complete to reach.
+    expect(isEntryComplete([completePackage(), completePackage()])).toBe(true);
+  });
+
+  it("is complete with fifty qualifying responses, because the count plays no part", () => {
+    // The number the superseded methodology retired entries at. Under the corrected rule an entry
+    // with fifty qualifying validations is exactly as complete as an entry with one.
+    expect(isEntryComplete(Array.from({ length: 50 }, () => completePackage()))).toBe(true);
+  });
+
+  it("is incomplete with no stored response", () => {
+    expect(isEntryComplete([])).toBe(false);
+  });
+
+  it("is incomplete when the only response is cannot_evaluate", () => {
+    expect(isEntryComplete([unevaluable()])).toBe(false);
+  });
+
+  it("is incomplete however many cannot_evaluate responses it holds", () => {
+    // The count of rows has no part in the decision: many non-qualifying rows are still no
+    // qualifying package.
+    expect(
+      isEntryComplete([unevaluable(), unevaluable(), unevaluable(), unevaluable(), unevaluable()]),
+    ).toBe(false);
+  });
+
+  it("is incomplete when a response is missing a translation or a required correction", () => {
+    expect(isEntryComplete([completePackage({ filipinoTranslation: null })])).toBe(false);
+    expect(isEntryComplete([completePackage({ englishTranslation: "   " })])).toBe(false);
+    expect(
+      isEntryComplete([
+        {
+          evaluation: "incorrect",
+          englishTranslation: ENGLISH,
+          filipinoTranslation: FILIPINO,
+        },
+      ]),
+    ).toBe(false);
+  });
+
+  it("is complete with one qualifying response among several non-qualifying ones", () => {
+    // The non-qualifying responses neither delay nor reduce completion: one package is enough.
+    expect(isEntryComplete([unevaluable(), completePackage({}), unevaluable()])).toBe(true);
+  });
+
+  it("needs no validator to decide: the same package completes with or without one named", () => {
+    // The predicate takes `QualifyingResponseShape`, which has no validator field. A response that
+    // qualifies completes the entry regardless of whose it is — distinctness is a property of the
+    // attempt, enforced by the database, not an input to completion.
+    const withValidator: CoverageResponseShape = {
+      validatorId: "VAL_0000beef",
+      ...completePackage(),
+    };
+    const withoutValidator: QualifyingResponseShape = { ...completePackage() };
+
+    expect(isEntryComplete([withValidator])).toBe(true);
+    expect(isEntryComplete([withoutValidator])).toBe(true);
   });
 });
 
