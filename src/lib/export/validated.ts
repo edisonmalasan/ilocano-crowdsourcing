@@ -1,0 +1,212 @@
+/**
+ * The validated dataset: one derived record per complete entry.
+ *
+ * PURE, and importing nothing but the shared domain predicates — the same reason `records.ts`
+ * does: the artifact's content must be testable with fakes, no database, and no credential.
+ *
+ * ============================================================================
+ * DERIVED, NEVER CHOSEN
+ * ============================================================================
+ * For each complete entry exactly one stored response supplies the validated record: the
+ * earliest qualifying response by server-minted `createdAt`. `createdAt` is minted at insert,
+ * never supplied by a client, so earliest-by-clock is a mechanical rule rather than a judgment
+ * about which response is best. No vote is taken, no responses are merged, and no preferred
+ * validator is selected — the methodology forbids all three, and this module offers no code
+ * path that could express them.
+ *
+ * Two cases force `needs_review` without changing the pick:
+ *
+ *   - the shared review rule fires (evaluation disagreement or competing corrections);
+ *   - two qualifying responses share the same `createdAt`, so "earliest" is ambiguous.
+ *
+ * In the tie case the smallest validation id wins, stated as arbitrary and carrying no meaning:
+ * ids are CSPRNG hex, so their order means nothing, and a tie-break that pretended otherwise
+ * would be a finding dressed as a method. The flag says a human must decide; the determinism
+ * says the artifact is reproducible until they do.
+ *
+ * This document is the MECHANICAL CANDIDATE pending thesis-approved adjudication (Phase 12),
+ * and it says so in its own derivation block. Nothing here presents a record as adjudicated.
+ */
+
+import {
+  isCorrectionRequired,
+  isEntryComplete,
+  isQualifyingValidation,
+} from "@/lib/domain/validation-response";
+import { requiresResearcherReview } from "@/lib/domain/review-flags";
+import type { DatasetEntry } from "@/schemas/dataset";
+import type { ValidationResponse } from "@/schemas/validation";
+import type { ExportSourceWithQualifying } from "./records";
+
+/**
+ * The validated record's CSV column order.
+ *
+ * JSON nests origin/destination/transit_mode under `output`; CSV has no nesting, so the same
+ * leaves travel flat. Both forms carry the same leaf values — the parity test asserts leaves,
+ * not structure, and says so.
+ */
+export const VALIDATED_RECORD_KEYS = [
+  "id",
+  "validated_ilocano",
+  "english_translation",
+  "filipino_translation",
+  "origin",
+  "destination",
+  "transit_mode",
+  "source_validation_id",
+  "needs_review",
+] as const;
+
+export type ValidatedRecordKey = (typeof VALIDATED_RECORD_KEYS)[number];
+
+/** One validated entry, as the JSON document carries it. */
+export interface ValidatedRecord {
+  readonly id: string;
+  readonly validated_ilocano: string;
+  readonly english_translation: string;
+  readonly filipino_translation: string;
+  readonly output: {
+    readonly origin: string | null;
+    readonly destination: string | null;
+    readonly transit_mode: string | null;
+  };
+  /** The supplying response's id: provenance back to the raw record, without naming whose. */
+  readonly source_validation_id: string;
+  readonly needs_review: boolean;
+}
+
+/** One validated entry flattened for CSV, in `VALIDATED_RECORD_KEYS` order. */
+export type ValidatedCsvRow = Readonly<Record<ValidatedRecordKey, string | null>>;
+
+/** The derivation rule, stated in the artifact so no reader mistakes it for adjudication. */
+export interface ValidatedDerivation {
+  readonly rule: "earliest-qualifying-package-by-server-created-at";
+  readonly tie_break: "smallest-validation-id-arbitrary-carries-no-meaning";
+  /** Complete entries omitted: none — every complete entry derives exactly one record. */
+  readonly omitted_incomplete_entries: number;
+}
+
+/** The validated document: its rule, then its records. */
+export interface ValidatedDataset {
+  readonly derivation: ValidatedDerivation;
+  readonly records: readonly ValidatedRecord[];
+}
+
+/**
+ * The validated Ilocano sentence for one qualifying response over its entry.
+ *
+ * The correction where the evaluation required one, otherwise the source instruction,
+ * byte-identical — a correction is never written onto the entry, and the entry is never altered
+ * to match a correction. The throw is unreachable through qualifying responses and is tested
+ * anyway: a qualifying response missing its required correction means the qualifying predicate
+ * and this function disagree about what qualifies, which is precisely the drift this module
+ * must not permit silently.
+ */
+export function validatedIlocanoFor(entry: DatasetEntry, response: ValidationResponse): string {
+  if (!isCorrectionRequired(response.evaluation)) return entry.instruction;
+  const correction = response.correctedInstruction;
+  if (typeof correction === "string" && correction.trim().length > 0) return correction;
+  throw new Error(`qualifying response ${response.id} requires a correction it does not carry`);
+}
+
+/**
+ * The supplying response: earliest qualifying by server-minted `createdAt`, ties by smallest id.
+ *
+ * Sorts a copy: the caller's array order is the repository's, and sorting it in place would
+ * corrupt the grouping the caller still owns.
+ */
+function supplyingResponse(
+  rows: readonly ExportSourceWithQualifying[],
+): ExportSourceWithQualifying {
+  const qualifying = rows.filter((row) => isQualifyingValidation(row.response));
+  const ordered = [...qualifying].sort(
+    (left, right) =>
+      left.response.createdAt.localeCompare(right.response.createdAt) ||
+      (left.response.id < right.response.id ? -1 : left.response.id > right.response.id ? 1 : 0),
+  );
+  const first = ordered[0];
+  if (first === undefined) throw new Error("no qualifying response to supply a validated record");
+  return first;
+}
+
+/** True when "earliest" is ambiguous: two qualifying packages share one instant. */
+function hasTimestampTie(rows: readonly ExportSourceWithQualifying[]): boolean {
+  const ats = rows
+    .filter((row) => isQualifyingValidation(row.response))
+    .map((row) => row.response.createdAt)
+    .sort();
+  return ats.length > 1 && ats[0] === ats[1];
+}
+
+/**
+ * One validated record per complete entry, in entry order. Incomplete entries are absent, not
+ * zero-filled: nothing is validated for them yet, and inventing a row would fabricate a finding.
+ */
+export function buildValidatedDataset(
+  entries: readonly DatasetEntry[],
+  sources: readonly ExportSourceWithQualifying[],
+): ValidatedDataset {
+  const groups = new Map<string, ExportSourceWithQualifying[]>();
+  for (const entry of entries) groups.set(entry.id, []);
+  for (const source of sources) {
+    // Same orphan rule as the raw summary: a response whose entry is not in the supplied set has
+    // no entry row to derive from, and inventing one would fabricate a dataset entry.
+    groups.get(source.entry.id)?.push(source);
+  }
+
+  const records: ValidatedRecord[] = [];
+  for (const entry of entries) {
+    const rows = groups.get(entry.id) ?? [];
+    if (!isEntryComplete(rows.map((row) => row.response))) continue;
+    const supplying = supplyingResponse(rows);
+    const response = supplying.response;
+    const english = response.englishTranslation;
+    const filipino = response.filipinoTranslation;
+    // Qualifying guarantees both translations present-and-non-blank; the guards below turn a
+    // drift between the predicate and this function into a loud failure rather than a blank cell.
+    if (typeof english !== "string" || english.trim().length === 0) {
+      throw new Error(`qualifying response ${response.id} carries no English translation`);
+    }
+    if (typeof filipino !== "string" || filipino.trim().length === 0) {
+      throw new Error(`qualifying response ${response.id} carries no Filipino translation`);
+    }
+    records.push({
+      id: entry.id,
+      validated_ilocano: validatedIlocanoFor(entry, response),
+      english_translation: english,
+      filipino_translation: filipino,
+      output: {
+        origin: entry.origin,
+        destination: entry.destination,
+        transit_mode: entry.transitMode,
+      },
+      source_validation_id: response.id,
+      needs_review:
+        requiresResearcherReview(rows.map((row) => row.response)) || hasTimestampTie(rows),
+    });
+  }
+
+  return {
+    derivation: {
+      rule: "earliest-qualifying-package-by-server-created-at",
+      tie_break: "smallest-validation-id-arbitrary-carries-no-meaning",
+      omitted_incomplete_entries: entries.length - records.length,
+    },
+    records,
+  };
+}
+
+/** One validated record flattened for CSV. `needs_review` travels as "true"/"false". */
+export function validatedCsvRow(record: ValidatedRecord): ValidatedCsvRow {
+  return {
+    id: record.id,
+    validated_ilocano: record.validated_ilocano,
+    english_translation: record.english_translation,
+    filipino_translation: record.filipino_translation,
+    origin: record.output.origin,
+    destination: record.output.destination,
+    transit_mode: record.output.transit_mode,
+    source_validation_id: record.source_validation_id,
+    needs_review: record.needs_review ? "true" : "false",
+  };
+}

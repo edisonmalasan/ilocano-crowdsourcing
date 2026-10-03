@@ -55,6 +55,26 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           />
           <Figure label="Complete entries" value={String(overview.buckets.complete)} />
           <Figure label="Incomplete entries" value={String(overview.buckets.incomplete)} />
+          <Figure label="Stored responses" value={String(overview.totalResponses)} />
+          <Figure label="Cannot-evaluate responses" value={String(overview.cannotEvaluateCount)} />
+          <Figure
+            label="Entries with extra packages"
+            value={String(overview.extraPackageEntries.length)}
+            hint={
+              overview.extraPackageEntries.length === 0
+                ? "No overlapping entries"
+                : `Entries: ${overview.extraPackageEntries.join(", ")}`
+            }
+          />
+          <Figure
+            label="Late-arrival responses"
+            value={String(overview.lateArrivalCount)}
+            hint={
+              overview.lateArrivalCount === 0
+                ? "No late arrivals"
+                : `Entries: ${overview.lateArrivalEntryIds.join(", ")}`
+            }
+          />
           <Figure label="Needs researcher review" value={String(overview.reviewEntryIds.length)} />
         </div>
       </section>

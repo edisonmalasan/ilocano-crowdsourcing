@@ -146,6 +146,12 @@ export interface ExportSummary {
     readonly stored_responses: number;
     readonly entries_with_coverage_complete: number;
     readonly entries_requiring_review: number;
+    /**
+     * Incomplete entries, which the validated dataset omits rather than zero-fills. Stated here
+     * so the summary names how many entries were left out and why; the validated document's own
+     * derivation block carries the same number, and the two are asserted equal.
+     */
+    readonly omitted_from_validated: number;
   };
   readonly by_category: readonly CategorySummary[];
   readonly by_entry: readonly EntrySummary[];
@@ -240,6 +246,8 @@ export function buildExportSummary(
         accumulated.entries_with_coverage_complete + (entry.coverage_complete ? 1 : 0),
       entries_requiring_review:
         accumulated.entries_requiring_review + (entry.requires_researcher_review ? 1 : 0),
+      omitted_from_validated:
+        accumulated.omitted_from_validated + (entry.coverage_complete ? 0 : 1),
     }),
     {
       qualifying_validations: 0,
@@ -247,6 +255,7 @@ export function buildExportSummary(
       stored_responses: 0,
       entries_with_coverage_complete: 0,
       entries_requiring_review: 0,
+      omitted_from_validated: 0,
     },
   );
 

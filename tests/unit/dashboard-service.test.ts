@@ -8,19 +8,21 @@
  * unrecorded proficiency, and one empty entry, so every clause of the approved rule has a row
  * that exercises it and no clause shares a row with another.
  *
- * Fixture map (qualifying counts in brackets; complete/incomplete beside it):
+ * Fixture map (qualifying counts in brackets; complete/incomplete beside it; timestamps
+ * after the id where they differ from the AT("02") default):
  *
- *   E1 [3]  three `correct_natural`, agree — complete, no flag
- *   E2 [2]  two qualifying — complete, no flag
- *   E3 [1]  one qualifying plus one `cannot_evaluate` — complete, no flag
+ *   E1 [3]  three `correct_natural`, agree — complete, no flag, overlap, no late arrival
+ *   E2 [2]  two qualifying, second at AT("03") — complete, no flag, overlap, one late arrival
+ *   E3 [1]  one qualifying plus one `cannot_evaluate` — complete, no flag, no overlap
  *   E4 [0]  no responses — incomplete
- *   E5 [3]  evaluations disagree — complete AND flagged
- *   E6 [3]  two distinct corrections — complete AND flagged
+ *   E5 [3]  evaluations disagree, third at AT("04") — complete AND flagged, overlap, one late
+ *   E6 [3]  two distinct corrections, third at AT("05") — complete AND flagged, overlap, one late
  *
  * Five of six entries hold a validating package, so the partition is five complete and one
- * incomplete. Validators V1..V5 carry fluent / native / conversational / null / basic; V5's null
- * is the unrecorded bucket. Thirteen stored responses, twelve qualifying, five responding
- * validators.
+ * incomplete. Overlap entries are E1, E2, E5, E6; late arrivals are r05, r10, r13 — one per
+ * overlapped entry except E1, whose three packages share one instant. Validators V1..V5 carry
+ * fluent / native / conversational / null / basic; V5's null is the unrecorded bucket. Thirteen
+ * stored responses, twelve qualifying, one abstention, five responding validators.
  */
 import { describe, expect, it } from "vitest";
 
@@ -76,7 +78,11 @@ const RESPONSES: ValidationResponse[] = [
   response("r02", "VAL_00000002", "E1", "correct_natural", bilingual),
   response("r03", "VAL_00000003", "E1", "correct_natural", bilingual),
   response("r04", "VAL_00000001", "E2", "correct_natural", bilingual),
-  response("r05", "VAL_00000002", "E2", "correct_natural", bilingual),
+  response("r05", "VAL_00000002", "E2", "correct_natural", {
+    ...bilingual,
+    createdAt: AT("03"),
+    updatedAt: AT("03"),
+  }),
   response("r06", "VAL_00000001", "E3", "correct_natural", bilingual),
   response("r07", "VAL_00000004", "E3", "cannot_evaluate"),
   response("r08", "VAL_00000001", "E5", "correct_natural", bilingual),
@@ -84,6 +90,8 @@ const RESPONSES: ValidationResponse[] = [
   response("r10", "VAL_00000003", "E5", "incorrect", {
     correctedInstruction: "naurnos a balikas",
     ...bilingual,
+    createdAt: AT("04"),
+    updatedAt: AT("04"),
   }),
   response("r11", "VAL_00000001", "E6", "incorrect", {
     correctedInstruction: "balikas a",
@@ -96,6 +104,8 @@ const RESPONSES: ValidationResponse[] = [
   response("r13", "VAL_00000005", "E6", "incorrect", {
     correctedInstruction: "balikas a",
     ...bilingual,
+    createdAt: AT("05"),
+    updatedAt: AT("05"),
   }),
 ];
 
@@ -146,9 +156,24 @@ describe("loadDashboardOverview", () => {
     expect(overview.totalEntries).toBe(6);
     expect(overview.totalQualifyingValidations).toBe(12);
     expect(overview.totalValidators).toBe(5);
+    expect(overview.totalResponses).toBe(13);
+    expect(overview.cannotEvaluateCount).toBe(1);
     expect(overview.buckets).toEqual({ incomplete: 1, complete: 5 });
     expect(overview.coveragePercentage).toBe(83.3);
     expect(overview.reviewEntryIds).toEqual(["E5", "E6"]);
+  });
+
+  it("reports overlap and late arrivals as diagnostics, never as demotions", async () => {
+    // Four entries hold extra packages and three hold late arrivals, yet all five complete
+    // entries stay complete: overlap is a collection diagnostic, and the partition does not
+    // move because of it. E1 overlaps with no late arrival (one shared instant); E3 neither
+    // overlaps nor arrives late (one package, one abstention at the same instant).
+    const overview = await loadDashboardOverview(repositories());
+
+    expect(overview.extraPackageEntries).toEqual(["E1", "E2", "E5", "E6"]);
+    expect(overview.lateArrivalCount).toBe(3);
+    expect(overview.lateArrivalEntryIds).toEqual(["E2", "E5", "E6"]);
+    expect(overview.buckets).toEqual({ incomplete: 1, complete: 5 });
   });
 
   it("distributes evaluations over responses and proficiencies over validators", async () => {
@@ -185,6 +210,11 @@ describe("loadDashboardOverview", () => {
     expect(overview.coveragePercentage).toBe(0);
     expect(Number.isNaN(overview.coveragePercentage)).toBe(false);
     expect(overview.reviewEntryIds).toEqual([]);
+    expect(overview.totalResponses).toBe(0);
+    expect(overview.cannotEvaluateCount).toBe(0);
+    expect(overview.extraPackageEntries).toEqual([]);
+    expect(overview.lateArrivalCount).toBe(0);
+    expect(overview.lateArrivalEntryIds).toEqual([]);
   });
 });
 

@@ -144,7 +144,7 @@ describe("a full round trip", () => {
       corrected_instruction: 'Iti, Baguio — " Athletic Bowl',
     };
 
-    const rows = parseCsv(buildCsv([nasty]));
+    const rows = parseCsv(buildCsv([nasty], EXPORT_RECORD_KEYS));
 
     expect(rows).toHaveLength(2);
     const header = rows[0] as string[];
@@ -167,17 +167,20 @@ describe("a full round trip", () => {
       evaluation: "cannot_evaluate",
     };
 
-    const rows = parseCsv(buildCsv([sparse]));
+    const rows = parseCsv(buildCsv([sparse], EXPORT_RECORD_KEYS));
 
     expect(rows[1]).toHaveLength(EXPORT_RECORD_KEYS.length);
   });
 
   it("does not merge two records into one row", () => {
     const rows = parseCsv(
-      buildCsv([
-        { ...FULL, validation_id: "res_01" },
-        { ...FULL, validation_id: "res_02" },
-      ]),
+      buildCsv(
+        [
+          { ...FULL, validation_id: "res_01" },
+          { ...FULL, validation_id: "res_02" },
+        ],
+        EXPORT_RECORD_KEYS,
+      ),
     );
 
     expect(rows).toHaveLength(3);
@@ -186,11 +189,11 @@ describe("a full round trip", () => {
   });
 
   it("ends the document on a line boundary", () => {
-    expect(buildCsv([FULL]).endsWith("\n")).toBe(true);
+    expect(buildCsv([FULL], EXPORT_RECORD_KEYS).endsWith("\n")).toBe(true);
   });
 
   it("emits a header even with no records", () => {
-    expect(buildCsv([])).toBe(`${EXPORT_RECORD_KEYS.join(",")}\n`);
+    expect(buildCsv([], EXPORT_RECORD_KEYS)).toBe(`${EXPORT_RECORD_KEYS.join(",")}\n`);
   });
 });
 
@@ -203,6 +206,6 @@ describe("csvRow", () => {
       [...EXPORT_RECORD_KEYS].reverse().map((key) => [key, FULL[key]]),
     ) as ExportRecord;
 
-    expect(csvRow(reordered)).toBe(csvRow(FULL));
+    expect(csvRow(reordered, EXPORT_RECORD_KEYS)).toBe(csvRow(FULL, EXPORT_RECORD_KEYS));
   });
 });

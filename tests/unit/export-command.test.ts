@@ -27,6 +27,8 @@ import {
   EXIT_MISCONFIGURED,
   EXIT_OK,
   SUMMARY_JSON,
+  VALIDATED_CSV,
+  VALIDATED_JSON,
   VALIDATIONS_CSV,
   VALIDATIONS_JSON,
   collectExportSources,
@@ -163,7 +165,7 @@ describe("collectExportSources", () => {
 });
 
 describe("renderDocuments", () => {
-  it("produces three documents that describe the same records", async () => {
+  it("produces five documents that describe the same records", async () => {
     const { entries, sources: rows } = await collectExportSources(sources(), () => {});
     const documents = renderDocuments(rows, entries);
 
@@ -173,7 +175,16 @@ describe("renderDocuments", () => {
     expect(JSON.parse(documents.summaryJson)).toMatchObject({
       totals: { stored_responses: 2, qualifying_validations: 2 },
     });
-    expect(documents.result).toEqual({ entries: 2, responses: 2, qualifying: 2 });
+    // Both fixture responses qualify, but both belong to E1 — E2 holds nothing and is
+    // omitted rather than zero-filled. The command-level witness of the omission rule.
+    const validated = JSON.parse(documents.validatedJson) as {
+      records: unknown[];
+      derivation: { omitted_incomplete_entries: number };
+    };
+    expect(validated.records).toHaveLength(1);
+    expect(validated.derivation.omitted_incomplete_entries).toBe(1);
+    expect(documents.validatedCsv.trimEnd().split("\n")).toHaveLength(2);
+    expect(documents.result).toEqual({ entries: 2, responses: 2, qualifying: 2, validated: 1 });
   });
 
   it("ends the JSON documents on a newline, so a diff shows a trailing change", () => {
@@ -184,11 +195,13 @@ describe("renderDocuments", () => {
     expect(documents.validationsJson.endsWith("\n")).toBe(true);
     expect(documents.summaryJson.endsWith("\n")).toBe(true);
     expect(JSON.parse(documents.validationsJson)).toEqual([]);
+    expect(documents.validatedJson.endsWith("\n")).toBe(true);
+    expect(JSON.parse(documents.validatedJson)).toMatchObject({ records: [] });
   });
 });
 
 describe("runExport", () => {
-  it("writes exactly the three named files into the operator's directory", async () => {
+  it("writes exactly the five named files into the operator's directory", async () => {
     const directory = join(tempDir(), "export");
     const lines: string[] = [];
 
@@ -200,7 +213,7 @@ describe("runExport", () => {
 
     expect(code).toBe(EXIT_OK);
     expect(readdirSync(directory).sort()).toEqual(
-      [SUMMARY_JSON, VALIDATIONS_CSV, VALIDATIONS_JSON].sort(),
+      [SUMMARY_JSON, VALIDATED_CSV, VALIDATED_JSON, VALIDATIONS_CSV, VALIDATIONS_JSON].sort(),
     );
     expect(JSON.parse(readFileSync(join(directory, SUMMARY_JSON), "utf8"))).toMatchObject({
       generated_from: { entries: 2, stored_responses: 2 },
@@ -211,7 +224,7 @@ describe("runExport", () => {
   it("creates a missing destination rather than requiring it to exist", async () => {
     const directory = join(tempDir(), "a", "b", "c");
     await runExport({ sources: sources(), destination: directory, write: () => {} });
-    expect(readdirSync(directory).length).toBe(3);
+    expect(readdirSync(directory).length).toBe(5);
   });
 
   it("refuses with the destination named when the write cannot happen", async () => {

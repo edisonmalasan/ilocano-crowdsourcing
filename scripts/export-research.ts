@@ -51,9 +51,15 @@ import { buildCsv } from "@/lib/export/csv";
 import {
   buildExportRecords,
   buildExportSummary,
+  EXPORT_RECORD_KEYS,
   isQualifyingValidation,
   type ExportSourceWithQualifying,
 } from "@/lib/export/records";
+import {
+  buildValidatedDataset,
+  validatedCsvRow,
+  VALIDATED_RECORD_KEYS,
+} from "@/lib/export/validated";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin-client";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 import type { DatasetEntriesRepository } from "@/lib/repositories/dataset-entries-repository";
@@ -68,6 +74,8 @@ export const EXIT_MISCONFIGURED = 2;
 export const VALIDATIONS_JSON = "validations.json";
 export const VALIDATIONS_CSV = "validations.csv";
 export const SUMMARY_JSON = "summary.json";
+export const VALIDATED_JSON = "validated-dataset.json";
+export const VALIDATED_CSV = "validated-dataset.csv";
 
 const REQUIRED_ENV = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const;
 
@@ -124,6 +132,7 @@ export interface ExportResult {
   readonly entries: number;
   readonly responses: number;
   readonly qualifying: number;
+  readonly validated: number;
   readonly files: readonly string[];
 }
 
@@ -135,19 +144,25 @@ export function renderDocuments(
   validationsJson: string;
   validationsCsv: string;
   summaryJson: string;
+  validatedJson: string;
+  validatedCsv: string;
   result: Omit<ExportResult, "files">;
 } {
   const records = buildExportRecords(sources);
   const summary = buildExportSummary(entries, sources);
+  const validated = buildValidatedDataset(entries, sources);
 
   return {
     validationsJson: `${JSON.stringify(records, null, 2)}\n`,
-    validationsCsv: buildCsv(records),
+    validationsCsv: buildCsv(records, EXPORT_RECORD_KEYS),
     summaryJson: `${JSON.stringify(summary, null, 2)}\n`,
+    validatedJson: `${JSON.stringify(validated, null, 2)}\n`,
+    validatedCsv: buildCsv(validated.records.map(validatedCsvRow), VALIDATED_RECORD_KEYS),
     result: {
       entries: entries.length,
       responses: records.length,
       qualifying: summary.totals.qualifying_validations,
+      validated: validated.records.length,
     },
   };
 }
@@ -229,6 +244,12 @@ export async function runExport(options: {
       "utf8",
     );
     await writeFile(path.join(options.destination, SUMMARY_JSON), documents.summaryJson, "utf8");
+    await writeFile(
+      path.join(options.destination, VALIDATED_JSON),
+      documents.validatedJson,
+      "utf8",
+    );
+    await writeFile(path.join(options.destination, VALIDATED_CSV), documents.validatedCsv, "utf8");
   } catch (error) {
     // The destination is named in the refusal. An export that fails quietly is the worst outcome
     // available: the operator believes they have a dataset and do not.
@@ -238,10 +259,10 @@ export async function runExport(options: {
   }
 
   options.write(
-    `wrote ${VALIDATIONS_JSON}, ${VALIDATIONS_CSV} and ${SUMMARY_JSON} into ${options.destination}`,
+    `wrote ${VALIDATIONS_JSON}, ${VALIDATIONS_CSV}, ${SUMMARY_JSON}, ${VALIDATED_JSON} and ${VALIDATED_CSV} into ${options.destination}`,
   );
   options.write(
-    `${documents.result.entries} entries, ${documents.result.responses} responses, ${documents.result.qualifying} qualifying`,
+    `${documents.result.entries} entries, ${documents.result.responses} responses, ${documents.result.qualifying} qualifying, ${documents.result.validated} validated`,
   );
   return EXIT_OK;
 }

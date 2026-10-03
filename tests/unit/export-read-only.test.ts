@@ -21,6 +21,7 @@ const SCOPED = [
   path.join(ROOT, "scripts", "export-research.ts"),
   path.join(SRC, "lib", "export", "records.ts"),
   path.join(SRC, "lib", "export", "csv.ts"),
+  path.join(SRC, "lib", "export", "validated.ts"),
 ];
 
 /** Real production modules that really write, one per forbidden method. */
@@ -207,8 +208,8 @@ describe("the export performs no writes", () => {
     expect(apisPresent.sort()).toEqual(["mkdir", "writeFile"]);
   });
 
-  it("writes only the three declared artifact names, and nothing else", () => {
-    // The per-call half. Every `writeFile` must name one of the three artifacts, so a fourth write
+  it("writes only the five declared artifact names, and nothing else", () => {
+    // The per-call half. Every `writeFile` must name one of the five artifacts, so a sixth write
     // of a file nobody listed cannot hide behind an allowed API name.
     const command = stripComments(
       readFileSync(path.join(ROOT, "scripts", "export-research.ts"), "utf8"),
@@ -220,12 +221,18 @@ describe("the export performs no writes", () => {
     expect(writeCalls.length).toBeGreaterThan(0);
     for (const call of writeCalls) {
       expect(call, `a writeFile call must name a declared artifact: ${call.slice(0, 80)}`).toMatch(
-        /VALIDATIONS_JSON|VALIDATIONS_CSV|SUMMARY_JSON/,
+        /VALIDATIONS_JSON|VALIDATIONS_CSV|SUMMARY_JSON|VALIDATED_JSON|VALIDATED_CSV/,
       );
     }
-    // The three names are read from the command's own constants rather than restated, so this
+    // The five names are read from the command's own constants rather than restated, so this
     // assertion cannot pass while the command's file names drift away from what ships.
-    for (const name of ["validations.json", "validations.csv", "summary.json"]) {
+    for (const name of [
+      "validations.json",
+      "validations.csv",
+      "summary.json",
+      "validated-dataset.json",
+      "validated-dataset.csv",
+    ]) {
       expect(command).toContain(name);
     }
   });
