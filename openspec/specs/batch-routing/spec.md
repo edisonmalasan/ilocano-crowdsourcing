@@ -58,36 +58,6 @@ scheme: the pre-change producers happened to block such an identifier as a side 
 - **THEN** the value the route derives is exactly equal to the stored identifier, and the round trip is
   the identity rather than merely a successful lookup
 
-### Requirement: The route contract is defined once and used by every producer and by the one consumer
-
-There SHALL be exactly one definition of how a batch identifier becomes a path and of how the dynamic
-route parameter becomes a batch identifier. Every place that navigates to a batch SHALL obtain its address
-from that definition, and the route SHALL obtain the identifier from it, so that no site can hold a
-private copy of either operation.
-The producers are the start screen's interrupted-batch resume address, the start screen's navigation to a
-newly allocated batch, the validation form's navigation after a response is stored, and the finished
-screen's navigation to another batch. No other route, island, or helper may construct a batch address or
-read the dynamic route parameter directly.
-
-#### Scenario: Every producer goes through the one definition
-
-- **WHEN** any control that navigates to a batch produces an address
-- **THEN** the address it navigates to is the one the single definition produces for that identifier, and
-  the address contains no encoding that the definition did not itself produce
-
-#### Scenario: All four named producers are accounted for
-
-- **WHEN** the resume, allocation, post-submit, and continue navigations each build an address
-- **THEN** all four addresses are equal to the single definition's output for their own identifier, and
-  none of them performs its own encoding
-
-#### Scenario: No other site builds a batch address or reads the route parameter
-
-- **WHEN** every site that produces or consumes a batch address is enumerated across the whole
-  application
-- **THEN** each one is either the single definition itself or a caller of it, and no site builds an
-  address or reads the dynamic route parameter on its own
-
 ### Requirement: A route segment that cannot be decoded is refused rather than repaired
 
 Recovering a batch identifier from a route SHALL apply exactly one decoding step. A segment that is not a
@@ -108,3 +78,35 @@ address open it.
 - **WHEN** a request addresses a batch with a segment that is not valid percent-encoding
 - **THEN** the platform reports its existing not-found or invalid-address state, and the route renders
   rather than failing
+
+### Requirement: The route contract is defined once and used by every producer, including the auto-orchestrator, and by the one consumer
+
+There SHALL be exactly one definition of how a batch identifier becomes a path and of how the dynamic
+route parameter becomes a batch identifier. Every place that navigates to a batch SHALL obtain its address
+from that definition, and the route SHALL obtain the identifier from it, so that no site can hold a
+private copy of either operation.
+The producers are the start screen's interrupted-batch resume address, the start screen's navigation to a
+newly allocated batch, the validation form's navigation after a response is stored, the finished
+screen's navigation to another batch, and the post-enrollment auto-orchestrator's navigation to a
+resumed or newly allocated batch. No other route, island, or helper may construct a batch address or
+read the dynamic route parameter directly.
+
+#### Scenario: Every producer goes through the one definition
+
+- **WHEN** any control or effect that navigates to a batch produces an address
+- **THEN** the address it navigates to is the one the single definition produces for that identifier, and
+  the address contains no encoding that the definition did not itself produce
+
+#### Scenario: All five named producers are accounted for
+
+- **WHEN** the resume, allocation, post-submit, continue, and auto-orchestration navigations each build
+  an address
+- **THEN** all five addresses are equal to the single definition's output for their own identifier, and
+  none of them performs its own encoding
+
+#### Scenario: No other site builds a batch address or reads the route parameter
+
+- **WHEN** every site that produces or consumes a batch address is enumerated across the whole
+  application
+- **THEN** each one is either the single definition itself or a caller of it, and no site builds an
+  address or reads the dynamic route parameter on its own
