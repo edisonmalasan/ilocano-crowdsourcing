@@ -504,12 +504,26 @@ describe("the protected home page renders the dashboard from its repositories", 
   it("shows figures the service computed from the repositories, not placeholders", () => {
     // OD_0001 complete on one qualifying response, OD_0002 complete and flagged: 2 entries, 4
     // qualifying of 4 stored, 100% completion. A single validating package completes an entry, so
-    // the entry that used to sit "in bucket one" is complete now.
+    // the entry that used to sit "in bucket one" is complete now. OD_0002's three packages share
+    // one instant: overlap with no late arrival.
     const shown = visibleText(html);
     expect(shown).toContain("Dataset entries");
     expect(shown).toContain("Overall completion");
     expect(shown).toContain("100%");
     expect(shown).toContain("Needs researcher review");
+  });
+
+  it("renders the approved volume and diagnostic figures from the same repositories", () => {
+    // No new reads: the route proves the figures arrive through the page's existing wiring.
+    // Values are pinned by the service and view suites; what belongs here is that the page
+    // renders them at all, with the entries behind the diagnostics identified.
+    const shown = visibleText(html);
+    expect(shown).toContain("Stored responses");
+    expect(shown).toContain("Cannot-evaluate responses");
+    expect(shown).toContain("Entries with extra packages");
+    expect(shown).toContain("Entries: OD_0002");
+    expect(shown).toContain("Late-arrival responses");
+    expect(shown).toContain("No late arrivals");
   });
 
   it("links the flagged entry to its review route", () => {
