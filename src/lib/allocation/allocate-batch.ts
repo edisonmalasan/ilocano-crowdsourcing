@@ -225,7 +225,12 @@ function completedEntryIds(
  *   3. Read the active pool. Not paged: the whole pool is the candidate set by definition, and a
  *      truncated pool would silently exclude the entries that sort last.
  *   4. Read the pool's stored responses ONCE and reduce them to the set of completed entries.
- *   5. Exclude the entries this validator already answered.
+ *   5. Exclude the entries this validator already answered, UNION the entries assigned to the
+ *      validator's existing batches. Answered-but-unassigned cannot happen (a response is filed
+ *      against a batch), but assigned-but-unanswered can — the remainders of interrupted batches —
+ *      and a second Continue must not re-offer them. The union needs no lifecycle column: entries
+ *      in fully-answered batches are answered and already excluded, so what the union adds is
+ *      exactly the remainders.
  *   6. Select, with the completion set.
  *   7. Persist with 1-based positions derived from the selected order.
  *   8. Read back, and project to `AllocatedEntry`.
@@ -257,6 +262,14 @@ export async function allocateBatch(
     // A `Set` because the selection rule probes membership once per pool entry, and `Array.includes`
     // would make that quadratic in exactly the read this module already pays for.
     const answered = new Set<string>(answeredEntryIds);
+    // The attempt's OWN assignments, including unanswered remainders. Read from the same
+    // `listForRecovery` rows the recovery path reads, so the two paths cannot disagree about what
+    // was assigned — a second recognition implementation here would be the drift the recovery
+    // rule's header forbids. Residue rows with no entries union to nothing by construction.
+    const ownBatches = await dependencies.batches.listForRecovery(request.validatorId);
+    for (const batch of ownBatches) {
+      for (const entryId of batch.entryIds) answered.add(entryId);
+    }
 
     // One read for the WHOLE pool. Per-entry reads would be up to 600 round trips for one batch
     // request, and each would be a separate chance to observe a different snapshot of coverage.

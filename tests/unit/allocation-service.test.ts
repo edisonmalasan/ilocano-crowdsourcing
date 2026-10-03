@@ -148,6 +148,16 @@ function createFakes(
     readonly pool?: DatasetEntry[];
     readonly responses?: ValidationResponse[];
     readonly knownValidatorIds?: string[];
+    /**
+     * Batches the attempt already holds, by owner. The fake answers `listForRecovery` from
+     * these, filtered to the requesting validator — a batch belonging to another attempt is
+     * visible in the options and invisible to the requester, which is exactly the scoping the
+     * requirement asserts.
+     */
+    readonly assignedBatches?: ReadonlyArray<{
+      readonly validatorId: string;
+      readonly entryIds: readonly string[];
+    }>;
   } = {},
 ) {
   const calls: Array<{ method: string; argument: unknown }> = [];
@@ -255,12 +265,20 @@ function createFakes(
       record("batches.findById", id);
       return stored.get(id) ?? null;
     },
-    // Not exercised by the allocation service, which never looks for an interrupted batch. Declared
-    // because the interface requires it and this fake is typed as the interface on purpose — a
-    // partial here would stop being a check on the interface's shape.
+    // The attempt's OWN batches with their assigned entries. Filtered to the requester: another
+    // attempt's assignments must be invisible here, or the fake would prove cross-attempt
+    // exclusion the requirement forbids. Declared against the interface on purpose — a partial
+    // would stop being a check on the interface's shape.
     async listForRecovery(validatorId) {
       record("batches.listForRecovery", validatorId);
-      return [];
+      return (options.assignedBatches ?? [])
+        .filter((batch) => batch.validatorId === validatorId)
+        .map((batch, index) => ({
+          id: `batch_prior_${index}`,
+          validatorId: batch.validatorId,
+          createdAt: TIMESTAMP,
+          entryIds: [...batch.entryIds],
+        }));
     },
   };
 
@@ -529,6 +547,69 @@ describe("an entry the validator already answered", () => {
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
     expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual([theirs.id]);
+  });
+});
+
+describe("entries assigned to the attempt's own batches", () => {
+  it("are excluded from a new batch while unassigned entries are served", async () => {
+    // The second-Continue case: OD_0001 and OD_0002 sit unanswered in the attempt's earlier
+    // batch. Without the assigned-exclusion they would be re-offered and the refusal would
+    // arrive only at submit time, as `already_recorded` confusion rather than prevention.
+    const fakes = createFakes({
+      pool: [entry("OD_0001"), entry("OD_0002"), entry("OD_0003"), entry("OD_0004")],
+      assignedBatches: [{ validatorId: VALIDATOR, entryIds: ["OD_0001", "OD_0002"] }],
+    });
+
+    const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+    expect(
+      allocated(outcome)
+        .entries.map((candidate) => candidate.id)
+        .sort(),
+    ).toEqual(["OD_0003", "OD_0004"]);
+  });
+
+  it("do not exclude anything for another attempt", async () => {
+    // Cross-attempt overlap is expected collection, never prevented: assignments belonging to a
+    // different attempt are invisible to the requester's exclusion.
+    const fakes = createFakes({
+      pool: [entry("OD_0001"), entry("OD_0002")],
+      assignedBatches: [{ validatorId: "VAL_0000fff1", entryIds: ["OD_0001", "OD_0002"] }],
+    });
+
+    const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+    expect(allocated(outcome).entries).toHaveLength(2);
+  });
+
+  it("reports exhausted when everything left is assigned to the attempt's own batches", async () => {
+    // Remainders-only pool: the honest outcome is exhaustion with the earlier batch resumable,
+    // not a fresh batch of duplicates — and no batch row is persisted for it.
+    const fakes = createFakes({
+      pool: [entry("OD_0001"), entry("OD_0002")],
+      assignedBatches: [{ validatorId: VALIDATOR, entryIds: ["OD_0001", "OD_0002"] }],
+    });
+
+    const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+    expect(outcome).toEqual({ status: "exhausted" });
+    expect(fakes.countOf("batches.create")).toBe(0);
+  });
+
+  it("reads the attempt's batches on every allocation", async () => {
+    // The read is unconditional: an exclusion computed only sometimes would re-offer assigned
+    // entries exactly when the read was skipped. Asked with the requesting attempt's own id —
+    // the same rows the recovery lookup reads for the same id, so the two paths cannot disagree
+    // about what was assigned. A second recognition implementation would be the drift the
+    // recovery rule's header forbids.
+    const fakes = createFakes({ pool: [entry("OD_0001")] });
+
+    await allocateBatch(request, dependenciesFor(fakes));
+
+    expect(fakes.countOf("batches.listForRecovery")).toBe(1);
+    expect(fakes.calls.find((call) => call.method === "batches.listForRecovery")?.argument).toBe(
+      VALIDATOR,
+    );
   });
 });
 
