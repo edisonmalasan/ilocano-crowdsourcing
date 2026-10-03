@@ -37,12 +37,16 @@ team's behalf.
 
 ### Requirement: Qualifying and non-qualifying responses are reported distinctly
 
-The export SHALL state, per dataset entry and in aggregate, how many stored responses qualify toward
-coverage, how many do not, and how many responses are stored in total. A qualifying count SHALL be
-computed by the single shared domain definition of qualifying, never by a second rule written for the
-export, and a `cannot_evaluate` response, a partial response, and a response missing either required
-translation SHALL each count as non-qualifying. Every exported response SHALL carry its own
-qualifying-toward-coverage flag so the counts can be recomputed from the export itself.
+The export SHALL state, per dataset entry and in aggregate, how many stored responses qualify, how
+many do not, and how many responses are stored in total. A qualifying count SHALL be computed by the
+single shared domain definition of qualifying, never by a second rule written for the export, and a
+`cannot_evaluate` response, a partial response, and a response missing either required translation
+SHALL each count as non-qualifying. Every exported response SHALL carry its own
+qualifying-toward-completion flag so the counts can be recomputed from the export itself.
+
+These counts are **diagnostics, not progress toward a target**. The export SHALL NOT present a
+qualifying count as a fraction of a goal, and SHALL NOT imply that a higher qualifying count is a
+more complete entry.
 
 #### Scenario: Qualifying counts use the shared definition
 
@@ -52,9 +56,9 @@ qualifying-toward-coverage flag so the counts can be recomputed from the export 
 
 #### Scenario: A non-qualifying response is marked as such
 
-- **WHEN** a stored response does not qualify toward coverage
-- **THEN** that response's record carries a qualifying-toward-coverage flag of false, and the entry's
-  summary counts it in the non-qualifying total rather than the qualifying total
+- **WHEN** a stored response does not qualify
+- **THEN** that response's record carries a qualifying-toward-completion flag of false, and the
+  entry's summary counts it in the non-qualifying total rather than the qualifying total
 
 #### Scenario: Counts are recomputable from the export
 
@@ -62,23 +66,39 @@ qualifying-toward-coverage flag so the counts can be recomputed from the export 
   export
 - **THEN** every summary total equals the count of exported records that produce it
 
-### Requirement: Coverage and review status are exported per entry
+### Requirement: Completion and review status are exported per entry
 
-For each dataset entry the export SHALL include whether its coverage is complete against the
-configured coverage target, the target itself, whether the entry requires researcher review, and the
-counts of distinct validators behind those figures. The coverage-complete flag SHALL be computed
-against the same configured target allocation uses, not against a number written into the export.
+For each dataset entry the export SHALL include whether the entry is complete, as decided by
+`entry-completion`, and whether the entry requires researcher review. The complete flag SHALL be
+computed from the same shared rule allocation and the dashboard use, not from a rule written for the
+export and not from a count compared against a number.
 
-#### Scenario: The coverage target travels with the data
+The export SHALL NOT carry a coverage target, a required validator count, or any other figure
+against which a consumer is invited to compare the complete flag.
 
-- **WHEN** an exported entry is marked coverage-complete
-- **THEN** the export also carries the coverage target that figure was computed against
+#### Scenario: Completion is computed from the shared rule
+
+- **WHEN** an entry's complete flag is exported
+- **THEN** it equals what the shared completion rule returns for that entry's stored responses, and
+  the export writes no comparison against any target
+
+#### Scenario: A complete entry carries no target to be checked against
+
+- **WHEN** an exported entry is marked complete
+- **THEN** no field in the export states a target, a required validator count, or a threshold the
+  flag was computed against
 
 #### Scenario: Review status matches the review rule
 
 - **WHEN** an entry is marked as requiring researcher review
 - **THEN** it is flagged by the same rule the dashboard uses — evaluation disagreement among
   qualifying responses or more than one distinct correction — and never for translation wording
+
+#### Scenario: An incomplete entry with many responses is still incomplete
+
+- **WHEN** an entry whose stored responses are all non-qualifying is exported
+- **THEN** it is marked incomplete, and the number of responses it holds does not appear as progress
+  toward completion
 
 ### Requirement: Dataset categories are preserved
 
