@@ -334,6 +334,95 @@ describe("which entry a session presents", () => {
   });
 });
 
+describe("a contention-short batch presents its actual persisted size", () => {
+  /**
+   * A nine-entry batch as contention can persist it: 9 placements, positions
+   * 1..9, through the real `batchEntryPlacementSchema` like every other
+   * fixture in this file. The `OD_2xxx` ids avoid every other batch here, so
+   * a completed set in one suite cannot leak meaning into another.
+   */
+  function nineEntryBatch(): BatchEntryPlacement[] {
+    return Array.from({ length: 9 }, (_, index) => placement(`OD_${2000 + index}`, index + 1));
+  }
+
+  it("reports a total of 9 derived from the persisted placements", () => {
+    const entries = nineEntryBatch();
+    expect(entries).toHaveLength(9);
+
+    const choice = resolveSessionEntry(entries, new Set(), undefined);
+
+    expect(choice).not.toBeNull();
+    expect(choice?.total).toBe(9);
+    expect(choice?.placement.position).toBe(1);
+    expect(choice?.placement.datasetEntryId).toBe("OD_2000");
+    expect(choice?.completedCount).toBe(0);
+    expect(choice?.remainingCount).toBe(9);
+  });
+
+  it("advances through positions 1 of 9 to 9 of 9 in the server order", () => {
+    const entries = nineEntryBatch();
+
+    for (let position = 1; position <= 9; position += 1) {
+      const choice = resolveSessionEntry(entries, new Set(), position);
+      expect(choice?.placement.position).toBe(position);
+      expect(choice?.total).toBe(9);
+    }
+  });
+
+  it("counts completion against the actual size of 9", () => {
+    const entries = nineEntryBatch();
+    const completed = new Set(["OD_2000", "OD_2001", "OD_2002"]);
+
+    const choice = resolveSessionEntry(entries, completed, undefined);
+
+    expect(choice?.completedCount).toBe(3);
+    expect(choice?.remainingCount).toBe(6);
+    expect(choice?.total).toBe(9);
+    expect((choice?.completedCount ?? 0) + (choice?.remainingCount ?? 0)).toBe(9);
+  });
+
+  it("holds no duplicate entry id", () => {
+    const entries = nineEntryBatch();
+
+    expect(new Set(entries.map((entry) => entry.datasetEntryId)).size).toBe(9);
+  });
+
+  it("never re-presents a completed entry in the short batch", () => {
+    // Requested position 5 names OD_2004, which is answered: the session lands
+    // on the next remaining entry rather than offering the completed one again.
+    const entries = nineEntryBatch();
+
+    const choice = resolveSessionEntry(entries, new Set(["OD_2004"]), 5);
+
+    expect(choice?.placement.datasetEntryId).toBe("OD_2005");
+    expect(choice?.placement.position).toBe(6);
+  });
+
+  it("reports finished only after all 9 are complete, never to pad to 10", () => {
+    const entries = nineEntryBatch();
+    const all = new Set(entries.map((entry) => entry.datasetEntryId));
+
+    expect(resolveSessionEntry(entries, all, undefined)).toBeNull();
+    expect(resolveSessionEntry(entries, all, 10)).toBeNull();
+  });
+
+  it("documents the out-of-range view: position 10 presents the first remaining entry with total 9", () => {
+    // `design.md` D4: a URL must never declare work finished. Requesting past
+    // the end with work remaining presents the first remaining entry — a view
+    // of one uncompleted entry through two URLs, not a repeated validation:
+    // the completed-set filter plus UNIQUE (validator_id, dataset_entry_id)
+    // still forbids a second response for it.
+    const entries = nineEntryBatch();
+
+    const choice = resolveSessionEntry(entries, new Set(), 10);
+
+    expect(choice).not.toBeNull();
+    expect(choice?.placement.position).toBe(1);
+    expect(choice?.placement.datasetEntryId).toBe("OD_2000");
+    expect(choice?.total).toBe(9);
+  });
+});
+
 /*
  * REMOVED IN THE PHASE 5 VERIFICATION REPAIR, AND RECORDED RATHER THAN DELETED QUIETLY
  * ============================================================================

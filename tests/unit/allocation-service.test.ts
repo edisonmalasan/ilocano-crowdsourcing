@@ -742,6 +742,81 @@ describe("reservation claims", () => {
   });
 });
 
+describe("a contention-short batch persists its actual size", () => {
+  it("persists 9 distinct entries with positions 1..9 when one claim is denied with no replacement", async () => {
+    // The live shape: 10 requested, 9 granted after backfill finds nothing new
+    // to backfill with, because the pool itself holds only 10 eligible entries
+    // and the denied id stays excluded. `() => 1` keeps selection in pool
+    // order, so the denied OD_0010 is the last selected and nothing replaces
+    // it — positions included, because positions derive from the granted order.
+    const pool = Array.from({ length: 10 }, (_, index) =>
+      entry(`OD_${String(index + 1).padStart(4, "0")}`),
+    );
+    const fakes = createFakes({
+      pool,
+      claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_0010"),
+    });
+
+    const outcome = await allocateBatch(
+      request,
+      dependenciesFor(fakes, { config: config({ batchSize: 10 }), random: () => 1 }),
+    );
+
+    const entries = allocated(outcome).entries;
+    expect(entries).toHaveLength(9);
+    const ids = entries.map((candidate) => candidate.id);
+    expect(new Set(ids).size).toBe(9);
+    expect(ids).not.toContain("OD_0010");
+
+    // The persisted rows are the guarantee, not the returned projection: 9
+    // rows, contiguous 1-based positions, no duplicate, no tenth row padded
+    // to satisfy the configured size.
+    const storedBatches = [...fakes.stored.values()];
+    expect(storedBatches).toHaveLength(1);
+    const placements = storedBatches[0]?.entries ?? [];
+    expect(placements).toHaveLength(9);
+    expect(placements.map((placement) => placement.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(new Set(placements.map((placement) => placement.datasetEntryId)).size).toBe(9);
+
+    // Bounded collapse, not indefinite waiting: at most the initial round plus
+    // the two backfills, and here exactly one round suffices because the
+    // second selection finds nothing new to ask for.
+    expect(fakes.countOf("entryReservations.claimReservations")).toBeLessThanOrEqual(3);
+    expect(fakes.countOf("batches.create")).toBe(1);
+  });
+
+  it("does not re-select a denied id while backfilling", async () => {
+    // The exclusion half of the same guarantee: every id the arbiter denies
+    // stays out of later rounds within the request, so backfill can only add
+    // NEW ids and can never duplicate one to reach 10.
+    const pool = Array.from({ length: 11 }, (_, index) =>
+      entry(`OD_${String(index + 1).padStart(4, "0")}`),
+    );
+    const seenRounds: string[][] = [];
+    const fakes = createFakes({
+      pool,
+      claim: async (_validatorId, entryIds) => {
+        seenRounds.push([...entryIds]);
+        return entryIds.filter((id) => id !== "OD_0002");
+      },
+    });
+
+    const outcome = await allocateBatch(
+      request,
+      dependenciesFor(fakes, { config: config({ batchSize: 10 }), random: () => 1 }),
+    );
+
+    const ids = allocated(outcome).entries.map((candidate) => candidate.id);
+    expect(ids).toHaveLength(10);
+    expect(new Set(ids).size).toBe(10);
+    expect(ids).not.toContain("OD_0002");
+    for (const [index, round] of seenRounds.entries()) {
+      if (index === 0) continue;
+      expect(round).not.toContain("OD_0002");
+    }
+  });
+});
+
 describe("an unknown validator", () => {
   it("is reported as unknown_validator rather than as a database fault", async () => {
     const fakes = createFakes({ pool: [entry("OD_0001")] });
