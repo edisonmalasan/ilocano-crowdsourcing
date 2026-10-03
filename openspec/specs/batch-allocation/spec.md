@@ -23,9 +23,18 @@ platform's configuration.
 Eligibility is additionally scoped to the requesting attempt: an entry assigned to any existing
 batch of the SAME attempt SHALL be excluded from a new batch for that attempt, whether or not a
 response has been submitted for it. Assigned-but-unanswered entries are exactly the remainders of
-the attempt's interrupted batches. A separate attempt's batches SHALL NOT exclude anything:
-attempts share the pool with no cross-attempt exclusion, and overlap between attempts is expected
-collection, never prevented.
+the attempt's interrupted batches. A separate attempt's batches SHALL NOT exclude anything **by
+themselves** — but an entry another attempt currently holds under an unexpired reservation SHALL
+be excluded from everyone else's batches until that reservation expires or releases. Reservation
+is exclusive, time-boxed, and arbitrated by the database; overlap between attempts without a
+reservation is expected collection, never prevented.
+
+A batch is completely allocated only when its entries are reserved: selection, batch persistence,
+and reservation claims SHALL commit as one atomic unit from the requester's point of view, so a
+second simultaneous request cannot observe or claim the same incomplete entry. When a claim
+round grants fewer entries than requested, selection SHALL run again excluding granted ids, for
+at most two extra rounds; persistent contention SHALL collapse to `exhausted` rather than to an
+empty batch.
 
 #### Scenario: A client cannot choose which entries it receives
 
@@ -71,9 +80,23 @@ collection, never prevented.
 #### Scenario: Another attempt's batches exclude nothing
 
 - **WHEN** a validator requests a batch and an entry sits in another attempt's batch, answered
-  or not
+  or not, with no unexpired reservation behind it
 - **THEN** that entry remains eligible for the requesting validator, and no cross-attempt
-  exclusion is applied
+  exclusion is applied on account of the other batch alone
+
+#### Scenario: Two simultaneous requests never share an incomplete entry
+
+- **WHEN** two attempts request batches at the same time over a pool whose eligible entries
+  overlap
+- **THEN** no dataset entry appears in both granted batches, and the arbitration is performed
+  by the database rather than by application read-then-write
+
+#### Scenario: Contention shortens or exhausts honestly
+
+- **WHEN** a claim round grants fewer entries than requested and bounded backfill still leaves
+  the batch short
+- **THEN** the requester receives the granted entries, or `exhausted` when none could be
+  granted, and neither outcome is reported as a persistence failure
 
 ### Requirement: Eligible entries are offered in a randomized order
 
@@ -159,10 +182,11 @@ answer, or internal coverage figures.
 ### Requirement: An exhausted allocation pool is reported honestly
 
 When no eligible entry remains for the requesting validator — because every remaining entry was
-already answered by that validator, is already complete, or is assigned to that validator's own
-earlier batches — the request SHALL be reported as exhausted with no batch. Exhaustion SHALL be
-an outcome distinct both from a successful allocation and from a persistence failure, and SHALL
-NOT be reported as a successful batch containing no entries.
+already answered by that validator, is already complete, is assigned to that validator's own
+earlier batches, or is reserved by another attempt — the request SHALL be reported as exhausted
+with no batch. Exhaustion SHALL be an outcome distinct both from a successful allocation and
+from a persistence failure, and SHALL NOT be reported as a successful batch containing no
+entries.
 
 An attempt whose every remaining entry is assigned-but-unanswered has exhausted *new* allocation:
 the honest outcome is exhaustion with the interrupted batch resumable, not a fresh batch of
