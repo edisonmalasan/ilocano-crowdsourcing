@@ -177,9 +177,9 @@ describe("static dataset definition and runtime response state are distinct type
  *     module-level generator whenever a caller forgot to pass one, which is precisely the ambient
  *     randomness the spec forbids — and it would be *invisible*, because the rule would still
  *     return a valid-looking order.
- *   - **coverage cannot be omitted.** Coverage is the metric the whole platform is built on. A
- *     signature that made it optional would compile a call that selects a batch with no idea which
- *     entries are least covered, and the batch would look perfectly ordinary.
+ *   - **completion cannot be omitted.** The completion set is what keeps a finished entry out of
+ *     the pool. A signature that made it optional would compile a call that selects a batch with
+ *     no idea which entries are already complete, and the batch would look perfectly ordinary.
  *
  * A third, smaller claim is asserted rather than hoped for: a `DatasetEntry` IS an
  * `AllocationCandidate`, which is what lets the service hand its own pool straight to the rule
@@ -188,7 +188,7 @@ describe("static dataset definition and runtime response state are distinct type
 describe("the allocation selection rule's required inputs", () => {
   const pool: AllocationCandidate[] = [{ id: "OD_0001" }, { id: "OD_0002" }];
   const answered = new Set<string>();
-  const counts: ReadonlyMap<string, number> = new Map([["OD_0001", 0]]);
+  const done: ReadonlySet<string> = new Set(["OD_0001"]);
 
   /**
    * Declared and NEVER CALLED, and the declaration is the assertion.
@@ -202,23 +202,23 @@ describe("the allocation selection rule's required inputs", () => {
    */
   function callsTheCompilerMustReject(): unknown {
     // @ts-expect-error the random source is required and has no default
-    return selectBatchEntries(pool, answered, counts, 3, 10);
+    return selectBatchEntries(pool, answered, done, 10);
   }
 
-  function omitsCoverageTheCompilerMustReject(): unknown {
-    // The target standing in the coverage slot is not a mistake this compiler catches by argument
-    // COUNT alone — there are still six arguments — so it is caught by type instead: a
-    // `ReadonlyMap` and a `number` are not interchangeable, and no other parameter in this list
+  function omitsCompletionTheCompilerMustReject(): unknown {
+    // A number standing in the completion slot is not a mistake this compiler catches by argument
+    // COUNT alone — there are still five arguments — so it is caught by type instead: a
+    // `ReadonlySet` and a `number` are not interchangeable, and no other parameter in this list
     // accepts one in place of the other.
-    // @ts-expect-error the coverage map is required, and a number cannot stand in for it
-    return selectBatchEntries(pool, answered, 3, 3, 10, () => 0);
+    // @ts-expect-error the completion set is required, and a number cannot stand in for it
+    return selectBatchEntries(pool, answered, 3, 10, () => 0);
   }
 
   it("declares two calls that must not compile", () => {
     // The assertion is that these are FUNCTIONS and that nothing invoked them. If either call
     // became legal, `pnpm run typecheck` fails with "Unused '@ts-expect-error' directive".
     expect(typeof callsTheCompilerMustReject).toBe("function");
-    expect(typeof omitsCoverageTheCompilerMustReject).toBe("function");
+    expect(typeof omitsCompletionTheCompilerMustReject).toBe("function");
   });
 
   it("accepts a stored dataset entry as a candidate, so the service need not map one", () => {

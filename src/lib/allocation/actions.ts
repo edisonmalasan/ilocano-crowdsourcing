@@ -58,8 +58,9 @@ function actionDependencies(): AllocationActionDependencies {
     validations,
     batches,
     // The schema's own defaults, parsed through the schema rather than written as literals, so
-    // that when the approved numbers arrive they change in `allocationConfigSchema` and nowhere
-    // else. Both remain pending thesis-team and adviser approval.
+    // that when the approved batch size arrives it changes in `allocationConfigSchema` and nowhere
+    // else. It remains pending thesis-team and adviser approval; there is no second number, because
+    // the corrected methodology holds no validation target.
     config: allocationConfigSchema.parse({}),
     random: Math.random,
     // ONE `Date` per batch, for the identifier AND the `created_at` the migration requires the

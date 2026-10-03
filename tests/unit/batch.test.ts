@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   BATCH_SIZE_DEFAULT,
   BATCH_SIZE_HARD_MAX,
-  INDEPENDENT_VALIDATION_TARGET_DEFAULT,
   allocationConfigSchema,
   batchRequestSchema,
   resolveBatchSize,
@@ -18,16 +17,16 @@ function config(overrides: Partial<AllocationConfig> = {}): AllocationConfig {
 
 describe("allocation configuration defaults", () => {
   it("defaults the batch size to 10 when nothing is configured", () => {
-    expect(allocationConfigSchema.parse({})).toEqual({
-      batchSize: BATCH_SIZE_DEFAULT,
-      independentValidationTarget: INDEPENDENT_VALIDATION_TARGET_DEFAULT,
-    });
+    expect(allocationConfigSchema.parse({})).toEqual({ batchSize: BATCH_SIZE_DEFAULT });
     expect(BATCH_SIZE_DEFAULT).toBe(10);
   });
 
-  it("defaults the independent-validation target to 3, the current planning target", () => {
-    expect(INDEPENDENT_VALIDATION_TARGET_DEFAULT).toBe(3);
-    expect(allocationConfigSchema.parse({}).independentValidationTarget).toBe(3);
+  it("holds exactly one key, so a re-added target fails rather than going unnoticed", () => {
+    // The corrected methodology has no independent-validation target for configuration to hold.
+    // `strictObject` already rejects an unknown key at parse time; this asserts the key set
+    // itself, so a target smuggled back into the schema breaks the assertion even where no
+    // caller passes one.
+    expect(Object.keys(allocationConfigSchema.parse({}))).toEqual(["batchSize"]);
   });
 
   it("holds the hard upper bound above the approved batch size, so the bound is not the default", () => {
@@ -72,29 +71,19 @@ describe("allocation configuration validation", () => {
   });
 
   it("rejects a misspelled setting rather than silently falling back to the default", () => {
-    // A typo in a research parameter must not quietly mean "10 entries, 3 validators".
+    // A typo in a research parameter must not quietly mean "10 entries".
     const result = allocationConfigSchema.safeParse({ batchSizes: 5 });
 
     expect(result.success).toBe(false);
   });
 
-  it("rejects a non-positive independent-validation target", () => {
-    for (const target of [0, -3]) {
-      const result = allocationConfigSchema.safeParse({ independentValidationTarget: target });
+  it("rejects a resurrected independent-validation target as an unrecognised key", () => {
+    // There is no number of validators that completes an entry, so a setting by that name is a
+    // mistake or a reverted methodology, not configuration. `strictObject` refuses it rather
+    // than stripping it and defaulting around it.
+    const result = allocationConfigSchema.safeParse({ independentValidationTarget: 3 });
 
-      expect(result.success, `expected target ${target} to be rejected`).toBe(false);
-      if (result.success) continue;
-      expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(
-        "independentValidationTarget",
-      );
-    }
-  });
-
-  it("allows the independent-validation target to be changed without a code change", () => {
-    // The thesis team and adviser have not approved the final count, so this is configuration.
-    expect(
-      allocationConfigSchema.parse({ independentValidationTarget: 5 }).independentValidationTarget,
-    ).toBe(5);
+    expect(result.success).toBe(false);
   });
 });
 
@@ -147,7 +136,7 @@ describe("effective batch size", () => {
     // Defence in depth: a value that reached this function without passing `allocationConfigSchema`
     // is still bounded, so the hard bound holds as a property of the function rather than only of
     // its callers.
-    const unvalidated = { batchSize: 10_000, independentValidationTarget: 3 };
+    const unvalidated = { batchSize: 10_000 };
 
     expect(resolveBatchSize(10_000, unvalidated)).toBe(BATCH_SIZE_HARD_MAX);
   });
