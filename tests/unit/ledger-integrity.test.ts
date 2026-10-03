@@ -313,7 +313,13 @@ describe("the ledger describes the archive directory", () => {
     // preference: one phrasing cannot be both a live claim and a historical one, so the phrasing is
     // reserved for the live claim and history is marked as history.
     const roadmap = readFileSync(ROADMAP, "utf8");
-    const claims = [...roadmap.matchAll(/(\w+) changes are archived and readable/g)].map(
+    // `[\w-]+`, not `\w+`: twenty-one is hyphenated in English, and the old class captured only
+    // the "one" in "Twenty-one changes are archived" — reporting the ledger stale when the prose
+    // was right and the reader was wrong. Measured on the twenty-first archive, which no
+    // single-word phrasing can state: "Twenty one" splits and "21" is not the word the table
+    // requires. Widening the class is what keeps the guard reading the claim rather than its own
+    // assumption about orthography.
+    const claims = [...roadmap.matchAll(/([\w-]+) changes are archived and readable/g)].map(
       (match) => match[1] ?? "",
     );
     expect(
@@ -371,6 +377,9 @@ describe("the ledger describes the archive directory", () => {
       // been paid FOUR times — `consistency-guards` (17), `batch-route-round-trip` (18),
       // `session-attempt-identity` (19), and here (20). Same one-line edit, same reason.
       20: "Twenty",
+      // Added for `completion-metrics-and-export`, the TWENTY-FIRST archived change, so this coupling has now
+      // been paid FIVE times. Same one-line edit, same reason.
+      21: "Twenty-one",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
