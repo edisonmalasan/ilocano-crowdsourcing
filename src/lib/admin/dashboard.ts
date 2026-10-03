@@ -23,20 +23,21 @@
  *     profile that never validated contributes to no other figure; including it in this one
  *     would make the headcount disagree with every breakdown on the same screen. The dashboard
  *     labels it "validators who submitted responses" so the definition is on the screen.
- *   - Coverage percentage is coverage-complete entries ÷ total active entries, to one decimal.
- *     The denominator is total entries, not entries with any response: dividing by attempted
- *     entries would report 100% while untouched entries exist, which is the silent-wrong-answer
- *     direction. Zero entries means 0%, not NaN — there is nothing to divide, and NaN on a
- *     research dashboard reads as a broken query.
+ *   - Completion percentage is complete entries ÷ total active entries, to one decimal. The
+ *     denominator is total entries, not entries with any response: dividing by attempted entries
+ *     would report 100% while untouched entries exist, which is the silent-wrong-answer direction.
+ *     Zero entries means 0%, not NaN — there is nothing to divide, and NaN on a research
+ *     dashboard reads as a broken query. "Complete" is the shared `isEntryComplete` predicate:
+ *     one validating package, not a count against a target.
  */
 
 import type { DatasetEntry } from "@/schemas/dataset";
-import { INDEPENDENT_VALIDATION_TARGET_DEFAULT } from "@/schemas/batch";
 import type { ValidationResponse } from "@/schemas/validation";
 import type { AnonymousValidatorId, IlocanoProficiency } from "@/schemas/validator";
 
 import {
   countQualifyingValidations,
+  isEntryComplete,
   isQualifyingValidation,
   type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
@@ -62,18 +63,19 @@ export interface DashboardRepositories {
 }
 
 /**
- * Coverage buckets keyed by qualifying validations from distinct validators.
+ * The complete/incomplete partition of the dataset.
  *
- * `complete` is the only bucket whose boundary is a research parameter rather than a literal: it
- * is "reached the configured target", which is the same rule allocation uses to retire an entry
- * from the pool. The other three are literal counts because the thesis team's approved figure list
- * names 0, 1, and 2 specifically.
+ * Two buckets and no ladder: an entry is complete when one stored response establishes the
+ * complete bilingual package (`isEntryComplete`), and incomplete otherwise, however many
+ * responses it holds. An entry with one qualifying validation and an entry with forty are both
+ * complete, and the platform does not rank them. The fuller approved figure list — totals,
+ * percentage, and diagnostics — belongs to the `completion-metrics-and-export` change; this
+ * partition is the interim shape that the corrected methodology makes true.
  */
-export interface CoverageBuckets {
-  readonly zero: number;
-  readonly one: number;
-  readonly two: number;
-  /** Entries that have reached the configured independent-validation target. */
+export interface CompletionBuckets {
+  /** Entries with no stored response establishing the complete package. */
+  readonly incomplete: number;
+  /** Entries with at least one stored response establishing the complete package. */
   readonly complete: number;
 }
 
@@ -93,19 +95,12 @@ export interface DashboardOverview {
   readonly totalEntries: number;
   readonly totalQualifyingValidations: number;
   readonly totalValidators: number;
-  readonly buckets: CoverageBuckets;
+  readonly buckets: CompletionBuckets;
   readonly coveragePercentage: number;
   readonly evaluationDistribution: Record<ValidationEvaluation, number>;
   readonly proficiencyBreakdown: ProficiencyBreakdown;
   /** Entry ids flagged for review, in dataset order. */
   readonly reviewEntryIds: readonly string[];
-  /**
-   * The target these figures were computed against, so a screen can label the bucket rather than
-   * assert a number. Carried in the result instead of hardcoded in the view because the approved
-   * figure list says "entries with 3 (coverage complete)" and that 3 is CONFIGURATION pending
-   * adviser approval — a view hardcoding it would go stale silently the day the target changes.
-   */
-  readonly coverageTarget: number;
 }
 
 /**
@@ -137,7 +132,6 @@ function toOneDecimal(value: number): number {
 
 export async function loadDashboardOverview(
   repositories: DashboardRepositories,
-  coverageTarget: number = INDEPENDENT_VALIDATION_TARGET_DEFAULT,
 ): Promise<DashboardOverview> {
   const entries = await repositories.entries.listActive();
   const validations = await repositories.validations.listForEntries(
@@ -162,26 +156,20 @@ export async function loadDashboardOverview(
     if (list !== undefined) list.push(response);
   }
 
-  const buckets: { -readonly [K in keyof CoverageBuckets]: number } = {
-    zero: 0,
-    one: 0,
-    two: 0,
+  const buckets: { -readonly [K in keyof CompletionBuckets]: number } = {
+    incomplete: 0,
     complete: 0,
   };
   const reviewEntryIds: string[] = [];
   for (const entry of entries) {
     const responses = byEntry.get(entry.id) ?? [];
-    const qualifying = countQualifyingValidations(responses);
-    // "Reached", not "exceeds" — the same wording allocation uses, because retiring an entry at
-    // the target and reporting it complete one validation later would disagree on the wire.
-    if (qualifying >= coverageTarget) {
+    // The shared predicate, not a count against a target: allocation retires the entry on the
+    // same condition, because reporting it complete one validation later would disagree on the
+    // wire.
+    if (isEntryComplete(responses)) {
       buckets.complete += 1;
-    } else if (qualifying === 2) {
-      buckets.two += 1;
-    } else if (qualifying === 1) {
-      buckets.one += 1;
     } else {
-      buckets.zero += 1;
+      buckets.incomplete += 1;
     }
     if (requiresResearcherReview(responses)) reviewEntryIds.push(entry.id);
   }
@@ -214,7 +202,6 @@ export async function loadDashboardOverview(
       entries.length === 0 ? 0 : toOneDecimal((buckets.complete / entries.length) * 100),
     evaluationDistribution,
     proficiencyBreakdown,
-    coverageTarget,
     reviewEntryIds,
   };
 }
@@ -232,17 +219,16 @@ export interface ReviewedResponse {
 export interface EntryReview {
   readonly entry: DatasetEntry;
   readonly qualifyingCount: number;
+  /** Whether the entry is complete under the shared predicate — the flag, not a count. */
+  readonly isComplete: boolean;
   readonly needsReview: boolean;
   /** In creation order (oldest first): the order the conversation happened in. */
   readonly responses: readonly ReviewedResponse[];
-  /** Carried, not hardcoded in the view, for the reason on {@link DashboardOverview.coverageTarget}. */
-  readonly coverageTarget: number;
 }
 
 export async function loadEntryReview(
   repositories: DashboardRepositories,
   entryId: string,
-  coverageTarget: number = INDEPENDENT_VALIDATION_TARGET_DEFAULT,
 ): Promise<EntryReview | null> {
   const entry = await repositories.entries.findById(entryId);
   if (entry === null) return null;
@@ -267,8 +253,8 @@ export async function loadEntryReview(
   return {
     entry,
     qualifyingCount: countQualifyingValidations(responses),
+    isComplete: isEntryComplete(responses),
     needsReview: requiresResearcherReview(responses),
     responses: reviewed,
-    coverageTarget,
   };
 }

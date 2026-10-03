@@ -24,9 +24,8 @@ const OVERVIEW: DashboardOverview = {
   totalEntries: 6,
   totalQualifyingValidations: 12,
   totalValidators: 5,
-  buckets: { zero: 1, one: 1, two: 1, complete: 3 },
+  buckets: { incomplete: 3, complete: 3 },
   coveragePercentage: 50,
-  coverageTarget: 3,
   evaluationDistribution: {
     correct_natural: 8,
     correct_unnatural: 0,
@@ -73,8 +72,8 @@ const REVIEW: EntryReview = {
     isActive: true,
   },
   qualifyingCount: 3,
+  isComplete: true,
   needsReview: true,
-  coverageTarget: 3,
   responses: [
     {
       response: {
@@ -137,30 +136,25 @@ describe("OverviewView", () => {
       ["Dataset entries", "6"],
       ["Qualifying validations", "12"],
       ["Validators who submitted responses", "5"],
-      ["Overall coverage", "50%"],
-      ["Entries with 0 qualifying", "1"],
-      ["Entries with 1 qualifying", "1"],
-      ["Entries with 2 qualifying", "1"],
-      ["Coverage complete (3 of 3)", "3"],
+      ["Overall completion", "50%"],
+      ["Complete entries", "3"],
+      ["Incomplete entries", "3"],
       ["Needs researcher review", "2"],
     ]);
   });
 
-  it("labels the coverage figure against the target the service used, not a literal", () => {
-    // The approved figure list says "entries with 3 (coverage complete)" and that 3 is
-    // CONFIGURATION pending adviser approval. A view that hardcoded it would report "3 of 3"
-    // against figures computed for a target of 2 — two numbers on one screen disagreeing, with
-    // no failing test. Rendering a changed target is the assertion that the label follows the
-    // computation.
-    const html = renderToStaticMarkup(
-      <OverviewView
-        overview={{ ...OVERVIEW, coverageTarget: 2, buckets: { ...OVERVIEW.buckets, complete: 0 } }}
-      />,
-    );
+  it("renders no target anywhere, because there is no target to label", () => {
+    // The corrected methodology holds no number of validators that completes an entry, so a view
+    // that still rendered one — "3 of 3", "with 3 qualifying", or any "(N of N)" — would invite a
+    // researcher to check records against a constant. Scoped to the totals section the same way
+    // the pairing assertion is, so the evaluation-distribution copy cannot satisfy it by accident.
+    const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
+    const section =
+      html.split('aria-label="Coverage totals"')[1]?.split("</section>")[0] ?? "";
 
-    expect(html).toContain("Coverage complete (2 of 2)");
-    expect(html).toContain("Entries with 2 qualifying validations");
-    expect(html).not.toContain("3 of 3");
+    expect(section).not.toMatch(/\(\d+ of \d+\)/);
+    expect(section).not.toMatch(/with \d+ qualifying/);
+    expect(section).not.toContain("coverage target");
   });
 
   it("labels the coverage denominator next to the percentage", () => {
@@ -217,11 +211,21 @@ describe("EntryReviewView", () => {
       "origin of E5",
       "destination of E5",
       "walking",
-      "3 of 3 qualifying validations",
+      "Complete",
+      "3 qualifying validations",
       "flagged for researcher review",
     ]) {
       expect(html).toContain(text);
     }
+  });
+
+  it("states Incomplete rather than a fraction when the entry holds no validating package", () => {
+    const html = renderToStaticMarkup(
+      <EntryReviewView review={{ ...REVIEW, isComplete: false, qualifyingCount: 0 }} />,
+    );
+
+    expect(html).toContain("Incomplete");
+    expect(html).not.toContain("Complete ·");
   });
 
   it("renders every response with its own research content, scoped to its validator", () => {

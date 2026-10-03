@@ -8,17 +8,19 @@
  * unrecorded proficiency, and one empty entry, so every clause of the approved rule has a row
  * that exercises it and no clause shares a row with another.
  *
- * Fixture map (qualifying counts in brackets):
+ * Fixture map (qualifying counts in brackets; complete/incomplete beside it):
  *
  *   E1 [3]  three `correct_natural`, agree — complete, no flag
- *   E2 [2]  two qualifying — bucket two
- *   E3 [1]  one qualifying plus one `cannot_evaluate` — bucket one, no flag
- *   E4 [0]  no responses — bucket zero
+ *   E2 [2]  two qualifying — complete, no flag
+ *   E3 [1]  one qualifying plus one `cannot_evaluate` — complete, no flag
+ *   E4 [0]  no responses — incomplete
  *   E5 [3]  evaluations disagree — complete AND flagged
  *   E6 [3]  two distinct corrections — complete AND flagged
  *
- * Validators V1..V5 carry fluent / native / conversational / null / basic; V5's null is the
- * unrecorded bucket. Thirteen stored responses, twelve qualifying, five responding validators.
+ * Five of six entries hold a validating package, so the partition is five complete and one
+ * incomplete. Validators V1..V5 carry fluent / native / conversational / null / basic; V5's null
+ * is the unrecorded bucket. Thirteen stored responses, twelve qualifying, five responding
+ * validators.
  */
 import { describe, expect, it } from "vitest";
 
@@ -144,8 +146,8 @@ describe("loadDashboardOverview", () => {
     expect(overview.totalEntries).toBe(6);
     expect(overview.totalQualifyingValidations).toBe(12);
     expect(overview.totalValidators).toBe(5);
-    expect(overview.buckets).toEqual({ zero: 1, one: 1, two: 1, complete: 3 });
-    expect(overview.coveragePercentage).toBe(50);
+    expect(overview.buckets).toEqual({ incomplete: 1, complete: 5 });
+    expect(overview.coveragePercentage).toBe(83.3);
     expect(overview.reviewEntryIds).toEqual(["E5", "E6"]);
   });
 
@@ -191,6 +193,18 @@ describe("loadEntryReview", () => {
     expect(await loadEntryReview(repositories(), "E_missing")).toBeNull();
   });
 
+  it("reports an entry complete on one qualifying response among non-qualifying ones", async () => {
+    // E3 holds one qualifying response and one `cannot_evaluate`. One validating package is the
+    // whole of completion, so the entry is complete — the abstention neither delays nor reduces
+    // that, however many of them there are.
+    const review = await loadEntryReview(repositories(), "E3");
+
+    expect(review?.entry.id).toBe("E3");
+    expect(review?.qualifyingCount).toBe(1);
+    expect(review?.isComplete).toBe(true);
+    expect(review?.needsReview).toBe(false);
+  });
+
   it("returns the entry with every response annotated", async () => {
     const review = await loadEntryReview(repositories(), "E3");
 
@@ -211,6 +225,7 @@ describe("loadEntryReview", () => {
     const review = await loadEntryReview(repositories(), "E5");
 
     expect(review?.needsReview).toBe(true);
+    expect(review?.isComplete).toBe(true);
     expect(review?.qualifyingCount).toBe(3);
     const createdAts = (review?.responses ?? []).map((r) => r.response.createdAt);
     expect([...createdAts].sort()).toEqual(createdAts);
