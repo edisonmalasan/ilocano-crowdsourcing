@@ -92,7 +92,7 @@ apply_client_state(resource=999999, progress=5000)
 - `Cannot confidently evaluate` **never completes an entry**. It requires no correction and carries neither research translation, so an entry whose only responses are `Cannot confidently evaluate` is still incomplete and still eligible for assignment, however many responses it has received.
 - The unit of participation is an **attempt**, not a validator-as-a-person and not a validator-as-a-browser-profile. An attempt is exactly one anonymous server-minted identity, created at screening, held in browser storage scoped to the browser session, preserved across a reload and across navigation within the flow, and retired by the explicit Finish control. Within one attempt a dataset entry is never assigned twice and never answered twice — `validations` already carries `UNIQUE (validator_id, dataset_entry_id)` — while separate attempts are independent of each other and may receive overlapping entries.
 - **No attempt identifier may be presented, labelled, counted, or exported as evidence of a distinct human being.** The platform records nothing that links one attempt to another and derives no count of distinct people from attempt counts or identifier counts; the same person may begin any number of attempts, and no screen may tell a participant they are recognised as the same person as before. Attempt scoping is an anonymity property, not an identity guarantee, and must never be reported as one.
-- Each of these three rules is implemented by a named change, so a reader can find the enforcing code: `participation-attempt` (the attempt itself, added by the `session-attempt-identity` change) covers the last two; completion semantics and allocation over incomplete entries are the `single-validation-package` change, and the dashboard figures and both exports are the `completion-metrics-and-export` change. Neither of those two has been implemented yet, so nothing above describes shipped behaviour until it is.
+- Each of these three rules is implemented by a named change, so a reader can find the enforcing code: `participation-attempt` (the attempt itself, added by the `session-attempt-identity` change) covers the last two; completion semantics and allocation over incomplete entries are implemented by the `single-validation-package` change, and the dashboard figures and both exports belong to the future `completion-metrics-and-export` change. That second change has not been implemented yet, so the figures and exports above describe specified behaviour until it merges, not shipped behaviour.
 - Save each completed entry promptly; do not wait for all 10 items before persisting research responses.
 - Never overwrite or mutate the imported synthetic instruction when a validator submits a correction. Corrections and research translations are separate response data, and neither is ever written onto the dataset entry.
 - `Correct but sounds unnatural` and `Incorrect` require a corrected Ilocano version before continuing.
@@ -470,12 +470,17 @@ What CI still does not prove: nothing about Supabase, and nothing about visual r
 #### Repository tooling notes
 
 **An export that closes a named spec scenario is not speculative, and the difference is
-criterion.** `countQualifyingValidations` in `src/lib/domain/validation-response.ts` has no
-production caller yet, in the same commit that removed `isTranslatableContent` for having none — an
-asymmetry worth naming rather than leaving to inference. The test is whether a *spec* requires it.
-Two `domain-contracts` scenarios in this change's ADDED block name coverage-over-a-set, and no
-function satisfies them without it; `docs/ROADMAP.md` names Phase 4 as the consumer. The removed
-export satisfied nothing and no scenario named it. "No caller" is therefore not the criterion —
+criterion.** `countQualifyingValidations` in `src/lib/domain/validation-response.ts` now has two
+production call sites — the entry-review loader's `qualifyingCount` and the export summary's
+per-entry figure — so the sentence this note originally carried ("has no production caller
+yet") is corrected rather than left standing. (Tasks.md 9.2 predicted four, counting the
+allocation pool reduce and the dashboard overview loop; this change deleted both of those call
+sites, so the measured number is two and the prediction is corrected here rather than inherited.)
+The criterion it states is unchanged: the test is
+whether a *spec* requires the export, not whether a caller exists. Two `domain-contracts`
+scenarios in that change's ADDED block named coverage-over-a-set, and no function satisfied them
+without it; `docs/ROADMAP.md` named Phase 4 as the consumer. The removed export satisfied nothing
+and no scenario named it. "No caller" is therefore not the criterion —
 **an uncalled export that a spec scenario requires is an unfinished task, and one that nothing
 requires is dead weight.** Both errors look identical in a grep.
 

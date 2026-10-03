@@ -266,7 +266,7 @@ export type AllocationFailureReason =
  * entries, and an empty array would present as "you have been given nothing to do".
  *
  * `exhausted` is an ordinary, expected research outcome: every remaining entry was already answered
- * by this validator or has reached the coverage target. It carries no batch, and it is deliberately
+ * by this validator or is already complete. It carries no batch, and it is deliberately
  * NOT a `failed`. Collapsing them would tell a validator who has finished the study that something
  * is broken, and would make the coverage-monitoring figure uncomputable.
  *

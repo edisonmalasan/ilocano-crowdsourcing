@@ -127,7 +127,7 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
       {/*
         The one piece of state this control can report, and it is NOT an error state in the ordinary
         sense. `exhausted` is an ordinary research outcome — every entry remaining was already
-        answered by this validator or has reached the coverage target — and reporting it as a failure
+        answered by this validator or is already complete — and reporting it as a failure
         would tell somebody who has finished the study that something is broken. It reads as thanks
         and as a reassurance that what they submitted is intact, because both are true.
       */}

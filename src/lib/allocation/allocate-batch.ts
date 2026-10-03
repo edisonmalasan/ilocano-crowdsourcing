@@ -5,10 +5,7 @@ import {
   type AllocationCandidate,
   type CompletedEntryIds,
 } from "@/lib/domain/allocation";
-import {
-  isEntryComplete,
-  type CoverageResponseShape,
-} from "@/lib/domain/validation-response";
+import { isEntryComplete, type CoverageResponseShape } from "@/lib/domain/validation-response";
 import {
   isRepositoryError,
   type BatchesRepository,

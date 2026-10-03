@@ -149,8 +149,7 @@ describe("OverviewView", () => {
     // researcher to check records against a constant. Scoped to the totals section the same way
     // the pairing assertion is, so the evaluation-distribution copy cannot satisfy it by accident.
     const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
-    const section =
-      html.split('aria-label="Coverage totals"')[1]?.split("</section>")[0] ?? "";
+    const section = html.split('aria-label="Coverage totals"')[1]?.split("</section>")[0] ?? "";
 
     expect(section).not.toMatch(/\(\d+ of \d+\)/);
     expect(section).not.toMatch(/with \d+ qualifying/);

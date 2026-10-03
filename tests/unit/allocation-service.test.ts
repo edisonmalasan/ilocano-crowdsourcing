@@ -376,7 +376,13 @@ describe("an entry whose stored responses are all non-qualifying stays in the po
     // as judged five times over and leave the pool.
     const judged = entry("OD_0001");
     const other = entry("OD_0002");
-    const validators = ["VAL_0000bbb1", "VAL_0000bbb2", "VAL_0000bbb3", "VAL_0000bbb4", "VAL_0000bbb5"];
+    const validators = [
+      "VAL_0000bbb1",
+      "VAL_0000bbb2",
+      "VAL_0000bbb3",
+      "VAL_0000bbb4",
+      "VAL_0000bbb5",
+    ];
     const fakes = createFakes({
       pool: [judged, other],
       responses: validators.map((validatorId) =>
@@ -437,8 +443,16 @@ describe("completion retires the entry", () => {
     const fakes = createFakes({
       pool,
       responses: [
-        response({ datasetEntryId: "OD_0003", validatorId: "VAL_0000ddd1", evaluation: "cannot_evaluate" }),
-        response({ datasetEntryId: "OD_0004", validatorId: "VAL_0000ddd2", evaluation: "cannot_evaluate" }),
+        response({
+          datasetEntryId: "OD_0003",
+          validatorId: "VAL_0000ddd1",
+          evaluation: "cannot_evaluate",
+        }),
+        response({
+          datasetEntryId: "OD_0004",
+          validatorId: "VAL_0000ddd2",
+          evaluation: "cannot_evaluate",
+        }),
       ],
     });
 

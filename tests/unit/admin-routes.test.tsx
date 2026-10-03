@@ -502,12 +502,13 @@ describe("the protected home page renders the dashboard from its repositories", 
   });
 
   it("shows figures the service computed from the repositories, not placeholders", () => {
-    // OD_0001 in bucket one, OD_0002 complete and flagged: 2 entries, 4 qualifying of 4 stored,
-    // 50% coverage.
+    // OD_0001 complete on one qualifying response, OD_0002 complete and flagged: 2 entries, 4
+    // qualifying of 4 stored, 100% completion. A single validating package completes an entry, so
+    // the entry that used to sit "in bucket one" is complete now.
     const shown = visibleText(html);
     expect(shown).toContain("Dataset entries");
-    expect(shown).toContain("Overall coverage");
-    expect(shown).toContain("50%");
+    expect(shown).toContain("Overall completion");
+    expect(shown).toContain("100%");
     expect(shown).toContain("Needs researcher review");
   });
 

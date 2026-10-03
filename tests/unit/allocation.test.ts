@@ -86,13 +86,13 @@ describe("who is eligible", () => {
   it("has no target to configure, so completion alone decides", () => {
     // The same pool under the old rule needed a target argument to say anything at all. There is
     // no target parameter any more: an entry with many qualifying responses behind it and an entry
-    // with one are both complete, and the set says so without a number attached.
+    // with one are both complete, and the set says so without a number attached. Compared as a
+    // SET, because the order is the shuffle's business and this test is about eligibility.
     const pool = candidates("OD_0001", "OD_0002", "OD_0003");
 
-    expect(ids(selectBatchEntries(pool, none, completed("OD_0001"), 10, constantZero))).toEqual([
-      "OD_0002",
-      "OD_0003",
-    ]);
+    expect(ids(selectBatchEntries(pool, none, completed("OD_0001"), 10, constantZero)).sort()).toEqual(
+      ["OD_0002", "OD_0003"],
+    );
     expect(ids(selectBatchEntries(pool, none, completed(), 10, constantZero))).toHaveLength(3);
   });
 });
@@ -116,7 +116,13 @@ describe("the order the server imposes", () => {
   });
 
   it("returns a short batch only when the eligible pool itself is smaller", () => {
-    const selected = selectBatchEntries(candidates("OD_0001", "OD_0002"), none, completed(), 10, constantZero);
+    const selected = selectBatchEntries(
+      candidates("OD_0001", "OD_0002"),
+      none,
+      completed(),
+      10,
+      constantZero,
+    );
 
     // Not short because a tier was exhausted — short because there is nothing left.
     expect(ids(selected)).toHaveLength(2);
@@ -207,12 +213,15 @@ describe("randomization", () => {
   });
 
   it("is reproducible: the same pool, completion set and source give the same order twice", () => {
+    // TWO sources with the SAME answers, not one source used twice: a scripted source is consumed
+    // as the shuffle reads it, so sharing one across both calls would feed the second call the
+    // continuation of the sequence rather than the same sequence. Replaying the same answers is
+    // what "the same supplied randomness" means.
     const pool = candidates("OD_0001", "OD_0002", "OD_0003", "OD_0004", "OD_0005");
     const done = completed("OD_0005");
-    const source = scripted([0.9, 0.1, 0.6, 0.2]);
 
-    const first = selectBatchEntries(pool, none, done, 4, source);
-    const second = selectBatchEntries(pool, none, done, 4, source);
+    const first = selectBatchEntries(pool, none, done, 4, scripted([0.9, 0.1, 0.6, 0.2]));
+    const second = selectBatchEntries(pool, none, done, 4, scripted([0.9, 0.1, 0.6, 0.2]));
 
     expect(ids(first)).toEqual(ids(second));
     expect(ids(first)).toHaveLength(4);
