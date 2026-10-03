@@ -1,27 +1,29 @@
 /**
- * Do the dashboard and the export report the SAME coverage for the SAME corpus?
+ * Do the dashboard, the raw export, and the validated dataset report the SAME coverage for the
+ * SAME corpus?
  *
  * Every module in this repository that reports coverage re-asserts in a comment that the qualifying
- * rule has one definition, and none of them checks the consequence. Two consumers can share a
- * predicate and still disagree: about which responses to include, about which bucket an entry lands
- * in, or about how per-entry figures total. This file runs both over one corpus and compares their
- * OUTPUTS.
+ * rule has one definition, and none of them checks the consequence. Consumers can share a
+ * predicate and still disagree: about which responses to include, about which side of the
+ * completion rule an entry lands on, or about how per-entry figures total. This file runs all
+ * three over one corpus and compares their OUTPUTS.
  *
- * It deliberately does NOT assert that both call `countQualifyingValidations`. That is a statement
+ * It deliberately does NOT assert that all three call the shared predicates. That is a statement
  * about implementation, it breaks on a harmless refactor, and — more to the point — it would still
  * pass if a consumer pre-filtered its inputs wrongly before calling the shared function. Only
- * comparing what the two consumers REPORT can see that.
+ * comparing what the consumers REPORT can see that.
  *
- * The two consumers were written months apart for different audiences. The dashboard is built from
- * repository reads and buckets as it goes; the export is built from pre-joined sources and reports
- * per-entry rows. They are structurally different code paths, which is exactly what makes them worth
- * comparing.
+ * The three consumers were written months apart for different audiences. The dashboard is built from
+ * repository reads and buckets as it goes; the raw export is built from pre-joined sources and
+ * reports per-entry rows; the validated dataset derives one record per complete entry. They are
+ * structurally different code paths, which is exactly what makes them worth comparing.
  */
 import { describe, expect, it } from "vitest";
 
 import { loadDashboardOverview } from "@/lib/admin/dashboard";
 import { buildExportSummary, isQualifyingValidation } from "@/lib/export/records";
 import type { ExportSourceWithQualifying } from "@/lib/export/records";
+import { buildValidatedDataset } from "@/lib/export/validated";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
 import type { AnonymousValidatorId, ValidatorProfile } from "@/schemas/validator";
@@ -186,11 +188,18 @@ function exportSources(): ExportSourceWithQualifying[] {
   });
 }
 
-/** Both consumers, run over the SAME corpus. There is no target to hold equal. */
+/**
+ * All three consumers, run over the SAME corpus. There is no target to hold equal.
+ *
+ * The validated dataset joins as a consumer with its own input shape — derived records, not
+ * flags — so the comparison reads the artifact's answer rather than re-running its builder.
+ */
 async function bothConsumers() {
+  const sources = exportSources();
   const overview = await loadDashboardOverview(dashboardRepositories());
-  const summary = buildExportSummary(ENTRIES, exportSources());
-  return { overview, summary };
+  const summary = buildExportSummary(ENTRIES, sources);
+  const validated = buildValidatedDataset(ENTRIES, sources);
+  return { overview, summary, validated };
 }
 
 /**
@@ -211,7 +220,7 @@ function exportBuckets(summary: ReturnType<typeof buildExportSummary>) {
 }
 
 describe("the dashboard and the export agree on one corpus", () => {
-  it("compares TWO consumers over a corpus it actually examined", async () => {
+  it("compares THREE consumers over a corpus it actually examined", async () => {
     // The emptiness guard — but only the parts of it that can FAIL. A first version asserted
     // `expect([loadDashboardOverview, buildExportSummary]).toHaveLength(2)`, which is a statement
     // about a two-element array literal and cannot fail whatever either consumer does, and
@@ -230,14 +239,17 @@ describe("the dashboard and the export agree on one corpus", () => {
       "some entries are unanswered",
     ).toBe(true);
 
-    // Both consumers, actually run. This is two ONE-SIDED shape checks — the agreement between them
-    // is asserted in the tests that follow, which is where a two-sided comparison belongs. Its job
-    // here is narrower and stated as such: to make it impossible for this suite to be green because
-    // a consumer was never called, or was called over nothing. Measured: breaking the dashboard's
-    // qualifying accumulation turns this file red at `4 failed | 4 passed`, naming this test.
-    const { overview, summary } = await bothConsumers();
+    // All three consumers, actually run. These are ONE-SIDED shape checks — the agreement between
+    // them is asserted in the tests that follow, which is where a multi-sided comparison belongs.
+    // Its job here is narrower and stated as such: to make it impossible for this suite to be green
+    // because a consumer was never called, or was called over nothing. Measured on this file:
+    // bypassing the dashboard partition reds `3 failed | 7 passed`, naming the partition, the
+    // complete-count, and the validated-coverage tests; inverting the validated flags reds the
+    // review-flag test here and the two flag tests in the derivation suite, and nothing else.
+    const { overview, summary, validated } = await bothConsumers();
     expect(overview.totalQualifyingValidations).toBeGreaterThan(0);
     expect(summary.by_entry.length).toBe(ENTRIES.length);
+    expect(validated.records.length).toBeGreaterThan(0);
   });
 
   it("agrees on the total qualifying validations", async () => {
@@ -261,6 +273,42 @@ describe("the dashboard and the export agree on one corpus", () => {
     const { overview, summary } = await bothConsumers();
 
     expect(overview.buckets.complete).toBe(summary.totals.entries_with_coverage_complete);
+  });
+
+  it("covers exactly the complete entries in the validated dataset, no more and no fewer", async () => {
+    // The validated document is the third consumer: its record set must equal the complete set
+    // the other two report, read off the artifact rather than re-derived from the builder.
+    const { overview, summary, validated } = await bothConsumers();
+
+    const completeBySummary = new Set(
+      summary.by_entry
+        .filter((row) => row.coverage_complete)
+        .map((row) => row.dataset_entry_id),
+    );
+    const validatedIds = new Set(validated.records.map((record) => record.id));
+
+    expect(validatedIds).toEqual(completeBySummary);
+    expect(validatedIds).toEqual(new Set(["C1", "C2", "C3", "X1"]));
+    expect(validated.records).toHaveLength(overview.buckets.complete);
+    expect(validated.derivation.omitted_incomplete_entries).toBe(overview.buckets.incomplete);
+  });
+
+  it("flags every review entry in the validated records, plus timestamp ties", async () => {
+    // The validated flag is a SUPERSET of the review set by design: it fires on the shared
+    // review rule OR on a createdAt tie. C1's two agreeing packages share one instant in this
+    // fixture, so the tie rule flags it while the disagreement rule does not — asserting plain
+    // equality here would forbid the tie rule from ever firing.
+    const { overview, validated } = await bothConsumers();
+
+    const flaggedValidated = validated.records
+      .filter((record) => record.needs_review)
+      .map((record) => record.id)
+      .sort();
+
+    for (const id of overview.reviewEntryIds) {
+      expect(flaggedValidated).toContain(id);
+    }
+    expect(flaggedValidated).toEqual(["C1", "C2"]);
   });
 
   it("agrees on WHICH entries need review, as a set", async () => {
@@ -301,12 +349,15 @@ describe("the dashboard and the export agree on one corpus", () => {
       validators: { listByIds: async () => [] },
     });
     const summary = buildExportSummary([], []);
+    const validated = buildValidatedDataset([], []);
 
     expect(overview.totalQualifyingValidations).toBe(summary.totals.qualifying_validations);
     expect(overview.totalQualifyingValidations).toBe(0);
     expect(overview.buckets).toEqual(exportBuckets(summary));
     expect(overview.reviewEntryIds).toEqual([]);
     expect(summary.by_entry).toEqual([]);
+    expect(validated.records).toEqual([]);
+    expect(validated.derivation.omitted_incomplete_entries).toBe(0);
   });
 
   it("still agrees across BOTH categories", async () => {
