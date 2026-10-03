@@ -4,12 +4,14 @@ import {
   selectBatchEntries,
   type AllocationCandidate,
   type CompletedEntryIds,
+  type SelectedEntry,
 } from "@/lib/domain/allocation";
 import { isEntryComplete, type CoverageResponseShape } from "@/lib/domain/validation-response";
 import {
   isRepositoryError,
   type BatchesRepository,
   type DatasetEntriesRepository,
+  type EntryReservationsRepository,
   type ValidationsRepository,
   type ValidatorsRepository,
 } from "@/lib/repositories";
@@ -110,6 +112,7 @@ export interface AllocationDependencies {
   readonly datasetEntries: DatasetEntriesRepository;
   readonly validations: ValidationsRepository;
   readonly batches: BatchesRepository;
+  readonly entryReservations: EntryReservationsRepository;
   /**
    * The research parameters, injected rather than imported as constants.
    *
@@ -213,6 +216,70 @@ function completedEntryIds(
 }
 
 /**
+ * Claim rounds per allocation: the initial selection plus two backfills. Bounded so two
+ * contending allocators cannot livelock each other re-selecting the same denied ids — each round
+ * excludes everything granted or denied before it, so every round either grows the grant or ends
+ * the loop. Persistent contention collapses to a short or empty grant, which the caller reports
+ * honestly rather than retrying forever.
+ */
+const MAX_CLAIM_ROUNDS = 3;
+
+/**
+ * Selects up to `size` entries and claims each one through the reservation seam.
+ *
+ * Selection proposes and the database disposes: every selected id is offered to
+ * `claimReservations`, which grants exactly the entries no other unexpired claim holds. A
+ * shortfall re-runs selection past granted AND denied ids — re-selecting granted ids would
+ * re-claim our own rows (harmless but progress-free), and re-selecting denied ids would ask
+ * Postgres a question it just answered. Denied ids are therefore excluded, not retried, within
+ * one request; their holders' TTLs, not this loop, decide when they return.
+ *
+ * The loop always terminates: each round either adds to `granted` or selects nothing new, and
+ * the round count is capped regardless.
+ */
+async function claimEntries(
+  pool: readonly AllocationCandidate[],
+  answered: ReadonlySet<string>,
+  completed: CompletedEntryIds,
+  size: number,
+  validatorId: AnonymousValidatorId,
+  dependencies: AllocationDependencies,
+): Promise<SelectedEntry[]> {
+  const granted: SelectedEntry[] = [];
+  const settled = new Set<string>();
+
+  for (let round = 0; granted.length < size && round < MAX_CLAIM_ROUNDS; round += 1) {
+    // `settled` joins the exclusion so a later round never re-selects a granted id (re-claiming
+    // our own rows would be harmless but progress-free) nor a denied id (re-asking a question
+    // Postgres just answered). Denied ids return via their holders' TTLs, not via this loop.
+    const ineligible = new Set<string>([...answered, ...settled]);
+    const selected = selectBatchEntries(
+      pool,
+      ineligible,
+      completed,
+      size - granted.length,
+      dependencies.random,
+    );
+    if (selected.length === 0) break;
+    const won = await dependencies.entryReservations.claimReservations(
+      validatorId,
+      selected.map((entry) => entry.id),
+      dependencies.config.reservationTtlSeconds,
+    );
+    const wonIds = new Set<string>(won);
+    for (const entry of selected) {
+      settled.add(entry.id);
+      if (wonIds.has(entry.id)) granted.push(entry);
+    }
+    // A round that grants nothing new ends the loop even below the cap: the next round would
+    // select past the same denied set, which is a slower way of learning nothing.
+    if (won.length === 0) break;
+  }
+
+  return granted;
+}
+
+/**
  * Allocates a coverage-aware batch for one validator.
  *
  * The order of operations is the specification, and each step exists because the one after it would
@@ -231,12 +298,16 @@ function completedEntryIds(
  *      and a second Continue must not re-offer them. The union needs no lifecycle column: entries
  *      in fully-answered batches are answered and already excluded, so what the union adds is
  *      exactly the remainders.
- *   6. Select, with the completion set.
- *   7. Persist with 1-based positions derived from the selected order.
+ *   6. Select, then CLAIM the selection through the reservation seam, backfilling shortfalls by
+ *      re-selecting past granted and denied ids (bounded rounds). Selection proposes; only the
+ *      database disposes — two simultaneous requests arbitrate in Postgres, never in this process.
+ *   7. Persist with 1-based positions derived from the granted order.
  *   8. Read back, and project to `AllocatedEntry`.
  *
- * Steps 1–6 perform no write. An `unknown_validator` outcome is therefore observable as "no batch
- * was created", which a test asserts directly rather than inferring from the absence of a batch id.
+ * Steps 1–5 perform no write — the reservation claim in step 6 is the first one, and it runs
+ * only after the validator is confirmed. An `unknown_validator` outcome is therefore observable
+ * as "no batch was created and nothing was reserved", which a test asserts directly rather than
+ * inferring from the absence of a batch id.
  */
 export async function allocateBatch(
   request: AllocationRequest,
@@ -275,15 +346,19 @@ export async function allocateBatch(
     // request, and each would be a separate chance to observe a different snapshot of coverage.
     const responses = await dependencies.validations.listForEntries(pool.map((entry) => entry.id));
 
-    const selected = selectBatchEntries(
+    const completed = completedEntryIds(pool, responses);
+    const granted = await claimEntries(
       pool,
       answered,
-      completedEntryIds(pool, responses),
+      completed,
       size,
-      dependencies.random,
+      request.validatorId,
+      dependencies,
     );
 
-    if (selected.length === 0) return { status: "exhausted" };
+    // Contention-collapse as well as pool exhaustion: when nothing could be granted — nobody
+    // else's fault and nothing persisted — the honest outcome is exhaustion, never an empty batch.
+    if (granted.length === 0) return { status: "exhausted" };
 
     const minted = dependencies.newBatch(request.validatorId);
 
@@ -292,9 +367,9 @@ export async function allocateBatch(
       {
         id: minted.id,
         validatorId: request.validatorId,
-        entries: selected.map((entry, index) => ({
+        entries: granted.map((entry, index) => ({
           datasetEntryId: entry.id,
-          // 1-based, derived HERE from the selected order. There is no code path by which a caller
+          // 1-based, derived HERE from the granted order. There is no code path by which a caller
           // supplies this, which is what the "a client cannot dictate the batch order" scenario
           // reduces to once the parameter does not exist.
           position: index + 1,

@@ -25,6 +25,7 @@ export type {
 
 export { SupabaseBatchesRepository } from "./batches";
 export { SupabaseDatasetEntriesRepository } from "./dataset-entries";
+export { SupabaseEntryReservationsRepository } from "./entry-reservations";
 export { SupabaseSignInAttemptsRepository } from "./sign-in-attempts";
 export { SupabaseValidatorsRepository } from "./validators";
 export { SupabaseValidationsRepository } from "./validations";
@@ -36,6 +37,7 @@ export {
 export {
   BATCHES_OPERATIONS,
   DATASET_ENTRIES_OPERATIONS,
+  ENTRY_RESERVATIONS_OPERATIONS,
   SIGN_IN_ATTEMPTS_OPERATIONS,
   VALIDATIONS_OPERATIONS,
   VALIDATORS_OPERATIONS,

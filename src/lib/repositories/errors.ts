@@ -55,7 +55,9 @@ export type RepositoryOperation =
   | "validation_batches.findById"
   | "validation_batches.listForRecovery"
   | "researcher_signin_attempts.recordAttempt"
-  | "researcher_signin_attempts.clear";
+  | "researcher_signin_attempts.clear"
+  | "entry_reservations.claim"
+  | "entry_reservations.release";
 
 export interface RepositoryErrorOptions {
   /** The original failure, preserved for diagnostics. Never re-wrapped into a bare message. */

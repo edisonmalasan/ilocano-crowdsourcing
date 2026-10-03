@@ -3,6 +3,7 @@ import "server-only";
 import type {
   BatchesRepository,
   DatasetEntriesRepository,
+  EntryReservationsRepository,
   RepositoryOperation,
   SignInAttemptsRepository,
   ValidationsRepository,
@@ -110,6 +111,16 @@ export const BATCHES_OPERATIONS = {
   // FOURTH locally reasonable convention in a union that is meant to have one.
   listForRecovery: "validation_batches.listForRecovery",
 } as const satisfies Record<keyof BatchesRepository, RepositoryOperation>;
+
+/**
+ * The method names ask domain questions (`claimReservations`, `releaseReservation`) while the
+ * union names the persistence call on the table — the same aggregate-vs-persistence shape as the
+ * divergences above, named here for the same reason. The union keeps one convention.
+ */
+export const ENTRY_RESERVATIONS_OPERATIONS = {
+  claimReservations: "entry_reservations.claim",
+  releaseReservation: "entry_reservations.release",
+} as const satisfies Record<keyof EntryReservationsRepository, RepositoryOperation>;
 
 /**
  * The FOUR divergences are above, and this map has none. `recordAttempt` and `clear` are named

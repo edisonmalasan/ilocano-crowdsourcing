@@ -21,6 +21,7 @@ import { SupabaseDatasetEntriesRepository } from "@/lib/repositories/supabase/da
 import {
   BATCHES_OPERATIONS,
   DATASET_ENTRIES_OPERATIONS,
+  ENTRY_RESERVATIONS_OPERATIONS,
   VALIDATIONS_OPERATIONS,
   VALIDATORS_OPERATIONS,
 } from "@/lib/repositories/supabase/operations";
@@ -1920,6 +1921,7 @@ describe("the operation name each method reports", () => {
     validators: VALIDATORS_OPERATIONS,
     validations: VALIDATIONS_OPERATIONS,
     batches: BATCHES_OPERATIONS,
+    entryReservations: ENTRY_RESERVATIONS_OPERATIONS,
   };
 
   it("pins every place the union and the method name disagree", () => {
@@ -1934,6 +1936,10 @@ describe("the operation name each method reports", () => {
     expect(maps.batches.create).toBe("validation_batches.insert");
     // And the one that is NOT a divergence, pinned so its lack of a comment reads as deliberate.
     expect(maps.batches.findById).toBe("validation_batches.findById");
+    // Two more of the same aggregate-vs-persistence shape: the methods ask domain questions while
+    // the union names the persistence call on the table.
+    expect(maps.entryReservations.claimReservations).toBe("entry_reservations.claim");
+    expect(maps.entryReservations.releaseReservation).toBe("entry_reservations.release");
   });
 
   it("gives every method of one interface its own operation name", () => {
@@ -1973,6 +1979,10 @@ describe("the operation name each method reports", () => {
       // BOTH updated: the check is bidirectional, so adding the method without the union entry fails
       // the compiler and adding the union entry without the method fails HERE.
       "validation_batches.listForRecovery",
+      // Arrived with the reservation seam, under the same contract: the compiler catches a method
+      // without a union entry, and this list catches a union entry without a method.
+      "entry_reservations.claim",
+      "entry_reservations.release",
     ];
     const used = Object.values(maps).flatMap((map) => Object.values(map));
 

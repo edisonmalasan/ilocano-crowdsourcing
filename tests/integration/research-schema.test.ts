@@ -61,8 +61,14 @@ const EXPECTED_TABLES = [
  * Held as a CLOSED list for the same reason {@link EXPECTED_TABLES} is: a new table added and not
  * listed here fails, rather than being silently absorbed. An open "anything else is fine" check would
  * pass on a seventh research table, which is precisely the mistake this file exists to prevent.
+ *
+ * `entry_reservations` joins this list — not the research list — for the reason the
+ * counter's exclusion states below it: it holds keys (an entry id, an attempt id, two instants)
+ * and no response, correction, translation, or proficiency. Its foreign keys point INTO the
+ * research tables for cascade integrity, and the test after next pins that they point nowhere
+ * else: keys are not data, but a new column holding data would be.
  */
-const EXPECTED_NON_RESEARCH_TABLES = ["researcher_signin_attempts"];
+const EXPECTED_NON_RESEARCH_TABLES = ["entry_reservations", "researcher_signin_attempts"];
 
 const EXPECTED_MIGRATIONS = [
   "20260930120000_research_schema.sql",
@@ -89,6 +95,12 @@ const EXPECTED_MIGRATIONS = [
   // forward-only, in this file, which creates NOTHING (a `DO` block only). Same reason as above:
   // it appears here and in neither table list, because it adds no table and no function.
   "20261004120000_dataset_entries_import_guard.sql",
+  // Arrived with entry-reservation-leases: the operational exclusivity table plus the atomic
+  // claim and release functions. It ADDS one table and two functions and changes nothing else,
+  // so it appears here and in the non-research table list, but not in the research list — which
+  // is the correct outcome rather than an omission. Same reason as the entries above: a
+  // migration this list does not name must FAIL here, which is what keeps a CLOSED list closed.
+  "20261004130000_entry_reservations.sql",
 ] as const;
 
 /**
@@ -225,6 +237,30 @@ describe("research schema migrations", () => {
             and c.contype = 'f'`,
       );
       expect(rows[0]?.count).toBe(0);
+    });
+
+    it("lets the reservation table reference research rows by key, and nothing else", async () => {
+      // Keys are not data: `entry_id` and `validator_id` point at dataset_entries and validators
+      // for cascade integrity, which is why this table may live outside the research list. But a
+      // future column reaching for response content — a correction, a translation, a proficiency —
+      // would make "operational" a lie, so the referenced set is pinned exactly, not as a
+      // superset. Two references, both keys, neither content.
+      const rows = await query<{ ref_table: string; ref_column: string }>(
+        db,
+        `select ccu.table_name as ref_table, ccu.column_name as ref_column
+           from information_schema.table_constraints tc
+           join information_schema.constraint_column_usage ccu
+             on ccu.constraint_name = tc.constraint_name
+            and ccu.constraint_schema = tc.constraint_schema
+          where tc.constraint_type = 'FOREIGN KEY'
+            and tc.table_schema = 'public'
+            and tc.table_name = 'entry_reservations'
+          order by ccu.column_name`,
+      );
+      expect(rows.map((row) => `${row.ref_table}.${row.ref_column}`).sort()).toEqual([
+        "dataset_entries.id",
+        "validators.id",
+      ]);
     });
 
     it("keys dataset entries by the source identifier, not a uuid surrogate", async () => {

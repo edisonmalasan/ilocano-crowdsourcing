@@ -9,6 +9,7 @@ import {
   RepositoryError,
   type BatchesRepository,
   type DatasetEntriesRepository,
+  type EntryReservationsRepository,
   type ValidationsRepository,
   type ValidatorsRepository,
 } from "@/lib/repositories";
@@ -158,6 +159,16 @@ function createFakes(
       readonly validatorId: string;
       readonly entryIds: readonly string[];
     }>;
+    /**
+     * Overrides the claim arbiter. The default grants everything requested; a test passes a
+     * function to deny entries (contention), to share one arbiter across two concurrent
+     * allocations (the race), or to fail the call. Returning fewer ids than requested is a
+     * REAL answer — contention — never a failure, which is what the backfill logic consumes.
+     */
+    readonly claim?: (
+      validatorId: string,
+      entryIds: string[],
+    ) => Promise<readonly string[]> | readonly string[];
   } = {},
 ) {
   const calls: Array<{ method: string; argument: unknown }> = [];
@@ -282,10 +293,25 @@ function createFakes(
     },
   };
 
+  // The claim arbiter: grants everything requested unless a test overrides `claim` to deny
+  // entries (contention), to share one arbiter across two concurrent allocations (the race), or
+  // to fail the call. Declared against the interface on purpose.
+  const entryReservations: EntryReservationsRepository = {
+    async claimReservations(validatorId, entryIds, ttlSeconds) {
+      record("entryReservations.claimReservations", { validatorId, entryIds, ttlSeconds });
+      if (options.claim !== undefined)
+        return [...(await options.claim(validatorId, [...entryIds]))];
+      return [...entryIds];
+    },
+    async releaseReservation(validatorId, entryId) {
+      record("entryReservations.releaseReservation", { validatorId, entryId });
+    },
+  };
+
   return {
     calls,
     stored,
-    dependencies: { validators, datasetEntries, validations, batches },
+    dependencies: { validators, datasetEntries, validations, batches, entryReservations },
     countOf(method: string): number {
       return calls.filter((call) => call.method === method).length;
     },
@@ -610,6 +636,109 @@ describe("entries assigned to the attempt's own batches", () => {
     expect(fakes.calls.find((call) => call.method === "batches.listForRecovery")?.argument).toBe(
       VALIDATOR,
     );
+  });
+});
+
+describe("reservation claims", () => {
+  it("backfills a denied entry from remaining candidates instead of serving short", async () => {
+    // `() => 1` keeps the shuffled order identical to the pool order (pinned by the clamp
+    // test), so round one deterministically selects the first three and the denied OD_0002 is
+    // replaced by OD_0004 in round two — order included, because positions derive from it.
+    const fakes = createFakes({
+      pool: [
+        entry("OD_0001"),
+        entry("OD_0002"),
+        entry("OD_0003"),
+        entry("OD_0004"),
+        entry("OD_0005"),
+      ],
+      claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_0002"),
+    });
+
+    const outcome = await allocateBatch(
+      request,
+      dependenciesFor(fakes, { config: config({ batchSize: 3 }), random: () => 1 }),
+    );
+
+    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual([
+      "OD_0001",
+      "OD_0003",
+      "OD_0004",
+    ]);
+    // The configured lease travels with every claim; a default silently substituted here would
+    // be a second source of truth for the TTL.
+    for (const call of fakes.calls.filter(
+      (candidate) => candidate.method === "entryReservations.claimReservations",
+    )) {
+      expect((call.argument as { ttlSeconds: number }).ttlSeconds).toBe(
+        config().reservationTtlSeconds,
+      );
+    }
+  });
+
+  it("grants no entry twice when two attempts allocate at the same time", async () => {
+    // Forced interleaving, not timing: A's first claim waits until B has also claimed, so both
+    // selections were made against the same unclaimed pool — the exact overlap read-then-write
+    // loses. The shared arbiter then grants each entry to whoever names it first, the way the
+    // database does. What this proves is the SERVICE half: persisted batches contain only
+    // granted ids, so no interleaving can double-serve an entry through this code.
+    const RACER_A = "VAL_0000aa01";
+    const RACER_B = "VAL_0000bb02";
+    const held = new Map<string, string>();
+    const seen: string[] = [];
+    let releaseGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    const grantedTo: Record<string, string[]> = { [RACER_A]: [], [RACER_B]: [] };
+    const claim = async (validatorId: string, entryIds: string[]) => {
+      seen.push(validatorId);
+      if (validatorId === RACER_A && !seen.includes(RACER_B)) await gate;
+      if (validatorId === RACER_B) releaseGate();
+      const won: string[] = [];
+      for (const id of entryIds) {
+        if (!held.has(id)) {
+          held.set(id, validatorId);
+          won.push(id);
+        }
+      }
+      grantedTo[validatorId]?.push(...won);
+      return won;
+    };
+    const pool = [entry("OD_0001"), entry("OD_0002"), entry("OD_0003"), entry("OD_0004")];
+    const fakesA = createFakes({ pool, knownValidatorIds: [RACER_A], claim });
+    const fakesB = createFakes({ pool, knownValidatorIds: [RACER_B], claim });
+
+    const [outcomeA, outcomeB] = await Promise.all([
+      allocateBatch({ validatorId: RACER_A }, dependenciesFor(fakesA)),
+      allocateBatch({ validatorId: RACER_B }, dependenciesFor(fakesB)),
+    ]);
+
+    const idsA =
+      outcomeA.status === "allocated" ? outcomeA.entries.map((candidate) => candidate.id) : [];
+    const idsB =
+      outcomeB.status === "allocated" ? outcomeB.entries.map((candidate) => candidate.id) : [];
+    // No entry in both batches — the acceptance criterion, stated as a set intersection.
+    expect(idsA.filter((id) => idsB.includes(id))).toEqual([]);
+    // And every served id was granted to its holder: the service persists grants, never bare
+    // selections, which is what makes the arbiter's decision stick.
+    for (const id of idsA) expect(grantedTo[RACER_A]).toContain(id);
+    for (const id of idsB) expect(grantedTo[RACER_B]).toContain(id);
+  });
+
+  it("collapses to exhausted when nothing can be granted, without persisting", async () => {
+    // Total contention is not pool exhaustion, but no batch CAN be reported — an empty batch is
+    // forbidden — so exhaustion is the honest outcome, with no batch row persisted for it.
+    const fakes = createFakes({
+      pool: [entry("OD_0001"), entry("OD_0002")],
+      claim: async () => [],
+    });
+
+    const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+    expect(outcome).toEqual({ status: "exhausted" });
+    expect(fakes.countOf("batches.create")).toBe(0);
+    expect(fakes.countOf("entryReservations.claimReservations")).toBeGreaterThan(0);
   });
 });
 

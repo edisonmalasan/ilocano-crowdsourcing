@@ -237,7 +237,8 @@ describe("submitting a validation on a CONFIGURED deployment", () => {
     getServerEnv.mockImplementation(() => undefined);
     const validations = { insert: vi.fn() };
     const batches = { findById: vi.fn() };
-    createSupabaseRepositories.mockReturnValue({ batches, validations });
+    const entryReservations = { releaseReservation: vi.fn() };
+    createSupabaseRepositories.mockReturnValue({ batches, validations, entryReservations });
     runSubmitValidation.mockResolvedValue({
       status: "already_recorded",
       datasetEntryId: "OD_0001",
@@ -254,13 +255,20 @@ describe("submitting a validation on a CONFIGURED deployment", () => {
     expect(result).toEqual({ status: "already_recorded", datasetEntryId: "OD_0001" });
     expect(runSubmitValidation).toHaveBeenCalledTimes(1);
 
-    // The dependency SHAPE is the claim: `batches` and `validations` are handed straight through, so
-    // the wrapper adds nothing the core did not ask for. A wrapper that passed the whole repository
-    // factory, or wrapped either in a new object, would fail this and no other assertion here.
+    // The dependency SHAPE is the claim: `batches`, `validations`, and `entryReservations`
+    // are handed straight through, so the wrapper adds nothing the core did not ask for. A wrapper
+    // that passed the whole repository factory, or wrapped any of them in a new object, would fail
+    // this and no other assertion here.
     const deps = runSubmitValidation.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(Object.keys(deps).sort()).toEqual(["batches", "now", "validations"]);
+    expect(Object.keys(deps).sort()).toEqual([
+      "batches",
+      "entryReservations",
+      "now",
+      "validations",
+    ]);
     expect(deps["batches"]).toBe(batches);
     expect(deps["validations"]).toBe(validations);
+    expect(deps["entryReservations"]).toBe(entryReservations);
     expect(typeof deps["now"]).toBe("function");
   });
 

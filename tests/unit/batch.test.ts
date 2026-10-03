@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   BATCH_SIZE_DEFAULT,
   BATCH_SIZE_HARD_MAX,
+  RESERVATION_TTL_SECONDS_DEFAULT,
+  RESERVATION_TTL_SECONDS_HARD_MAX,
   allocationConfigSchema,
   batchRequestSchema,
   resolveBatchSize,
@@ -17,16 +19,26 @@ function config(overrides: Partial<AllocationConfig> = {}): AllocationConfig {
 
 describe("allocation configuration defaults", () => {
   it("defaults the batch size to 10 when nothing is configured", () => {
-    expect(allocationConfigSchema.parse({})).toEqual({ batchSize: BATCH_SIZE_DEFAULT });
+    expect(allocationConfigSchema.parse({}).batchSize).toBe(BATCH_SIZE_DEFAULT);
     expect(BATCH_SIZE_DEFAULT).toBe(10);
   });
 
-  it("holds exactly one key, so a re-added target fails rather than going unnoticed", () => {
-    // The corrected methodology has no independent-validation target for configuration to hold.
-    // `strictObject` already rejects an unknown key at parse time; this asserts the key set
-    // itself, so a target smuggled back into the schema breaks the assertion even where no
-    // caller passes one.
-    expect(Object.keys(allocationConfigSchema.parse({}))).toEqual(["batchSize"]);
+  it("defaults the reservation lease to 30 minutes when nothing is configured", () => {
+    expect(allocationConfigSchema.parse({}).reservationTtlSeconds).toBe(
+      RESERVATION_TTL_SECONDS_DEFAULT,
+    );
+    expect(RESERVATION_TTL_SECONDS_DEFAULT).toBe(1800);
+  });
+
+  it("holds exactly two keys, so a removed or re-added key fails rather than going unnoticed", () => {
+    // The corrected methodology has no independent-validation target for configuration to hold,
+    // and the reservation lease is the second operational parameter. `strictObject` already
+    // rejects an unknown key at parse time; this asserts the key set itself, so a key smuggled
+    // in or out breaks the assertion even where no caller passes one.
+    expect(Object.keys(allocationConfigSchema.parse({})).sort()).toEqual([
+      "batchSize",
+      "reservationTtlSeconds",
+    ]);
   });
 
   it("holds the hard upper bound above the approved batch size, so the bound is not the default", () => {
@@ -85,6 +97,38 @@ describe("allocation configuration validation", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects a non-positive reservation lease", () => {
+    for (const ttlSeconds of [0, -30]) {
+      const result = allocationConfigSchema.safeParse({ reservationTtlSeconds: ttlSeconds });
+
+      expect(result.success, `expected lease ${ttlSeconds} to be rejected`).toBe(false);
+      if (result.success) continue;
+      expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(
+        "reservationTtlSeconds",
+      );
+    }
+  });
+
+  it("rejects a reservation lease above the hard maximum and names the setting", () => {
+    const result = allocationConfigSchema.safeParse({
+      reservationTtlSeconds: RESERVATION_TTL_SECONDS_HARD_MAX + 1,
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(
+      "reservationTtlSeconds",
+    );
+    expect(result.error.issues[0]?.message).toContain("hard maximum");
+  });
+
+  it("accepts a reservation lease exactly at the hard maximum", () => {
+    expect(
+      allocationConfigSchema.parse({ reservationTtlSeconds: RESERVATION_TTL_SECONDS_HARD_MAX })
+        .reservationTtlSeconds,
+    ).toBe(RESERVATION_TTL_SECONDS_HARD_MAX);
+  });
 });
 
 describe("batch request", () => {
@@ -136,7 +180,7 @@ describe("effective batch size", () => {
     // Defence in depth: a value that reached this function without passing `allocationConfigSchema`
     // is still bounded, so the hard bound holds as a property of the function rather than only of
     // its callers.
-    const unvalidated = { batchSize: 10_000 };
+    const unvalidated = { batchSize: 10_000, reservationTtlSeconds: 3_600_000 };
 
     expect(resolveBatchSize(10_000, unvalidated)).toBe(BATCH_SIZE_HARD_MAX);
   });

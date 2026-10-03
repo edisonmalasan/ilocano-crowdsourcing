@@ -45,10 +45,11 @@ import {
 /** Builds the action dependencies, or throws `ServerEnvError` when no database is configured. */
 function actionDependencies(): ValidationActionDependencies {
   getServerEnv();
-  const { batches, validations } = createSupabaseRepositories();
+  const { batches, validations, entryReservations } = createSupabaseRepositories();
   return {
     batches,
     validations,
+    entryReservations,
     now: () => new Date(),
   };
 }

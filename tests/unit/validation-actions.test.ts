@@ -102,6 +102,8 @@ interface RecordingOptions {
   readonly batchFailure?: unknown;
   /** Thrown by `validations.insert` when set. */
   readonly insertFailure?: unknown;
+  /** Thrown by `entryReservations.releaseReservation` when set. */
+  readonly releaseFailure?: unknown;
   /** The id the repository returns from `insert`; differs from the minted one to prove it is reported. */
   readonly storedResponseId?: string;
   readonly missingEntryIds?: readonly string[];
@@ -154,6 +156,12 @@ function createRecordingDependencies(over: RecordingOptions = {}): Recording {
         inserted.push(record);
         if (over.insertFailure !== undefined) throw over.insertFailure;
         return { ...record, id: stored };
+      },
+    },
+    entryReservations: {
+      async releaseReservation(validatorId: string, entryId: string) {
+        calls.push(`entryReservations.releaseReservation:${validatorId}:${entryId}`);
+        if (over.releaseFailure !== undefined) throw over.releaseFailure;
       },
     },
     now: () => NOW,
@@ -216,6 +224,35 @@ describe("recording a completed response", () => {
     expect(stored.validatorId).toBe(VALIDATOR_ID);
   });
 
+  it("releases the submitter's own claim after a stored response", async () => {
+    // Release runs after the insert, scoped to the owning validator and the answered entry — so
+    // the row it removes can only ever be this submit's own. A release scoped wider would let
+    // one submit free another attempt's hold.
+    const deps = createRecordingDependencies({ batch: A_BATCH });
+
+    const result = await runSubmitValidation(intentFor(evaluableResponse()), deps);
+
+    expect(result.status).toBe("recorded");
+    expect(deps.calls).toContain(`entryReservations.releaseReservation:${VALIDATOR_ID}:OD_0001`);
+    expect(deps.calls.indexOf("validations.insert")).toBeLessThan(
+      deps.calls.indexOf(`entryReservations.releaseReservation:${VALIDATOR_ID}:OD_0001`),
+    );
+  });
+
+  it("still reports recorded when the release fails, because the answer IS stored", async () => {
+    // The asymmetry is deliberate and goes one way only: a stuck lease row decays by TTL, while
+    // a recorded submit reported as failed would tell a validator banked work was lost. Failing
+    // the submit over the release would invert that.
+    const deps = createRecordingDependencies({
+      batch: A_BATCH,
+      releaseFailure: new RepositoryError("entry_reservations.release", "lease table down"),
+    });
+
+    const result = await runSubmitValidation(intentFor(evaluableResponse()), deps);
+
+    expect(result.status).toBe("recorded");
+  });
+
   it("stamps BOTH timestamps from the injected clock", async () => {
     const deps = createRecordingDependencies({ batch: A_BATCH });
 
@@ -249,7 +286,11 @@ describe("recording a completed response", () => {
     );
 
     expect(result.status).toBe("recorded");
-    expect(deps.calls).toEqual(["batches.findById:batch-1", "validations.insert"]);
+    expect(deps.calls).toEqual([
+      "batches.findById:batch-1",
+      "validations.insert",
+      "entryReservations.releaseReservation:VAL_0a1b2c3d:OD_0001",
+    ]);
     expect(deps.calls.some((call) => call.includes("dataset"))).toBe(false);
     // And the correction went into the RESPONSE, beside the instruction — not anywhere else.
     expect((deps.inserted[0] as Record<string, unknown>)["correctedInstruction"]).toBe(
@@ -310,7 +351,11 @@ describe("recording a completed response", () => {
     );
 
     // Every call this action made, in order. No dataset write exists to make.
-    expect(deps.calls).toEqual(["batches.findById:batch-1", "validations.insert"]);
+    expect(deps.calls).toEqual([
+      "batches.findById:batch-1",
+      "validations.insert",
+      "entryReservations.releaseReservation:VAL_0a1b2c3d:OD_0001",
+    ]);
     // And the stored row carries no field that could be one.
     const stored = deps.inserted[0] as Record<string, unknown>;
     for (const forbidden of ["instruction", "sourcePayload", "sourceInstruction", "text"]) {
@@ -735,7 +780,9 @@ describe("the duplicate refusal, which is a SUCCESS with a different name", () =
   it("mints a response id the duplicate path never stores, so nothing is fabricated", async () => {
     // A minted id is generated before the insert, so a refused insert has consumed one. Asserting the
     // repository was still called once — and that the result carries no id — is what keeps the
-    // consumed-id detail honest rather than papered over.
+    // consumed-id detail honest rather than papered over. No release runs here: the insert never
+    // succeeded, so there is nothing whose claim this submit earned the right to free — and the
+    // earlier submit that DID record already released it.
     const deps = createRecordingDependencies({ batch: A_BATCH, insertFailure: uniqueViolation() });
 
     const result = await runSubmitValidation(intentFor(evaluableResponse()), deps);
