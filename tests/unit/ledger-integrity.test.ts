@@ -386,6 +386,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `entry-reservation-leases`, the TWENTY-THIRD archived change, so this coupling has now
       // been paid SEVEN times. Same one-line edit, same reason.
       23: "Twenty-three",
+      // Added for `rpc-execute-hardening`, the TWENTY-FOURTH archived change, so this coupling has now
+      // been paid EIGHT times. Same one-line edit, same reason.
+      24: "Twenty-four",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
