@@ -101,6 +101,11 @@ const EXPECTED_MIGRATIONS = [
   // is the correct outcome rather than an omission. Same reason as the entries above: a
   // migration this list does not name must FAIL here, which is what keeps a CLOSED list closed.
   "20261004130000_entry_reservations.sql",
+  // Arrived with rpc-execute-hardening: explicit EXECUTE revokes from anon/authenticated on the
+  // five privileged RPC functions. It changes no table, policy, or function body, so it appears
+  // here and in no table list — which is the correct outcome rather than an omission. Same reason
+  // as the entries above: a migration this list does not name must FAIL here.
+  "20261004140000_rpc_execute_hardening.sql",
 ] as const;
 
 /**
