@@ -364,6 +364,79 @@ describe("every outcome that is NOT an entry", () => {
     });
   });
 
+  it("reports a 9-entry short batch finished with counts of 9, not 10", async () => {
+    // Task 1.2: the finished figures come from the batch's own persisted size,
+    // never from the configured batch size. A fully-completed 9-entry batch
+    // reports 9 and 9 — `toEqual` is a FULL key-set assertion, so a figure
+    // read from any configured constant fails here rather than passing
+    // unnoticed.
+    const { openValidationSession } = await loadService();
+    const ids = Array.from({ length: 9 }, (_, index) => `OD_30${10 + index}`);
+
+    const outcome = await openValidationSession(
+      { batchId: "batch-9" },
+      createRecording({
+        batch: {
+          id: "batch-9",
+          validatorId: VALIDATOR_ID,
+          entries: ids.map((datasetEntryId, index) => ({ datasetEntryId, position: index + 1 })),
+        },
+        completedEntryIds: ids,
+      }),
+    );
+
+    expect(outcome).toEqual({
+      status: "finished",
+      batchId: "batch-9",
+      completedCount: 9,
+      total: 9,
+      lifetimeAnsweredCount: 9,
+    });
+  });
+
+  it("presents a 9-entry short batch with a total of 9", async () => {
+    // The presenting half of the same guarantee: the progress the participant
+    // sees mid-batch is the persisted size, not the configured one.
+    const { openValidationSession } = await loadService();
+    const ids = Array.from({ length: 9 }, (_, index) => `OD_30${10 + index}`);
+    const storedEntries = Object.fromEntries(
+      ids.map((id) => [
+        id,
+        {
+          id,
+          category: "origin_destination",
+          instruction: `Sentence for ${id}.`,
+          origin: "Baguio",
+          destination: "Baguio",
+          transitMode: "jeepney",
+          sourcePayload: { record_id: id },
+          createdAt: NOW,
+          isActive: true,
+        },
+      ]),
+    );
+
+    const outcome = await openValidationSession(
+      { batchId: "batch-9" },
+      createRecording({
+        batch: {
+          id: "batch-9",
+          validatorId: VALIDATOR_ID,
+          entries: ids.map((datasetEntryId, index) => ({ datasetEntryId, position: index + 1 })),
+        },
+        entries: storedEntries,
+        completedEntryIds: [],
+      }),
+    );
+
+    expect(outcome.status).toBe("presenting");
+    if (outcome.status !== "presenting") throw new Error("unreachable");
+    expect(outcome.session.position).toBe(1);
+    expect(outcome.session.total).toBe(9);
+    expect(outcome.session.completedCount).toBe(0);
+    expect(outcome.session.remainingCount).toBe(9);
+  });
+
   it("reads the LIFETIME figure for the BATCH's own validator, and the count is a separate call", async () => {
     // The source of the figure is the property, and the ORDER is what proves it is read from
     // validation records rather than derived from the batch: `listEntryIdsForValidator` is
