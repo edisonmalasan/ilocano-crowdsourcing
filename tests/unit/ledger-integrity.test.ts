@@ -383,6 +383,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `attempt-scoped-allocation`, the TWENTY-SECOND archived change, so this coupling has now
       // been paid SIX times. Same one-line edit, same reason.
       22: "Twenty-two",
+      // Added for `entry-reservation-leases`, the TWENTY-THIRD archived change, so this coupling has now
+      // been paid SEVEN times. Same one-line edit, same reason.
+      23: "Twenty-three",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
