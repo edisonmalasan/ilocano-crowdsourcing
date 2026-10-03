@@ -131,12 +131,17 @@ describe("enrollValidator", () => {
     ]);
   });
 
-  it("records a declined screening answer as absence rather than a substituted value", async () => {
+  it("refuses a null or absent screening answer instead of recording an absence", async () => {
+    // The methodology correction admits no decline: `null` and a missing value
+    // are both refused before any persistence operation is attempted, and no
+    // profile is created carrying an absence for them.
     const { repo, dependencies } = deps();
 
-    await enrollValidator(request(null), dependencies);
+    await expect(
+      enrollValidator({ ilocanoProficiency: null } as unknown as EnrollmentRequest, dependencies),
+    ).rejects.toThrow();
 
-    expect(repo.created).toMatchObject({ ilocanoProficiency: null });
+    expect(repo.countOf("create")).toBe(0);
   });
 
   it("refuses to store an unapproved proficiency, even when called directly", async () => {
@@ -247,9 +252,12 @@ describe("parseScreeningAnswer", () => {
     }
   });
 
-  it("treats an absent answer as a declined answer", () => {
-    expect(parseScreeningAnswer(null)).toBeNull();
-    expect(parseScreeningAnswer(undefined)).toBeNull();
+  it("treats a null or absent answer as invalid, never as a storable value", () => {
+    // Since the methodology correction there is no decline value: `null` and
+    // `undefined` throw exactly like an unapproved string, so neither can
+    // become a recorded absence.
+    expect(() => parseScreeningAnswer(null)).toThrow();
+    expect(() => parseScreeningAnswer(undefined)).toThrow();
   });
 
   it("refuses a proficiency value outside the five approved choices", () => {

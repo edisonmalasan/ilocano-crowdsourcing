@@ -154,7 +154,7 @@ describe("the internal route inventory this suite relies on", () => {
     // every `expect(hrefs.every(...))` over it passes. An empty inventory is exactly the
     // condition this file's route tests exist to detect, so it must never pass silently.
     // `/validate` is named explicitly as well as being picked up by the directory scan, because it is
-    // the destination `/ready` now hands every participant to. The scan would catch a missing
+    // the orchestration entry screening hands every participant to. The scan would catch a missing
     // directory through the href loop; naming it here fails at the INVENTORY, naming the route that
     // went missing, which is the more useful failure when three routes change at once.
     expect(KNOWN_ROUTES).toEqual(expect.arrayContaining(["/start", "/ready", "/validate"]));
@@ -223,8 +223,12 @@ describe("landing route", () => {
     html = await renderRoute(HomePage);
   });
 
-  it("hands off to the screening route with a real link", () => {
-    expect(html).toContain('href="/start"');
+  it("hands off to screening through one entry action", () => {
+    // The hand-off is a button island rather than a link now: where it goes
+    // depends on what this browser holds, which only the browser knows. The
+    // static markup therefore carries the action, not the destination.
+    expect(html).toMatch(/Start validation/);
+    expect((html.match(/<button/g) ?? []).length).toBe(1);
   });
 
   it("no longer says the study is not open", () => {
@@ -236,8 +240,13 @@ describe("landing route", () => {
     expect((html.match(/<h1/g) ?? []).length).toBe(1);
   });
 
-  it("offers a resume path for a returning participant", () => {
-    expect(html).toMatch(/Continue as that validator/);
+  it("offers a single entry action with no second resume card", () => {
+    // One button, not a link-plus-card pair. The server markup cannot know what
+    // the browser holds, so it renders the start label; the island relabels
+    // after hydration where an attempt exists.
+    expect(html).toMatch(/Start validation/);
+    expect(html).not.toMatch(/Already started\?/);
+    expect(html).not.toMatch(/Continue as that validator/);
   });
 
   it("keeps the introduction copy from the shell phase", () => {
@@ -431,9 +440,12 @@ describe("screening form neutrality", () => {
     expect(html).toMatch(/aria-label="How comfortable are you with Ilocano\?"/);
   });
 
-  it("offers an explicit way to continue without answering", async () => {
+  it("offers no way to continue without answering", async () => {
+    // The methodology correction admits no decline: the form carries exactly
+    // one submit control, and no control on it submits without a selection.
     const html = await renderScreeningForm();
-    expect(html).toMatch(/Skip and continue without answering/);
+    expect(html).not.toMatch(/Skip and continue without answering/);
+    expect((html.match(/type="submit"/g) ?? []).length).toBe(1);
   });
 
   it("tells the participant an existing identity will be resumed, not duplicated", async () => {
@@ -631,7 +643,6 @@ describe("confirmation route", () => {
     // ...and the unconditionally-true forms are present instead.
     expect(html).toMatch(/is generated for you and saved to the database/i);
     expect(html).toMatch(/is kept in this browser only/i);
-    expect(html).toMatch(/How this works/);
 
     // The ethics-relevant content survived the rewording. These are the parts of this
     // page that actually matter to a participant deciding whether to take part, and
@@ -709,9 +720,11 @@ describe("confirmation route", () => {
     //     produces a BRAND NEW validator, and the answer just given is the one stored.
     //
     // So the copy now states the invariant rather than the outcome, and each clause is
-    // separately asserted because each was separately wrong.
+    // separately asserted because each was separately wrong. There is no decline
+    // path anymore, so the skip clause is gone with it — and its absence is
+    // asserted here rather than merely not mentioned.
     expect(html).toMatch(/kept with your validator identity/i);
-    expect(html).toMatch(/if you chose to skip it, nothing was recorded in its place/i);
+    expect(html).not.toMatch(/if you chose to skip it/i);
     expect(html).toMatch(/the answer already stored with\s+it is the one that was kept/i);
 
     expect(html).not.toMatch(/was stored as background information/i);

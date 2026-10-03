@@ -69,8 +69,8 @@ export const GUARD_WEAKNESS: Readonly<Record<string, Readonly<Record<string, str
       "an early return extracted into a helper, or moved past the 200-character window — the window is a magic number, so a correct refactor fails it and a correct-looking reorganization can escape it.",
     "the resume path performs no write, anywhere > the whole resume action touches the repository read-only":
       "a repository method named `.insert(`, `.save(`, or `.patch(` — the forbidden set is four exact names, so renaming a writer closes this guard without changing behaviour.",
-    "the skip control records a decline and never a fabricated answer > the skip control calls the decline path, and no approved level appears near it":
-      "`run(levels[0])` with `levels` imported from another module — the check is that no approved level appears as a string LITERAL in this file, so a fabricated level arriving by import is invisible.",
+    "the form refuses an empty submit and never fabricates an answer > a single submit control guards on the selection, and no approved level appears near it":
+      "a refusal that sets a DIFFERENT error, or none at all — the guard pins the catalog key of the message, not that a request is actually withheld; the no-request half is behavioural and lives in `tests/dom/screening-form.test.tsx`.",
     "a rejected submission reaches the field > the error state is forwarded to the control, not just held in state":
       "`error={error}` on a control that never renders it — the regex proves the value reached SOME JSX attribute, not that it is rendered or announced.",
     "the resume component's promises are backed by its calls > clears the stale identifier unconditionally on the path that claims it did":
@@ -92,14 +92,14 @@ export const GUARD_WEAKNESS: Readonly<Record<string, Readonly<Record<string, str
       "any fabricated value outside the ten hand-written cases — including a future sixth level, or `Native` with different casing or whitespace — is untested by construction.",
     "the screening answer cannot be fabricated at the answer control > is what the screening form actually calls, so the cast is gone from the file":
       "a COMMENT naming `toIlocanoProficiency(value)` — this read does NOT go through `code()`, unlike every other source assertion in the sibling file, so prose satisfies it.",
-    "landing route > hands off to the screening route with a real link":
-      "the `href` appearing inside a hidden or `aria-hidden` element, or in markup that never becomes visible — `toContain` proves presence, not reachability.",
+    "landing route > hands off to screening through one entry action":
+      "the press-time routing the island performs — static markup carries the action, not the destination, so a press that went anywhere would pass; the destinations are pinned behaviourally in `tests/dom/resume-validator.test.tsx`.",
     "landing route > no longer says the study is not open":
       "a reworded equivalent such as “not yet available” — exactly two phrasings are forbidden.",
     "landing route > has exactly one h1":
       "a second `h1` rendered only after hydration — `renderToStaticMarkup` sees one server pass, so any client-inserted heading is invisible to this count.",
-    "landing route > offers a resume path for a returning participant":
-      "the resume control being present in markup but wired to nothing — copy text only. The wiring is now observed separately in `tests/dom/resume-validator.test.tsx`.",
+    "landing route > offers a single entry action with no second resume card":
+      "a second path rendered only after hydration — static markup cannot see it, so a client-inserted duplicate action would pass; the single-action behaviour is pinned in `tests/dom/resume-validator.test.tsx`.",
     "landing route > keeps the introduction copy from the shell phase":
       "legitimate rewording of the introduction — two literal substrings, so a copy improvement fails for a purely cosmetic reason.",
     "screening route > has exactly one h1 and a distinct page title":
@@ -132,8 +132,8 @@ export const GUARD_WEAKNESS: Readonly<Record<string, Readonly<Record<string, str
       "a hint worded “Most people choose this” — four literal strings, none of them a shape.",
     "screening form neutrality > labels the group with the approved question, for assistive technology":
       "an empty or wrong `aria-labelledby` alongside a correct `aria-label` — only one of the two labelling mechanisms is inspected, and precedence goes to the one not checked.",
-    "screening form neutrality > offers an explicit way to continue without answering":
-      "the control being present but calling the enrolment path instead of the decline — copy only; the decline behaviour is asserted in the sibling wiring file.",
+    "screening form neutrality > offers no way to continue without answering":
+      "a second submit path added client-side after hydration — static markup counts one submit control, so a hydrated duplicate would pass; the refusal behaviour is pinned in `tests/dom/screening-form.test.tsx`.",
     "screening form neutrality > tells the participant an existing identity will be resumed, not duplicated":
       "the guarantee being false — this asserts two sentences exist, which is the opposite of the attestation test on `/ready` and is knowingly weaker.",
     "the submit control while a Server Action is in flight > disables and marks the control busy while pending":

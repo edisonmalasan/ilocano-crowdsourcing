@@ -55,15 +55,6 @@ export default async function StartPage() {
 
   return (
     <>
-      <header className="border-ink bg-paper-raised border-b-2">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
-          <p className="label-meta text-ink">
-            <span className="text-accent">●</span> Sadino
-            <span className="text-ink-faint"> / {t("start.header.step")}</span>
-          </p>
-        </div>
-      </header>
-
       <main id="main" className="mx-auto w-full max-w-3xl px-5 sm:px-8">
         <section className="section-y flex flex-col gap-6">
           <div>
@@ -111,13 +102,6 @@ export default async function StartPage() {
           </Card>
         </section>
       </main>
-
-      <footer className="border-ink bg-paper-raised border-t-2">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 sm:px-8">
-          <p className="label-meta text-ink-faint">{t("common.footer.research")}</p>
-          <p className="text-small text-ink-muted">{t("common.footer.noAccounts")}</p>
-        </div>
-      </footer>
     </>
   );
 }

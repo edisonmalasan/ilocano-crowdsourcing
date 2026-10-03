@@ -11,18 +11,19 @@
  * behavioural: a real click, a real form submit, and the effect observed in the DOM.
  *
  *   SF-1  the screening options stay inert while a write is in flight
- *   SF-2  the PRIMARY Continue control is disabled while a write is in flight
- *   SF-3  the skip control is disabled while a write is in flight
- *   SF-4  the payload carries the participant's ANSWER, never a decline
- *   SF-5  an enrolled participant is navigated to /ready
+ *   SF-2  the Continue control is disabled while a write is in flight
+ *   SF-3  an empty submit sends no request and identifies the missing answer
+ *   SF-4  the payload carries the participant's ANSWER, and there is no decline path
+ *   SF-5  an enrolled participant is navigated into the validation flow
  *
  * =================================================================================================
  * WHY SF-4 HAS TWO TESTS AND THE SECOND IS NOT REDUNDANT
  * =================================================================================================
  * `expect(enroll).toEqual([{ … }])` also passes against a stub that records nothing and returns a
  * canned value for every call — it would pass whether or not the component passed an answer at all.
- * So the DECLINE path is asserted separately and is expected to carry exactly `null`. If the mock
- * were inert, or the component sent one value on every path, one of the two tests fails.
+ * So the EMPTY submit is asserted separately and must send NOTHING: no request, no navigation, and
+ * a field-attached error instead. If the mock were inert, or the component sent one value on every
+ * path, one of the two tests fails.
  * **A claim with a paired opposite is a measurement; a claim on its own is a decoration.**
  *
  * =================================================================================================
@@ -35,7 +36,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScreeningForm } from "@/app/start/screening-form";
+import { translatorFor } from "@/lib/i18n/copy";
 import { mount, neverResolves, type Mounted } from "./support/dom-harness";
+
+const t = translatorFor("en");
 
 /**
  * Hoisted so the `vi.mock` factories — which are lifted above every import — close over the SAME
@@ -94,7 +98,7 @@ vi.mock("@/lib/validators/actions", () => ({
   }),
 }));
 
-/** Index 4 is `not_confident` — neither `null` nor `ILOCANO_PROFICIENCY_CHOICES[1]`. */
+/** Index 4 is `not_confident` — a concrete choice, never a default. */
 const NOT_CONFIDENT = 4;
 
 let view: Mounted;
@@ -113,22 +117,18 @@ function continueControl(): HTMLButtonElement {
 }
 
 /**
- * The skip control: the only non-submit, non-radio button on the form.
- *
- * The radios are `type="button"` too, so they must be excluded explicitly — which is also why
- * `disabled={submitState.disabled}` and `disabled={isPending}` are two distinct bindings in the
- * component and had to be measured as two distinct sites.
+ * Selects an option. A write can only begin from an answered form now — an
+ * empty submit identifies the missing answer and sends nothing — so the
+ * pending-state tests answer first.
  */
-function skipControl(): HTMLButtonElement {
-  const candidates = view.all("form button:not([role='radio'])");
-  const skip = candidates.find((b) => b !== continueControl());
-  if (!skip) throw new Error("the skip control was not rendered");
-  return skip as HTMLButtonElement;
+function answerNotConfident(): void {
+  view.press(options()[NOT_CONFIDENT]);
 }
 
-/** Mounts, submits, and leaves the transition OPEN — for the pending-state tests. */
+/** Mounts, answers, submits, and leaves the transition OPEN — for the pending-state tests. */
 function beginPendingWrite(): void {
   h.holdEnroll = neverResolves;
+  answerNotConfident();
   view.submitForm(form());
 }
 
@@ -161,22 +161,28 @@ describe("SF-4 — the payload carries the answer, not a fabricated level", () =
     // transmitted, verified for one level", and it is that, not more.
   });
 
-  it("sends exactly null when the participant declines, and no level at all", async () => {
+  it("sends exactly nothing when nothing is selected, and says what is missing", async () => {
     await view.submitFormAndSettle(form());
 
     // The control for the test above — see the file header for why this is not redundant.
-    expect(h.enroll).toEqual([{ ilocanoProficiency: null }]);
+    // An empty submit is refused on the form: no request, no navigation, and the
+    // missing answer is identified on the screening control.
+    expect(h.enroll).toEqual([]);
+    expect(h.pushes).toEqual([]);
+    expect(form().textContent).toContain(t("screening.failure.invalid.enroll"));
 
-    // WEAKNESS: asserts absence, not the REASON. It cannot by itself distinguish a deliberate
-    // decline from a lost answer; that is the first test's job, and the pair is the point.
+    // WEAKNESS: asserts the message is SHOWN, not that it is attached to the control a screen
+    // reader announces with the options. That attachment is asserted in
+    // `tests/unit/onboarding-routes.test.tsx` by error-prop wiring.
   });
 });
 
-describe("SF-5 — a successful enrollment navigates onward", () => {
-  it("navigates to /ready and stores the minted identifier", async () => {
+describe("SF-5 — a successful enrollment navigates into validation", () => {
+  it("navigates to /validate and stores the minted identifier", async () => {
+    answerNotConfident();
     await view.submitFormAndSettle(form());
 
-    expect(h.pushes).toEqual(["/ready"]);
+    expect(h.pushes).toEqual(["/validate"]);
     expect(h.written).toEqual([h.mintedId]);
 
     // WEAKNESS: observes both effects but not their ORDER. A mutation that navigated before storing
@@ -213,22 +219,25 @@ describe("SF-2 — the primary control is inert while a write is in flight", () 
   });
 });
 
-describe("SF-3 — the skip control is inert while a write is in flight", () => {
-  it("disables skip, as a binding distinct from Continue's", async () => {
-    beginPendingWrite();
-    await view.settle();
+describe("SF-3 — the refusal clears once the participant answers", () => {
+  it("submits normally after an empty attempt followed by a choice", async () => {
+    await view.submitFormAndSettle(form());
+    expect(h.enroll).toEqual([]);
 
-    expect(skipControl().disabled).toBe(true);
+    answerNotConfident();
+    await view.submitFormAndSettle(form());
 
-    // WHY A SEPARATE TEST: `disabled={submitState.disabled}` occurs TWICE in the component. One
-    // test covering both would go red for either mutation and could not say which fired — and a red
-    // that cannot be attributed may be failing for an unrelated reason. This way each is
-    // attributable by name.
-    //
-    // WEAKNESS: observes the skip control's `disabled` and nothing else — not `aria-busy`, not
-    // that it is the control the participant's second click would reach, and not that the
-    // Continue control is ALSO disabled (that is SF-2's separate claim). A mutation that disabled
-    // skip but left it focusable and unannounced would pass.
+    // WHY A SEPARATE DESCRIBE: the refusal must not wedge the form — one
+    // governs the answeredness of the form, the other that a refused submit
+    // leaves the form usable. A red that cannot be attributed may be failing
+    // for an unrelated reason, so each lives under its own name.
+    expect(h.enroll).toEqual([{ ilocanoProficiency: "not_confident" }]);
+    expect(h.pushes).toEqual(["/validate"]);
+
+    // WEAKNESS: observes that the refused-then-answered sequence completes, not
+    // that the error text itself disappeared from the accessibility tree. That
+    // attachment is asserted by error-prop wiring in
+    // `tests/unit/onboarding-routes.test.tsx`.
   });
 });
 

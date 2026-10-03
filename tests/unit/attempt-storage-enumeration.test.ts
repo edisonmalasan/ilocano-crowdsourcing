@@ -358,7 +358,7 @@ describe("nothing under src/ reaches for storage that outlives the session", () 
 describe("every remaining `localStorage` mention under src/ is a deliberate quotation", () => {
   const ALLOWED: ReadonlyArray<readonly [location: string, why: string]> = [
     ["src/app/layout.tsx:92", "interface locale: the cookie's rejected alternative"],
-    ["src/app/ready/page.tsx:83", "interface locale: `middleware` can read neither storage"],
+    ["src/app/ready/page.tsx:82", "interface locale: `middleware` can read neither storage"],
     ["src/lib/i18n/interface-locale-cookie.ts:15", "interface locale: why a cookie, not storage"],
     ["src/lib/i18n/interface-locale-cookie.ts:26", "interface locale: what the cookie buys"],
     ["src/lib/i18n/interface-locale-cookie.ts:28", "interface locale: the hydration cost avoided"],

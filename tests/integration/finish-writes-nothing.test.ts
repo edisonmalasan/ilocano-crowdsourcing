@@ -138,7 +138,8 @@ describe("choosing to finish leaves every recorded response exactly as recorded"
     // checked for content that only this route produces. Same lesson as the catalog guards: assert
     // that the thing being compared actually contained something.
     expect(html).toContain("<h1");
-    expect(html).toContain('href="/start"');
+    expect(html).toContain("Check the Ilocano.");
+    expect(html).toContain("Start validation");
     expect(FINISH_HREF).toBe("/");
 
     const after = await snapshotAllTables(db);

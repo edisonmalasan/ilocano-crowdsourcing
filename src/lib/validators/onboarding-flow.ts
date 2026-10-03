@@ -53,10 +53,10 @@ export type OnboardingDecision =
    *
    * Reached when a stored identifier names nobody, so it is forgotten and a new
    * identity is issued. `answer` is passed in rather than derived: on this path the
-   * participant HAS answered the question, and enrolling them as `null` would
-   * record a decline they never chose.
+   * participant HAS answered the question, and enrolling them with anything but
+   * that answer would record a datum they never chose.
    */
-  | { readonly kind: "enroll-fresh"; readonly answer: IlocanoProficiency | null }
+  | { readonly kind: "enroll-fresh"; readonly answer: IlocanoProficiency }
   /** Something failed. `message` is plain language and names no technical detail. */
   | { readonly kind: "error"; readonly message: string }
   /** A routine status update. Never announced as an alert. */
@@ -140,6 +140,15 @@ export function decideResume(
   }
 
   if (result.status === "absent") {
+    // No answer was collected on this path (the landing action), so there is
+    // nothing to enroll with: the unknown identity is reported as a notice
+    // and the caller clears it. A caller that HAS an answer (the screening
+    // form, where an answer is now required) always passes it, and the
+    // `enroll-fresh` below carries that exact answer — never a null of this
+    // decision's own making.
+    if (answer === null) {
+      return { kind: "notice", message: t("resume.unknown") };
+    }
     return { kind: "enroll-fresh", answer };
   }
 

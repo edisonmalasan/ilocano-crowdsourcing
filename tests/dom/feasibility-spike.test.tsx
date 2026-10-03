@@ -49,7 +49,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ResumeValidator } from "@/components/onboarding/resume-validator";
+import { LandingAction } from "@/components/onboarding/resume-validator";
 
 /**
  * `act` refuses to drive React outside a test environment unless this flag is set. Without it
@@ -114,7 +114,7 @@ function mount(): void {
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
-    root.render(<ResumeValidator locale="en" />);
+    root.render(<LandingAction locale="en" />);
   });
 }
 
@@ -149,12 +149,12 @@ describe("BAR A — a real click is observable", () => {
     expect(control().textContent).not.toBe("");
   });
 
-  it("navigates to /ready when a stored identity is restored", async () => {
+  it("navigates to /validate when a stored identity is restored", async () => {
     mount();
     await act(async () => {
       control().click();
     });
-    expect(h.pushes).toEqual(["/ready"]);
+    expect(h.pushes).toEqual(["/validate"]);
   });
 
   it("does not navigate without a click — the control's own negative", async () => {

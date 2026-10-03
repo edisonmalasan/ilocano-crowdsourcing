@@ -103,13 +103,13 @@ export const viewport: Viewport = {
  * WHY THE SWITCHER IS HERE AND NOT IN EACH PAGE
  * ============================================================================
  * The spec requires a language control on every public page. Rendering it here makes that structural
- * rather than a convention four pages have to remember - and it is the only way the not-found page
- * gets one, since that page deliberately has no header. The bar sits above each page's own header,
- * so its position is identical everywhere and a participant has seen it in the same place on every
- * page they have visited.
+ * rather than a convention the pages have to remember - and it is the only way the not-found page
+ * gets one, since that page deliberately has no header. This bar IS the pages' header chrome:
+ * individual pages render no header of their own, so the brand and the switcher sit in the same
+ * place on every page a participant visits.
  *
- * It is a `<div>` and not a second `<header>`, deliberately: each page already renders a `<header>`
- * of its own, and nesting those inside another banner landmark would make the landmark structure
+ * It is a `<div>` and not a second `<header>`, deliberately: the pages below render their own
+ * headings, and nesting those inside another banner landmark would make the landmark structure
  * ambiguous for assistive technology.
  *
  * ============================================================================
@@ -158,12 +158,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </a>
 
         {/*
-          The language bar. `bg-paper-raised` and the 2px bottom border continue the pages' own
-          headers, so the two read as one piece of chrome rather than as two competing bars, and a
-          page that has no header of its own - the not-found page - still has some.
+          The single public bar: brand on the left, interface language on the
+          right. It replaces the former two-piece chrome (a language bar above
+          each page's own header), so every public screen carries exactly one
+          bar and the switcher is structurally present on all of them —
+          including the not-found page, which deliberately has no header of
+          its own. It is a `<div>` and not a `<header>` landmark, because the
+          pages below render their own headings and a second banner landmark
+          would make the landmark structure ambiguous for assistive technology.
         */}
         <div className="border-ink bg-paper-raised border-b-2">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-end px-5 py-2 sm:px-8">
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
+            <p className="label-meta text-ink">
+              <span aria-hidden="true" className="text-accent">
+                ●
+              </span>{" "}
+              Sadino
+            </p>
             <LocaleSwitcher locale={locale} action={changeInterfaceLocaleAction} />
           </div>
         </div>

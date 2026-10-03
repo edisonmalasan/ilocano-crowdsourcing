@@ -116,8 +116,7 @@ export default async function ValidatePage({ params, searchParams }: ValidatePag
 
   return (
     <main id="main" className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
-      <p className="label-meta text-ink-muted">{t("validate.header.step")}</p>
-      <h1 className="text-title mt-2">{t("validate.meta.title")}</h1>
+      <h1 className="text-title">{t("validate.meta.title")}</h1>
       <p className="text-lead text-ink-muted mt-3">{t("validate.meta.description")}</p>
 
       <div className="mt-8 flex flex-col gap-6">

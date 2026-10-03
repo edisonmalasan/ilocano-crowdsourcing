@@ -1689,43 +1689,37 @@ describe("the start route", () => {
     // produces and nothing else — `expect(undefined).toBe(undefined)` passes.
     expect(metadata.title).toBe(EN("validateStart.meta.title"));
     expect(metadata.title).toBeDefined();
-    expect(String(metadata.description ?? "")).toBe(EN("validateStart.title"));
+    expect(String(metadata.description ?? "")).toBe(EN("validateStart.lead"));
   });
 
-  it("offers no SECOND control that could also start a batch", async () => {
-    // Two starting controls would mean two paths to allocation, and only one of them would be guarded by
-    // whatever this change decided. Counted rather than asserted absent.
+  it("issues no manual control in server markup — orchestration starts on mount", async () => {
+    // The start is an effect, not a press: the server markup carries the heading
+    // and the working state, and zero controls that could request a batch. A
+    // second mount-time request would come from an effect, not from markup, so
+    // what this guards is that no pressable path to allocation exists here at
+    // all — counted rather than asserted absent.
     const { default: Page } = await loadStartPage();
 
     const html = renderToStaticMarkup(await Page());
-    const startButtons = countOccurrences(html, EN("validateStart.begin"));
+    const startButtons = countOccurrences(html, "<button");
 
-    expect(startButtons).toBe(1);
+    expect(startButtons).toBe(0);
 
-    // And the control is a BUTTON rather than a link, because a batch does not exist to link to yet.
+    // And no control is a link either, because a batch does not exist to link to yet.
     //
-    // SCOPED TO THE CONTROL, and the scoping is the whole repair. This used to read
-    // `expect(html).not.toMatch(/href="\/validate\/batch/)` over the whole document, on the reasoning
-    // that a batch id begins `batch`. It does not — `defaultBatchId` mints `VAL_…` — so the pattern
-    // could never match a real href, in a thousand years of minting. It is the *same* defect as the
-    // assertion repaired in the test above, and it survived here because the two were written by
-    // different changes and neither author read the other.
-    //
-    // The document-wide form is ALSO now wrong on its own terms, and THIS feature is why: a start
-    // screen showing a resume offer legitimately carries a batch href. So a page-wide "no batch href"
-    // assertion is no longer merely vacuous, it is a statement the product contradicts — while being
-    // too weak to notice that it does. A guard in that position is worse than no guard, because the
-    // next author reads it as protection.
-    //
-    // What is asserted instead is a property OF THE CONTROL: every `<button>` opening tag on the page
-    // carries no `href`. The resume offer above it renders a `<Link>`, not a `<button>`, so it cannot
-    // affect the result — which is the point. The earlier form would have started failing the day this
-    // feature shipped, if it had ever been able to fire at all.
+    // SCOPED TO CONTROLS. A page-wide "no batch href" assertion used to live here and
+    // was removed for two reasons: the `href="\/validate\/` pattern above already
+    // carries the no-invented-address claim, and a resume offer once legitimately
+    // carried a batch href here — a guard in that position contradicted the product
+    // while being too weak to notice. What is asserted instead is a property OF THE
+    // CONTROLS: there are none to carry anything.
     const buttonTags = html.match(/<button[^>]*>/g) ?? [];
+    const linkTags = html.match(/<a[^>]*>/g) ?? [];
 
-    // Assert the search found something. A guard that silently read nothing passes all of its own
-    // checks, and `?? []` above makes exactly that mistake available.
-    expect(buttonTags.length, "no <button> tag was found to inspect").toBeGreaterThan(0);
+    // Both counts are the claim: zero buttons that could request a batch, zero
+    // links that could name one. Either count above zero names the control that
+    // reintroduced a manual path.
+    expect(linkTags.length, "a link was found on the orchestration screen").toBe(0);
     expect(
       buttonTags.filter((tag) => tag.includes("href")),
       "a button carries an href",

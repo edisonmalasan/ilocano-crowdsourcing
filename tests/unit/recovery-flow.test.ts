@@ -111,10 +111,10 @@ describe("decideRecovery", () => {
  * an unused variable. The honest repair was to delete the parameter and assert the property that
  * actually matters: there is nothing to look strings up in.
  *
- * The complementary half of the same requirement is `tests/dom/start-batch.test.tsx`, which derives every
- * `validateStart.resume.*` key from the English catalog and asserts none of the five reads as a fault in
- * either language. Neither half sees the other: this one cannot see the catalog, and that one cannot see
- * the decision function.
+ * The complementary half of the same requirement is `tests/dom/start-batch.test.tsx`, which drives
+ * the orchestration and asserts a failed lookup leaves no alert on screen and still allocates —
+ * in either language, since the states it renders come from the catalog. Neither half sees the
+ * other: this one cannot see the catalog, and that one cannot see the decision function.
  */
 it("does not import the copy catalog, so no branch of it can acquire a sentence", async () => {
   const { readFileSync } = await import("node:fs");
