@@ -144,8 +144,9 @@ The write SHALL be single-flight: while a response is being persisted, the contr
 SHALL expose a pending state and SHALL NOT begin a second write, and controls made inert alongside it
 SHALL change appearance uniformly.
 
-Whether a persisted response counts toward qualifying coverage SHALL be decided by the definition
-already in force in `domain-contracts`, and this capability SHALL NOT restate it.
+Whether a persisted response establishes a completed package SHALL be decided by the definition
+already in force in `domain-contracts` and `entry-completion`, and this capability SHALL NOT restate
+it.
 
 > **Why immediacy is specified rather than left to implementation.** A batch is up to ten entries of
 > free-text Ilocano plus two free-text translations each. Holding completed work in memory until the end
@@ -187,8 +188,16 @@ already in force in `domain-contracts`, and this capability SHALL NOT restate it
 >
 > **No entry is lost under this rule.** Once the requested position passes the end of the batch the
 > session falls back to the first entry still needing an answer, so an earlier unanswered entry is
-> never permanently skipped and can still reach its coverage target. A reviewer who prefers the other
-> rule should reject this scenario **and** change the implementation, not merely the scenario.
+> never permanently skipped and remains available for the validating package that completes it. A
+> reviewer who prefers the other rule should reject this scenario **and** change the implementation,
+> not merely the scenario.
+
+> **The note above previously ended "can still reach its coverage target", and that phrase is
+> corrected rather than carried forward.** Under the superseded methodology the target was a number
+> of validators, so a reachable unanswered entry had three chances at it. Under the corrected
+> methodology an entry needs one validating package, and a reachable unanswered entry is reachable in
+> order to supply exactly that. The scenario's own rule — the session does not permanently skip an
+> entry — is unchanged, and so is every other sentence in the note.
 
 #### Scenario: The write that persists a response is single-flight
 

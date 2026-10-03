@@ -100,6 +100,12 @@ a legitimate response, nor narrower, which would be dead weight that looks like 
 A constraint violation SHALL be surfaced to the caller as a typed error naming the failed
 operation, and SHALL NOT be swallowed as a successful no-op.
 
+**No migration is added by the corrected completion methodology.** Nothing in this requirement, and
+nothing in the schema, encodes a number of validators or attempts that completes an entry, so there is
+no stored state to correct and no constraint to relax. That was verified by reading every file under
+`supabase/migrations/` rather than assumed, and the absence is recorded here so a later reader does
+not go looking for a migration this change should have shipped.
+
 #### Scenario: A second validation for the same pair is rejected by the database
 
 - **WHEN** a second validation is inserted for the same validator and the same dataset entry
@@ -109,7 +115,8 @@ operation, and SHALL NOT be swallowed as a successful no-op.
 #### Scenario: Different validators may validate the same entry
 
 - **WHEN** two different anonymous validators each insert a validation for the same dataset entry
-- **THEN** both inserts succeed, because coverage depends on independent validators
+- **THEN** both inserts succeed, because each attempt is independent and the platform preserves
+  overlapping research responses for review
 
 #### Scenario: The uniqueness constraint is asserted against a real database engine
 
@@ -134,8 +141,8 @@ operation, and SHALL NOT be swallowed as a successful no-op.
 
 - **WHEN** a response with an evaluable evaluation is stored with no English translation, or with
   no Filipino translation
-- **THEN** the database rejects it, because a response that cannot be counted toward coverage must
-  never be stored as though it could
+- **THEN** the database rejects it, because a response that cannot establish a completed package
+  must never be stored as though it could
 
 #### Scenario: A blank translation is rejected
 
@@ -279,9 +286,9 @@ concurrently, because migrations run inside a transaction.
 
 #### Scenario: Coverage counting for an entry is index-supported
 
-- **WHEN** the number of independent validators for a dataset entry is counted
-- **THEN** the query is supported by an index on the entry reference, because coverage is
-  recomputed for many entries during allocation
+- **WHEN** the qualifying responses for a dataset entry are read
+- **THEN** the query is supported by an index on the entry reference, because the per-entry
+  aggregate is recomputed for every candidate on every allocation request
 
 #### Scenario: Entries eligible for allocation are index-supported
 
