@@ -69,17 +69,18 @@ const bilingual = {
  *   V6 answers E3 (unnatural, correction, NO translations)   — partial
  *   V7 answers X1 (natural)                                   — second category
  *
- *   E1: 2 rows, 2 qualifying, 2 distinct validators, complete at target 2, no review
- *   E2: 3 rows, 3 qualifying, 3 distinct validators, complete at target 2, FLAGGED
+ *   E1: 2 rows, 2 qualifying, 2 distinct validators, COMPLETE, no review
+ *   E2: 3 rows, 3 qualifying, 3 distinct validators, COMPLETE, FLAGGED
  *       (two `incorrect` with the same correction and one `correct_natural` — the qualifying
  *        evaluations disagree, which is the review rule's first clause)
- *   E3: 3 rows, 0 qualifying, 3 distinct, NOT complete, no review. All three are NON-QUALIFYING:
+ *   E3: 3 rows, 0 qualifying, 3 distinct, INCOMPLETE, no review. All three are NON-QUALIFYING:
  *       an abstention and two partials. None can disagree, so this entry is not flagged.
- *   E4, short_greeting: 0 rows each
- *   X1: 1 row, 1 qualifying, 1 distinct, SECOND CATEGORY (landmark_guidance), not complete@2
+ *   E4, short_greeting: 0 rows each, INCOMPLETE
+ *   X1: 1 row, 1 qualifying, 1 distinct, SECOND CATEGORY (landmark_guidance), COMPLETE — one
+ *       validating package is the whole of completion, so a single response completes it
  *
  *   Totals: 9 stored rows, 6 qualifying, 3 non-qualifying, 7 distinct validators in the corpus
- *   (V1..V7), 2 entries complete at target 2, 1 flagged.
+ *   (V1..V7), 3 entries complete, 1 flagged.
  *
  *   TWO DIFFERENT "distinct validators" FIGURES, both correct: `generated_from.distinct_validators`
  *   counts every validator that responded (7, including the three whose responses do not qualify),
@@ -218,7 +219,7 @@ describe("buildExportRecords", () => {
     expect(abstention?.corrected_instruction).toBeNull();
     expect(abstention?.english_translation).toBeNull();
     expect(abstention?.filipino_translation).toBeNull();
-    expect(abstention?.qualifies_toward_coverage).toBe("false");
+    expect(abstention?.qualifies_toward_completion).toBe("false");
   });
 
   it("carries the self-reported proficiency as stored, including an unrecorded one", () => {
@@ -248,7 +249,7 @@ describe("buildExportRecords", () => {
 });
 
 describe("buildExportSummary", () => {
-  const summary = buildExportSummary(entries, sources, 2);
+  const summary = buildExportSummary(entries, sources);
 
   it("reports each entry's counts from the stored rows", () => {
     const byId = new Map(summary.by_entry.map((row) => [row.dataset_entry_id, row]));
@@ -262,7 +263,6 @@ describe("buildExportSummary", () => {
       distinct_validators: 2,
       coverage_complete: true,
       requires_researcher_review: false,
-      coverage_target: 2,
     });
     expect(byId.get("E3")).toMatchObject({
       qualifying_validations: 0,
@@ -306,7 +306,7 @@ describe("buildExportSummary", () => {
     );
 
     const byId = new Map(
-      buildExportSummary(entries, varied, 2).by_entry.map((row) => [row.dataset_entry_id, row]),
+      buildExportSummary(entries, varied).by_entry.map((row) => [row.dataset_entry_id, row]),
     );
     expect(byId.get("E1")?.requires_researcher_review).toBe(false);
   });
@@ -326,7 +326,7 @@ describe("buildExportSummary", () => {
   it("reports totals that the exported records reproduce", () => {
     const records = buildExportRecords(sources);
     const qualifyingInRecords = records.filter(
-      (record) => record.qualifies_toward_coverage === "true",
+      (record) => record.qualifies_toward_completion === "true",
     ).length;
 
     expect(summary.totals.qualifying_validations).toBe(qualifyingInRecords);
@@ -378,18 +378,22 @@ describe("buildExportSummary", () => {
     });
   });
 
-  it("carries the coverage target into the artifact", () => {
-    // At target 3, E2 (3 qualifying) is complete and E1 (2 qualifying) is not — the flag follows the
-    // target rather than a number written into the serializer.
-    const atThree = buildExportSummary(entries, sources, 3);
-    const byId = new Map(atThree.by_entry.map((row) => [row.dataset_entry_id, row]));
+  it("marks completion from the shared predicate, and carries no target", () => {
+    // E1 holds two qualifying responses and X1 holds one: under the superseded target of 3 both
+    // read as incomplete, and under the corrected rule both are complete. One validating package
+    // is the whole of completion, so the count behind a complete entry is a diagnostic, not the
+    // decision.
+    const byId = new Map(summary.by_entry.map((row) => [row.dataset_entry_id, row]));
 
-    expect(byId.get("E1")?.coverage_complete).toBe(false);
+    expect(byId.get("E1")?.coverage_complete).toBe(true);
     expect(byId.get("E2")?.coverage_complete).toBe(true);
-    expect(byId.get("X1")?.coverage_complete).toBe(false);
-    expect(atThree.generated_from.coverage_target).toBe(3);
-    expect(byId.get("E2")?.coverage_target).toBe(3);
-    expect(byId.get("X1")?.coverage_target).toBe(3);
+    expect(byId.get("E3")?.coverage_complete).toBe(false);
+    expect(byId.get("E4")?.coverage_complete).toBe(false);
+    expect(byId.get("X1")?.coverage_complete).toBe(true);
+    // The removal is asserted, not merely unasserted: a `coverage_target` anywhere in the summary
+    // would invite a consumer to check records against a constant.
+    expect(JSON.stringify(summary)).not.toContain("coverage_target");
+    expect("coverage_target" in (summary.generated_from as object)).toBe(false);
   });
 });
 

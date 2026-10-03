@@ -54,7 +54,6 @@ import {
   isQualifyingValidation,
   type ExportSourceWithQualifying,
 } from "@/lib/export/records";
-import { INDEPENDENT_VALIDATION_TARGET_DEFAULT } from "@/schemas/batch";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin-client";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 import type { DatasetEntriesRepository } from "@/lib/repositories/dataset-entries-repository";
@@ -132,7 +131,6 @@ export interface ExportResult {
 export function renderDocuments(
   sources: readonly ExportSourceWithQualifying[],
   entries: readonly DatasetEntry[],
-  coverageTarget: number,
 ): {
   validationsJson: string;
   validationsCsv: string;
@@ -140,7 +138,7 @@ export function renderDocuments(
   result: Omit<ExportResult, "files">;
 } {
   const records = buildExportRecords(sources);
-  const summary = buildExportSummary(entries, sources, coverageTarget);
+  const summary = buildExportSummary(entries, sources);
 
   return {
     validationsJson: `${JSON.stringify(records, null, 2)}\n`,
@@ -213,12 +211,10 @@ export async function collectExportSources(
 export async function runExport(options: {
   readonly sources: ExportSources;
   readonly destination: string;
-  readonly coverageTarget?: number;
   readonly write: (line: string) => void;
 }): Promise<number> {
-  const coverageTarget = options.coverageTarget ?? INDEPENDENT_VALIDATION_TARGET_DEFAULT;
   const { entries, sources } = await collectExportSources(options.sources, options.write);
-  const documents = renderDocuments(sources, entries, coverageTarget);
+  const documents = renderDocuments(sources, entries);
 
   try {
     await mkdir(options.destination, { recursive: true });
@@ -245,7 +241,7 @@ export async function runExport(options: {
     `wrote ${VALIDATIONS_JSON}, ${VALIDATIONS_CSV} and ${SUMMARY_JSON} into ${options.destination}`,
   );
   options.write(
-    `${documents.result.entries} entries, ${documents.result.responses} responses, ${documents.result.qualifying} qualifying, coverage target ${coverageTarget}`,
+    `${documents.result.entries} entries, ${documents.result.responses} responses, ${documents.result.qualifying} qualifying`,
   );
   return EXIT_OK;
 }

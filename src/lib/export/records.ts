@@ -25,10 +25,10 @@
 
 import {
   countQualifyingValidations,
+  isEntryComplete,
   isQualifyingValidation,
 } from "@/lib/domain/validation-response";
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
-import { INDEPENDENT_VALIDATION_TARGET_DEFAULT } from "@/schemas/batch";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
 import type { IlocanoProficiency } from "@/schemas/validator";
@@ -57,7 +57,7 @@ export const EXPORT_RECORD_KEYS = [
   "corrected_instruction",
   "english_translation",
   "filipino_translation",
-  "qualifies_toward_coverage",
+  "qualifies_toward_completion",
   "submitted_at",
 ] as const;
 
@@ -100,12 +100,19 @@ export function buildExportRecords(sources: readonly ExportSourceWithQualifying[
     corrected_instruction: nullableText(response.correctedInstruction),
     english_translation: nullableText(response.englishTranslation),
     filipino_translation: nullableText(response.filipinoTranslation),
-    qualifies_toward_coverage: qualifies ? "true" : "false",
+    qualifies_toward_completion: qualifies ? "true" : "false",
     submitted_at: response.createdAt,
   }));
 }
 
-/** One entry's position in the corpus, as the summary reports it. */
+/**
+ * One entry's position in the corpus, as the summary reports it.
+ *
+ * There is deliberately no `coverage_target` field. Completeness is the shared predicate, not a
+ * count against a number, so a target could only ever carry a constant — and a consumer invited
+ * to check records against a constant draws a false conclusion. `coverage_complete` keeps its
+ * name and is re-specified as the predicate's output.
+ */
 export interface EntrySummary {
   readonly dataset_entry_id: string;
   readonly category: string;
@@ -116,8 +123,6 @@ export interface EntrySummary {
   readonly distinct_validators: number;
   readonly coverage_complete: boolean;
   readonly requires_researcher_review: boolean;
-  /** The target `coverage_complete` was computed against, so the flag is interpretable. */
-  readonly coverage_target: number;
 }
 
 export interface CategorySummary {
@@ -133,7 +138,6 @@ export interface ExportSummary {
     readonly entries: number;
     readonly stored_responses: number;
     readonly distinct_validators: number;
-    readonly coverage_target: number;
   };
   /** Totals are SUMMED from the per-entry figures; see the note on `buildExportSummary`. */
   readonly totals: {
@@ -175,7 +179,6 @@ function groupByEntry(
 export function buildExportSummary(
   entries: readonly DatasetEntry[],
   sources: readonly ExportSourceWithQualifying[],
-  coverageTarget: number = INDEPENDENT_VALIDATION_TARGET_DEFAULT,
 ): ExportSummary {
   const groups = groupByEntry(entries, sources);
 
@@ -199,9 +202,8 @@ export function buildExportSummary(
       non_qualifying_validations: rows.length - qualifying,
       stored_responses: rows.length,
       distinct_validators: distinctValidators,
-      coverage_complete: qualifying >= coverageTarget,
+      coverage_complete: isEntryComplete(rows.map((row) => row.response)),
       requires_researcher_review: requiresResearcherReview(rows.map((row) => row.response)),
-      coverage_target: coverageTarget,
     };
   });
 
@@ -253,7 +255,6 @@ export function buildExportSummary(
       entries: entries.length,
       stored_responses: totals.stored_responses,
       distinct_validators: new Set(sources.map((source) => source.response.validatorId)).size,
-      coverage_target: coverageTarget,
     },
     totals,
     by_category: [...byCategoryMap.values()],

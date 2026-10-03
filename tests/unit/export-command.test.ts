@@ -165,7 +165,7 @@ describe("collectExportSources", () => {
 describe("renderDocuments", () => {
   it("produces three documents that describe the same records", async () => {
     const { entries, sources: rows } = await collectExportSources(sources(), () => {});
-    const documents = renderDocuments(rows, entries, 3);
+    const documents = renderDocuments(rows, entries);
 
     const records = JSON.parse(documents.validationsJson) as unknown[];
     expect(records).toHaveLength(2);
@@ -179,7 +179,7 @@ describe("renderDocuments", () => {
   it("ends the JSON documents on a newline, so a diff shows a trailing change", () => {
     // An empty corpus is a real state — the hosted project has no validations yet — so the document
     // shapes must be right for it and not only for a populated one.
-    const documents = renderDocuments([], ENTRIES, 3);
+    const documents = renderDocuments([], ENTRIES);
 
     expect(documents.validationsJson.endsWith("\n")).toBe(true);
     expect(documents.summaryJson.endsWith("\n")).toBe(true);
@@ -231,19 +231,15 @@ describe("runExport", () => {
     ).rejects.toThrow(new RegExp(impossible.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   });
 
-  it("carries the coverage target into the written summary", async () => {
+  it("writes a summary that carries no coverage target", async () => {
+    // There is no target to configure — not on the command line, not in the options, and not in
+    // the artifact. A `coverage_target` anywhere in the written summary would invite a consumer to
+    // check records against a constant.
     const directory = tempDir();
-    await runExport({
-      sources: sources(),
-      destination: directory,
-      coverageTarget: 5,
-      write: () => {},
-    });
+    await runExport({ sources: sources(), destination: directory, write: () => {} });
 
-    const summary = JSON.parse(readFileSync(join(directory, SUMMARY_JSON), "utf8")) as {
-      generated_from: { coverage_target: number };
-    };
-    expect(summary.generated_from.coverage_target).toBe(5);
+    const written = readFileSync(join(directory, SUMMARY_JSON), "utf8");
+    expect(written).not.toContain("coverage_target");
   });
 });
 
