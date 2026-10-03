@@ -6,12 +6,13 @@ import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supab
 import type { FilterHandleLike, SupabaseClientLike, TableHandleLike } from "./client";
 import { SupabaseBatchesRepository } from "./batches";
 import { SupabaseDatasetEntriesRepository } from "./dataset-entries";
+import { SupabaseEntryReservationsRepository } from "./entry-reservations";
 import { SupabaseSignInAttemptsRepository } from "./sign-in-attempts";
 import { SupabaseValidationsRepository } from "./validations";
 import { SupabaseValidatorsRepository } from "./validators";
 
 /**
- * Constructs the four Supabase-backed repositories over the privileged client.
+ * Constructs the five Supabase-backed repositories over the privileged client.
  *
  * ============================================================================
  * WHAT IS AND IS NOT VERIFIED ABOUT THIS FILE
@@ -172,6 +173,7 @@ export function createSupabaseRepositories(
     validators: new SupabaseValidatorsRepository(client),
     validations: new SupabaseValidationsRepository(client),
     batches: new SupabaseBatchesRepository(client),
+    entryReservations: new SupabaseEntryReservationsRepository(client),
   };
 }
 

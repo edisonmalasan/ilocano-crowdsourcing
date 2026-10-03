@@ -148,6 +148,19 @@ function createRecordingDependencies(
         return [];
       },
     },
+    entryReservations: {
+      // Grants everything requested: this file drives the action's intake, failure mapping, and
+      // continuation path, not contention — the claim/backfill contract belongs to
+      // `allocation-service.test.ts`, whose fake arbitrates. A fake that denied here would turn
+      // every test in this file into a contention test wearing an intake test's name.
+      async claimReservations(_validatorId: string, entryIds: string[]) {
+        calls.push("entryReservations.claimReservations");
+        return [...entryIds];
+      },
+      async releaseReservation() {
+        calls.push("entryReservations.releaseReservation");
+      },
+    },
     config: allocationConfigSchema.parse({}),
     random: () => 0,
     // The identifier AND the instant, from ONE minting call. A fixture returning only an id would have

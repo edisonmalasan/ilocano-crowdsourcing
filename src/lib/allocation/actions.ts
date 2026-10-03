@@ -51,12 +51,14 @@ import type { AllocationOutcome } from "@/schemas/batch";
  */
 function actionDependencies(): AllocationActionDependencies {
   getServerEnv();
-  const { validators, datasetEntries, validations, batches } = createSupabaseRepositories();
+  const { validators, datasetEntries, validations, batches, entryReservations } =
+    createSupabaseRepositories();
   return {
     validators,
     datasetEntries,
     validations,
     batches,
+    entryReservations,
     // The schema's own defaults, parsed through the schema rather than written as literals, so
     // that when the approved batch size arrives it changes in `allocationConfigSchema` and nowhere
     // else. It remains pending thesis-team and adviser approval; there is no second number, because

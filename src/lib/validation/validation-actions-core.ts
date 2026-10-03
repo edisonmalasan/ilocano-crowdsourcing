@@ -5,6 +5,7 @@ import {
   POSTGREST_UNIQUE_VIOLATION_CODE,
   isRepositoryError,
   type BatchesRepository,
+  type EntryReservationsRepository,
   type ValidationsRepository,
 } from "@/lib/repositories";
 import { isWriteIntentError, parseWriteIntent } from "@/lib/server/write-intake";
@@ -75,6 +76,7 @@ export type SubmitValidationIntent = z.output<typeof submitValidationIntentSchem
 export interface ValidationActionDependencies {
   readonly batches: Pick<BatchesRepository, "findById">;
   readonly validations: Pick<ValidationsRepository, "insert">;
+  readonly entryReservations: Pick<EntryReservationsRepository, "releaseReservation">;
   /**
    * Injected rather than read from `Date.now()` inside, for the reason
    * `EnrollmentDependencies.now` documents: the service owns when something happened, and it is
@@ -154,6 +156,17 @@ export type SubmitValidationResult =
  * reported as already stored, which loses one response; the opposite error would tell a validator
  * their answer was not saved when it was.
  */
+/**
+ * Logs a failed reservation release for the operator. Never rendered to a participant and never
+ * thrown: the submit it follows already succeeded, so this failure has no participant-facing
+ * branch — only an operator reading logs. No error-monitoring dependency exists yet.
+ */
+function logReleaseFailure(datasetEntryId: string, error: unknown): void {
+  // The message names the entry, never the validator: the log line is about a stuck lease row,
+  // and the holder's identity is not needed to understand or repair it.
+  console.error(`[sadino:reservations] release failed for entry ${datasetEntryId}`, error);
+}
+
 function isDuplicateResponseRefusal(error: unknown): boolean {
   if (!isRepositoryError(error)) return false;
   if (error.operation !== "validations.insert") return false;
@@ -247,6 +260,16 @@ export async function runSubmitValidation(
 
   try {
     const persisted = await deps.validations.insert(stored);
+    // Release the submitter's own claim: an answered entry stops occupying the exclusivity
+    // table whether or not it completed. Best-effort ON PURPOSE — a stuck row decays by TTL,
+    // while a recorded submit reported as failed would tell a validator work they banked was
+    // lost. The release runs after the insert, never before it: releasing first would open a
+    // window where the entry is neither reserved nor answered, claimable mid-submit.
+    try {
+      await deps.entryReservations.releaseReservation(validatorId, intent.datasetEntryId);
+    } catch (releaseError) {
+      logReleaseFailure(intent.datasetEntryId, releaseError);
+    }
     return {
       status: "recorded",
       responseId: persisted.id,

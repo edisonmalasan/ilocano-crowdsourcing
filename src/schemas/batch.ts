@@ -41,12 +41,21 @@ export const BATCH_SIZE_DEFAULT = 10;
  */
 export const BATCH_SIZE_HARD_MAX = 50;
 
+/** Default reservation lease: 30 minutes. Operational, pending production observation. */
+export const RESERVATION_TTL_SECONDS_DEFAULT = 1800;
+
+/**
+ * Hard upper bound on the reservation lease (24 hours). A lease longer than this parks entries
+ * past any plausible single sitting, which indicates a misconfiguration rather than patience.
+ */
+export const RESERVATION_TTL_SECONDS_HARD_MAX = 86400;
+
 /**
  * `strictObject` so a misspelled or unrecognised setting is rejected at the boundary instead of
  * being stripped and silently replaced by a default — a typo in a research parameter must not
- * quietly mean "10 entries". The object holds exactly one key, asserted by an exact `Object.keys`
- * set in `tests/unit/batch.test.ts`, so a re-added target fails the test rather than going
- * unnoticed.
+ * quietly mean "10 entries". The object holds exactly two keys, asserted by an exact
+ * `Object.keys` set in `tests/unit/batch.test.ts`, so a removed or re-added key fails the test
+ * rather than going unnoticed.
  */
 export const allocationConfigSchema = z.strictObject({
   batchSize: z
@@ -58,6 +67,15 @@ export const allocationConfigSchema = z.strictObject({
       `batchSize must not exceed the hard maximum of ${BATCH_SIZE_HARD_MAX}`,
     )
     .default(BATCH_SIZE_DEFAULT),
+  reservationTtlSeconds: z
+    .number()
+    .int("reservationTtlSeconds must be an integer")
+    .min(1, "reservationTtlSeconds must be at least 1")
+    .max(
+      RESERVATION_TTL_SECONDS_HARD_MAX,
+      `reservationTtlSeconds must not exceed the hard maximum of ${RESERVATION_TTL_SECONDS_HARD_MAX}`,
+    )
+    .default(RESERVATION_TTL_SECONDS_DEFAULT),
 });
 
 export type AllocationConfig = z.infer<typeof allocationConfigSchema>;
