@@ -94,13 +94,34 @@ export interface DashboardOverview {
    */
   readonly totalEntries: number;
   readonly totalQualifyingValidations: number;
+  /**
+   * Distinct validator identifiers holding at least one stored response. These are ATTEMPTS,
+   * never persons: the same human may hold any number of attempts, and the platform records
+   * nothing linking one attempt to another, so this figure SHALL NOT be presented, labelled, or
+   * exported as a number of distinct human beings.
+   */
   readonly totalValidators: number;
+  /** Every stored validation row, qualifying or not — the raw volume abstention hides inside. */
+  readonly totalResponses: number;
+  /** Stored rows with evaluation `cannot_evaluate`: judged nothing, still research data. */
+  readonly cannotEvaluateCount: number;
   readonly buckets: CompletionBuckets;
   readonly coveragePercentage: number;
   readonly evaluationDistribution: Record<ValidationEvaluation, number>;
   readonly proficiencyBreakdown: ProficiencyBreakdown;
   /** Entry ids flagged for review, in dataset order. */
   readonly reviewEntryIds: readonly string[];
+  /**
+   * Entry ids holding more than one qualifying package, in dataset order. Overlap from distinct
+   * attempts — the uniqueness constraint makes same-attempt duplication impossible, so every
+   * extra package is a different attempt's work. A diagnostic, never an error and never a
+   * demotion: an overlapping entry is still complete.
+   */
+  readonly extraPackageEntries: readonly string[];
+  /** Responses recorded after their entry already held a qualifying package. */
+  readonly lateArrivalCount: number;
+  /** Entry ids behind the late arrivals, in dataset order, without duplicates. */
+  readonly lateArrivalEntryIds: readonly string[];
 }
 
 /**
@@ -161,6 +182,9 @@ export async function loadDashboardOverview(
     complete: 0,
   };
   const reviewEntryIds: string[] = [];
+  const extraPackageEntries: string[] = [];
+  let lateArrivalCount = 0;
+  const lateArrivalEntryIds: string[] = [];
   for (const entry of entries) {
     const responses = byEntry.get(entry.id) ?? [];
     // The shared predicate, not a count against a target: allocation retires the entry on the
@@ -170,6 +194,22 @@ export async function loadDashboardOverview(
       buckets.complete += 1;
     } else {
       buckets.incomplete += 1;
+    }
+    const qualifying = responses.filter(isQualifyingValidation);
+    // More than one qualifying package is overlap, not error: duplicates from one attempt are
+    // structurally impossible, so each extra package is a distinct attempt's work.
+    if (qualifying.length > 1) extraPackageEntries.push(entry.id);
+    // Lateness orders by the SERVER clock: `createdAt` is minted at insert, never supplied by
+    // a client. A response stored after the entry's first qualifying package raced it.
+    const firstAt = qualifying
+      .map((response) => response.createdAt)
+      .reduce((min, at) => (min === null || at < min ? at : min), null as string | null);
+    if (firstAt !== null) {
+      const late = responses.filter((response) => response.createdAt > firstAt);
+      if (late.length > 0) {
+        lateArrivalCount += late.length;
+        lateArrivalEntryIds.push(entry.id);
+      }
     }
     if (requiresResearcherReview(responses)) reviewEntryIds.push(entry.id);
   }
@@ -185,6 +225,7 @@ export async function loadDashboardOverview(
     if (isQualifyingValidation(response)) totalQualifyingValidations += 1;
     respondingValidatorIds.add(response.validatorId);
   }
+  const cannotEvaluateCount = evaluationDistribution.cannot_evaluate;
 
   const profiles = await repositories.validators.listByIds([...respondingValidatorIds]);
   const proficiencyBreakdown = emptyBreakdown();
@@ -197,12 +238,17 @@ export async function loadDashboardOverview(
     totalEntries: entries.length,
     totalQualifyingValidations,
     totalValidators: respondingValidatorIds.size,
+    totalResponses: validations.length,
+    cannotEvaluateCount,
     buckets,
     coveragePercentage:
       entries.length === 0 ? 0 : toOneDecimal((buckets.complete / entries.length) * 100),
     evaluationDistribution,
     proficiencyBreakdown,
     reviewEntryIds,
+    extraPackageEntries,
+    lateArrivalCount,
+    lateArrivalEntryIds,
   };
 }
 

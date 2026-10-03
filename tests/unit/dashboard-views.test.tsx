@@ -24,8 +24,13 @@ const OVERVIEW: DashboardOverview = {
   totalEntries: 6,
   totalQualifyingValidations: 12,
   totalValidators: 5,
+  totalResponses: 13,
+  cannotEvaluateCount: 1,
   buckets: { incomplete: 3, complete: 3 },
   coveragePercentage: 50,
+  extraPackageEntries: ["E1", "E2"],
+  lateArrivalCount: 2,
+  lateArrivalEntryIds: ["E2"],
   evaluationDistribution: {
     correct_natural: 8,
     correct_unnatural: 0,
@@ -139,8 +144,49 @@ describe("OverviewView", () => {
       ["Overall completion", "50%"],
       ["Complete entries", "3"],
       ["Incomplete entries", "3"],
+      ["Stored responses", "13"],
+      ["Cannot-evaluate responses", "1"],
+      ["Entries with extra packages", "2"],
+      ["Late-arrival responses", "2"],
       ["Needs researcher review", "2"],
     ]);
+  });
+
+  it("names the entries behind the overlap and late-arrival figures", () => {
+    // The diagnostics identify entries; a count without the ids behind it is a figure a
+    // researcher cannot act on.
+    const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
+
+    expect(html).toContain("Entries: E1, E2");
+    expect(html).toContain("Entries: E2");
+  });
+
+  it("names an empty diagnostic state instead of hiding the figure", () => {
+    const html = renderToStaticMarkup(
+      <OverviewView
+        overview={{
+          ...OVERVIEW,
+          extraPackageEntries: [],
+          lateArrivalCount: 0,
+          lateArrivalEntryIds: [],
+        }}
+      />,
+    );
+
+    expect(html).toContain("No overlapping entries");
+    expect(html).toContain("No late arrivals");
+  });
+
+  it("never presents an attempt count as persons", () => {
+    // The methodology forbids presenting attempt identifiers — and therefore counts of them —
+    // as evidence of distinct humans. Scoped to the totals section, where the headcount lives;
+    // the proficiency section carries its own metadata-not-a-score disclaimer, asserted
+    // elsewhere.
+    const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
+    const section =
+      html.split('aria-label="Coverage totals"')[1]?.split("</section>")[0] ?? "";
+
+    expect(section).not.toMatch(/persons?|people|humans?|participants?/i);
   });
 
   it("renders no target anywhere, because there is no target to label", () => {
