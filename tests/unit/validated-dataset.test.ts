@@ -7,6 +7,7 @@ import {
   VALIDATED_RECORD_KEYS,
   type ValidatedRecord,
 } from "@/lib/export/validated";
+import { buildCsv } from "@/lib/export/csv";
 import { buildExportRecords } from "@/lib/export/records";
 import type { ExportSourceWithQualifying } from "@/lib/export/records";
 import type { DatasetEntry } from "@/schemas/dataset";
@@ -227,6 +228,38 @@ describe("buildValidatedDataset", () => {
       expect(row.transit_mode).toBe(record.output.transit_mode);
       expect(row.needs_review).toBe(record.needs_review ? "true" : "false");
     }
+  });
+});
+
+describe("validated CSV document", () => {
+  it("carries the same records under the validated key set", () => {
+    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    const csv = buildCsv(records.map(validatedCsvRow), VALIDATED_RECORD_KEYS);
+    const lines = csv.trimEnd().split("\n");
+
+    expect(lines[0]).toBe(VALIDATED_RECORD_KEYS.join(","));
+    expect(lines).toHaveLength(records.length + 1);
+  });
+
+  it("quotes research text without changing it", () => {
+    // The quoting rules are shared with the raw document; this pins that the validated text
+    // flows through them rather than around them.
+    const nasty: ValidatedRecord = {
+      id: "E9",
+      validated_ilocano: 'Iti, Baguio — " Athletic Bowl',
+      english_translation: 'Go north, then say "here"',
+      filipino_translation: "Pumunta, ka",
+      output: { origin: null, destination: null, transit_mode: null },
+      source_validation_id: "rv99",
+      needs_review: true,
+    };
+    const [, row] = buildCsv([validatedCsvRow(nasty)], VALIDATED_RECORD_KEYS)
+      .trimEnd()
+      .split("\n");
+
+    expect(row).toContain('"Iti, Baguio — "" Athletic Bowl"');
+    expect(row).toContain('"Go north, then say ""here"""');
+    expect(row?.endsWith(",rv99,true")).toBe(true);
   });
 });
 

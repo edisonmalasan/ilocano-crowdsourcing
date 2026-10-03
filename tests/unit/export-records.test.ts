@@ -400,7 +400,7 @@ describe("buildExportSummary", () => {
 describe("the two artifacts describe the same records", () => {
   it("produces one CSV row per JSON record", () => {
     const records = buildExportRecords(sources);
-    const csv = buildCsv(records);
+    const csv = buildCsv(records, EXPORT_RECORD_KEYS);
 
     expect(csv.trimEnd().split("\n")).toHaveLength(records.length + 1);
     expect(csv.trimEnd().split("\n")).toHaveLength(10);

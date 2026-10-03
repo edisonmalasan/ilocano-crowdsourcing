@@ -36,7 +36,7 @@ import {
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
-import type { ExportSourceWithQualifying } from "@/lib/export/records";
+import type { ExportSourceWithQualifying } from "./records";
 
 /**
  * The validated record's CSV column order.

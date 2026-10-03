@@ -21,8 +21,6 @@
  * order, and `null` becomes an empty field — which is a real absence, not the string "null".
  */
 
-import { EXPORT_RECORD_KEYS, type ExportRecord } from "./records";
-
 /** A field's CSV form. `null` is an empty field; it is never the four characters `null`. */
 export function csvField(value: string | null): string {
   if (value === null) return "";
@@ -30,9 +28,19 @@ export function csvField(value: string | null): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-/** One record as a CSV line, in `EXPORT_RECORD_KEYS` order. */
-export function csvRow(record: ExportRecord): string {
-  return EXPORT_RECORD_KEYS.map((key) => csvField(record[key])).join(",");
+/**
+ * One record as a CSV line, in the passed key order.
+ *
+ * The keys are a parameter rather than an import because two documents share these quoting rules
+ * over different columns: the raw per-response records and the validated per-entry records. A
+ * second serializer would double the surface that can drift; a shared one keeps one
+ * implementation behind both round-trip tests.
+ */
+export function csvRow<const K extends string>(
+  record: Readonly<Record<K, string | null>>,
+  keys: readonly K[],
+): string {
+  return keys.map((key) => csvField(record[key])).join(",");
 }
 
 /**
@@ -41,7 +49,10 @@ export function csvRow(record: ExportRecord): string {
  * The trailing newline is included so the file ends on a line boundary — a POSIX text-file
  * convention that some readers rely on and whose absence is invisible in a diff.
  */
-export function buildCsv(records: readonly ExportRecord[]): string {
-  const lines = [EXPORT_RECORD_KEYS.join(","), ...records.map(csvRow)];
+export function buildCsv<const K extends string>(
+  records: readonly Readonly<Record<K, string | null>>[],
+  keys: readonly K[],
+): string {
+  const lines = [keys.join(","), ...records.map((record) => csvRow(record, keys))];
   return `${lines.join("\n")}\n`;
 }

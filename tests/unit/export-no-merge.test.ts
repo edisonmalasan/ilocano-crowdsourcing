@@ -162,7 +162,7 @@ describe("no exported field merges two validators' text", () => {
 
     // And the same set must be what the CSV header carries, or the two forms describe different
     // records even though each is internally consistent.
-    const header = (buildCsv(records).split("\n")[0] ?? "").split(",");
+    const header = (buildCsv(records, EXPORT_RECORD_KEYS).split("\n")[0] ?? "").split(",");
     expect(header.sort()).toEqual(declared);
   });
 
@@ -187,7 +187,7 @@ describe("no exported field merges two validators' text", () => {
   });
 
   it("keeps the CSV free of any merged column too", () => {
-    const csv = buildCsv(buildExportRecords(SOURCES));
+    const csv = buildCsv(buildExportRecords(SOURCES), EXPORT_RECORD_KEYS);
     const header = csv.split("\n")[0] ?? "";
 
     expect(header).not.toMatch(MERGE_SUSPICIOUS_NAME);
