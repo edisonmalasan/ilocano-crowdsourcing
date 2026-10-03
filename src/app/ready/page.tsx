@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { translatorFor } from "@/lib/i18n/copy";
 import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
@@ -112,16 +111,6 @@ export default async function ReadyPage() {
 
   return (
     <>
-      <header className="border-ink bg-paper-raised border-b-2">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
-          <p className="label-meta text-ink">
-            <span className="text-accent">●</span> Sadino
-            <span className="text-ink-faint"> / {t("ready.header.step")}</span>
-          </p>
-          <Badge tone="neutral">{t("ready.badge")}</Badge>
-        </div>
-      </header>
-
       <main id="main" className="mx-auto w-full max-w-3xl px-5 sm:px-8">
         <section className="section-y flex flex-col gap-6">
           <div>
@@ -250,13 +239,6 @@ export default async function ReadyPage() {
           </Card>
         </section>
       </main>
-
-      <footer className="border-ink bg-paper-raised border-t-2">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 sm:px-8">
-          <p className="label-meta text-ink-faint">{t("common.footer.research")}</p>
-          <p className="text-small text-ink-muted">{t("common.footer.noAccounts")}</p>
-        </div>
-      </footer>
     </>
   );
 }

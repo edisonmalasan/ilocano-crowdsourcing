@@ -72,10 +72,9 @@ export type RecoveryDecision =
  * standing in for:
  *
  *   - this module cannot ask for a string, because it has nothing to ask with; and
- *   - a D4 test can assert the CATALOG rather than the call: `tests/dom/start-batch.test.tsx` derives
- *     every `validateStart.resume.*` key from the English catalog and asserts that none of the five, in
- *     either language, reads as a fault. That is a statement about what exists to be said, which an
- *     unused parameter could never have been.
+ *   - the orchestration that calls it navigates rather than renders, so there is no sentence here
+ *     that could read as a fault: the only participant-visible strings on that path are the
+ *     working, honest-failure, and no-identity states owned by the orchestration screen.
  */
 export function decideRecovery(
   storedId: string | null,

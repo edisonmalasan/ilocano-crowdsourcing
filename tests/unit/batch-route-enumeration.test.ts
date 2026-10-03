@@ -236,8 +236,11 @@ describe("the enumeration is honest about what it found", () => {
   it("found producers at all, which the first draft's definition could not do", () => {
     // The CAN FIRE control for the defect recorded in this file's header. A scan whose definition
     // matches only the BROKEN shape finds nothing on a FIXED tree, and the only defence is to
-    // assert a non-zero count of what it claims to enumerate.
-    expect(producers().length).toBeGreaterThanOrEqual(5);
+    // assert a non-zero count of what it claims to enumerate. Four sites, not five: the requirement
+    // names five producers while the auto-orchestrator builds two addresses in one island, and the
+    // per-file test above pins that exact shape — so this floor is four, and five would fail on
+    // correct code the same way zero once did.
+    expect(producers().length).toBeGreaterThanOrEqual(4);
   });
 
   it("CATCHES a hand-built address by each of the four mechanisms that were measured to slip past", () => {
@@ -274,7 +277,7 @@ describe("the enumeration is honest about what it found", () => {
     // from the tree rather than invented, because a fixture drawn from imagination is exactly the
     // mistake this repository records about can-fire controls.
     //
-    // `ready/page.tsx:226` is participant-facing copy that spells the route to explain that the
+    // `ready/page.tsx:215` is participant-facing copy that spells the route to explain that the
     // ready screen does NOT link to a batch. A detector that flagged it would be "fixed" by deleting
     // the explanation, which is the trap this file's `isCode` comment describes.
     expect(
@@ -322,12 +325,13 @@ describe("every site that builds a batch address goes through the one definition
     ).toEqual([]);
   });
 
-  it("accounts for the four producers the requirement names, and the indirection it permits", () => {
-    // Five SITES across three FILES, and the difference is `resumeHref`: the requirement names four
-    // producers (resume, allocation, post-submit, continue), while the resume address is BUILT in one
-    // place and RENDERED in another. Both are listed rather than reconciled by loosening the count,
-    // because "four producers" and "five call sites" are different true statements and only one of
-    // them is what the requirement says.
+  it("accounts for the five producers the requirement names", () => {
+    // FOUR sites across three files. The requirement names five producers
+    // (resume, allocation, post-submit, continue, auto-orchestration), while
+    // the auto-orchestrator builds BOTH the resume and the allocation addresses
+    // in one island — so "five producers" and "four call sites" are different
+    // true statements and only the first is what the requirement says. Both
+    // are listed rather than reconciled by loosening the count.
     const byFile = new Map<string, number>();
     for (const site of producers()) {
       byFile.set(site.file, (byFile.get(site.file) ?? 0) + 1);
@@ -336,19 +340,22 @@ describe("every site that builds a batch address goes through the one definition
     expect([...byFile.entries()].sort()).toEqual([
       ["src/app/validate/[batchId]/finished-batch.tsx", 1],
       ["src/app/validate/[batchId]/validation-form.tsx", 1],
-      ["src/app/validate/start-batch.tsx", 3],
+      ["src/app/validate/start-batch.tsx", 2],
     ]);
   });
 
-  it("makes `resumeHref` a DELEGATION and not a second definition", () => {
-    // The one permitted indirection is only safe while it forwards to the module. Asserted on the
-    // function's body rather than on the absence of a bad string, so a re-implementation beside the
-    // module is caught wherever it is written.
-    const source = readFileSync("src/app/validate/start-batch.tsx", "utf8");
-    const body = /export function resumeHref\([^)]*\): string \{([\s\S]*?)\n\}/.exec(source);
-
-    expect(body, "resumeHref was not found as a function").not.toBeNull();
-    expect(body?.[1]).toContain("batchRoutePath(");
+  it("defines no second address builder beside the module", () => {
+    // The `resumeHref` indirection the previous version of this test pinned is
+    // gone with the resume card it served: the orchestrator navigates through
+    // the module directly. What remains forbidden is ANY second builder, so
+    // this asserts the absence of the name rather than the shape of a body —
+    // a reintroduced helper under any spelling that builds an address is
+    // caught by the producer scan above, and this names the one that existed.
+    const offenders = producers().filter((site) => site.text.includes("resumeHref"));
+    expect(
+      offenders,
+      `a second address builder exists beside the module:\n${describeSites(offenders)}`,
+    ).toEqual([]);
   });
 
   it("leaves NO `encodeURIComponent` anywhere under `src`", () => {

@@ -427,11 +427,14 @@ describe("the state of the control that started the write", () => {
     // A form that offers to save an evaluable answer without its translations promises something the
     // DATABASE rejects, so the affordance would be a lie the participant discovers after doing the work.
     //
-    // SCOPED TO THE VALIDATION NAMESPACE, and the scope is load-bearing rather than convenient. The
-    // first draft filtered the WHOLE catalog on `/skip|later|without/i` and reported
-    // `['screening.skip']` — the screening form's approved "skip the proficiency question" affordance,
-    // which is a different question answered correctly. A guard that fires on a legitimate control is a
-    // guard that trains its reader to ignore it, which is how a real violation gets in later; that is
+    // SCOPED TO THE VALIDATION NAMESPACE, and the scope is load-bearing rather than convenient.
+    //
+    // The scope is proven to be a real filter rather than a filter that matches nothing: the
+    // screening namespace holds the required-answer refusal, which this scope deliberately
+    // excludes — and that exclusion is itself asserted where it belongs, in
+    // `tests/unit/screening-form-wiring.test.ts`, which pins the screening refusal word for
+    // word. A guard that fires on another question's legitimate control is a guard that
+    // trains its reader to ignore it, which is how a real violation gets in later; that is
     // the defect this repository has now recorded twice.
     const { ENGLISH_COPY } = await import("@/lib/i18n/copy");
     const suspicious = Object.keys(ENGLISH_COPY).filter(
@@ -442,9 +445,9 @@ describe("the state of the control that started the write", () => {
       suspicious,
       "no validation control may offer to skip part of a research response",
     ).toEqual([]);
-    // And the scope is proven to be a real filter rather than a filter that matches nothing: the
-    // screening affordance it deliberately excludes is asserted present here.
-    expect(Object.keys(ENGLISH_COPY)).toContain("screening.skip");
+    // And the screening refusal the scope excludes is asserted present in the
+    // screening namespace — the positive case proving the filter is real.
+    expect(Object.keys(ENGLISH_COPY)).toContain("screening.failure.invalid.enroll");
   });
 
   it("enumerates the validation controls that DO exist, so the guard above is looking at a real set", async () => {

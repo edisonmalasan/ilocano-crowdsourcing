@@ -400,15 +400,17 @@ describe("the screening screen, in both languages", () => {
     },
   );
 
-  it("localizes the submit and skip controls, and the resume note beneath them", async () => {
+  it("localizes the submit control and the resume note beneath it, with no skip control", async () => {
     const { ScreeningForm } = await import("@/app/start/screening-form");
     const filipino = renderToStaticMarkup(<ScreeningForm locale="fil" />);
 
     expect(filipino).toContain("Magpatuloy");
-    expect(filipino).toContain("Laktawan at magpatuloy nang walang sagot");
     expect(filipino).toContain("hindi maaaring maidagdag sa orihinal");
     // And not the English, which is the half that actually matters: a localized button label
     // beside an English sentence is the half-localized page D3 forbids.
+    expect(filipino).not.toContain("Continue");
+    // And no skip control exists to localize: proficiency is required.
+    expect(filipino).not.toContain("Laktawan at magpatuloy nang walang sagot");
     expect(filipino).not.toContain("Skip and continue without answering");
   });
 });

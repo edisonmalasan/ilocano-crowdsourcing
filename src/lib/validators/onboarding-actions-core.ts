@@ -53,15 +53,22 @@ import {
  */
 
 /**
- * What the screening form submits. `null` is a declined answer.
+ * What the screening form submits. Proficiency is REQUIRED and the key with it.
  *
- * The key is REQUIRED and nullable, never optional. An earlier version used
+ * The corrected methodology admits no decline path: a submission without exactly
+ * one approved choice is refused as invalid before any persistence operation is
+ * attempted, and there is no absence value an enrollment can be created with.
+ * The key is REQUIRED and non-nullable, never optional. An earlier version used
  * `.optional()`, which meant a payload of entirely the wrong shape — an object
  * with no `ilocanoProficiency` key at all — parsed successfully and was recorded
  * as a *declined* screening answer. That is the exact conflation this module
  * exists to prevent: "the participant chose not to answer" and "the request was
  * malformed" are different research facts, and an optional key cannot tell them
  * apart. The form always sends the key explicitly, so requiring it costs nothing.
+ *
+ * The stored profile shape stays nullable for rows created before the
+ * methodology correction. Tightening the intake must never be read as
+ * permission to fabricate a value for those rows.
  *
  * The value is validated against the SHARED proficiency enum, not against a bare
  * `z.string()`. An earlier version accepted any string here and relied on a
@@ -72,7 +79,7 @@ import {
  * it costs one shared definition rather than two.
  */
 const enrollmentIntentSchema = z.strictObject({
-  ilocanoProficiency: ilocanoProficiencySchema.nullable(),
+  ilocanoProficiency: ilocanoProficiencySchema,
 });
 
 /**

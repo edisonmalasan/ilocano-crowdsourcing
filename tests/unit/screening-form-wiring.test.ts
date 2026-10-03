@@ -325,29 +325,33 @@ describe("the resume path performs no write, anywhere", () => {
   });
 });
 
-describe("the skip control records a decline and never a fabricated answer", () => {
-  it("the skip control calls the decline path, and no approved level appears near it", () => {
-    // A participant who presses "Skip and continue without answering" must be recorded
-    // as having DECLINED. `null` is a meaningful research datum — it distinguishes
-    // "declined to say" from "said fluent" — so silently writing any real proficiency
-    // level here is fabricated research metadata, and it is a mutation that typechecks
-    // and lints cleanly because every approved value is a legal argument.
+describe("the form refuses an empty submit and never fabricates an answer", () => {
+  it("a single submit control guards on the selection, and no approved level appears near it", () => {
+    // With no selection there is nothing to submit, so the missing answer must
+    // be identified on the control and NO request may begin. Silently writing
+    // any real proficiency level here — or submitting a null decline — is
+    // fabricated research metadata, and it is a mutation that typechecks and
+    // lints cleanly because every approved value is a legal argument.
     //
-    // Third-round review confirmed `run("conversational")` on this handler left all 498
-    // tests green. The consequence would be invisible in the data: the record would
-    // simply claim a screening answer the participant explicitly refused to give.
+    // Third-round review confirmed `run("conversational")` on the old skip
+    // handler left the suite green. The consequence would be invisible in the
+    // data: the record would simply claim a screening answer the participant
+    // never chose.
     const source = code(FORM_PATH);
 
-    // Find the control by its handler, then require the null decline on that line.
-    const skipLine = source
-      .split("\n")
-      .find((line) => /onClick/.test(line) && /run\(/.test(line) && /type="button"/.test(source));
+    // Exactly one submit control. A second affordance submitting without a
+    // selection is the shape the skip button used to have.
+    expect(source.match(/type="submit"/g)).toHaveLength(1);
+    expect(source).not.toMatch(/run\(null\)/);
 
-    expect(skipLine ?? source).toMatch(/run\(null\)/);
+    // The empty case is refused on the form with the field-attached message,
+    // before any transition begins.
+    expect(source).toMatch(/if \(selection === null\)/);
+    expect(source).toMatch(/setError\(t\("screening\.failure\.invalid\.enroll"\)\)/);
 
-    // Belt and braces: no proficiency LEVEL may appear as a literal ANYWHERE in the
-    // component. `run` is called exactly twice - once with the participant's selection
-    // and once with the decline - so a literal level at either site is fabrication.
+    // Belt and braces: no proficiency LEVEL may appear as a literal ANYWHERE in
+    // the component. `run` now takes no argument at all, so a literal level at
+    // any call site is fabrication.
     //
     // The first version of this assertion anchored on `(`: `\(\s*["']fluent["']`. It passed
     // the D1 probe because `run("conversational")` happens to have that exact shape, and it
@@ -368,10 +372,10 @@ describe("the skip control records a decline and never a fabricated answer", () 
       );
     }
 
-    // And the participant's own selection is what reaches `run`, unmodified. This is the
+    // And the participant's own selection is what reaches `submit`, unmodified. This is the
     // specific mutation round four used, asserted directly so the failure names itself.
-    expect(source).toMatch(/run\(selection\)/);
-    expect(source).not.toMatch(/run\(\s*\w+\s*(\?\?|\|\|)/);
+    expect(source).toMatch(/await submit\(answer\)/);
+    expect(source).not.toMatch(/submit\(\s*\w+\s*(\?\?|\|\|)/);
   });
 });
 
@@ -423,12 +427,12 @@ describe("the resume component's promises are backed by its calls", () => {
     ).toBe("clearStoredValidatorId();");
 
     // The message that makes the claim is set on the very next statement, so the claim
-    // and the call cannot drift apart silently. The message is a catalog key read through
-    // the translator now rather than a named constant, which is a STRONGER version of this
-    // guard than the constant was: a literal string here could not be checked against the
-    // catalog, and a fabricated proficiency level in particular would be invisible.
+    // and the call cannot drift apart silently. The message arrives as the decision's own
+    // notice (which names the unknown identity through the catalog), rather than as a
+    // literal here — a literal string could not be checked against the catalog, and a
+    // fabricated proficiency level in particular would be invisible.
     const clearAt = source.indexOf("clearStoredValidatorId();");
-    const messageAt = source.indexOf('setMessage(t("resume.unknown"));');
+    const messageAt = source.indexOf("setMessage(decision.message);");
     expect(clearAt).toBeGreaterThan(-1);
     expect(messageAt).toBeGreaterThan(clearAt);
     expect(messageAt - clearAt).toBeLessThan(120);

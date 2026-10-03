@@ -48,10 +48,12 @@ import {
  *    that told someone their answer qualified them would be encoding an
  *    unapproved methodology decision in the interface.
  *
- * DECLINING IS A FIRST-CLASS ANSWER. There is an explicit "skip and continue"
- * path that submits `null`. That is stored as absence, never as a default level
- * and never as the lowest option — silently recording someone as "Not confident"
- * because they skipped would fabricate a research datum.
+ * PROFICIENCY IS REQUIRED. There is exactly one submit control and no skip path:
+ * the corrected methodology admits no decline, so a submission with nothing
+ * selected is refused on the form (field-attached error, no request) and refused
+ * by the server (invalid, no enrollment) alike. Fabricating a research datum —
+ * recording someone as "Not confident" because they pressed Continue with
+ * nothing chosen — is the exact failure this project exists to prevent.
  * =============================================================================
  *
  * Every decision lives in `@/lib/validators/onboarding-flow`, which is pure and
@@ -118,7 +120,7 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
         // could only ever run in a browser.
         writeStoredValidatorId(decision.validatorId);
       }
-      router.push("/ready");
+      router.push("/validate");
       return;
     }
 
@@ -138,7 +140,7 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
    * two activations inside that window would mint two validators with the second
    * silently overwriting the first in storage.
    */
-  async function enroll(answer: IlocanoProficiency | null): Promise<void> {
+  async function enroll(answer: IlocanoProficiency): Promise<void> {
     apply(decideEnrollment(await enrollValidatorAction({ ilocanoProficiency: answer }), t));
   }
 
@@ -176,7 +178,7 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
    * their original answer: the resume path contains no `create` call, so the
    * original self-reported screening answer survives untouched.
    */
-  async function submit(answer: IlocanoProficiency | null): Promise<void> {
+  async function submit(answer: IlocanoProficiency): Promise<void> {
     setError(null);
     setNotice(null);
 
@@ -207,7 +209,15 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
     await enroll(answer);
   }
 
-  function run(answer: IlocanoProficiency | null): void {
+  function run(): void {
+    // Required, not declined: with nothing selected there is nothing to submit,
+    // so the missing answer is identified on the control and no request is made.
+    // The server refuses the same payload independently.
+    if (selection === null) {
+      setError(t("screening.failure.invalid.enroll"));
+      return;
+    }
+    const answer: IlocanoProficiency = selection;
     startTransition(async () => {
       await submit(answer);
     });
@@ -217,7 +227,7 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        run(selection);
+        run();
       }}
       className="flex flex-col gap-8"
       noValidate
@@ -230,7 +240,13 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
           label: t(PROFICIENCY_LABEL_KEYS[choice.value]),
         }))}
         value={selection}
-        onChange={(value) => setSelection(toIlocanoProficiency(value))}
+        onChange={(value) => {
+          setSelection(toIlocanoProficiency(value));
+          // Clears the refusal as soon as the participant answers, the way the
+          // validation form clears a field's error on edit: an error that
+          // survives the correction it names trains the participant to ignore it.
+          setError(null);
+        }}
         disabled={isPending}
         error={error ?? undefined}
       />
@@ -247,10 +263,9 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
       ) : null}
 
       {/*
-        Two distinct affordances, deliberately. "Continue" submits the current selection,
-        or a decline if nothing is selected; the quiet button is an explicit, labelled
-        way to decline, so skipping is a choice the participant makes rather than an
-        accident of not having clicked yet.
+        One submit control, deliberately. Proficiency is required, so there is no
+        second affordance: an empty Continue identifies the missing answer above
+        instead of submitting, and the server refuses an empty payload as invalid.
       */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
@@ -260,15 +275,6 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
           aria-busy={submitState.ariaBusy}
         >
           {submitState.label}
-        </Button>
-        <Button
-          type="button"
-          variant="quiet"
-          onClick={() => run(null)}
-          disabled={submitState.disabled}
-          aria-busy={submitState.ariaBusy}
-        >
-          {t("screening.skip")}
         </Button>
       </div>
 

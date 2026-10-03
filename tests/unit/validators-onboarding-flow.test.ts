@@ -225,13 +225,13 @@ describe("decideResume", () => {
     }
   });
 
-  it("still records a genuine decline as a decline", () => {
-    // The fix must not have turned "declined" into "never null", which would fabricate
-    // an answer for someone who chose to skip.
-    expect(decideResume({ status: "absent" }, null, EN)).toEqual({
-      kind: "enroll-fresh",
-      answer: null,
-    });
+  it("reports an unknown identity as a notice when no answer was collected", () => {
+    // The landing action collects no screening answer, so it passes none: with
+    // nothing to enroll with, `absent` cannot become `enroll-fresh` and arrives
+    // as a notice naming the unknown identity instead. The caller clears it.
+    const decision = decideResume({ status: "absent" }, null, EN);
+
+    expect(decision).toEqual({ kind: "notice", message: EN("resume.unknown") });
   });
 
   it.each(["not_configured", "invalid", "persistence"] as const)(

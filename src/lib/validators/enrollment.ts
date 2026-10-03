@@ -5,6 +5,7 @@ import {
   isAnonymousValidatorIdFormat,
 } from "@/lib/domain/anonymous-validator-id";
 import { isRepositoryError, type ValidatorsRepository } from "@/lib/repositories";
+import { parseWriteIntent } from "@/lib/server/write-intake";
 import {
   ilocanoProficiencySchema,
   type AnonymousValidatorId,
@@ -55,11 +56,14 @@ import {
 /** What the caller asked for. A screening answer, and nothing else. */
 export interface EnrollmentRequest {
   /**
-   * `null` means the participant declined to answer. It is a first-class value
-   * rather than an omission, so "declined" and "not supplied" cannot be confused
-   * by a caller that forgets to pass the key.
+   * Exactly one approved proficiency choice. There is no decline value: the
+   * corrected methodology requires an answer before an enrollment may be
+   * created, so "declined" and "not supplied" are both refused upstream as
+   * invalid rather than distinguished here. The stored profile shape stays
+   * nullable for rows created before the correction — that is a property of
+   * old rows, not a value this request may carry.
    */
-  readonly ilocanoProficiency: IlocanoProficiency | null;
+  readonly ilocanoProficiency: IlocanoProficiency;
 }
 
 export interface EnrollmentDependencies {
@@ -94,19 +98,20 @@ export type EnrollmentOutcome =
  * The write-intake boundary has already run before this is called; this is a
  * second, narrower guard so the service can be called directly (by a test, or by
  * a future non-action caller) with an unvalidated value and still refuse to store
- * an unapproved proficiency. Returning `null` here would be wrong: it would
- * silently convert an invalid answer into a declined one, which is exactly the
- * conflation this module exists to prevent.
+ * anything but one of the five approved choices. `null`, `undefined`, and any
+ * unapproved value throw `WriteIntentError`: since the methodology correction
+ * there is no decline value to convert them into, and silently converting an
+ * invalid answer into anything storable is exactly the conflation this module
+ * exists to prevent.
  *
  * @throws {WriteIntentError} via `parseWriteIntent` when the value is not one of
  * the five approved choices. The action boundary catches it and reports the field
  * error; nothing is persisted on the way out.
  */
-export function parseScreeningAnswer(raw: unknown): IlocanoProficiency | null {
-  if (raw === null || raw === undefined) return null;
+export function parseScreeningAnswer(raw: unknown): IlocanoProficiency {
   // Imported lazily-by-name to keep the single shared schema as the one definition
   // of "one of the five approved choices".
-  return ilocanoProficiencySchema.parse(raw);
+  return parseWriteIntent(ilocanoProficiencySchema, raw, { schemaName: "screeningAnswer" });
 }
 
 /**

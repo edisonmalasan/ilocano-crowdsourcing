@@ -105,9 +105,6 @@ export const ENGLISH_COPY = {
   "switcher.filipinoName": "Filipino",
 
   // -- Landing -------------------------------------------------------------
-  "landing.header.study": "validation study",
-  "landing.badge.dataset": "Ilocano · navigation data",
-  "landing.badge.recruit": "Researchers wanted",
   "landing.hero.title1": "Check the Ilocano.",
   "landing.hero.title2": "Fix what’s off.",
   "landing.hero.lead":
@@ -115,7 +112,7 @@ export const ENGLISH_COPY = {
     "are the part of the process that makes it trustworthy: you read a sentence, judge whether it " +
     "says what it should, and correct it when it does not.",
   "landing.cta.start": "Start validation",
-  "landing.cta.hint": "Two steps: one question about your Ilocano, then you begin.",
+  "landing.cta.continue": "Continue validation",
   "landing.expectations.heading": "What to expect",
   "landing.panel.task.label": "The task",
   "landing.panel.task.title": "Ten sentences at a time",
@@ -143,34 +140,23 @@ export const ENGLISH_COPY = {
   "landing.before.item3":
     "If a sentence is wrong, we would rather have your version of it than a conversation about it. " +
     "Write it the way you would actually say it.",
-  "common.footer.research": "Sadino · Ilocano navigation research",
-  "landing.footer.noAccounts": "No accounts. No name, no email, no student number.",
 
-  // -- Resume island, scoped to ONE browser session ---------------------------------------------
-  // The wording below used to promise recognition across VISITS — "if you have taken part on this
-  // browser before" — and under session-scoped storage that promise is false: once the tab closes the
-  // platform holds nothing, so there is no earlier visit left to recognise. Every string in this island
-  // therefore names the SESSION rather than the browser, the person, or the past, and a reload or a
-  // navigation within one session is exactly what it does still cover.
-  "resume.title": "Already started?",
-  "resume.body":
-    "If you have already started in this browser session, you can carry on as the same anonymous " +
-    "validator until you close the tab.",
-  "resume.continue": "Continue as that validator",
+  // -- Landing action, scoped to ONE browser session -------------------------------------
+  // The single entry button keeps no card and no explanation: where it goes depends on what this
+  // browser holds, and the platform resolves that at press time rather than asking the participant
+  // to choose. Every string here therefore names the SESSION rather than the browser, the person,
+  // or the past — a reload or a navigation within one session is exactly what it still covers.
+  // The press-time outcome messages are the only sentences this island renders besides the button.
   "resume.checking": "Checking…",
-  "resume.noneHeld":
-    "This browser does not hold a saved identity. Choose Start validation to begin — it takes one " +
-    "question.",
   "resume.unknown":
     "That saved identity is no longer recognised, so it has been cleared. Choose Start validation " +
     "to begin again as a new anonymous validator.",
 
   // -- Screening route ------------------------------------------------------
-  "start.header.step": "step 2 of 3",
   "start.lead":
     "One question about your Ilocano. It is background information for the research record — it " +
-    "is not a score, and it does not change what you are asked to do. You can continue without " +
-    "answering it.",
+    "is not a score, and it does not change what you are asked to do. You must answer it to " +
+    "continue.",
   "start.beforeAnswer.label": "Before you answer",
   "start.beforeAnswer.item1":
     "Taking part is voluntary. You can stop at any point, including on this screen, and close the " +
@@ -179,10 +165,10 @@ export const ENGLISH_COPY = {
     "We do not ask for your name, your email, your student number, or your phone number, and there " +
     "is no field on any screen where you could enter one.",
   "start.beforeAnswer.item3":
-    "Your identity is a random code. A copy is kept in this browser so we can recognise you when " +
-    "you return, and the code is stored in the study database with your answers, where it cannot " +
-    "be traced back to you either way. Clearing your browser data ends our ability to recognise " +
-    "you.",
+    "Your identity is a random code. A copy is kept in this browser for this session, so you can " +
+    "continue where you left off if you reload or navigate; the code is stored in the study " +
+    "database with your answers, where it cannot be traced back to you either way. Clearing " +
+    "your browser data ends our ability to recognise you.",
   "start.meta.title": "Screening",
   "start.meta.description":
     "One question about your Ilocano comfort, and nothing about you is collected. No name, no " +
@@ -206,7 +192,6 @@ export const ENGLISH_COPY = {
   "screening.proficiency.not_confident": ILOCANO_PROFICIENCY_CHOICES[4].label,
   "screening.submit": "Continue",
   "screening.submitting": "Saving…",
-  "screening.skip": "Skip and continue without answering",
   "screening.resumeNote":
     "If this browser already holds a validator identity, continuing will resume it instead of " +
     "creating a second one, and the answer above will not be stored over the original.",
@@ -222,8 +207,7 @@ export const ENGLISH_COPY = {
     "The study is not open right now, so the saved identity could not be checked. Nothing was " +
     "changed.",
   "screening.failure.invalid.enroll":
-    "We could not accept that answer, and nothing was saved. Please pick one of the options, or " +
-    "continue without answering.",
+    "We could not accept that answer, and nothing was saved. Please pick one of the options.",
   "screening.failure.invalid.resume":
     "The saved identity could not be checked, and nothing was changed. You can try again in a " +
     "moment.",
@@ -233,9 +217,7 @@ export const ENGLISH_COPY = {
     "The saved identity could not be checked just now, and nothing was changed. You can try again " +
     "in a moment.",
 
-  // -- Confirmation route ---------------------------------------------------
-  "ready.header.step": "step 3 of 3",
-  "ready.badge": "How this works",
+  // -- Confirmation route (direct visits only; the normal flow no longer passes through) --
   // Doubles as the page title. The document title and the heading are the same approved string,
   // so they are one key rather than two that could drift.
   "ready.title": "Before you begin",
@@ -251,8 +233,8 @@ export const ENGLISH_COPY = {
     "back.",
   "ready.starting.item3":
     "The answer you give to the Ilocano question is kept with your validator identity as " +
-    "background information. If you chose to skip it, nothing was recorded in its place. If this " +
-    "browser already held an identity, the answer already stored with it is the one that was kept.",
+    "background information. If this browser already held an identity, the answer already " +
+    "stored with it is the one that was kept.",
   "ready.notStarted.label": "If you have not started yet",
   "ready.notStarted.body":
     "Reaching this page does not mean you answered the Ilocano question. That question is what " +
@@ -277,7 +259,6 @@ export const ENGLISH_COPY = {
     "identity. Because the code is the only link, that is permanent: you would begin again as a " +
     "new anonymous validator, and your earlier answers would remain in the research record under " +
     "the old identity.",
-  "common.footer.noAccounts": "No accounts. Nothing identifying.",
   "ready.meta.description":
     "What happens when you start validating, and what is kept. Sentences arrive in the next phase.",
 
@@ -290,11 +271,10 @@ export const ENGLISH_COPY = {
   "notFound.meta.title": "Page not found",
 
   // -- Starting a batch -----------------------------------------------------
-  // The route a participant lands on to leave `/ready` and obtain a batch. The batch is requested
+  // The orchestration screen reached after screening. The batch is requested
   // from the server rather than linked to, because a batch id does not exist until the server has
-  // chosen one — which is also why this route cannot be a static `href` on `/ready`.
+  // chosen one.
   "validateStart.meta.title": "Start validating",
-  "validateStart.title": "Start your batch",
   "validateStart.lead":
     "You will be given a set of Ilocano navigation sentences, one at a time, in the order the " +
     "study chose.",
@@ -317,42 +297,11 @@ export const ENGLISH_COPY = {
     "We could not prepare your sentences just now, and no batch was created. You can try again in " +
     "a moment.",
 
-  // -- Picking up an interrupted batch --------------------------------------
-  // The only copy in the catalog that describes something the participant has ALREADY done, rather
-  // than something they are about to do. Every string here is about their own unfinished work.
-  //
-  // THERE IS DELIBERATELY NO COPY FOR A FAILED CHECK, and that absence is a requirement rather than an
-  // oversight. `design.md` D4 models *none* and *unavailable* as different outcomes and requires the
-  // screen to render them identically, so a sentence for one and not the other would be a research
-  // statement about our infrastructure, in the middle of a volunteer task, that a participant cannot
-  // verify and cannot act on. `recovery-flow.test.ts` is what enforces it, and the enforcement is a
-  // TEXTUAL SCAN rather than a behavioural check, so the honest description is: that test reads this
-  // module's source text and asserts no branch of it can acquire a sentence. It proves a string is or is
-  // not present, which is why it is defeated by a rename and cannot observe a runtime lookup — an earlier
-  // version of this comment claimed a throwing translator enforced it, and there is no such translator:
-  // the parameter was DELETED, because an unused one was an ESLint warning and because the shape of a
-  // requirement should not be talked around. Stated here rather than left to be discovered, since a
-  // production comment that overstates its own test is how a guarantee quietly stops existing.
-  //
-  // And there is no string offering reassurance about how many batches a participant ought to do, nor
-  // about any total. The only figure is what is left of THIS batch, which is work they have already
-  // been given.
-  "validateStart.resume.title": "You have a batch part-finished",
-  // The count is composed from THREE keys at the call site rather than from one `{remaining} of
-  // {total}` template, because "4 of 10 sentences" and "4 ng 10 na pangungusap" are one fact with two
-  // grammars and a template would force one language to carry the other's word order. This is the same
-  // decision `validate.progress.sentence` / `.of` / `.saved` already make, and it is the reason this
-  // copy block reads as three fragments rather than one sentence.
-  //
-  // It also makes the ORDER of the figures a property of the catalog: `remaining` comes first in both
-  // languages, which is the whole point of the sentence. A template would let a translator move
-  // `total` ahead of `remaining`, producing "10 of 4", and nothing would fail.
-  "validateStart.resume.remaining.connector": "of",
-  "validateStart.resume.remaining.unit": "sentences still waiting for you",
-  "validateStart.resume.cta": "Carry on where you stopped",
-  "validateStart.resume.note":
-    "Everything you already sent is saved. Starting a new batch instead is fine too — the sentences " +
-    "in this one stay available to you.",
+  // -- Interrupted batches need no offer copy ------------------------------------
+  // The orchestration navigates straight to a recognised interrupted batch, so
+  // there is no offer card and no resume sentence. The offer SHAPE (three
+  // fields, both languages, identifier only) is still decided in
+  // `decideRecovery` and still tested there; only the presentation is gone.
 
   // -- The validation session ------------------------------------------------
   // Doubles as the document title. Every string on this route is chrome: the sentence itself is
@@ -361,7 +310,6 @@ export const ENGLISH_COPY = {
   "validate.meta.description":
     "One Ilocano navigation sentence at a time. Your judgement, any correction, and both " +
     "translations are saved as you go.",
-  "validate.header.step": "step 4 of 4",
   "validate.entry.label": "The sentence",
   "validate.entry.instructionLabel": "Ilocano sentence",
   "validate.entry.originLabel": "Intended origin",
@@ -573,9 +521,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "switcher.filipinoName": "Filipino",
 
   // -- Landing -------------------------------------------------------------
-  "landing.header.study": "pag-aaral ng pagpapatunay",
-  "landing.badge.dataset": "Ilocano · datos ng nabigasyon",
-  "landing.badge.recruit": "Kailangan ng mga mananaliksik",
   "landing.hero.title1": "Suriin ang Ilocano.",
   "landing.hero.title2": "Ayusin ang mali.",
   "landing.hero.lead":
@@ -583,8 +528,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "isang makina. Ikaw ang bahagi ng proseso na nagiging maaasahan ito: binabasa mo ang isang " +
     "pangungusap, sinusuri mo kung tamang ang sinasabi nito, at kaayusan mo ito kapag hindi.",
   "landing.cta.start": "Simulan ang pagpapatunay",
-  "landing.cta.hint":
-    "Dalawang hakbang: isang tanong tungkol sa iyong Ilocano, pagkatapos ay magsisimula ka na.",
+  "landing.cta.continue": "Magpatuloy sa pagpapatunay",
   "landing.expectations.heading": "Ano ang inaasahan",
   "landing.panel.task.label": "Ang gawain",
   "landing.panel.task.title": "Sampung pangungusap sa isang beses",
@@ -613,34 +557,20 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "landing.before.item3":
     "Kung mali ang isang pangungusap, mas gusto naming ang iyong bersyon kaysa usapanin ito. " +
     "Isulat ito gaya ng talagang sasabihin mo ito.",
-  "common.footer.research": "Sadino · pananaliksik sa nabigasyon ng Ilocano",
-  "landing.footer.noAccounts":
-    "Walang account. Walang pangalan, walang email, walang numero ng estudyante.",
 
-  // -- Resume island, scoped to ONE browser session ---------------------------------------------
-  // Itutumbas ng Filipino ang bawat pahayag sa itaas. Hindi ito ang mahinahang bersyon: sinasabi rin
-  // nito ang session, at ang pagkakapili ng "hanggang isasara mo ang tab" ay ang bahaging nagbibigay
-  // sa kahulugan nito — ang tinatamaan ay hindi lang ang "maaari kang magpatuloy", kundi ang hangganan
-  // nito. Isang session ang tinutukoy, hindi ang browser, hindi ang tao, at hindi ang nakaraan.
-  "resume.title": "Nagsimula ka na ba?",
-  "resume.body":
-    "Kung may nagsimula ka na sa browser session na ito, maaari mong magpatuloy bilang parehong " +
-    "anonymous na validator hanggang isasara mo ang tab.",
-  "resume.continue": "Magpatuloy bilang validator na iyon",
+  // -- Landing action, scoped to ONE browser session -------------------------------------
+  // Tulad ng Ingles: isang button, walang card, session ang tinutukoy.
+  // The press-time outcome messages are the only sentences this island renders besides the button.
   "resume.checking": "Sinusuri…",
-  "resume.noneHeld":
-    "Walang naka-save na pagkakakilanlan ang browser na ito. Piliin ang Simulan ang pagpapatunay " +
-    "para magsimula — isang tanong lang ang kailangan.",
   "resume.unknown":
     "Hindi na kinikilala ang naka-save na pagkakakilanlan iyon, kaya ito ay nalinis. Piliin ang " +
     "Simulan ang pagpapatunay para magsimula muli bilang bagong anonymous na validator.",
 
   // -- Screening route ------------------------------------------------------
-  "start.header.step": "hakbang 2 ng 3",
   "start.lead":
     "Isang tanong tungkol sa iyong Ilocano. Ito ay impormasyong panlikod para sa talaan ng " +
-    "pananaliksik — hindi ito iskor, at hindi nito binabago ang hinihingi sa iyo. Maaari kang " +
-    "magpatuloy nang hindi ito sagutin.",
+    "pananaliksik — hindi ito iskor, at hindi nito binabago ang hinihingi sa iyo. Kailangan " +
+    "mong sagutin ito para magpatuloy.",
   "start.beforeAnswer.label": "Bago ka sumagot",
   "start.beforeAnswer.item1":
     "Boluntary ang pakikilahok. Maaari kang tumigil anumang oras, kahit sa screen na ito, at " +
@@ -650,9 +580,10 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "at walang anumang field sa alinmang screen kung saan mo ito maaaring ilagay.",
   "start.beforeAnswer.item3":
     "Ang iyong pagkakakilanlan ay isang random na code. May kopya itinatago sa browser na ito " +
-    "para makilala ka namin sa pagbalik mo, at iniingatan ang code sa database ng pag-aaral kasama " +
-    "ang iyong mga sagot, kung saan ito hindi kayang iulat pabalik sa iyo. Kapag binura mo ang " +
-    "datos ng browser, nawawala ang aming kakayahang kilalanin ka.",
+    "para sa session na ito, para makapagpatuloy ka kung mag-reload o mag-navigate ka; iniingatan " +
+    "ang code sa database ng pag-aaral kasama ang iyong mga sagot, kung saan ito hindi kayang " +
+    "iulat pabalik sa iyo. Kapag binura mo ang datos ng browser, nawawala ang aming kakayahang " +
+    "kilalanin ka.",
   "start.meta.title": "Pagsusuri",
   "start.meta.description":
     "Isang tanong tungkol sa iyong kagandihan sa Ilocano, at walang anumang bagay tungkol sa " +
@@ -669,7 +600,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "screening.proficiency.not_confident": "Hindi komportable",
   "screening.submit": "Magpatuloy",
   "screening.submitting": "Ini-save…",
-  "screening.skip": "Laktawan at magpatuloy nang walang sagot",
   "screening.resumeNote":
     "Kung may pagkakakilanlan ng validator na ang browser na ito, magpapatuloy ito sa halip na " +
     "lumikha ng pangalawa, at hindi maaaring maidagdag sa orihinal ang sagot sa itaas.",
@@ -683,7 +613,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "pagkakakilanlan. Walang binago.",
   "screening.failure.invalid.enroll":
     "Hindi namin tinanggap ang sagot na iyon, at walang nase-save. Mangyaring pumili ng isa sa " +
-    "mga pagpipilian, o magpatuloy nang walang sagot.",
+    "mga pagpipilian.",
   "screening.failure.invalid.resume":
     "Hindi maaaring suriin ang naka-save na pagkakakilanlan, at walang binago. Maaari mong " +
     "subukan ulit sa bahagyang sandali.",
@@ -694,9 +624,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "Hindi maaaring suriin ngayon ang naka-save na pagkakakilanlan, at walang binago. Maaari " +
     "mong subukan ulit sa bahagyang sandali.",
 
-  // -- Confirmation route ---------------------------------------------------
-  "ready.header.step": "hakbang 3 ng 3",
-  "ready.badge": "Paano ito gumagana",
+  // -- Confirmation route (direct visits only; the normal flow no longer passes through) --
   "ready.title": "Bago ka magsimula",
   "ready.lead":
     "Walang nang-identity na nakolekta, at walang account na kailangang pamahalaan. Ito ang " +
@@ -710,9 +638,8 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "bumalik ka.",
   "ready.starting.item3":
     "Ang sagot mo sa tanong ng Ilocano ay itinatago kasama ang iyong pagkakakilanlan bilang " +
-    "validator bilang impormasyong panlikod. Kung pinili mong laktawan ito, walang itinatala sa " +
-    "lugar nito. Kung may pagkakakilanlan na ang browser na ito, ang sagot na naka-save na kasama " +
-    "nito ang siyang nananatili.",
+    "validator bilang impormasyong panlikod. Kung may pagkakakilanlan na ang browser na ito, " +
+    "ang sagot na naka-save na kasama nito ang siyang nananatili.",
   "ready.notStarted.label": "Kung hindi ka pa nagsimula",
   "ready.notStarted.body":
     "Ang pagdating sa pahinang ito ay hindi nangangahulugang sinagot mo ang tanong ng Ilocano. Ang " +
@@ -738,7 +665,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "sa iyong pagkakakilanlan bilang validator. Dahil ang code lang ang ugnayan, iyon ay " +
     "permanent: magsisimula ka muli bilang bagong anonymous na validator, at mananatili ang iyong " +
     "mga naunang sagot sa talaan ng pananaliksik sa ilalim ng lumang pagkakakilanlan.",
-  "common.footer.noAccounts": "Walang account. Walang nang-identity.",
   "ready.meta.description":
     "Ang mangyayari kapag nagsimula kang magpapatunay, at ano ang itinatago. Darating ang mga " +
     "pangungusap sa susunod na yugto.",
@@ -754,7 +680,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   // The `/ready` page's onward path. A batch id does not exist until the server has chosen one, so
   // the request is made from the participant's browser rather than linked to from `/ready`.
   "validateStart.meta.title": "Magsimula ng pagpapatunay",
-  "validateStart.title": "Magsimula ng iyong batch",
   "validateStart.lead":
     "Bibigyan ka ng mga pangungusap na nabigasyon sa Ilocano, isa-isa, sa pagkakasunod-sunod na " +
     "pinili ng pag-aaral.",
@@ -776,29 +701,10 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "Hindi maipaghanda ang iyong mga pangungusap ngayon, at walang batch na nalikha. Puwede " +
     "mong subukan muli sa lalong madaling panahon.",
 
-  // -- Pagpapatuloy ng naputol na batch ---------------------------------------
-  // Ang tanging teksto sa katalogong ito na naglalarawan sa GINAWA na ng kontribusyon, hindi sa
-  // gagawin. Lahat ng string dito ay tungkol sa sarili mong hindi pa tapos na trabaho.
-  //
-  // WALA RITO NG TEKSTO PARA SA BIGO NA PAGKAMALI — ang kawalan ay kailangan, hindi pagkakamali. Ang
-  // `design.md` D4 ay naglalarawan ng *none* at *unavailable* bilang magkaibang resulta at hinihingi
-  // na magkatugma ang mga itinatampok ng screen, kaya ang isang pangungusap para sa isa at wala para sa
-  // isa ay pahayagang pananaliksik tungkol sa aming imprastrukturang, nasa gitna ng gawain ng boluntaryo,
-  // na hindi mabibeberipika o maisasagawa ng kontribusyon.
-  //
-  // At walang string na nag-aanyaya ng kumpirensya kung ilang batch ang dapat gawin ng isang tao, at
-  // walang kabuuan. Ang tanging bilang ay natitira sa batch na ito — trabahong ibinigay na sa iyo.
-  "validateStart.resume.title": "Mayroon kang bahagyang tapos na batch",
-  // Pinagkukunan ng tatlong key ang bilang sa lugar ng pagtawag, gaya ng ginagawa ng
-  // `validate.progress.*` sa itaas: "4 of 10" at "4 ng 10" ay iisang katotobanan na may dalawang
-  // gramatika, at ang isang `{remaining} of {total}` ay pipilitin sa isang wika ang pagkakasunod-sunod
-  // ng salita ng isa.
-  "validateStart.resume.remaining.connector": "ng",
-  "validateStart.resume.remaining.unit": "na pangungusap pa ang naghihintay sa iyo",
-  "validateStart.resume.cta": "Magpatuloy ka sa kung saan ka tumigil",
-  "validateStart.resume.note":
-    "Nase-save na ang lahat ng ipinadala mo. Puwede ring magsimula ng bagong batch — nananatiling " +
-    "available sa iyo ang mga pangungusap ng batch na ito.",
+  // -- Hindi na kailangan ng teksto ng alok -------------------------------------------
+  // Direktang nagna-navigate ang orchestration sa kinikilalang naputol na batch, kaya walang card
+  // ng alok at walang pangungusap ng resume. Nananatili ang hugis ng alok sa `decideRecovery`;
+  // ang presentasyon lang ang nawala.
 
   // -- Ang validation session ------------------------------------------------
   // Ang mismong pahina. Lahat ng string dito ay chrome: ang mismong pangungusap ay materyal ng
@@ -807,7 +713,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.meta.description":
     "Isa-isa ang mga pangungusap sa nabigasyon na nasa Ilocano. Ang iyong paghusga, anumang " +
     "pagwawasto, at ang dalawang pagsasalin ay nase-save habang ginagawa mo.",
-  "validate.header.step": "hakbang 4 sa 4",
   "validate.entry.label": "Ang pangungusap",
   "validate.entry.instructionLabel": "Pangungusap sa Ilocano",
   "validate.entry.originLabel": "Nilayong pinagmulan",

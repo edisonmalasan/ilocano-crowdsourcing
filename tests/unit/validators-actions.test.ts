@@ -153,13 +153,15 @@ describe("runEnroll", () => {
     ]);
   });
 
-  it("enrolls a visitor who declined the screening question", async () => {
+  it("refuses an explicit null proficiency rather than enrolling an absence", async () => {
+    // The methodology correction admits no decline: explicit `null` is invalid
+    // exactly like a missing key, and nothing is persisted for it.
     const harness = createHarness();
 
     const result = await runEnroll({ ilocanoProficiency: null }, harness.deps);
 
-    expect(result.status).toBe("enrolled");
-    expect(harness.calls).toEqual(["create"]);
+    expect(result).toEqual({ status: "failed", reason: "invalid" });
+    expect(harness.calls).toEqual([]);
   });
 
   it("rejects a payload with no proficiency key at all rather than recording a decline", async () => {

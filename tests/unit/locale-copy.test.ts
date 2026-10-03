@@ -1248,15 +1248,21 @@ describe("the copy that described a returning person, and now describes one sess
     // number by re-running this test after editing any string in either catalog: a change here is a
     // deliberate decision to let a string use this vocabulary, and the reason belongs in a comment.
     //
-    // **THE TWO HALVES ARE NOT THE SAME SIZE AND THAT IS NOT A BUG.** 11 English keys and 13 Filipino
-    // ones are selected, because roughly half the vocabulary is language-specific — `bumalik`,
-    // `kinikilala`, `na ba` and `muling` cannot occur in an English string, and `recognis`/`another
-    // time` are not how the Filipino catalog makes the same claims. That asymmetry is the useful part:
-    // it means the enumeration is really reading both catalogs rather than matching one list twice,
-    // and the `fil:` half containing keys the `en:` half does not is what shows it.
+    // **THE TWO HALVES ARE THE SAME SIZE AND THAT IS NOT A BUG EITHER.** 11 English keys and 11
+    // Filipino ones are selected, because roughly half the vocabulary is language-specific —
+    // `bumalik`, `kinikilala`, `na ba` and `muling` cannot occur in an English string, and
+    // `recognis`/`another time` are not how the Filipino catalog makes the same claims. That
+    // asymmetry is the useful part: it means the enumeration is really reading both catalogs
+    // rather than matching one list twice.
+    //
+    // Re-derived for `onboarding-simplification`: `fil:resume.title` and
+    // `fil:validateStart.resume.title` are gone with the cards that carried them. The session
+    // promise they shared now lives in `start.beforeAnswer.item3`, which still matches — via
+    // `recognis` in English and `kilala` in Filipino — so the enumeration keeps measuring the
+    // same claims at their new address rather than going quiet about them.
     const found = mentionsRecognition();
 
-    expect(found.length).toBe(24);
+    expect(found.length).toBe(22);
     expect(found).toEqual([
       "en:common.beforeYouStart",
       "en:ready.next.body1",
@@ -1274,14 +1280,12 @@ describe("the copy that described a returning person, and now describes one sess
       "fil:ready.next.body1",
       "fil:ready.next.body2",
       "fil:ready.starting.item2",
-      "fil:resume.title",
       "fil:resume.unknown",
       "fil:start.beforeAnswer.item3",
       "fil:validate.finished.failure.invalid",
       "fil:validate.finished.failure.persistence",
       "fil:validateStart.failure.invalid",
       "fil:validateStart.noIdentity",
-      "fil:validateStart.resume.title",
     ]);
   });
 
@@ -1334,22 +1338,22 @@ describe("the copy that described a returning person, and now describes one sess
   });
 
   it("says nothing in EITHER language about having taken part on this browser BEFORE", () => {
-    // The specific clause `resume.body` carried, asserted as an absence in both catalogs rather than
-    // as the presence of a replacement — an absence is the property the requirement states, and a
-    // presence check would pass on any rewrite that kept the claim.
+    // The clause the deleted resume card carried now lives in the pre-enrollment
+    // notice (`start.beforeAnswer.item3`), asserted as an absence in both catalogs
+    // rather than as the presence of a replacement — an absence is the property
+    // the requirement states, and a presence check would pass on any rewrite that
+    // kept the claim.
     for (const [locale, catalog] of CATALOGS) {
-      const resume = catalog["resume.body"] ?? "";
-      expect(resume.length, `${locale} resume.body is empty`).toBeGreaterThan(20);
-      expect(resume.toLowerCase(), `${locale} resume.body claims a previous visit`).not.toMatch(
+      const notice = catalog["start.beforeAnswer.item3"] ?? "";
+      expect(notice.length, `${locale} notice item3 is empty`).toBeGreaterThan(20);
+      expect(notice.toLowerCase(), `${locale} notice claims a previous visit`).not.toMatch(
         /before/,
       );
-      expect(resume.toLowerCase(), `${locale} resume.body claims a previous visit`).not.toMatch(
+      expect(notice.toLowerCase(), `${locale} notice claims a previous visit`).not.toMatch(
         /(take|taken|participat|gininawa|nagawa)/,
       );
       // And it DOES name the session, which is the half that makes it an answer rather than a deletion.
-      expect(resume.toLowerCase(), `${locale} resume.body does not name the session`).toMatch(
-        /session/,
-      );
+      expect(notice.toLowerCase(), `${locale} notice does not name the session`).toMatch(/session/);
     }
   });
 
@@ -1378,27 +1382,26 @@ describe("the copy that described a returning person, and now describes one sess
     }
   });
 
-  it("renders both rewritten strings in the language actually rendered, not only in the catalog", () => {
+  it("renders the session promise in the language actually rendered, not only in the catalog", () => {
     // The catalog-level assertions above read the data. This one goes through `translatorFor`, because
     // a catalog can be correct and a component can still render a different string — and the
     // requirement is about what the participant is shown.
     for (const locale of INTERFACE_LOCALES) {
       const t = translatorFor(locale);
-      const body = t("resume.body");
+      const notice = t("start.beforeAnswer.item3");
       const note = t("validate.finished.finishNote");
-      expect(body.length, `${locale} resume.body rendered empty`).toBeGreaterThan(20);
+      expect(notice.length, `${locale} notice item3 rendered empty`).toBeGreaterThan(20);
       expect(note.length, `${locale} finishNote rendered empty`).toBeGreaterThan(20);
-      expect(
-        body.toLowerCase(),
-        `${locale} rendered resume.body claims a previous visit`,
-      ).not.toMatch(/before/);
+      expect(notice.toLowerCase(), `${locale} rendered notice claims a previous visit`).not.toMatch(
+        /before/,
+      );
       expect(note.toLowerCase(), `${locale} rendered finishNote promises a return`).not.toMatch(
         /come back|another time|bumalik/,
       );
       // And each language rendered its OWN string rather than falling back to English — the failure
       // this project has already had to catch once, for a missing Filipino key.
       if (locale === "fil") {
-        expect(body).not.toBe(ENGLISH_COPY["resume.body"]);
+        expect(notice).not.toBe(ENGLISH_COPY["start.beforeAnswer.item3"]);
         expect(note).not.toBe(ENGLISH_COPY["validate.finished.finishNote"]);
       }
     }

@@ -1,31 +1,26 @@
 /**
- * Resume-from-the-landing-page, driven for real.
+ * The landing action, driven for real.
  *
  * =================================================================================================
  * WHY THIS FILE EXISTS
  * =================================================================================================
- * Two of the seven measured gaps are here, and both are **critical** research-integrity sites that
- * no test in the project observed. A mutation probe found each one leaves all 881 unit tests green.
+ * Two measured gaps live here, and both are **critical** research-integrity sites that
+ * no static-markup test can observe. A mutation probe found each one leaves the unit suite green.
  *
- *   RV-1  `const stored = readStoredValidatorId()` -> `const stored = null`
- *         Resume becomes permanently dead. A returning validator is told they hold no identity, is
- *         sent to enroll again, mints a SECOND identity, and the first is orphaned — one person's
- *         research record split in two, with nothing in the stored data able to tell.
+ *   LA-1  `const stored = readStoredValidatorId()` -> `const stored = null`
+ *         Resume becomes permanently dead. A returning validator is sent to enroll again, mints a
+ *         SECOND identity, and the first is orphaned — one person's research record split in two,
+ *         with nothing in the stored data able to tell.
  *
- *   RV-2  `router.push("/ready")` removed
+ *   LA-2  `router.push("/validate")` removed
  *         A validator the server RECOGNISED is left staring at a message claiming they hold no
  *         identity, having just been told the opposite.
  *
  * `renderToStaticMarkup` cannot observe either: both live inside `handleClick`, a handler it never
- * fires. That limitation is documented in `tests/unit/onboarding-routes.test.tsx` and predates this
- * change. So these are behavioural — a real click, and the effect observed in the DOM.
- *
- * `tests/dom/feasibility-spike.test.tsx` already clicks this component and sees a navigation. It is
- * explicitly **not** a guard — it exists to prove the approach works — so RV-2 needs its own, and
- * one that also pins *which* result produced the navigation.
+ * fires. So these are behavioural — a real click, and the effect observed in the DOM.
  *
  * =================================================================================================
- * WHAT EACH GUARD DOES **NOT** CATCH  (design.md D3)
+ * WHAT EACH GUARD DOES **NOT** CATCH
  * =================================================================================================
  * Stated per test, because a guard whose limits are undocumented is how this repository's six
  * previous vacuous guards survived review.
@@ -33,7 +28,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ResumeValidator } from "@/components/onboarding/resume-validator";
+import { LandingAction } from "@/components/onboarding/resume-validator";
 import { translatorFor } from "@/lib/i18n/copy";
 import { mount, type Mounted } from "./support/dom-harness";
 
@@ -103,7 +98,7 @@ beforeEach(() => {
   h.storedId = STORED_ID;
   h.resume.length = 0;
   h.resumeResult = { status: "restored", validatorId: STORED_ID };
-  view = mount(<ResumeValidator locale={EN} />);
+  view = mount(<LandingAction locale={EN} />);
 });
 
 afterEach(() => {
@@ -111,7 +106,32 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("RV-1 — the component reads the identifier this browser holds", () => {
+describe("LA-0 — the label reflects what this browser holds", () => {
+  it("offers continuing when the session holds an attempt", () => {
+    // The effect ran on mount (the harness commits effects), so the label for a
+    // browser holding an identity is the continue label — a hint, never the
+    // decision, which the press re-resolves.
+    expect(control().textContent).toBe(t("landing.cta.continue"));
+
+    // WEAKNESS: asserts the HINT, not the decision. A label/press mismatch — the
+    // label saying continue while the press went to screening — would pass; the
+    // routing is pinned separately below.
+  });
+
+  it("offers starting when the session holds nothing", () => {
+    h.storedId = null;
+    view.unmount();
+    view = mount(<LandingAction locale={EN} />);
+
+    expect(control().textContent).toBe(t("landing.cta.start"));
+
+    // WEAKNESS: static label only. A component that always rendered the start
+    // label yet still resolved correctly would pass; the resolution is pinned
+    // in LA-1.
+  });
+});
+
+describe("LA-1 — the action reads the identifier this browser holds", () => {
   it("resolves the stored identifier instead of claiming none is held", async () => {
     await view.pressAndSettle(control());
 
@@ -120,35 +140,33 @@ describe("RV-1 — the component reads the identifier this browser holds", () =>
     expect(h.resume).toEqual([{ storedId: STORED_ID }]);
 
     // WEAKNESS: asserts the identifier is SENT, not that the answer is USED. A component that sent
-    // it and then ignored the reply would pass here. RV-2's test is what observes the reply.
+    // it and then ignored the reply would pass here. LA-2's tests are what observe the reply.
   });
 
-  it("reports an absent identifier rather than asking the server about nothing", async () => {
+  it("goes to screening when the browser holds nothing, without asking the server", async () => {
     h.storedId = null;
     view.unmount();
-    view = mount(<ResumeValidator locale={EN} />);
+    view = mount(<LandingAction locale={EN} />);
 
     await view.pressAndSettle(control());
 
-    // The control for the test above, and the reason it is a measurement rather than a decoration:
-    // if `readStoredValidatorId` were not consulted at all, this path would be unreachable and the
-    // first test's `[{ storedId }]` could not exist. One of the two fails if the component stops
-    // branching.
+    // The control for the test above: if `readStoredValidatorId` were not consulted at all, this
+    // path would be unreachable and the first test's `[{ storedId }]` could not exist. A first-time
+    // visitor needs no message — screening is exactly where they belong.
     expect(h.resume).toEqual([]);
-    expect(statusText()).toBe(t("resume.noneHeld"));
+    expect(h.pushes).toEqual(["/start"]);
+    expect(statusText()).toBeNull();
 
-    // WEAKNESS: `resume.noneHeld` is looked up through the real catalog rather than hard-coded, so
-    // this asserts the component shows the RIGHT message without pinning the English wording. A
-    // wrong-message mutation that swapped two catalog keys would pass; one that dropped the message
-    // entirely would not.
+    // WEAKNESS: observes the destination, not the reason. A mutation that pushed `/start` for every
+    // press would pass here and fail the tests below.
   });
 });
 
-describe("RV-2 — a recognised validator is navigated onward", () => {
-  it("navigates to /ready when the server restores the identity", async () => {
+describe("LA-2 — a recognised validator is navigated onward", () => {
+  it("navigates to /validate when the server restores the identity", async () => {
     await view.pressAndSettle(control());
 
-    expect(h.pushes).toEqual(["/ready"]);
+    expect(h.pushes).toEqual(["/validate"]);
 
     // WEAKNESS: observes the destination, not the timing. A mutation that pushed before awaiting
     // the server — navigating a validator whose identity was NOT recognised — passes here, and is
@@ -158,7 +176,7 @@ describe("RV-2 — a recognised validator is navigated onward", () => {
   it("does not navigate when the server recognises nobody", async () => {
     h.resumeResult = { status: "absent" };
     view.unmount();
-    view = mount(<ResumeValidator locale={EN} />);
+    view = mount(<LandingAction locale={EN} />);
 
     await view.pressAndSettle(control());
 
