@@ -183,8 +183,7 @@ describe("OverviewView", () => {
     // the proficiency section carries its own metadata-not-a-score disclaimer, asserted
     // elsewhere.
     const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
-    const section =
-      html.split('aria-label="Coverage totals"')[1]?.split("</section>")[0] ?? "";
+    const section = html.split('aria-label="Coverage totals"')[1]?.split("</section>")[0] ?? "";
 
     expect(section).not.toMatch(/persons?|people|humans?|participants?/i);
   });

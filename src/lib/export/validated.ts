@@ -102,16 +102,11 @@ export interface ValidatedDataset {
  * and this function disagree about what qualifies, which is precisely the drift this module
  * must not permit silently.
  */
-export function validatedIlocanoFor(
-  entry: DatasetEntry,
-  response: ValidationResponse,
-): string {
+export function validatedIlocanoFor(entry: DatasetEntry, response: ValidationResponse): string {
   if (!isCorrectionRequired(response.evaluation)) return entry.instruction;
   const correction = response.correctedInstruction;
   if (typeof correction === "string" && correction.trim().length > 0) return correction;
-  throw new Error(
-    `qualifying response ${response.id} requires a correction it does not carry`,
-  );
+  throw new Error(`qualifying response ${response.id} requires a correction it does not carry`);
 }
 
 /**

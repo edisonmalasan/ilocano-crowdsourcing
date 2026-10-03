@@ -56,10 +56,7 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           <Figure label="Complete entries" value={String(overview.buckets.complete)} />
           <Figure label="Incomplete entries" value={String(overview.buckets.incomplete)} />
           <Figure label="Stored responses" value={String(overview.totalResponses)} />
-          <Figure
-            label="Cannot-evaluate responses"
-            value={String(overview.cannotEvaluateCount)}
-          />
+          <Figure label="Cannot-evaluate responses" value={String(overview.cannotEvaluateCount)} />
           <Figure
             label="Entries with extra packages"
             value={String(overview.extraPackageEntries.length)}

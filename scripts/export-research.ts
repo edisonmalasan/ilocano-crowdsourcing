@@ -249,11 +249,7 @@ export async function runExport(options: {
       documents.validatedJson,
       "utf8",
     );
-    await writeFile(
-      path.join(options.destination, VALIDATED_CSV),
-      documents.validatedCsv,
-      "utf8",
-    );
+    await writeFile(path.join(options.destination, VALIDATED_CSV), documents.validatedCsv, "utf8");
   } catch (error) {
     // The destination is named in the refusal. An export that fails quietly is the worst outcome
     // available: the operator believes they have a dataset and do not.

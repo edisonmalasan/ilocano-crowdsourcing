@@ -281,9 +281,7 @@ describe("the dashboard and the export agree on one corpus", () => {
     const { overview, summary, validated } = await bothConsumers();
 
     const completeBySummary = new Set(
-      summary.by_entry
-        .filter((row) => row.coverage_complete)
-        .map((row) => row.dataset_entry_id),
+      summary.by_entry.filter((row) => row.coverage_complete).map((row) => row.dataset_entry_id),
     );
     const validatedIds = new Set(validated.records.map((record) => record.id));
 
