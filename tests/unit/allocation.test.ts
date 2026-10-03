@@ -90,9 +90,9 @@ describe("who is eligible", () => {
     // SET, because the order is the shuffle's business and this test is about eligibility.
     const pool = candidates("OD_0001", "OD_0002", "OD_0003");
 
-    expect(ids(selectBatchEntries(pool, none, completed("OD_0001"), 10, constantZero)).sort()).toEqual(
-      ["OD_0002", "OD_0003"],
-    );
+    expect(
+      ids(selectBatchEntries(pool, none, completed("OD_0001"), 10, constantZero)).sort(),
+    ).toEqual(["OD_0002", "OD_0003"]);
     expect(ids(selectBatchEntries(pool, none, completed(), 10, constantZero))).toHaveLength(3);
   });
 });
