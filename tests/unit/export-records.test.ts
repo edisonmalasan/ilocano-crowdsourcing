@@ -395,6 +395,16 @@ describe("buildExportSummary", () => {
     expect(JSON.stringify(summary)).not.toContain("coverage_target");
     expect("coverage_target" in (summary.generated_from as object)).toBe(false);
   });
+
+  it("states how many entries the validated dataset omits, by count not by presence", () => {
+    // E3, E4, and short_greeting hold no qualifying package between them: three incomplete
+    // entries omitted. A field that merely existed would pass with any value — including a
+    // hardcoded zero — so the hand-counted value is asserted, not the key.
+    expect(summary.totals.omitted_from_validated).toBe(3);
+    expect(summary.totals.omitted_from_validated).toBe(
+      summary.by_entry.filter((row) => !row.coverage_complete).length,
+    );
+  });
 });
 
 describe("the two artifacts describe the same records", () => {
