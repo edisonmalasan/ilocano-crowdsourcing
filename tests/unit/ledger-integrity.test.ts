@@ -367,6 +367,10 @@ describe("the ledger describes the archive directory", () => {
       // generalising from; it is the same one-line edit three times, which is the cheapest possible
       // price for being unable to accept a sentence that merely looks right.
       19: "Nineteen",
+      // Added for `single-validation-package`, the TWENTIETH archived change, so this coupling has now
+      // been paid FOUR times — `consistency-guards` (17), `batch-route-round-trip` (18),
+      // `session-attempt-identity` (19), and here (20). Same one-line edit, same reason.
+      20: "Twenty",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
