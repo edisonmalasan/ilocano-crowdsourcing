@@ -271,6 +271,38 @@ describe("AO-8 — one mount issues one lookup and at most one allocation", () =
   });
 });
 
+describe("AO-10 — the island carries no title and the working state reads as pending", () => {
+  it("renders no heading of its own, so the route title appears exactly once", async () => {
+    // The route page owns the single `h1`. An island-level heading with the
+    // same title rendered "Start validating" twice — once as the page, once
+    // as the card — which is the defect this guards.
+    h.lookupResult = { status: "none" };
+    h.allocationResult = { status: "exhausted" };
+    view.unmount();
+    view = await mountSettled();
+
+    expect(view.all("h1").length).toBe(0);
+    expect(view.all("h2").length).toBe(0);
+    expect(view.container.innerHTML).toContain(t("validateStart.exhausted"));
+  });
+
+  it("marks the working state pending with a status role and a busy section", async () => {
+    // Mount settles past working on the default fixture, so hold the run
+    // open: the allocation mock below never resolves, leaving the island in
+    // its working phase while the assertions run.
+    h.lookupResult = { status: "none" };
+    h.allocationResult = new Promise(() => {}) as unknown as Record<string, unknown>;
+    view.unmount();
+    view = mount(<StartBatch locale="en" />);
+    await view.settle();
+
+    const status = view.one('[role="status"]');
+    expect(status.textContent).toBe(t("validateStart.working"));
+    expect(view.one("section")?.getAttribute("aria-busy")).toBe("true");
+    h.allocationResult = { status: "allocated", batchId: FRESH_BATCH };
+  });
+});
+
 describe("AO-9 — an attempt without a recorded answer restarts screened", () => {
   it("shows the restart state with no retry, and restarting clears without a write", async () => {
     h.lookupResult = { status: "none" };

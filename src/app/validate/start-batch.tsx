@@ -149,16 +149,19 @@ export function StartBatch({ locale }: StartBatchProps) {
   }, []);
 
   return (
-    <Card as="section" padding="lg">
-      <h2 className="text-heading">{t("validateStart.meta.title")}</h2>
+    <Card as="section" padding="lg" aria-busy={phase.kind === "working" || undefined}>
       {phase.kind === "working" ? (
-        <p className="text-body text-ink-muted mt-3" role="status">
+        <p className="text-body text-ink-muted flex items-center gap-3" role="status">
+          <span
+            aria-hidden="true"
+            className="bg-accent size-2.5 shrink-0 animate-pulse rounded-full"
+          />
           {t("validateStart.working")}
         </p>
       ) : null}
 
       {phase.kind === "no-identity" ? (
-        <div className="mt-5 flex flex-col gap-2">
+        <div className="flex flex-col gap-2">
           <p className="text-body text-ink-muted">{t("validateStart.noIdentity")}</p>
           <p>
             <Link className="font-display font-bold underline" href="/start">
@@ -169,11 +172,11 @@ export function StartBatch({ locale }: StartBatchProps) {
       ) : null}
 
       {phase.kind === "exhausted" ? (
-        <p className="text-body text-ink-muted mt-5">{t("validateStart.exhausted")}</p>
+        <p className="text-body text-ink-muted">{t("validateStart.exhausted")}</p>
       ) : null}
 
       {phase.kind === "screening_required" ? (
-        <div className="mt-5 flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           <p className="text-body text-ink-muted">{t("validateStart.screeningRequired")}</p>
           <div>
             <Button
@@ -195,7 +198,7 @@ export function StartBatch({ locale }: StartBatchProps) {
       ) : null}
 
       {phase.kind === "error" ? (
-        <div className="mt-5 flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           <p role="alert" className="text-small text-status-alert font-semibold">
             {phase.message}
           </p>
