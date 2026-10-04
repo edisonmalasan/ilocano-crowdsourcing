@@ -8,17 +8,27 @@ repository they describe.
 
 ## Requirements
 
-### Requirement: Independent consumers of the pooled rule agree on one corpus
+### Requirement: Independent consumers of the pooled rule agree on one corpus, web export included
 
 Given a single corpus of stored responses, every consumer that reports coverage SHALL report the
 same contribution counts, the same partition of entries into complete and incomplete, the same
 number of entries that are complete, and the same set of entries requiring researcher review. The
-three consumers are the dashboard overview, the raw-export summary, and the validated dataset.
-Consumers SHALL be compared by running them over the same inputs and asserting the results are
-equal, not by asserting that they share a helper — two modules can call the same predicate and
-still disagree about which responses to include, which side of the completion rule to place an
-entry on, or how to total them. The validated dataset joins the comparison as a consumer: it SHALL
-cover exactly the entries the other two call complete, no more and no fewer.
+four consumers are the dashboard overview, the raw-export summary, the validated dataset, and the
+web export download. Consumers SHALL be compared by running them over the same inputs and
+asserting the results are equal, not by asserting that they share a helper — two modules can
+call the same predicate and still disagree about which responses to include, which side of the
+completion rule to place an entry on, or how to total them. The validated dataset joins the
+comparison as a consumer: it SHALL cover exactly the entries the other two call complete, no
+more and no fewer. The web export joins as a reader, not a fifth definition: it SHALL reuse the
+same builders, so its agreement is by construction and its test asserts byte-equivalence with
+the operator documents.
+
+#### Scenario: Dashboard and export agree on the contribution counts, web included
+
+- **WHEN** the dashboard overview, the raw-export summary, the validated dataset, and the web
+  export are computed from the same corpus
+- **THEN** all four agree on the per-response contribution counts, and the validated
+  dataset holds one record per complete entry
 
 #### Scenario: Dashboard and export agree on the contribution counts
 
