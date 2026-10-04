@@ -286,7 +286,6 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
         >
           {submitState.label}
         </Button>
-        <p className="text-small text-ink-faint">{t("validation.savingNote")}</p>
       </div>
     </form>
   );

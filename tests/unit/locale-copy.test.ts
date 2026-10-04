@@ -1255,15 +1255,14 @@ describe("the copy that described a returning person, and now describes one sess
     // asymmetry is the useful part: it means the enumeration is really reading both catalogs
     // rather than matching one list twice.
     //
-    // Re-derived for `screening-gate`: the two new `screeningRequired`
-    // sentences join via "before" ("created before the Ilocano question became
-    // required") — the history clause is exactly what this vocabulary watches.
-    // Their Filipino mirrors carry no recognition idiom ("Ginawa ... bago
-    // naging kailangan" matches none of the terms), so the `fil:` half is
-    // unchanged: translations are not reworded to satisfy a vocabulary scan.
+    // Re-derived for `sentence-only-presentation`: `fil:landing.before.item1`
+    // is gone with the landing card that carried it. The voluntary proposition
+    // still lives — verbatim, in the screening notice where the ethics rule
+    // requires it — and the enumeration keeps measuring the same claims at
+    // their required address rather than going quiet about them.
     const found = mentionsRecognition();
 
-    expect(found.length).toBe(24);
+    expect(found.length).toBe(23);
     expect(found).toEqual([
       "en:common.beforeYouStart",
       "en:ready.next.body1",
@@ -1278,7 +1277,6 @@ describe("the copy that described a returning person, and now describes one sess
       "en:validate.finished.failure.screeningRequired",
       "en:validateStart.failure.invalid",
       "en:validateStart.screeningRequired",
-      "fil:landing.before.item1",
       "fil:notFound.cta",
       "fil:ready.next.body1",
       "fil:ready.next.body2",

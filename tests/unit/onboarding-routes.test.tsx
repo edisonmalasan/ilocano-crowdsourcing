@@ -251,7 +251,10 @@ describe("landing route", () => {
 
   it("keeps the introduction copy from the shell phase", () => {
     expect(html).toContain("Check the Ilocano.");
-    expect(html).toMatch(/Taking part is voluntary/);
+    // Voluntariness lives on the screening screen now, where the ethics rule
+    // requires it (same screen as the question, above the submit) — asserted
+    // there rather than duplicated here.
+    expect(html).not.toContain("Taking part is voluntary");
   });
 });
 
