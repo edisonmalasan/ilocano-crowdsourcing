@@ -51,7 +51,12 @@ import ProtectedHome from "@/app/researcher/(protected)/page";
 import { metadata as protectedMetadata } from "@/app/researcher/(protected)/layout";
 import { metadata as segmentMetadata } from "@/app/researcher/layout";
 import ResearcherSignInPage from "@/app/researcher/sign-in/page";
-import { RESEARCHER_AREA_PATH, RESEARCHER_HOME, RESEARCHER_SIGN_IN } from "@/lib/admin/routes";
+import {
+  RESEARCHER_AREA_PATH,
+  RESEARCHER_EXPORT,
+  RESEARCHER_HOME,
+  RESEARCHER_SIGN_IN,
+} from "@/lib/admin/routes";
 import { RESEARCHER_SESSION_MAX_LIFETIME_SECONDS } from "@/lib/admin/session";
 import { RESEARCHER_REFUSAL_MESSAGE } from "@/lib/admin/guard";
 
@@ -139,13 +144,18 @@ describe("the researcher route constants", () => {
     expect(RESEARCHER_AREA_PATH).toBe("/researcher");
   });
 
+  it("names the export download beneath the area it belongs to", () => {
+    expect(RESEARCHER_EXPORT).toBe("/researcher/export");
+    expect(RESEARCHER_EXPORT.startsWith(`${RESEARCHER_AREA_PATH}/`)).toBe(true);
+  });
+
   it("scopes the area path to the researcher area and no wider", () => {
     // The cookie's `path` comes from this constant. A value of `/` would attach the researcher
     // session to every public validator request this origin serves, which `cookie.ts` documents as
     // more exposure than the feature needs.
     expect(RESEARCHER_AREA_PATH.startsWith("/")).toBe(true);
     expect(RESEARCHER_AREA_PATH).not.toBe("/");
-    for (const route of [RESEARCHER_HOME, RESEARCHER_SIGN_IN]) {
+    for (const route of [RESEARCHER_HOME, RESEARCHER_SIGN_IN, RESEARCHER_EXPORT]) {
       expect(route.startsWith(`${RESEARCHER_AREA_PATH}/`) || route === RESEARCHER_AREA_PATH).toBe(
         true,
       );

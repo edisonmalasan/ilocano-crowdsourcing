@@ -539,7 +539,7 @@ describe("the admin environment is read only from the researcher area", () => {
     /\bgetAdminEnv\b/.test(readFileSync(file, "utf8")),
   );
 
-  it("reads the admin environment from exactly three files, all inside the researcher area", () => {
+  it("reads the admin environment from exactly four files, all inside the researcher area", () => {
     const readers = ADMIN_ENV_READERS.map((file) =>
       file.slice(SRC.length + 1).replaceAll("\\", "/"),
     );
@@ -556,6 +556,7 @@ describe("the admin environment is read only from the researcher area", () => {
     // assertion expected three readers, was measured against four, and the fourth was this one; the
     // count was wrong, not the code.
     expect(readers.sort()).toEqual([
+      "app/researcher/(protected)/export/route.ts",
       "app/researcher/(protected)/layout.tsx",
       "app/researcher/sign-in/page.tsx",
       "lib/admin/actions.ts",
