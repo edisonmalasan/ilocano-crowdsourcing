@@ -107,7 +107,7 @@ export const ENGLISH_COPY = {
   // -- Landing -------------------------------------------------------------
   "landing.hero.title1": "Check the Ilocano.",
   "landing.hero.title2": "Fix what’s off.",
-  "landing.hero.lead": "Dataset validation for sadino",
+  "landing.hero.lead": "Dataset validation for SADINO",
   "landing.cta.start": "Start validation",
   "landing.cta.continue": "Continue validation",
   "landing.expectations.heading": "What to expect",
