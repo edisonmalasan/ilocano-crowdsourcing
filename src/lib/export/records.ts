@@ -14,7 +14,10 @@
  * pick a preferred response. A "consensus translation" column is the single most plausible wrong
  * addition to an export, and once written it looks like research output. `qualifying` travels on each
  * record so the summary's counts can be recomputed from this document alone, which is what makes the
- * export checkable rather than merely readable.
+ * export checkable rather than merely readable. The union flag travels with the source —
+ * precomputed by the caller from the same shared predicate — while the three pillar flags are
+ * computed here from the response by the same predicates the summary counts with, so record and
+ * summary cannot disagree about what a response contributes.
  *
  * Naming: the fields are `english_translation` and `filipino_translation` — snake_case, named for
  * the research content rather than for a UI concept, so a consumer reading the JSON cannot mistake
@@ -25,8 +28,11 @@
 
 import {
   countQualifyingValidations,
+  coversEnglishTranslation,
+  coversFilipinoTranslation,
   isEntryComplete,
   isQualifyingValidation,
+  isValidJudgment,
 } from "@/lib/domain/validation-response";
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
 import type { DatasetEntry } from "@/schemas/dataset";
@@ -58,6 +64,9 @@ export const EXPORT_RECORD_KEYS = [
   "english_translation",
   "filipino_translation",
   "qualifies_toward_completion",
+  "contributes_judgment",
+  "covers_english",
+  "covers_filipino",
   "submitted_at",
 ] as const;
 
@@ -101,6 +110,9 @@ export function buildExportRecords(sources: readonly ExportSourceWithQualifying[
     english_translation: nullableText(response.englishTranslation),
     filipino_translation: nullableText(response.filipinoTranslation),
     qualifies_toward_completion: qualifies ? "true" : "false",
+    contributes_judgment: isValidJudgment(response) ? "true" : "false",
+    covers_english: coversEnglishTranslation(response) ? "true" : "false",
+    covers_filipino: coversFilipinoTranslation(response) ? "true" : "false",
     submitted_at: response.createdAt,
   }));
 }
@@ -116,9 +128,13 @@ export function buildExportRecords(sources: readonly ExportSourceWithQualifying[
 export interface EntrySummary {
   readonly dataset_entry_id: string;
   readonly category: string;
-  /** Qualifying validations from DISTINCT validators — per-entry, never global (see below). */
+  /** Contributing responses from DISTINCT validators — per-entry, never global (see below). */
   readonly qualifying_validations: number;
   readonly non_qualifying_validations: number;
+  /** Per-pillar contribution counts over this entry's stored responses. */
+  readonly judgment_contributions: number;
+  readonly english_coverages: number;
+  readonly filipino_coverages: number;
   readonly stored_responses: number;
   readonly distinct_validators: number;
   readonly coverage_complete: boolean;
@@ -130,6 +146,9 @@ export interface CategorySummary {
   readonly entries: number;
   readonly qualifying_validations: number;
   readonly non_qualifying_validations: number;
+  readonly judgment_contributions: number;
+  readonly english_coverages: number;
+  readonly filipino_coverages: number;
   readonly stored_responses: number;
 }
 
@@ -143,6 +162,9 @@ export interface ExportSummary {
   readonly totals: {
     readonly qualifying_validations: number;
     readonly non_qualifying_validations: number;
+    readonly judgment_contributions: number;
+    readonly english_coverages: number;
+    readonly filipino_coverages: number;
     readonly stored_responses: number;
     readonly entries_with_coverage_complete: number;
     readonly entries_requiring_review: number;
@@ -180,7 +202,9 @@ function groupByEntry(
  * corpus, and that is not a style choice: `countQualifyingValidations` dedupes by `validatorId`
  * ACROSS the array it is given, so it is correct for one entry's coverage and returns "the number of
  * validators who ever contributed anything" if applied to everything at once. Summing per entry is what
- * makes the total a total.
+ * makes the total a total. The same holds per pillar: each pillar total is the sum of the
+ * per-entry pillar counts, so a validator contributing to several entries is counted once per
+ * entry they contributed to.
  */
 export function buildExportSummary(
   entries: readonly DatasetEntry[],
@@ -200,12 +224,19 @@ export function buildExportSummary(
     // shape the coverage rule actually consumes, which is precisely the drift this module must not
     // permit.
     const qualifying = countQualifyingValidations(rows.map((row) => row.response));
+    const responses = rows.map((row) => row.response);
+    const judgments = responses.filter(isValidJudgment).length;
+    const english = responses.filter(coversEnglishTranslation).length;
+    const filipino = responses.filter(coversFilipinoTranslation).length;
 
     return {
       dataset_entry_id: entry.id,
       category: entry.category,
       qualifying_validations: qualifying,
       non_qualifying_validations: rows.length - qualifying,
+      judgment_contributions: judgments,
+      english_coverages: english,
+      filipino_coverages: filipino,
       stored_responses: rows.length,
       distinct_validators: distinctValidators,
       coverage_complete: isEntryComplete(rows.map((row) => row.response)),
@@ -224,6 +255,9 @@ export function buildExportSummary(
       entries: 0,
       qualifying_validations: 0,
       non_qualifying_validations: 0,
+      judgment_contributions: 0,
+      english_coverages: 0,
+      filipino_coverages: 0,
       stored_responses: 0,
     };
     byCategoryMap.set(entry.category, {
@@ -232,6 +266,9 @@ export function buildExportSummary(
       qualifying_validations: current.qualifying_validations + entry.qualifying_validations,
       non_qualifying_validations:
         current.non_qualifying_validations + entry.non_qualifying_validations,
+      judgment_contributions: current.judgment_contributions + entry.judgment_contributions,
+      english_coverages: current.english_coverages + entry.english_coverages,
+      filipino_coverages: current.filipino_coverages + entry.filipino_coverages,
       stored_responses: current.stored_responses + entry.stored_responses,
     });
   }
@@ -241,6 +278,9 @@ export function buildExportSummary(
       qualifying_validations: accumulated.qualifying_validations + entry.qualifying_validations,
       non_qualifying_validations:
         accumulated.non_qualifying_validations + entry.non_qualifying_validations,
+      judgment_contributions: accumulated.judgment_contributions + entry.judgment_contributions,
+      english_coverages: accumulated.english_coverages + entry.english_coverages,
+      filipino_coverages: accumulated.filipino_coverages + entry.filipino_coverages,
       stored_responses: accumulated.stored_responses + entry.stored_responses,
       entries_with_coverage_complete:
         accumulated.entries_with_coverage_complete + (entry.coverage_complete ? 1 : 0),
@@ -252,6 +292,9 @@ export function buildExportSummary(
     {
       qualifying_validations: 0,
       non_qualifying_validations: 0,
+      judgment_contributions: 0,
+      english_coverages: 0,
+      filipino_coverages: 0,
       stored_responses: 0,
       entries_with_coverage_complete: 0,
       entries_requiring_review: 0,

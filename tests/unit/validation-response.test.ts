@@ -93,25 +93,23 @@ function payload(
 function correctionIssues(evaluation: Evaluation, correction: CorrectionState): string[] {
   const correctionRequired = evaluation === "correct_unnatural" || evaluation === "incorrect";
 
-  // Blank normalizes to null before the rules run, so blank and absent are the SAME state by the
-  // time they are judged: no usable corrected sentence. The rule cannot distinguish them — the
-  // pipeline erased the distinction — and uniformity is the honest reading: a whitespace-only
-  // correction on an evaluation that needs one is missing, and on one that forbids one is nothing.
+  // A blank string is REFUSED by the field schema before normalisation could erase it — so blank
+  // counts as supplied-but-invalid everywhere: missing where a correction is required, forbidden
+  // where none is allowed. Only absent is the same as nothing.
   if (correctionRequired) {
     return correction === "present" ? [] : ["correctedInstruction"];
   }
 
-  // `correct_natural` and `cannot_evaluate` must not carry a correction. A whitespace-only field
-  // normalizes away, so only a real string *carries* the field here.
-  return correction === "present" ? ["correctedInstruction"] : [];
+  // `correct_natural` and `cannot_evaluate` must not carry a correction in any form.
+  return correction === "absent" ? [] : ["correctedInstruction"];
 }
 
 /**
  * The translation rule, as a table.
  *
- * Translations are a per-response CHOICE, so every state is accepted for an evaluable
- * evaluation — present, blank (which normalizes to absent), or absent — and only
- * `cannot_evaluate` refuses them. The two branches are opposites, and that is the whole rule.
+ * Translations are a per-response CHOICE: present and absent are both legitimate for an
+ * evaluable evaluation, but a blank in a supplied field is refused rather than read as a skip.
+ * `cannot_evaluate` refuses every supplied translation, blank or not.
  */
 function translationIssues(
   evaluation: Evaluation,
@@ -122,15 +120,20 @@ function translationIssues(
   const filipinoField = "filipinoTranslation";
 
   if (evaluation === "cannot_evaluate") {
-    // Only a real string carries a translation: blank normalizes to null — absent — before the
-    // rules run, so a whitespace-only field is not a translation and is not refused.
+    // Any supplied translation — real or blank — is refused. A blank is not absence: the field
+    // schema rejects whitespace-only strings before they could normalise away.
     const issues: string[] = [];
-    if (english === "present") issues.push(englishField);
-    if (filipino === "present") issues.push(filipinoField);
+    if (english !== "absent") issues.push(englishField);
+    if (filipino !== "absent") issues.push(filipinoField);
     return issues;
   }
 
-  return [];
+  // Per-response choice: present and absent are both legitimate, but a blank in a supplied
+  // field is refused rather than read as a skip.
+  const issues: string[] = [];
+  if (english === "blank") issues.push(englishField);
+  if (filipino === "blank") issues.push(filipinoField);
+  return issues;
 }
 
 /**
@@ -246,18 +249,19 @@ describe("research translation targets are two fields with a per-response choice
 });
 
 describe("validation integrity matrix", () => {
-  it("accepts every translation choice for an evaluable response, and nothing real for cannot-evaluate", () => {
-    // correct_natural: correction absent-or-blank (2, blank normalizing away) x 9 translation
-    // states = 18. correct_unnatural and incorrect: correction present x 9 = 9 each. For
-    // `cannot_evaluate`: correction absent-or-blank (2) x translation absent-or-blank each
-    // (2 x 2) = 8. Total: 18 + 9 + 9 + 8 = 44 accepted cells of 108.
-    // A regression that re-imposes the bilingual pair shows up here as missing rows, by name.
-    expect(acceptedCombinations()).toHaveLength(44);
+  it("accepts every translation choice for an evaluable response, and nothing but absence for cannot-evaluate", () => {
+    // correct_natural: correction absent x 4 translation states (absent/present each, blank
+    // refused) = 4. correct_unnatural and incorrect: correction present x 4 = 4 each. For
+    // `cannot_evaluate`: correction absent x translation absent/absent = 1. Total: 4 + 4 + 4 + 1
+    // = 13 accepted cells of 108.
+    // A regression that re-imposes the bilingual pair shows up here as missing rows, by name —
+    // and a regression that silently accepts blanks shows up as extra rows.
+    expect(acceptedCombinations()).toHaveLength(13);
 
     const names = new Set(acceptedCombinations());
     for (const evaluation of ["correct_unnatural", "incorrect"]) {
-      for (const english of TRANSLATION_FIELD_STATES) {
-        for (const filipino of TRANSLATION_FIELD_STATES) {
+      for (const english of ["absent", "present"] as const) {
+        for (const filipino of ["absent", "present"] as const) {
           expect(
             names.has(
               `${evaluation} / correction:present / english:${english} / filipino:${filipino}`,
@@ -266,23 +270,18 @@ describe("validation integrity matrix", () => {
         }
       }
     }
-    for (const correction of ["absent", "blank"]) {
-      for (const english of TRANSLATION_FIELD_STATES) {
-        for (const filipino of TRANSLATION_FIELD_STATES) {
-          expect(
-            names.has(
-              `correct_natural / correction:${correction} / english:${english} / filipino:${filipino}`,
-            ),
-          ).toBe(true);
-        }
+    for (const english of ["absent", "present"] as const) {
+      for (const filipino of ["absent", "present"] as const) {
+        expect(
+          names.has(
+            `correct_natural / correction:absent / english:${english} / filipino:${filipino}`,
+          ),
+        ).toBe(true);
       }
     }
     expect(
       names.has("cannot_evaluate / correction:absent / english:absent / filipino:absent"),
     ).toBe(true);
-    expect(names.has("cannot_evaluate / correction:blank / english:blank / filipino:blank")).toBe(
-      true,
-    );
   });
 
   for (const evaluation of EVALUATION_CHOICES.map((choice) => choice.value)) {
@@ -300,8 +299,13 @@ describe("validation integrity matrix", () => {
             expect(result.success).toBe(expected === "");
             if (result.success) return;
 
+            // Deduplicated: a blank in a forbidden field raises TWO issues on one path — the
+            // field-level blank refusal and the rule-level not-accepted refusal — and the matrix
+            // asserts WHICH fields are invalid, not how many messages each carries. The form
+            // keeps the first per field, pinned in `validation-form-flow.test.ts`.
             const actual = result.error.issues
               .map((issue) => issue.path.join("."))
+              .filter((path, index, all) => all.indexOf(path) === index)
               .sort()
               .join(",");
             expect(actual).toBe(expected);
@@ -410,29 +414,50 @@ describe("rule-by-rule evidence", () => {
     expect(result.success).toBe(true);
   });
 
-  it("treats a whitespace-only English translation as absent, not as a defect", () => {
-    // Normalization collapses blank to null before the rules run, and absence is a legitimate
-    // choice — so a blank English field alongside a Filipino translation is an accepted
-    // Filipino-only response, not a refusal naming the English field.
+  it("refuses a whitespace-only English translation and names the English field", () => {
+    // A blank in a supplied field is not a skip: the validator chose the language and supplied
+    // nothing usable. The field schema refuses it before normalisation could erase the
+    // distinction — which is also why the message is the field's own rather than a rule's.
     const result = validationResponseInputSchema.safeParse({
       ...FILIPINO_ONLY,
       englishTranslation: "   \t  ",
     });
 
-    expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.data.englishTranslation).toBeNull();
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path.join(".")).sort()).toEqual([
+      "englishTranslation",
+    ]);
+    for (const issue of result.error.issues) {
+      expect(issue.message.length).toBeGreaterThan(10);
+      expect(issue.message).not.toMatch(
+        /ZodError|invalid_type|too_small|strictObject|\bundefined\b/,
+      );
+    }
   });
 
-  it("treats a whitespace-only Filipino translation as absent, not as a defect", () => {
+  it("refuses a whitespace-only Filipino translation and names the Filipino field", () => {
     const result = validationResponseInputSchema.safeParse({
       ...ENGLISH_ONLY,
       filipinoTranslation: "   \t  ",
     });
 
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path.join(".")).sort()).toEqual([
+      "filipinoTranslation",
+    ]);
+  });
+
+  it("accepts an explicit null translation as a skip, exactly like an omitted key", () => {
+    // Null is not blank: it is SQL NULL read back, or a client stating absence outright. Both
+    // nullish states mean "not supplied", and the field schema passes both through untouched.
+    const result = validationResponseInputSchema.safeParse({
+      evaluation: "correct_natural",
+      englishTranslation: null,
+    });
+
     expect(result.success).toBe(true);
-    if (!result.success) return;
-    expect(result.data.filipinoTranslation).toBeNull();
   });
 
   it("rejects a cannot-evaluate response carrying an English translation", () => {
@@ -648,25 +673,14 @@ describe("pooled coverage predicates", () => {
       }
     }
 
-    // 44 accepted cells (18 for correct_natural, 9 each for the correction-requiring pair,
-    // 8 for cannot_evaluate — absent-or-blank in every field); all but the abstentions
-    // contribute in at least one pillar.
-    expect(accepted).toBe(44);
-    expect(acceptedButQualifying).toHaveLength(36);
-    // The accepted records that contribute nothing are the abstentions, named explicitly so a
-    // change to them is a deliberate edit rather than an accident.
-    expect(acceptedButNotQualifying.sort()).toEqual(
-      [
-        "cannot_evaluate/absent/absent/absent",
-        "cannot_evaluate/absent/absent/blank",
-        "cannot_evaluate/absent/blank/absent",
-        "cannot_evaluate/absent/blank/blank",
-        "cannot_evaluate/blank/absent/absent",
-        "cannot_evaluate/blank/absent/blank",
-        "cannot_evaluate/blank/blank/absent",
-        "cannot_evaluate/blank/blank/blank",
-      ].sort(),
-    );
+    // 13 accepted cells (4 per evaluable evaluation — absent or present per language,
+    // blank refused — plus 1 for cannot_evaluate); all but the abstention contribute in at
+    // least one pillar.
+    expect(accepted).toBe(13);
+    expect(acceptedButQualifying).toHaveLength(12);
+    // The accepted record that contributes nothing is the abstention, named explicitly so a
+    // change to it is a deliberate edit rather than an accident.
+    expect(acceptedButNotQualifying).toEqual(["cannot_evaluate/absent/absent/absent"]);
   });
 });
 

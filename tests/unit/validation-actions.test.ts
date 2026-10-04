@@ -426,11 +426,11 @@ describe("recording a completed response", () => {
     expect(stored.correctedInstruction).toBe("Iti Baguio Athletic Bowl ti pagtapon.");
   });
 
-  it("ACCEPTS a whitespace-only translation as a skipped language, storing the response", async () => {
-    // `"   "` normalises to absent at the field level, and absence is now a legitimate choice — so
-    // the response stores as a judgment without translations. A `not blank` database check cannot
-    // distinguish three spaces from a translation, so the only layer that can catch a blank is
-    // before the write, and what it does is normalise, not refuse.
+  it("REFUSES a whitespace-only translation, because a blank is not a skip", async () => {
+    // Absence is a legitimate choice; a blank in a SUPPLIED field is not. The validator chose
+    // the language and supplied nothing usable, and accepting that as a skip would record a
+    // choice the stored data contradicts — so the field schema refuses it before any rule runs,
+    // and the pair never reaches storage.
     const deps = createRecordingDependencies({ batch: A_BATCH });
 
     const result = await runSubmitValidation(
@@ -445,14 +445,13 @@ describe("recording a completed response", () => {
       deps,
     );
 
-    expect(result.status).toBe("recorded");
-    expect(deps.inserted).toHaveLength(1);
+    expect(result).toEqual({ status: "failed", reason: "invalid", issues: expect.anything() });
+    expect(deps.inserted).toEqual([]);
   });
 
-  it("normalises a whitespace-ONLY CORRECTION to absent, so blank is not a blank string", async () => {
-    // The same normalisation on the correction field: a `cannot_evaluate` response carries no
-    // correction by rule, and a whitespace-only field normalizes to absent — so the refusal the
-    // old rule produced is gone, and the response stores with no correction key at all.
+  it("REFUSES a whitespace-only correction even where no correction is allowed", async () => {
+    // A blank is a supplied-but-empty field, not absence: the field schema refuses it before the
+    // evaluation rule could read it as nothing. Asserted as the refusal it is.
     const deps = createRecordingDependencies({ batch: A_BATCH });
 
     const result = await runSubmitValidation(
@@ -463,12 +462,8 @@ describe("recording a completed response", () => {
       deps,
     );
 
-    expect(result.status).toBe("recorded");
-    expect(deps.inserted).toHaveLength(1);
-    // Present-but-null: the pipeline erased the blank rather than storing it, and null reads as
-    // absent everywhere downstream (repository maps it back to SQL NULL, predicates read it as
-    // not supplied).
-    expect((deps.inserted[0] as { correctedInstruction: unknown }).correctedInstruction).toBeNull();
+    expect(result).toEqual({ status: "failed", reason: "invalid", issues: expect.anything() });
+    expect(deps.inserted).toEqual([]);
   });
 
   it("trims surrounding whitespace from a real translation rather than storing it", async () => {
@@ -567,14 +562,24 @@ describe("what the write REFUSES, and what it never touches", () => {
     expect(stored.datasetEntryId).toBe("OD_0002");
   });
 
-  it("applies the FIVE integrity rules, and reports which field failed", async () => {
+  it("applies the SEVEN integrity rules, and reports which field failed", async () => {
     // These are the rules already enforced twice — by `validationResponseInputSchema` and by the
     // database. The action is the third place they pass through, and the point of this test is that
     // the third place is not a third implementation.
     //
-    // Five, not seven: the two translation-presence rules are gone. A missing or blank translation
-    // is a skipped language now, and the row above proves the write accepts it.
+    // Seven, as before, but a different seven: the two translation-presence rules are gone —
+    // absence is a skip now — and two blank-refusal cases take their place.
     const attempts: ReadonlyArray<readonly [string, unknown, string]> = [
+      [
+        "blank English translation",
+        evaluableResponse({ englishTranslation: "  " }),
+        "englishTranslation",
+      ],
+      [
+        "blank correction on incorrect",
+        evaluableResponse({ evaluation: "incorrect", correctedInstruction: "  " }),
+        "correctedInstruction",
+      ],
       [
         "a correction for correct_natural",
         evaluableResponse({ correctedInstruction: "Iti Baguio." }),
