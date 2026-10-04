@@ -8,23 +8,23 @@ repository they describe.
 
 ## Requirements
 
-### Requirement: Independent consumers of the qualifying rule agree on one corpus
+### Requirement: Independent consumers of the pooled rule agree on one corpus
 
-Given a single corpus of stored responses, every consumer that reports coverage SHALL report the same
-qualifying total, the same partition of entries into complete and incomplete, the same number of
-entries that are complete, and the same set of entries requiring researcher review. The three
-consumers are the dashboard overview, the raw-export summary, and the validated dataset. Consumers
-SHALL be compared by running them over the same inputs and asserting the results are equal, not by
-asserting that they share a helper — two modules can call the same predicate and still disagree about
-which responses to include, which side of the completion rule to place an entry on, or how to total
-them. The validated dataset joins the comparison as a consumer: it SHALL cover exactly the entries
-the other two call complete, no more and no fewer.
+Given a single corpus of stored responses, every consumer that reports coverage SHALL report the
+same contribution counts, the same partition of entries into complete and incomplete, the same
+number of entries that are complete, and the same set of entries requiring researcher review. The
+three consumers are the dashboard overview, the raw-export summary, and the validated dataset.
+Consumers SHALL be compared by running them over the same inputs and asserting the results are
+equal, not by asserting that they share a helper — two modules can call the same predicate and
+still disagree about which responses to include, which side of the completion rule to place an
+entry on, or how to total them. The validated dataset joins the comparison as a consumer: it SHALL
+cover exactly the entries the other two call complete, no more and no fewer.
 
-#### Scenario: Dashboard and export agree on the qualifying total
+#### Scenario: Dashboard and export agree on the contribution counts
 
 - **WHEN** the dashboard overview, the raw-export summary, and the validated dataset are computed
   from the same corpus
-- **THEN** all three report the same total number of qualifying validations, and the validated
+- **THEN** all three report the same per-response contribution counts, and the validated
   dataset holds one record per complete entry
 
 #### Scenario: Dashboard and export agree on the coverage-bucket distribution
@@ -51,7 +51,7 @@ the other two call complete, no more and no fewer.
 #### Scenario: A corpus with no responses still agrees
 
 - **WHEN** all three consumers are computed from a corpus holding no stored responses
-- **THEN** all three report zero qualifying validations, no complete entries, no validated records,
+- **THEN** all three report zero contributions, no complete entries, no validated records,
   and no review flags
 
 ### Requirement: The ledger's archived-changes enumeration matches the archive directory

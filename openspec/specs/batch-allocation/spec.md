@@ -7,13 +7,13 @@ the choice is recorded, and how an exhausted pool is reported.
 
 ## Requirements
 
-### Requirement: Batch entries are chosen on the server by entry completeness
+### Requirement: Batch entries are chosen on the server by pooled entry completeness
 
 The platform SHALL determine a validator's batch entries on the server. Eligibility SHALL be derived
 from each candidate entry's **completeness**, as defined by `entry-completion`: an entry is
-eligible when no stored response for it establishes the complete bilingual package. The raw count of
-stored validation rows SHALL NOT be used as a proxy for that determination, and the number of
-qualifying validations behind an entry SHALL NOT decide eligibility. A client SHALL NOT supply the
+eligible while its stored responses do not yet collectively cover the package. The raw count of
+stored validation rows SHALL NOT be used as a proxy for that determination, and no per-response
+count behind an entry SHALL decide eligibility. A client SHALL NOT supply the
 entry list, the per-entry coverage, the ordering, or the effective batch size; any such value
 submitted by a client SHALL be ignored.
 
@@ -48,21 +48,20 @@ empty batch.
 - **THEN** the submitted value is rejected as an unrecognised input or ignored outright, and no
   allocation decision is derived from it, because no such setting exists
 
-#### Scenario: An entry whose responses are all non-qualifying stays in the pool
+#### Scenario: An entry whose responses contribute no coverage stays in the pool
 
-- **WHEN** an entry has three stored responses and none of them establishes the complete package
-- **THEN** the entry is incomplete, it remains eligible for allocation, and it is not treated as
-  finished
+- **WHEN** an entry has three stored responses and none of them contributes a valid judgment or
+  a covering translation
+- **THEN** the entry remains eligible for allocation, and it is not treated as covered
 
-#### Scenario: One qualifying response retires the entry from allocation
+#### Scenario: Pooled coverage retires the entry from allocation
 
-- **WHEN** an entry has a stored response that establishes the complete bilingual package
+- **WHEN** an entry's stored responses collectively cover the package
 - **THEN** the entry is complete and normal allocation does not offer it again
 
-#### Scenario: Further qualifying responses do not bring a retired entry back
+#### Scenario: Further responses do not bring a retired entry back
 
-- **WHEN** an entry that has already been offered to other attempts receives additional qualifying
-  responses
+- **WHEN** an entry that has already been offered to other attempts receives additional responses
 - **THEN** it stays complete and stays out of the allocation pool
 
 #### Scenario: An entry the validator already answered is not offered again
