@@ -69,22 +69,22 @@ const bilingual = {
  *   V6 answers E3 (unnatural, correction, NO translations)   — contributes judgment only
  *   V7 answers X1 (natural)                                   — second category
  *
- *   E1: 2 rows, 2 contributing, 2 distinct validators, COMPLETE, no review
- *   E2: 3 rows, 3 contributing, 3 distinct validators, COMPLETE, FLAGGED
+ *   E1: 2 rows, 2 contributing, judgments 2, EN 2, FIL 2, 2 distinct, COMPLETE, no review
+ *   E2: 3 rows, 3 contributing, judgments 3, EN 3, FIL 3, 3 distinct, COMPLETE, FLAGGED
  *       (two `incorrect` with the same correction and one `correct_natural` — the valid
  *        judgments disagree, which is the review rule's first clause)
- *   E3: 3 rows, 2 contributing, 3 distinct, INCOMPLETE, FLAGGED. V5 and V6 contribute —
- *       translation effort is per-response and optional — but no row carries Filipino, so the
- *       pooled pillars (judgment + English, missing Filipino) never all hold. The two valid
- *       judgments disagree (`correct_natural` vs `correct_unnatural`), so the entry IS flagged:
- *       a flag computed over full packages only would miss this.
+ *   E3: 3 rows, 2 contributing, judgments 2, EN 1, FIL 0, 3 distinct, INCOMPLETE, FLAGGED. V5
+ *       and V6 contribute — translation effort is per-response and optional — but no row
+ *       carries Filipino, so the pooled pillars (judgment + English, missing Filipino) never
+ *       all hold. The two valid judgments disagree (`correct_natural` vs `correct_unnatural`),
+ *       so the entry IS flagged: a flag computed over full packages only would miss this.
  *   E4, short_greeting: 0 rows each, INCOMPLETE
- *   X1: 1 row, 1 contributing, 1 distinct, SECOND CATEGORY (landmark_guidance), COMPLETE —
- *       pooled coverage from one response is the whole of completion, so a single full response
- *       completes it
+ *   X1: 1 row, 1 contributing, judgments 1, EN 1, FIL 1, 1 distinct, SECOND CATEGORY
+ *       (landmark_guidance), COMPLETE — pooled coverage from one response is the whole of
+ *       completion, so a single full response completes it
  *
- *   Totals: 9 stored rows, 8 contributing, 1 non-contributing, 7 distinct validators in the corpus
- *   (V1..V7), 3 entries complete, 2 flagged.
+ *   Totals: 9 stored rows, 8 contributing, 1 non-contributing, judgments 8, EN 7, FIL 6,
+ *   7 distinct validators in the corpus (V1..V7), 3 entries complete, 2 flagged.
  *
  *   TWO DIFFERENT "distinct validators" FIGURES, both correct: `generated_from.distinct_validators`
  *   counts every validator that responded (7, including the abstainer), while coverage counts
@@ -219,12 +219,37 @@ describe("buildExportRecords", () => {
     expect(second?.validator_id).toBe("VAL_00000002");
   });
 
+  it("carries per-pillar contribution flags so each pillar total is recomputable", () => {
+    // r07 judges and covers English but not Filipino; r08 judges and covers neither language.
+    // The flags name exactly what each response contributes — which is what lets the summary's
+    // per-pillar totals be recomputed from the records document alone.
+    const byValidation = new Map(records.map((record) => [record.validation_id, record]));
+
+    expect(byValidation.get("r07")).toMatchObject({
+      qualifies_toward_completion: "true",
+      contributes_judgment: "true",
+      covers_english: "true",
+      covers_filipino: "false",
+    });
+    expect(byValidation.get("r08")).toMatchObject({
+      qualifies_toward_completion: "true",
+      contributes_judgment: "true",
+      covers_english: "false",
+      covers_filipino: "false",
+    });
+  });
+
   it("records a missing correction and missing translations as null, not empty string", () => {
     const abstention = records[5];
     expect(abstention?.corrected_instruction).toBeNull();
     expect(abstention?.english_translation).toBeNull();
     expect(abstention?.filipino_translation).toBeNull();
     expect(abstention?.qualifies_toward_completion).toBe("false");
+    // An abstention contributes in no pillar either: the union flag and all three pillar flags
+    // agree, because they are computed from the same response by the same predicates.
+    expect(abstention?.contributes_judgment).toBe("false");
+    expect(abstention?.covers_english).toBe("false");
+    expect(abstention?.covers_filipino).toBe("false");
   });
 
   it("carries the self-reported proficiency as stored, including an unrecorded one", () => {
@@ -264,6 +289,9 @@ describe("buildExportSummary", () => {
       category: "origin_destination",
       qualifying_validations: 2,
       non_qualifying_validations: 0,
+      judgment_contributions: 2,
+      english_coverages: 2,
+      filipino_coverages: 2,
       stored_responses: 2,
       distinct_validators: 2,
       coverage_complete: true,
@@ -272,6 +300,9 @@ describe("buildExportSummary", () => {
     expect(byId.get("E3")).toMatchObject({
       qualifying_validations: 2,
       non_qualifying_validations: 1,
+      judgment_contributions: 2,
+      english_coverages: 1,
+      filipino_coverages: 0,
       stored_responses: 3,
       distinct_validators: 3,
       coverage_complete: false,
@@ -282,6 +313,9 @@ describe("buildExportSummary", () => {
     });
     expect(byId.get("E4")).toMatchObject({
       qualifying_validations: 0,
+      judgment_contributions: 0,
+      english_coverages: 0,
+      filipino_coverages: 0,
       stored_responses: 0,
       distinct_validators: 0,
       coverage_complete: false,
@@ -293,6 +327,9 @@ describe("buildExportSummary", () => {
     // E2: two `incorrect` with the same correction, one `correct_natural` with none.
     expect(byId.get("E2")?.requires_researcher_review).toBe(true);
     expect(byId.get("E2")?.qualifying_validations).toBe(3);
+    expect(byId.get("E2")?.judgment_contributions).toBe(3);
+    expect(byId.get("E2")?.english_coverages).toBe(3);
+    expect(byId.get("E2")?.filipino_coverages).toBe(3);
     expect(byId.get("E2")?.coverage_complete).toBe(true);
     expect(byId.get("E1")?.requires_researcher_review).toBe(false);
   });
@@ -329,6 +366,31 @@ describe("buildExportSummary", () => {
     expect(summary.generated_from.distinct_validators).toBe(7);
   });
 
+  it("sums each pillar total PER ENTRY, and the records reproduce every pillar", () => {
+    // The per-pillar version of the trap above, plus recomputability: each pillar total is the
+    // sum of the per-entry pillar counts — never a global count — and equals the number of
+    // exported records carrying that pillar's flag.
+    const records = buildExportRecords(sources);
+    const flagged = (key: "contributes_judgment" | "covers_english" | "covers_filipino"): number =>
+      records.filter((record) => record[key] === "true").length;
+
+    expect(summary.totals.judgment_contributions).toBe(8);
+    expect(summary.totals.english_coverages).toBe(7);
+    expect(summary.totals.filipino_coverages).toBe(6);
+    expect(summary.totals.judgment_contributions).toBe(flagged("contributes_judgment"));
+    expect(summary.totals.english_coverages).toBe(flagged("covers_english"));
+    expect(summary.totals.filipino_coverages).toBe(flagged("covers_filipino"));
+    // The pillar sums partition the corpus differently from the union: E3 contributes judgments
+    // and English but no Filipino, so the three totals (8, 7, 6) are all different numbers.
+    expect(
+      new Set([
+        summary.totals.judgment_contributions,
+        summary.totals.english_coverages,
+        summary.totals.filipino_coverages,
+      ]).size,
+    ).toBe(3);
+  });
+
   it("reports totals that the exported records reproduce", () => {
     const records = buildExportRecords(sources);
     const qualifyingInRecords = records.filter(
@@ -350,6 +412,9 @@ describe("buildExportSummary", () => {
         entries: 5,
         qualifying_validations: 7,
         non_qualifying_validations: 1,
+        judgment_contributions: 7,
+        english_coverages: 6,
+        filipino_coverages: 5,
         stored_responses: 8,
       },
       {
@@ -357,6 +422,9 @@ describe("buildExportSummary", () => {
         entries: 1,
         qualifying_validations: 1,
         non_qualifying_validations: 0,
+        judgment_contributions: 1,
+        english_coverages: 1,
+        filipino_coverages: 1,
         stored_responses: 1,
       },
     ]);
@@ -366,6 +434,9 @@ describe("buildExportSummary", () => {
     for (const field of [
       "qualifying_validations",
       "non_qualifying_validations",
+      "judgment_contributions",
+      "english_coverages",
+      "filipino_coverages",
       "stored_responses",
       "entries",
     ] as const) {

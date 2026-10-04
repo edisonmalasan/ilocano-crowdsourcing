@@ -300,12 +300,18 @@ describe("whether what is typed is a complete response", () => {
     ]);
   });
 
-  it("treats a whitespace-only translation as absent, exactly as the server does", () => {
-    // Absence is a legitimate choice now: a blank field normalizes to null and the response
-    // completes without that language, on the form and on the server alike.
+  it("names the field when a chosen translation is left blank", () => {
+    // Absence is a skip, but a blank in a CHOSEN language is a refusal: the validator chose
+    // English and supplied nothing usable. The form and the server share one schema, so the
+    // form refuses exactly what the server would — a form that checked `length > 0` would let
+    // three spaces through and the server would refuse it, costing a round trip and a typed
+    // correction.
     const result = checkEntryForm(filled("correct_natural", { englishTranslation: "   " }));
 
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
+    expect(result.complete === false && Object.keys(result.fieldErrors)).toEqual([
+      "englishTranslation",
+    ]);
   });
 
   it("keeps ONE message per field, because the second is always a consequence of the first", () => {

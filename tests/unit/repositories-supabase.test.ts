@@ -984,10 +984,11 @@ describe("SupabaseValidationsRepository", () => {
     expect((error as RepositoryError).operation).toBe("validations.findById");
   });
 
-  it("loads a whitespace-only stored translation as a skipped language, not as text", async () => {
-    // The database's `btrim` check rejects this on the way in, so a stored blank means the row
-    // predates the constraint or bypassed it — either way the read must not invent research text.
-    // `normalizeResearchText` maps the blank to `null`, which reads as a skipped language.
+  it("raises when a stored translation is whitespace-only", async () => {
+    // The database rejects this via `btrim`, and the domain schema refuses it because a blank in
+    // a supplied field is never read as a skip. Two independent implementations again — and the
+    // read path must fail loudly rather than inventing absence for a row the write path could
+    // never have produced.
     const fake = createFakeClient();
     fake.enqueue({
       data: { ...VALIDATION_ROW, english_translation: "   " },
@@ -995,10 +996,12 @@ describe("SupabaseValidationsRepository", () => {
       count: null,
     });
 
-    const found = await new SupabaseValidationsRepository(fake.client).findById("res_01");
+    const error = await catchError(
+      new SupabaseValidationsRepository(fake.client).findById("res_01"),
+    );
 
-    expect(found?.filipinoTranslation).toBe("Sumakay ng jeep.");
-    expect(found?.englishTranslation).toBeNull();
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validations.findById");
   });
 
   it("orders an entry's responses by creation time and asks for an exact count", async () => {

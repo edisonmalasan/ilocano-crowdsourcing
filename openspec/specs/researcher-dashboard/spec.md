@@ -101,27 +101,27 @@ with no overlap or no late arrivals.
 - **THEN** the overlap figure reads zero and still names no entry, rather than the figure being
   withheld
 
-### Requirement: Coverage figures are computed from qualifying validations
+### Requirement: Coverage figures are computed from pooled coverage
 
-Every completion figure SHALL be computed from qualifying validations as defined by the shared
+Every completion figure SHALL be computed from pooled entry coverage as defined by the shared
 domain rule and combined by the rule in `entry-completion`, never from raw row counts. An entry
-SHALL be counted complete when at least one of its stored responses establishes the complete
-bilingual package, and SHALL be counted incomplete otherwise, however many responses it holds.
+SHALL be counted complete when its stored responses collectively cover the package, and SHALL be
+counted incomplete otherwise, however many responses it holds.
 
 Overall completion percentage SHALL be the share of dataset entries that are complete out of all
-dataset entries. A `cannot_evaluate` response, a partial response, and a response missing either
-translation SHALL contribute zero toward completeness and SHALL leave their entry incomplete.
+dataset entries. A `cannot_evaluate` response SHALL contribute zero toward completeness, and so
+SHALL any response that contributes no judgment and no covering translation.
 
 #### Scenario: Raw rows do not inflate coverage
 
-- **WHEN** an entry holds many stored responses of which none qualifies
+- **WHEN** an entry holds many stored responses of which none contributes coverage
 - **THEN** the entry is counted incomplete, and the overall percentage excludes it from the
   numerator, and the count of rows has no part in the determination
 
-#### Scenario: One qualifying response makes the entry complete
+#### Scenario: Pooled coverage across responses makes the entry complete
 
-- **WHEN** an entry holds exactly one qualifying response among several stored responses
-- **THEN** the entry is counted complete, and the non-qualifying responses do not make it less
+- **WHEN** an entry holds stored responses that collectively cover the package
+- **THEN** the entry is counted complete, and the non-contributing responses do not make it less
   complete
 
 #### Scenario: Coverage percentage has a stated denominator
@@ -136,9 +136,9 @@ translation SHALL contribute zero toward completeness and SHALL leave their entr
   proficiency breakdown counts validators by self-reported proficiency, and neither is derived
   from the other
 
-### Requirement: Entries requiring researcher review are flagged by rule
+### Requirement: Entries are flagged for researcher review by disagreement among valid judgments
 
-An entry SHALL be flagged as requiring researcher review when the qualifying validators do not
+An entry SHALL be flagged as requiring researcher review when the entry's valid judgments do not
 all give the same evaluation, or when more than one distinct corrected Ilocano version was
 submitted among the responses. Differences in English or Filipino wording alone SHALL NEVER flag
 an entry, because multiple natural translations may be valid. The flag SHALL be computed from
@@ -147,7 +147,7 @@ translations.
 
 #### Scenario: Evaluation disagreement flags the entry
 
-- **WHEN** the qualifying responses for an entry carry different evaluation values
+- **WHEN** the valid judgments for an entry carry different evaluation values
 - **THEN** the entry is flagged as requiring researcher review
 
 #### Scenario: Multiple distinct corrections flag the entry
@@ -157,14 +157,13 @@ translations.
 
 #### Scenario: Translation wording alone never flags
 
-- **WHEN** the qualifying responses agree on evaluation and correction (or need no correction)
+- **WHEN** the entry's valid judgments agree on evaluation and correction (or need no correction)
   but differ in English or Filipino wording
 - **THEN** the entry is not flagged on that account
 
 #### Scenario: Agreement without correction does not flag
 
-- **WHEN** all qualifying responses agree on evaluation and no correction was required or more
-  than one submitted
+- **WHEN** all valid judgments agree on evaluation and no correction was required
 - **THEN** the entry is not flagged
 
 ### Requirement: Each entry can be inspected in full

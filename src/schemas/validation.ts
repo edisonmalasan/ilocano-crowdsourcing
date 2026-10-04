@@ -95,31 +95,34 @@ export const TRANSLATION_FIELD_LABELS = {
 } as const satisfies Record<string, { label: string; description: string }>;
 
 /**
- * A text field that normalizes to `null` when the validator left it blank.
+ * A research-text field: absent, or present-and-non-blank.
  *
- * Both transforms exist so "blank" and "absent" are distinguishable but handled uniformly: the
- * non-empty rules then have a single consistent meaning, whichever way the field arrived. See
- * `@/lib/domain/text` for why nothing beyond whitespace is changed.
+ * The blank check runs BEFORE the normalisation transform, and that order is the whole point. A
+ * whitespace-only string is REFUSED here — naming its field — rather than normalising to absent,
+ * because absence is a legitimate choice (skip) while a blank in a supplied field is not: the
+ * validator chose the language and then supplied nothing usable for it, and accepting that as a
+ * skip would record a choice the stored data contradicts. `null` (SQL NULL read back) and
+ * `undefined` (key omitted) both mean "not supplied" and pass through untouched; only a real
+ * string is judged, and only for blankness. See `@/lib/domain/text` for why the transform
+ * changes nothing beyond whitespace.
+ *
+ * The message is a sentence, not an identifier: field errors travel back to a browser and are
+ * rendered to a participant, so a Zod-shaped message would leak internals.
  */
-const normalizedResearchTextFieldSchema = z
+const nonBlankResearchTextFieldSchema = z
   .string()
+  .refine((value) => value.trim().length > 0, "This field must not be blank.")
   .transform((value) => normalizeResearchText(value));
 
 /**
  * The one field shape. `validationResponseInputSchema` and `validationResponseSchema` are both
  * built from it and both receive the same `superRefine`, so a rule added here is added to both.
- *
- * Each text field is `.nullable().optional()`, and both nullish states mean "not supplied".
- * Nullable because the transform below emits `null` for blank input, and because a stored row
- * read back from the database carries SQL NULL for an absent translation; optional because a
- * client omits a skipped language rather than sending it. The integrity rules treat both
- * identically — see the presence checks there.
  */
 const validationResponseInputFields = {
   evaluation: evaluationSchema,
-  correctedInstruction: normalizedResearchTextFieldSchema.nullable().optional(),
-  englishTranslation: normalizedResearchTextFieldSchema.nullable().optional(),
-  filipinoTranslation: normalizedResearchTextFieldSchema.nullable().optional(),
+  correctedInstruction: nonBlankResearchTextFieldSchema.nullable().optional(),
+  englishTranslation: nonBlankResearchTextFieldSchema.nullable().optional(),
+  filipinoTranslation: nonBlankResearchTextFieldSchema.nullable().optional(),
 };
 
 /** The post-transform shape the integrity rules reason about, inferred from the shared fields. */
@@ -157,21 +160,21 @@ export const validationBatchIdSchema = z.string().trim().min(1, "batchId must no
  *  6. no translation-language discriminator -> structural, the field does not exist
  *  7. anything else is rejected            -> the enum, again
  *
- * Rule 5 needs no check at all: `normalizeResearchText` already collapses a blank string to
- * `null` before these rules see it, so a whitespace-only translation arrives as absent — which
- * is a legitimate choice — and a present value is non-blank by construction. There is deliberately
- * no separate "must not be empty" message: it would describe a distinction the pipeline has
- * already thrown away, and it would tell a validator who never typed anything that they had typed
- * something wrong.
+ * Rule 5 is enforced one layer down, in `nonBlankResearchTextFieldSchema`: a whitespace-only
+ * string is refused BEFORE normalisation could erase it into absent. The rule below therefore
+ * sees only absent-or-non-blank values, and absence is the legitimate skip — there is nothing
+ * left for this function to check on translations, and deliberately no second message here that
+ * could disagree with the field's own.
  */
 function applyValidationIntegrityRules(
   value: ValidationResponseInputValues,
   ctx: AddIssueCapableContext,
 ): void {
   const { evaluation, correctedInstruction } = value;
-  // Nullish states are one state: `null` (blank normalized, or SQL NULL read back) and
-  // `undefined` (key omitted) both mean "not supplied". A stored row and a fresh payload therefore
-  // face the same rule, and an explicit `null` from a client is a skip, not a defect.
+  // Nullish states are one state: `null` (SQL NULL read back) and `undefined` (key omitted) both
+  // mean "not supplied". A blank string never reaches this function — the field schema refuses
+  // it first — so presence here is presence of usable content. A stored row and a fresh payload
+  // therefore face the same rule, and an explicit `null` from a client is a skip, not a defect.
   const hasCorrectionField = correctedInstruction != null;
   const hasEnglishField = value.englishTranslation != null;
   const hasFilipinoField = value.filipinoTranslation != null;
@@ -206,10 +209,9 @@ function applyValidationIntegrityRules(
     return;
   }
 
-  // No translation is required. Each supplied value is non-blank by construction
-  // (`normalizeResearchText` collapses blank to null, and null here means the validator chose
-  // not to supply that language), so there is nothing left to check: absence is a choice the
-  // methodology explicitly permits.
+  // No translation is required. Each supplied value is non-blank by construction (the
+  // field schema refuses blanks before normalisation runs), and absence is a choice the
+  // methodology explicitly permits — so there is nothing left to check here.
 }
 
 /**

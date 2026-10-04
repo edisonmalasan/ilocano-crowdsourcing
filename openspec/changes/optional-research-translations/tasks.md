@@ -33,13 +33,8 @@
   each choice submits the chosen fields only, empty submit sends nothing,
   and the write stays single-flight.
 - [x] 3.2 Re-parse with the same schema on the server for every choice
-  combination. Verify: server-side tests for all four choices. NOTE — the
-  task text said "blank-translation refusal", and the implemented semantic
-  differs deliberately: a blank normalizes to absent (skip) rather than
-  refusing, because `normalizeResearchText` erases the blank/absent
-  distinction before any rule runs and a rule cannot judge what the pipeline
-  threw away. No blank is ever stored; the DB not-blank CHECKs still refuse
-  whitespace-only text on the wire.
+  combination, including blank-translation refusal. Verify: server-side
+  tests for all four choices plus blank refusal on every text field.
 
 ## 4. Export and dashboard (pooled meanings)
 

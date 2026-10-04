@@ -76,7 +76,7 @@ authentication subject.
   a `position` recording the server-selected order of its batch, while batch status, completion
   timestamps, and assignment timestamps remain undefined until the changes that own them add them
 
-### Requirement: The database independently enforces research-integrity rules
+### Requirement: The database independently enforces research-integrity rules with per-language translation allowance
 
 The database SHALL enforce, by constraint rather than by application convention, that one
 validator holds at most one validation for a given dataset entry; that every stored evaluation is
@@ -92,19 +92,21 @@ sequence.
 
 A stored response SHALL also be internally consistent, which a per-column constraint cannot
 express. The database SHALL reject a response whose correction does not match its evaluation, and
-SHALL reject a response whose English and Filipino translations are not both present-and-non-blank
-for an evaluable evaluation or both absent for `cannot_evaluate`. These SHALL be enforced by
-constraints written to match the domain integrity rules exactly — neither wider, which would refuse
-a legitimate response, nor narrower, which would be dead weight that looks like a guarantee.
+SHALL reject a response whose translations violate the language-choice rule: a `cannot_evaluate`
+response SHALL carry neither translation, and any translation a response does carry SHALL be
+non-blank. These SHALL be enforced by constraints written to match the domain integrity rules
+exactly — neither wider, which would refuse a legitimate response, nor narrower, which would be
+dead weight that looks like a guarantee.
 
 A constraint violation SHALL be surfaced to the caller as a typed error naming the failed
 operation, and SHALL NOT be swallowed as a successful no-op.
 
-**No migration is added by the corrected completion methodology.** Nothing in this requirement, and
-nothing in the schema, encodes a number of validators or attempts that completes an entry, so there is
-no stored state to correct and no constraint to relax. That was verified by reading every file under
-`supabase/migrations/` rather than assumed, and the absence is recorded here so a later reader does
-not go looking for a migration this change should have shipped.
+**One forward migration is added by the translation-choice methodology.** It replaces the two
+directional bilingual CHECKs with per-language allowance; widening accepts every row the old
+rule accepted, so the migration is lossless by construction and carries no refusal
+precondition. No existing migration file SHALL be modified. That was verified by reading every
+file under `supabase/migrations/` rather than assumed, and the presence is recorded here so a
+later reader does not go looking for a migration this change should have shipped.
 
 #### Scenario: A second validation for the same pair is rejected by the database
 
@@ -137,12 +139,19 @@ not go looking for a migration this change should have shipped.
   instruction is unchanged, because the imported synthetic instruction is immutable research
   material
 
-#### Scenario: An evaluable response missing a translation is rejected
+#### Scenario: A single-translation evaluable response is accepted
 
-- **WHEN** a response with an evaluable evaluation is stored with no English translation, or with
-  no Filipino translation
-- **THEN** the database rejects it, because a response that cannot establish a completed package
-  must never be stored as though it could
+- **WHEN** a response with an evaluable evaluation is stored with a non-blank English translation
+  and no Filipino translation
+- **THEN** the database accepts it, because per-response language choice is legitimate and the
+  absent translation is absence, not a blank
+
+#### Scenario: A translation-free evaluable response is accepted
+
+- **WHEN** a response with an evaluable evaluation is stored with neither translation, the
+  validator having chosen skip
+- **THEN** the database accepts it, because the judgment is complete without translations and
+  coverage is pooled at the entry, not the row
 
 #### Scenario: A blank translation is rejected
 
@@ -166,16 +175,16 @@ not go looking for a migration this change should have shipped.
 
 #### Scenario: A response that no column constraint can catch is still rejected
 
-- **WHEN** a response supplies a correction where the evaluation does not take one, omits the
-  correction where the evaluation requires one, or supplies only one of the two required
-  translations
+- **WHEN** a response supplies a correction where the evaluation does not take one, or omits the
+  correction where the evaluation requires one
 - **THEN** the database rejects it, because each of those combinations satisfies every per-column
   check and is still a record the domain schema refuses
 
 #### Scenario: The consistency constraints do not refuse a legitimate response
 
-- **WHEN** a response supplies a correction for an evaluation that requires one together with both
-  translations, or supplies no correction and no translations for `cannot_evaluate`
+- **WHEN** a response supplies a correction for an evaluation that requires one together with
+  whatever translations its language choice supplies, each non-blank, or supplies no correction
+  and no translations for `cannot_evaluate`
 - **THEN** the database accepts it, because a constraint stricter than the domain's rules would
   destroy real research responses, which is the worse of the two failure directions
 

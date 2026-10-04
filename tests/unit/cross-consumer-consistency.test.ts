@@ -262,6 +262,29 @@ describe("the dashboard and the export agree on one corpus", () => {
     expect(overview.totalQualifyingValidations).toBe(summary.totals.qualifying_validations);
   });
 
+  it("agrees on the per-pillar contribution counts", async () => {
+    // Hand-counted from the corpus above: judgments C1(2)+C2(3)+C3(1)+C4(1)+C5(1)+X1(1) = 9;
+    // English C1(2)+C2(3)+C3(1)+C4(1)+X1(1) = 8; Filipino C1(2)+C2(3)+C3(1)+X1(1) = 7. C4
+    // covers no Filipino and C5 covers neither language, so the three totals differ — a
+    // summary that reported one number three times would fail here.
+    const { summary } = await bothConsumers();
+
+    expect(summary.totals.judgment_contributions).toBe(9);
+    expect(summary.totals.english_coverages).toBe(8);
+    expect(summary.totals.filipino_coverages).toBe(7);
+    // And each equals the count the shared predicates produce directly over the corpus —
+    // the summary's per-entry arithmetic, not a second rule.
+    const { coversEnglishTranslation, coversFilipinoTranslation, isValidJudgment } =
+      await import("@/lib/domain/validation-response");
+    expect(summary.totals.judgment_contributions).toBe(RESPONSES.filter(isValidJudgment).length);
+    expect(summary.totals.english_coverages).toBe(
+      RESPONSES.filter(coversEnglishTranslation).length,
+    );
+    expect(summary.totals.filipino_coverages).toBe(
+      RESPONSES.filter(coversFilipinoTranslation).length,
+    );
+  });
+
   it("agrees on the complete/incomplete partition", async () => {
     const { overview, summary } = await bothConsumers();
 
