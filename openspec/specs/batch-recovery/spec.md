@@ -200,9 +200,11 @@ outcome SHALL NOT be shown to the participant as an error sentence: the particip
 inventing a message they can do nothing about would misinform them.
 
 The orchestration SHALL always end in exactly one of: navigation to a batch address, an honest
-`exhausted` state, an honest failure state with a retry path, or a return to screening where the
+`exhausted` state, an honest failure state with a retry path, a screening-required state with a
+restart path for an attempt that records no proficiency answer, or a return to screening where the
 browser holds no usable identity. It SHALL NOT leave the participant on a screen with no onward
-action.
+action. The screening-required state offers no retry, because re-requesting a deterministic refusal
+is a control that can never succeed.
 
 #### Scenario: A recognised interrupted batch is resumed without asking
 
