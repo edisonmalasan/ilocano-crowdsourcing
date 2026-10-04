@@ -24,6 +24,9 @@ export const RESEARCHER_HOME = "/researcher";
 /** Where a signed-out researcher lands, and where the sign-in surface lives. */
 export const RESEARCHER_SIGN_IN = "/researcher/sign-in";
 
+/** Where a signed researcher downloads the research export as one dated ZIP. */
+export const RESEARCHER_EXPORT = "/researcher/export";
+
 /**
  * The cookie's path scope.
  *
