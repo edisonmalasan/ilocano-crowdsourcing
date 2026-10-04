@@ -19,13 +19,17 @@ import type { AnonymousValidatorId } from "@/schemas/validator";
  *
  * Each clause of the derivation rule has a row that exercises it, and no two clauses share one:
  *
- *   E1  two agreeing packages at AT("02")/AT("03") — earliest supplies, no flag, overlap
+ *   E1  two agreeing full packages at AT("02")/AT("03") — earliest supplies, no flag, overlap
  *   E2  incorrect+correction at AT("02"), then correct_natural at AT("03") — earliest supplies
  *       the CORRECTION path, disagreement flags, later package does not displace
  *   E3  two correct_natural at the SAME instant AT("02") — tie only: evaluations agree and no
  *       correction exists, so NOTHING but the tie can force the flag
  *   E4  one cannot_evaluate — incomplete, omitted rather than zero-filled
  *   E5  one correct_natural — trivially earliest, validated sentence IS the instruction
+ *   E6  POOLED coverage: a judgment with no translations at AT("02"), English-only at AT("03"),
+ *       Filipino-only at AT("04") from three attempts — no single response vouches for the
+ *       record, so the multi-source flag fires while the per-field earliest rule still supplies
+ *       each field deterministically
  */
 const AT = (day: string, ms = "00:00:00.000Z"): string => `2026-09-${day}T${ms}`;
 
@@ -40,7 +44,7 @@ const entry = (id: string): DatasetEntry => ({
   isActive: true,
 });
 
-const ENTRIES = ["E1", "E2", "E3", "E4", "E5"].map(entry);
+const ENTRIES = ["E1", "E2", "E3", "E4", "E5", "E6"].map(entry);
 const BY_ID = new Map(ENTRIES.map((e) => [e.id, e]));
 
 function response(
@@ -126,20 +130,47 @@ const SOURCES: ExportSourceWithQualifying[] = [
     proficiency: "fluent",
     qualifies: true,
   },
+  // Pooled coverage: no single response holds the package, so each field comes from its own
+  // earliest supplier. All three are valid judgments (evaluations agree, no correction needed),
+  // so the review rule alone would NOT flag — only the multi-source clause does.
+  {
+    entry: BY_ID.get("E6")!,
+    response: response("rv09", "VAL_00000004", "E6", "correct_natural", AT("02")),
+    proficiency: "conversational",
+    qualifies: true,
+  },
+  {
+    entry: BY_ID.get("E6")!,
+    response: response("rv10", "VAL_00000005", "E6", "correct_natural", AT("03"), {
+      englishTranslation: "Pooled English rendering.",
+    }),
+    proficiency: null,
+    qualifies: true,
+  },
+  {
+    entry: BY_ID.get("E6")!,
+    response: response("rv11", "VAL_00000006", "E6", "correct_natural", AT("04"), {
+      filipinoTranslation: "Pinagsama-samang salin.",
+    }),
+    proficiency: null,
+    qualifies: true,
+  },
 ];
 
 const byId = (records: readonly ValidatedRecord[]): Map<string, ValidatedRecord> =>
   new Map(records.map((record) => [record.id, record]));
 
 describe("buildValidatedDataset", () => {
-  it("derives one record per complete entry from the earliest qualifying package", () => {
+  it("derives one record per complete entry from the earliest covering suppliers", () => {
     const { records } = buildValidatedDataset(ENTRIES, SOURCES);
 
-    expect(records.map((record) => record.id)).toEqual(["E1", "E2", "E3", "E5"]);
+    expect(records.map((record) => record.id)).toEqual(["E1", "E2", "E3", "E5", "E6"]);
     const byEntry = byId(records);
     expect(byEntry.get("E1")?.source_validation_id).toBe("rv01");
     expect(byEntry.get("E2")?.source_validation_id).toBe("rv03");
     expect(byEntry.get("E5")?.source_validation_id).toBe("rv08");
+    // The pooled entry's Ilocano supplier is the earliest valid judgment.
+    expect(byEntry.get("E6")?.source_validation_id).toBe("rv09");
   });
 
   it("takes the correction where one was required and the instruction otherwise", () => {
@@ -174,12 +205,24 @@ describe("buildValidatedDataset", () => {
     expect(byEntry.get("E3")?.source_validation_id).toBe("rv05");
   });
 
+  it("assembles a pooled record per field and flags that no single response vouches for it", () => {
+    // E6's three suppliers each hold one pillar. The record takes the validated Ilocano from the
+    // judgment, English from its earliest supplier, Filipino from its own — and flags, because
+    // three attempts' work assembled into one record is exactly what a human must review.
+    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+
+    expect(byEntry.get("E6")?.validated_ilocano).toBe("instruction for E6");
+    expect(byEntry.get("E6")?.english_translation).toBe("Pooled English rendering.");
+    expect(byEntry.get("E6")?.filipino_translation).toBe("Pinagsama-samang salin.");
+    expect(byEntry.get("E6")?.needs_review).toBe(true);
+  });
+
   it("omits incomplete entries and states the omission count", () => {
     const dataset = buildValidatedDataset(ENTRIES, SOURCES);
 
     expect(byId(dataset.records).has("E4")).toBe(false);
     expect(dataset.derivation.omitted_incomplete_entries).toBe(1);
-    expect(dataset.derivation.rule).toBe("earliest-qualifying-package-by-server-created-at");
+    expect(dataset.derivation.rule).toBe("pooled-earliest-per-field-by-server-created-at");
     expect(dataset.derivation.tie_break).toBe(
       "smallest-validation-id-arbitrary-carries-no-meaning",
     );
@@ -189,7 +232,14 @@ describe("buildValidatedDataset", () => {
     const { records } = buildValidatedDataset(ENTRIES, SOURCES);
     const text = JSON.stringify(records);
 
-    for (const id of ["VAL_00000001", "VAL_00000002", "VAL_00000003"]) {
+    for (const id of [
+      "VAL_00000001",
+      "VAL_00000002",
+      "VAL_00000003",
+      "VAL_00000004",
+      "VAL_00000005",
+      "VAL_00000006",
+    ]) {
       expect(text).not.toContain(id);
     }
     expect(Object.keys(records[0] ?? {}).sort()).toEqual(

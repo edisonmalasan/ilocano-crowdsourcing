@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   countQualifyingValidations,
+  coversEnglishTranslation,
+  coversFilipinoTranslation,
+  firstCoveredAt,
   isEntryComplete,
   isQualifyingValidation,
-  requiresBilingualTranslations,
+  isTranslationEligible,
+  isValidJudgment,
   type CoverageResponseShape,
-  type QualifyingResponseShape,
+  type ValidatorCoverageResponseShape,
 } from "@/lib/domain/validation-response";
 import {
   EVALUATION_CHOICES,
@@ -34,20 +38,16 @@ import * as validationModule from "@/schemas/validation";
  *
  * WHY THE STATES ARE TWO INDEPENDENT AXES
  *
- * The superseded model had a single `TRANSLATION_STATES` axis because the response named one
- * language and carried one text, so "which translations are present" was one question. This model has
- * two fields and neither selects the other, so the honest question is two questions. Collapsing them
- * back into one enum would quietly restore the coupling being removed — and it would make a cell
- * like "English present, Filipino blank" inexpressible, which is precisely the state that most needs
- * a test.
+ * Each translation field is independent: "which translations are present" is two questions, one
+ * per field. Collapsing them back into one enum would recouple what the methodology decoupled —
+ * and it would make a cell like "English present, Filipino blank" inexpressible, which is
+ * precisely the state that most needs a test.
  *
- * WHY "BLANK" IS ITS OWN STATE WHEN IT PRODUCES THE SAME PATHS AS "ABSENT"
+ * WHY "BLANK" IS ITS OWN STATE WHEN IT NORMALIZES TO ABSENT
  *
- * `normalizeResearchText` maps a whitespace-only string to `null` before the integrity rules run, so
- * both states report the same field path. Keeping them as separate columns is what lets
- * `acceptedCombinations()` and the "no translation field exists" assertions below talk about the
- * *shape* of an accepted payload honestly, and it means the matrix would notice if that
- * normalization ever changed to preserve the difference.
+ * `normalizeResearchText` maps a whitespace-only string to `null` before the integrity rules run.
+ * Keeping blank as a separate column is what lets the matrix notice if that normalization ever
+ * changed to preserve the difference — and the accepted set below would change with it.
  */
 
 const CORRECTION_STATES = ["absent", "present", "blank"] as const;
@@ -93,28 +93,25 @@ function payload(
 function correctionIssues(evaluation: Evaluation, correction: CorrectionState): string[] {
   const correctionRequired = evaluation === "correct_unnatural" || evaluation === "incorrect";
 
+  // Blank normalizes to null before the rules run, so blank and absent are the SAME state by the
+  // time they are judged: no usable corrected sentence. The rule cannot distinguish them — the
+  // pipeline erased the distinction — and uniformity is the honest reading: a whitespace-only
+  // correction on an evaluation that needs one is missing, and on one that forbids one is nothing.
   if (correctionRequired) {
-    // Both a missing field and a whitespace-only field are the same defect: no usable corrected
-    // sentence. The validator cannot continue either way.
     return correction === "present" ? [] : ["correctedInstruction"];
   }
 
   // `correct_natural` and `cannot_evaluate` must not carry a correction. A whitespace-only field
-  // still *carries* the field, so it is rejected just as a populated one is.
-  return correction === "absent" ? [] : ["correctedInstruction"];
+  // normalizes away, so only a real string *carries* the field here.
+  return correction === "present" ? ["correctedInstruction"] : [];
 }
 
 /**
- * The bilingual rule, as a table.
+ * The translation rule, as a table.
  *
- * The two branches are opposites, and that is the whole rule:
- *   - an evaluable evaluation REQUIRES both translations, so any state other than `present` on
- *     either axis is an issue on that axis;
- *   - `cannot_evaluate` ACCEPTS neither, so any state other than `absent` on either axis is an
- *     issue on that axis.
- *
- * A response cannot be both, so the branches are mutually exclusive by construction rather than by
- * an ordering that could be got wrong.
+ * Translations are a per-response CHOICE, so every state is accepted for an evaluable
+ * evaluation — present, blank (which normalizes to absent), or absent — and only
+ * `cannot_evaluate` refuses them. The two branches are opposites, and that is the whole rule.
  */
 function translationIssues(
   evaluation: Evaluation,
@@ -123,17 +120,17 @@ function translationIssues(
 ): string[] {
   const englishField = "englishTranslation";
   const filipinoField = "filipinoTranslation";
-  const issues: string[] = [];
 
   if (evaluation === "cannot_evaluate") {
-    if (english !== "absent") issues.push(englishField);
-    if (filipino !== "absent") issues.push(filipinoField);
+    // Only a real string carries a translation: blank normalizes to null — absent — before the
+    // rules run, so a whitespace-only field is not a translation and is not refused.
+    const issues: string[] = [];
+    if (english === "present") issues.push(englishField);
+    if (filipino === "present") issues.push(filipinoField);
     return issues;
   }
 
-  if (english !== "present") issues.push(englishField);
-  if (filipino !== "present") issues.push(filipinoField);
-  return issues;
+  return [];
 }
 
 /**
@@ -203,8 +200,8 @@ describe("evaluation vocabulary", () => {
   });
 });
 
-describe("research translation targets are two required fields, not a language choice", () => {
-  it("labels both required fields for the validation screen", () => {
+describe("research translation targets are two fields with a per-response choice", () => {
+  it("labels both fields for the validation screen", () => {
     expect(TRANSLATION_FIELD_LABELS.english.label).toBe("English translation");
     expect(TRANSLATION_FIELD_LABELS.filipino.label).toBe("Filipino translation");
     expect(TRANSLATION_FIELD_LABELS.english.description.length).toBeGreaterThan(0);
@@ -225,10 +222,10 @@ describe("research translation targets are two required fields, not a language c
     expect(translationExports).toEqual(["TRANSLATION_FIELD_LABELS"]);
   });
 
-  it("keeps `isQualifyingValidation` and its shape in the DOMAIN module, not the schema", () => {
+  it("keeps coverage predicates and their shape in the DOMAIN module, not the schema", () => {
     // Coverage is a research question, not a storage one: allocation, the admin dashboard, and
-    // export all need it and none of them own the schema. If the schema re-exported the predicate
-    // as a VALUE, every one of those consumers would import it from here and drag Zod in with it,
+    // export all need it and none of them own the schema. If the schema re-exported the predicates
+    // as VALUES, every one of those consumers would import it from here and drag Zod in with it,
     // undoing the reason the domain module takes no dependencies.
     //
     // The domain module takes no imports at all, which is asserted structurally below rather than
@@ -240,25 +237,52 @@ describe("research translation targets are two required fields, not a language c
     // through `export { x }` from a module whose type is widened.
     const asRecord = validationModule as unknown as Record<string, unknown>;
 
-    expect(asRecord.isQualifyingValidation).toBeUndefined();
-    expect(asRecord.requiresBilingualTranslations).toBeUndefined();
-    expect(typeof isQualifyingValidation).toBe("function");
-    expect(typeof requiresBilingualTranslations).toBe("function");
+    expect(asRecord.entryCoverage).toBeUndefined();
+    expect(asRecord.isEntryComplete).toBeUndefined();
+    expect(asRecord.isTranslationEligible).toBeUndefined();
+    expect(typeof isEntryComplete).toBe("function");
+    expect(typeof isTranslationEligible).toBe("function");
   });
 });
 
 describe("validation integrity matrix", () => {
-  it("accepts exactly four combinations, one per evaluation", () => {
-    // The single most important assertion in this file. Before this change the matrix had TEN
-    // accepted cells, because a translation was optional. There are now exactly four: the three
-    // evaluable evaluations with a complete bilingual pair, and `cannot_evaluate` with neither.
-    // A regression that re-opens optionality shows up here as a fifth row, by name.
-    expect(acceptedCombinations()).toEqual([
-      "correct_natural / correction:absent / english:present / filipino:present",
-      "correct_unnatural / correction:present / english:present / filipino:present",
-      "incorrect / correction:present / english:present / filipino:present",
-      "cannot_evaluate / correction:absent / english:absent / filipino:absent",
-    ]);
+  it("accepts every translation choice for an evaluable response, and nothing real for cannot-evaluate", () => {
+    // correct_natural: correction absent-or-blank (2, blank normalizing away) x 9 translation
+    // states = 18. correct_unnatural and incorrect: correction present x 9 = 9 each. For
+    // `cannot_evaluate`: correction absent-or-blank (2) x translation absent-or-blank each
+    // (2 x 2) = 8. Total: 18 + 9 + 9 + 8 = 44 accepted cells of 108.
+    // A regression that re-imposes the bilingual pair shows up here as missing rows, by name.
+    expect(acceptedCombinations()).toHaveLength(44);
+
+    const names = new Set(acceptedCombinations());
+    for (const evaluation of ["correct_unnatural", "incorrect"]) {
+      for (const english of TRANSLATION_FIELD_STATES) {
+        for (const filipino of TRANSLATION_FIELD_STATES) {
+          expect(
+            names.has(
+              `${evaluation} / correction:present / english:${english} / filipino:${filipino}`,
+            ),
+          ).toBe(true);
+        }
+      }
+    }
+    for (const correction of ["absent", "blank"]) {
+      for (const english of TRANSLATION_FIELD_STATES) {
+        for (const filipino of TRANSLATION_FIELD_STATES) {
+          expect(
+            names.has(
+              `correct_natural / correction:${correction} / english:${english} / filipino:${filipino}`,
+            ),
+          ).toBe(true);
+        }
+      }
+    }
+    expect(
+      names.has("cannot_evaluate / correction:absent / english:absent / filipino:absent"),
+    ).toBe(true);
+    expect(names.has("cannot_evaluate / correction:blank / english:blank / filipino:blank")).toBe(
+      true,
+    );
   });
 
   for (const evaluation of EVALUATION_CHOICES.map((choice) => choice.value)) {
@@ -306,10 +330,9 @@ describe("rule-by-rule evidence", () => {
   });
 
   it("rejects an unnatural rating submitted with no correction", () => {
-    // Both translations ARE supplied, so the correction is the only defect. Without them the
-    // rejection would prove nothing about the correction rule — it would pass for the wrong reason.
+    // The correction is the only defect in this payload: translations are absent by choice, which
+    // is legitimate, so the rejection proves the correction rule rather than anything else.
     const result = validationResponseInputSchema.safeParse({
-      ...BOTH,
       evaluation: "correct_unnatural",
     });
 
@@ -366,81 +389,50 @@ describe("rule-by-rule evidence", () => {
     ]);
   });
 
-  it("rejects a correct-and-natural response with NO translation, because translation is required", () => {
-    // This is the behavioural reversal this change exists to make, so it is asserted directly and
-    // not only as a cell of the matrix above. The superseded requirement is recorded verbatim in the
+  it("accepts a correct-and-natural response with NO translation, the validator having skipped", () => {
+    // The behavioural statement of the methodology change: translation is a per-response choice,
+    // and skip is a first-class answer. The superseded requirement is recorded verbatim in the
     // `domain-contracts` delta under the REMOVED block.
     const result = validationResponseInputSchema.safeParse({ evaluation: "correct_natural" });
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path.join(".")).sort()).toEqual([
-      "englishTranslation",
-      "filipinoTranslation",
-    ]);
+    expect(result.success).toBe(true);
   });
 
-  it("rejects an evaluable response carrying only the English translation", () => {
+  it("accepts an evaluable response carrying only the English translation", () => {
     const result = validationResponseInputSchema.safeParse(ENGLISH_ONLY);
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path.join("."))).toEqual([
-      "filipinoTranslation",
-    ]);
+    expect(result.success).toBe(true);
   });
 
-  it("rejects an evaluable response carrying only the Filipino translation", () => {
+  it("accepts an evaluable response carrying only the Filipino translation", () => {
     const result = validationResponseInputSchema.safeParse(FILIPINO_ONLY);
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path.join("."))).toEqual([
-      "englishTranslation",
-    ]);
+    expect(result.success).toBe(true);
   });
 
-  it("rejects a whitespace-only English translation and names the English field", () => {
+  it("treats a whitespace-only English translation as absent, not as a defect", () => {
+    // Normalization collapses blank to null before the rules run, and absence is a legitimate
+    // choice — so a blank English field alongside a Filipino translation is an accepted
+    // Filipino-only response, not a refusal naming the English field.
     const result = validationResponseInputSchema.safeParse({
       ...FILIPINO_ONLY,
       englishTranslation: "   \t  ",
     });
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path.join("."))).toEqual([
-      "englishTranslation",
-    ]);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.englishTranslation).toBeNull();
   });
 
-  it("rejects a whitespace-only Filipino translation and names the Filipino field", () => {
+  it("treats a whitespace-only Filipino translation as absent, not as a defect", () => {
     const result = validationResponseInputSchema.safeParse({
       ...ENGLISH_ONLY,
       filipinoTranslation: "   \t  ",
     });
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path.join("."))).toEqual([
-      "filipinoTranslation",
-    ]);
-  });
-
-  it("reports a blank translation as REQUIRED, not as empty, because nothing was typed", () => {
-    // The ordering decision in `applyValidationIntegrityRules`. A validator who left the field empty
-    // has not typed something wrong, and must not be told that they have.
-    const result = validationResponseInputSchema.safeParse({
-      ...FILIPINO_ONLY,
-      englishTranslation: "   ",
-    });
-
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    const [issue] = result.error.issues;
-    expect(issue.path.join(".")).toBe("englishTranslation");
-    expect(issue.message).toBe(
-      "An English translation is required for this evaluation. Both translations are required.",
-    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.filipinoTranslation).toBeNull();
   });
 
   it("rejects a cannot-evaluate response carrying an English translation", () => {
@@ -486,20 +478,17 @@ describe("rule-by-rule evidence", () => {
 
   it("rejects a response written in the SUPERSEDED single-translation wire format", () => {
     // A deployment hazard, so it is pinned as behaviour rather than left to be discovered. Any
-    // client still sending the old shape has both keys stripped as unknown, and is then rejected
-    // for supplying neither required translation. Nothing is silently accepted-and-lost.
+    // client still sending the old shape has both keys stripped as unknown — and with translations
+    // optional, the stripped payload is now an ACCEPTED translation-free response. Nothing is
+    // silently lost: the stripped keys carried at most one translation, and the record stands as
+    // a judgment without translations rather than failing closed.
     const result = validationResponseInputSchema.safeParse({
       evaluation: "correct_natural",
       translationLanguage: "english",
       translationText: ENGLISH,
     });
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path.join(".")).sort()).toEqual([
-      "englishTranslation",
-      "filipinoTranslation",
-    ]);
+    expect(result.success).toBe(true);
   });
 
   it("never emits a translation-language key, whatever the payload contained", () => {
@@ -540,24 +529,29 @@ describe("rule-by-rule evidence", () => {
   });
 });
 
-describe("qualifying validation", () => {
-  it("requires both translations for an evaluable response", () => {
-    expect(isQualifyingValidation(BOTH)).toBe(true);
+describe("pooled coverage predicates", () => {
+  it("counts a judgment alone as a valid judgment with no language cover", () => {
+    const response = { evaluation: "correct_natural" } as const;
+
+    expect(isValidJudgment(response)).toBe(true);
+    expect(coversEnglishTranslation(response)).toBe(false);
+    expect(coversFilipinoTranslation(response)).toBe(false);
+    expect(isQualifyingValidation(response)).toBe(true);
   });
 
   it("requires a correction as well, for the evaluations that need one", () => {
     // `...BOTH` first, so the explicit `evaluation` wins. Written the other way round the spread
     // would silently restore `correct_natural` and the assertion would pass for the wrong reason.
     expect(
-      isQualifyingValidation({
+      isValidJudgment({
         ...BOTH,
         evaluation: "incorrect",
         correctedInstruction: CORRECTION,
       }),
     ).toBe(true);
-    expect(isQualifyingValidation({ ...BOTH, evaluation: "incorrect" })).toBe(false);
+    expect(isValidJudgment({ ...BOTH, evaluation: "incorrect" })).toBe(false);
     expect(
-      isQualifyingValidation({
+      isValidJudgment({
         ...BOTH,
         evaluation: "incorrect",
         correctedInstruction: "   ",
@@ -566,14 +560,14 @@ describe("qualifying validation", () => {
   });
 
   it("does not require a correction where the evaluation does not", () => {
-    expect(isQualifyingValidation(BOTH)).toBe(true);
+    expect(isValidJudgment(BOTH)).toBe(true);
     // Present anyway. The predicate does not police this — the schema and the column constraint do
     // — so a surplus correction is not by itself a coverage disqualification.
-    expect(isQualifyingValidation({ ...BOTH, correctedInstruction: CORRECTION })).toBe(true);
+    expect(isValidJudgment({ ...BOTH, correctedInstruction: CORRECTION })).toBe(true);
   });
 
   it("never counts a cannot-evaluate response, even if translations were somehow supplied", () => {
-    expect(isQualifyingValidation({ evaluation: "cannot_evaluate" })).toBe(false);
+    expect(isValidJudgment({ evaluation: "cannot_evaluate" })).toBe(false);
     expect(
       isQualifyingValidation({
         evaluation: "cannot_evaluate",
@@ -583,22 +577,30 @@ describe("qualifying validation", () => {
     ).toBe(false);
   });
 
+  it("counts a single-translation response as covering exactly its language", () => {
+    expect(coversEnglishTranslation(ENGLISH_ONLY)).toBe(true);
+    expect(coversFilipinoTranslation(ENGLISH_ONLY)).toBe(false);
+    expect(coversEnglishTranslation(FILIPINO_ONLY)).toBe(false);
+    expect(coversFilipinoTranslation(FILIPINO_ONLY)).toBe(true);
+    expect(isQualifyingValidation(ENGLISH_ONLY)).toBe(true);
+    expect(isQualifyingValidation(FILIPINO_ONLY)).toBe(true);
+  });
+
   it("treats a missing, a null, and a whitespace-only translation identically", () => {
     for (const value of [undefined, null, "", "   ", "\t\n"]) {
       expect(
-        isQualifyingValidation({
+        coversEnglishTranslation({
           evaluation: "correct_natural",
-          englishTranslation: FILIPINO as unknown as string,
-          filipinoTranslation: value,
+          englishTranslation: value,
         }),
       ).toBe(false);
       expect(
-        isQualifyingValidation({
+        coversFilipinoTranslation({
           evaluation: "correct_natural",
           filipinoTranslation: FILIPINO,
           englishTranslation: value,
         }),
-      ).toBe(false);
+      ).toBe(true);
     }
   });
 
@@ -609,18 +611,18 @@ describe("qualifying validation", () => {
     // The relationship is deliberately NOT equivalence, and pretending otherwise would be the wrong
     // test rather than a stricter one. Two asymmetries are real and intended:
     //
-    //   1. `cannot_evaluate` is a VALID record that deliberately does not qualify. Requiring the
+    //   1. `cannot_evaluate` is a VALID record that deliberately contributes nothing. Requiring the
     //      two to agree in both directions would assert that a legitimate response counts toward
     //      coverage, which is exactly the accounting error this change exists to prevent.
     //   2. A payload the schema rejects can still satisfy the predicate's own criteria — a
-    //      `correct_natural` carrying a correction qualifies by every criterion the predicate
-    //      checks. It cannot be persisted, so the disagreement is unreachable in practice; the
-    //      predicate documents that it does not re-derive the correction-absence rules because the
-    //      column constraint already rejects them.
+    //      `correct_natural` carrying a correction contributes a judgment by every criterion the
+    //      predicate checks. It cannot be persisted, so the disagreement is unreachable in practice;
+    //      the predicate documents that it does not re-derive the correction-absence rules because
+    //      the column constraint already rejects them.
     //
     // So the invariant asserted is the one that carries weight: for every record the schema
-    // accepts, the predicate agrees with it. Coverage may under-count a usable record; it may never
-    // over-count an unusable one.
+    // accepts, the predicate agrees that it contributes. Coverage may under-count a usable record;
+    // it may never over-count an unusable one.
     const acceptedButQualifying: string[] = [];
     const acceptedButNotQualifying: string[] = [];
     let accepted = 0;
@@ -646,19 +648,29 @@ describe("qualifying validation", () => {
       }
     }
 
-    expect(accepted).toBe(4);
-    expect(acceptedButQualifying).toEqual([
-      "correct_natural/absent/present/present",
-      "correct_unnatural/present/present/present",
-      "incorrect/present/present/present",
-    ]);
-    // The one accepted record that does not qualify is the intended accounting, named explicitly so
-    // a change to it is a deliberate edit rather than an accident.
-    expect(acceptedButNotQualifying).toEqual(["cannot_evaluate/absent/absent/absent"]);
+    // 44 accepted cells (18 for correct_natural, 9 each for the correction-requiring pair,
+    // 8 for cannot_evaluate — absent-or-blank in every field); all but the abstentions
+    // contribute in at least one pillar.
+    expect(accepted).toBe(44);
+    expect(acceptedButQualifying).toHaveLength(36);
+    // The accepted records that contribute nothing are the abstentions, named explicitly so a
+    // change to them is a deliberate edit rather than an accident.
+    expect(acceptedButNotQualifying.sort()).toEqual(
+      [
+        "cannot_evaluate/absent/absent/absent",
+        "cannot_evaluate/absent/absent/blank",
+        "cannot_evaluate/absent/blank/absent",
+        "cannot_evaluate/absent/blank/blank",
+        "cannot_evaluate/blank/absent/absent",
+        "cannot_evaluate/blank/absent/blank",
+        "cannot_evaluate/blank/blank/absent",
+        "cannot_evaluate/blank/blank/blank",
+      ].sort(),
+    );
   });
 });
 
-describe("qualifying coverage over a set of responses", () => {
+describe("pooled coverage over a set of responses", () => {
   /**
    * A stored response from a named validator.
    *
@@ -668,8 +680,8 @@ describe("qualifying coverage over a set of responses", () => {
    */
   function responseFrom(
     validatorId: string,
-    overrides: Partial<QualifyingResponseShape> = {},
-  ): CoverageResponseShape {
+    overrides: Partial<ValidatorCoverageResponseShape> = {},
+  ): ValidatorCoverageResponseShape {
     return { validatorId, ...BOTH, ...overrides };
   }
 
@@ -680,45 +692,27 @@ describe("qualifying coverage over a set of responses", () => {
    * because an inline object literal inside an array widens `evaluation` to `string` and stops the
    * whole array from being assignable to the domain shape.
    */
-  function cannotEvaluateFrom(validatorId: string): CoverageResponseShape {
+  function cannotEvaluateFrom(validatorId: string): ValidatorCoverageResponseShape {
     return { validatorId, evaluation: "cannot_evaluate" };
   }
 
-  it("counts a complete bilingual response as one", () => {
-    expect(countQualifyingValidations([responseFrom("VAL_0000beef")])).toBe(1);
+  it("counts a judgment-only response as one contributing validator", () => {
+    expect(
+      countQualifyingValidations([{ validatorId: "VAL_0000beef", evaluation: "correct_natural" }]),
+    ).toBe(1);
   });
 
-  it("counts three raw responses of which only two are complete as TWO, not three", () => {
-    // The spec scenario, verbatim in intent: "WHEN an entry has three stored responses of which
-    // only two are complete bilingual pairs THEN the entry has two qualifying completed validations,
-    // not three, and remains eligible for another validator."
-    //
-    // A raw `count(*)` returns 3 here, which would retire the entry one validator early. The third
-    // response is a validator who said they could not judge the entry — the most common way a
-    // stored row fails to qualify, and the one easiest to overlook because the record is perfectly
-    // good research data.
+  it("counts mixed single-pillar responses per validator, not per row", () => {
+    // Three stored rows — a judgment with no translations, an English-only row, a
+    // Filipino-only row — from three attempts: three contributing validators.
     const stored = [
-      responseFrom("VAL_0000beef"),
-      responseFrom("VAL_0000feed"),
-      cannotEvaluateFrom("VAL_0000cafe"),
-    ];
-
-    expect(stored).toHaveLength(3);
-    expect(countQualifyingValidations(stored)).toBe(2);
-  });
-
-  it("counts a legacy row that predates the bilingual requirement as zero", () => {
-    // The spec names this case: "a stored response that predates the bilingual requirement and is
-    // missing either required translation SHALL NOT qualify". Such a row cannot be written under
-    // the current schema, so it can only exist if an operator resolved the migration's precondition
-    // by keeping one — and it must not silently advance coverage if they did.
-    const stored = [
-      responseFrom("VAL_0000beef"),
+      responseFrom("VAL_0000beef", { englishTranslation: null, filipinoTranslation: null }),
       responseFrom("VAL_0000feed", { filipinoTranslation: null }),
       responseFrom("VAL_0000cafe", { englishTranslation: null }),
     ];
 
-    expect(countQualifyingValidations(stored)).toBe(1);
+    expect(stored).toHaveLength(3);
+    expect(countQualifyingValidations(stored)).toBe(3);
   });
 
   it("counts a cannot_evaluate response as zero even when it is the only response", () => {
@@ -731,8 +725,7 @@ describe("qualifying coverage over a set of responses", () => {
   });
 
   it("counts each DISTINCT validator once, not each row", () => {
-    // "computed from qualifying completed validations belonging to distinct validators, and a raw
-    // row count is never substituted for it."
+    // A validator counts once however many pillars their responses cover.
     //
     // The duplicate is unreachable through the repository — `UNIQUE (validator_id,
     // dataset_entry_id)` makes one response per validator per entry structurally impossible — and
@@ -755,13 +748,14 @@ describe("qualifying coverage over a set of responses", () => {
   it("agrees with a per-response filter on every combination of three stored responses", () => {
     // `countQualifyingValidations` is `isQualifyingValidation` plus a dedupe, so the two must not
     // disagree about WHICH responses qualify. Swept exhaustively over the three states that can
-    // occur in storage: complete, `cannot_evaluate`, and a legacy row missing a translation, across
-    // three validators. 3^3 x 3 validator assignments.
-    const shapes: readonly QualifyingResponseShape[] = [
+    // occur in storage: a judgment with translations, `cannot_evaluate`, a judgment without
+    // translations, and single-language rows — across three validators.
+    const shapes: readonly CoverageResponseShape[] = [
       { evaluation: "correct_natural", englishTranslation: ENGLISH, filipinoTranslation: FILIPINO },
       { evaluation: "cannot_evaluate" },
-      { evaluation: "correct_natural", englishTranslation: null, filipinoTranslation: null },
-      { evaluation: "correct_natural", englishTranslation: ENGLISH, filipinoTranslation: null },
+      { evaluation: "correct_natural" },
+      { evaluation: "correct_natural", englishTranslation: ENGLISH },
+      { evaluation: "correct_natural", filipinoTranslation: FILIPINO },
       {
         evaluation: "incorrect",
         correctedInstruction: CORRECTION,
@@ -798,45 +792,80 @@ describe("qualifying coverage over a set of responses", () => {
 
     expect(cells).toBe(shapes.length ** 3);
   });
+
+  it("reports when pooled coverage first held, at the completing response's instant", () => {
+    const first = "2026-09-30T00:00:00.000Z";
+    const second = "2026-09-30T00:00:01.000Z";
+    const third = "2026-09-30T00:00:02.000Z";
+    const withAt = (
+      at: string,
+      shape: CoverageResponseShape,
+    ): CoverageResponseShape & { createdAt: string } => ({ ...shape, createdAt: at });
+
+    // Judgment, then English, then Filipino: covered at the third instant.
+    expect(
+      firstCoveredAt([
+        withAt(first, { evaluation: "correct_natural" }),
+        withAt(second, { evaluation: "correct_natural", englishTranslation: ENGLISH }),
+        withAt(third, { evaluation: "correct_natural", filipinoTranslation: FILIPINO }),
+      ]),
+    ).toBe(third);
+    // One full response covers at its own instant.
+    expect(firstCoveredAt([withAt(first, { ...BOTH, evaluation: "correct_natural" })])).toBe(first);
+    // Never covered without all three pillars.
+    expect(
+      firstCoveredAt([
+        withAt(first, { evaluation: "correct_natural" }),
+        withAt(second, { evaluation: "cannot_evaluate" }),
+      ]),
+    ).toBeNull();
+    // Empty input never covered.
+    expect(firstCoveredAt([])).toBeNull();
+  });
 });
 
-describe("entry completion is a predicate, not a count", () => {
+describe("entry completion is pooled, not counted", () => {
   /**
    * Local builders, deliberately NOT shared with the coverage block above. That block's helpers
-   * return `CoverageResponseShape` (they carry a `validatorId`); the completion predicate takes
-   * `QualifyingResponseShape` and must be exercised as taking it, so that a future edit which
-   * starts reading the validator id fails the type-check here instead of silently changing what
-   * completion depends on.
+   * return validator-carrying shapes; the completion predicate takes the plain shape and must be
+   * exercised as taking it, so that a future edit which starts reading the validator id fails the
+   * type-check here instead of silently changing what completion depends on.
    */
-  function completePackage(
-    overrides: Partial<QualifyingResponseShape> = {},
-  ): QualifyingResponseShape {
+  function pooledJudgment(overrides: Partial<CoverageResponseShape> = {}): CoverageResponseShape {
     return {
       evaluation: "correct_natural",
-      englishTranslation: ENGLISH,
-      filipinoTranslation: FILIPINO,
       ...overrides,
     };
   }
 
-  function unevaluable(): QualifyingResponseShape {
+  function unevaluable(): CoverageResponseShape {
     return { evaluation: "cannot_evaluate" };
   }
 
-  it("is complete with one qualifying response", () => {
-    expect(isEntryComplete([completePackage()])).toBe(true);
+  it("is complete with pooled coverage across three responses", () => {
+    expect(
+      isEntryComplete([
+        pooledJudgment(),
+        pooledJudgment({ englishTranslation: ENGLISH }),
+        pooledJudgment({ filipinoTranslation: FILIPINO }),
+      ]),
+    ).toBe(true);
   });
 
-  it("stays complete when further qualifying responses arrive", () => {
-    // A second response from another attempt does not make a complete entry less complete, and
+  it("stays complete when further responses arrive", () => {
+    // A further response from another attempt does not make a complete entry less complete, and
     // must not make it MORE complete either — there is no level above complete to reach.
-    expect(isEntryComplete([completePackage(), completePackage()])).toBe(true);
+    const complete = pooledJudgment({ englishTranslation: ENGLISH, filipinoTranslation: FILIPINO });
+    expect(isEntryComplete([complete, complete])).toBe(true);
   });
 
-  it("is complete with fifty qualifying responses, because the count plays no part", () => {
-    // The number the superseded methodology retired entries at. Under the corrected rule an entry
-    // with fifty qualifying validations is exactly as complete as an entry with one.
-    expect(isEntryComplete(Array.from({ length: 50 }, () => completePackage()))).toBe(true);
+  it("is complete however many responses hold the coverage, because the count plays no part", () => {
+    expect(isEntryComplete(Array.from({ length: 50 }, () => pooledJudgment()))).toBe(false);
+    expect(
+      isEntryComplete(
+        Array.from({ length: 50 }, () => pooledJudgment({ englishTranslation: ENGLISH })),
+      ),
+    ).toBe(false);
   });
 
   it("is incomplete with no stored response", () => {
@@ -848,16 +877,17 @@ describe("entry completion is a predicate, not a count", () => {
   });
 
   it("is incomplete however many cannot_evaluate responses it holds", () => {
-    // The count of rows has no part in the decision: many non-qualifying rows are still no
-    // qualifying package.
+    // The count of rows has no part in the decision: many non-contributing rows are still no
+    // pooled coverage.
     expect(
       isEntryComplete([unevaluable(), unevaluable(), unevaluable(), unevaluable(), unevaluable()]),
     ).toBe(false);
   });
 
-  it("is incomplete when a response is missing a translation or a required correction", () => {
-    expect(isEntryComplete([completePackage({ filipinoTranslation: null })])).toBe(false);
-    expect(isEntryComplete([completePackage({ englishTranslation: "   " })])).toBe(false);
+  it("is incomplete when a pillar is missing", () => {
+    // A judgment alone, however many translations it lacks, is not coverage.
+    expect(isEntryComplete([pooledJudgment({ englishTranslation: ENGLISH })])).toBe(false);
+    // And a missing required correction means no valid judgment at all.
     expect(
       isEntryComplete([
         {
@@ -869,45 +899,49 @@ describe("entry completion is a predicate, not a count", () => {
     ).toBe(false);
   });
 
-  it("is complete with one qualifying response among several non-qualifying ones", () => {
-    // The non-qualifying responses neither delay nor reduce completion: one package is enough.
-    expect(isEntryComplete([unevaluable(), completePackage({}), unevaluable()])).toBe(true);
+  it("is complete with pooled coverage among several non-contributing rows", () => {
+    // The non-contributing responses neither delay nor reduce completion.
+    expect(
+      isEntryComplete([
+        unevaluable(),
+        pooledJudgment({ englishTranslation: ENGLISH }),
+        unevaluable(),
+      ]),
+    ).toBe(false);
+    expect(
+      isEntryComplete([
+        unevaluable(),
+        pooledJudgment({ englishTranslation: ENGLISH }),
+        pooledJudgment({ filipinoTranslation: FILIPINO }),
+        pooledJudgment(),
+      ]),
+    ).toBe(true);
   });
 
-  it("needs no validator to decide: the same package completes with or without one named", () => {
-    // The predicate takes `QualifyingResponseShape`, which has no validator field. A response that
-    // qualifies completes the entry regardless of whose it is — distinctness is a property of the
+  it("needs no validator to decide: coverage holds with or without one named", () => {
+    // The predicate takes `CoverageResponseShape`, which has no validator field. Pooled coverage
+    // holds regardless of whose the responses are — distinctness is a property of the
     // attempt, enforced by the database, not an input to completion.
-    const withValidator: CoverageResponseShape = {
+    const withValidator: ValidatorCoverageResponseShape = {
       validatorId: "VAL_0000beef",
-      ...completePackage(),
+      ...pooledJudgment({ englishTranslation: ENGLISH, filipinoTranslation: FILIPINO }),
     };
-    const withoutValidator: QualifyingResponseShape = { ...completePackage() };
+    const withoutValidator: CoverageResponseShape = {
+      ...pooledJudgment({ englishTranslation: ENGLISH, filipinoTranslation: FILIPINO }),
+    };
 
     expect(isEntryComplete([withValidator])).toBe(true);
     expect(isEntryComplete([withoutValidator])).toBe(true);
   });
 });
 
-describe("required translations", () => {
-  it("agrees with the schema's own acceptance on all four evaluations", () => {
+describe("translation choice agrees with the schema", () => {
+  it("offers choice on all three evaluable evaluations and none on cannot-evaluate", () => {
     // Cross-checked against the vocabulary the schema ships rather than against a retyped list, so
     // an evaluation added to `EVALUATION_CHOICES` without a decision here fails instead of being
     // silently included by a default.
     for (const choice of EVALUATION_CHOICES) {
-      const evaluation = choice.value;
-      const parsed = validationResponseInputSchema.safeParse({ evaluation });
-
-      // The predicate says whether translations are required. The schema, given a payload with
-      // NEITHER correction nor translations, reports a translation issue exactly when the
-      // predicate says translations are required — and reports none when it says they are not.
-      const translationIssues = parsed.success
-        ? []
-        : parsed.error.issues
-            .map((issue) => issue.path.join("."))
-            .filter((path) => path.endsWith("Translation"));
-
-      expect(translationIssues.length > 0).toBe(requiresBilingualTranslations(evaluation));
+      expect(isTranslationEligible(choice.value)).toBe(choice.value !== "cannot_evaluate");
     }
   });
 });
@@ -946,23 +980,16 @@ describe("persisted validation record", () => {
     if (result.success) return;
     expect(result.error.issues.map((issue) => issue.path.join(".")).sort()).toEqual([
       "correctedInstruction",
-      "englishTranslation",
-      "filipinoTranslation",
     ]);
   });
 
-  it("enforces the same rules for a correct-and-natural record, with no correction required", () => {
+  it("accepts a translation-free evaluable record", () => {
     const result = validationResponseSchema.safeParse({ ...STORED, evaluation: "correct_natural" });
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path.join(".")).sort()).toEqual([
-      "englishTranslation",
-      "filipinoTranslation",
-    ]);
+    expect(result.success).toBe(true);
   });
 
-  it("accepts a complete stored record and keeps it qualifying", () => {
+  it("accepts a complete stored record and keeps it contributing", () => {
     const parsed = validationResponseSchema.parse({
       ...STORED,
       evaluation: "correct_natural",
@@ -997,6 +1024,8 @@ describe("persisted validation record", () => {
     });
 
     expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path.join("."))).toContain("validatorId");
   });
 
   it("narrows to the same input type, so a caller can hand a parsed record to input-shaped code", () => {

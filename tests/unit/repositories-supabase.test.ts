@@ -948,13 +948,10 @@ describe("SupabaseValidationsRepository", () => {
     expect("filipinoTranslation" in (found ?? {})).toBe(false);
   });
 
-  it("raises when a stored row is missing its Filipino translation", async () => {
-    // The migration's cross-column check rejects this on the way in, so the database should never
-    // hold such a row. The domain schema rejects it on the way out, and this is the last line of
-    // defence: a row that somehow exists must fail loudly rather than load as a valid response and
-    // be counted toward coverage. It is a real defence rather than dead code because the column
-    // constraint and the domain rule are two independent implementations of the same rule, and
-    // only one of them is exercised by a given write.
+  it("loads a stored row missing its Filipino translation, the validator having skipped it", async () => {
+    // Per-response choice means a null translation column is a recorded skip, not a corrupt row.
+    // The row-to-domain mapping turns SQL NULL into an absent key, and the domain schema reads
+    // absence as a legitimate choice — so the row loads as a judgment with English cover only.
     const fake = createFakeClient();
     fake.enqueue({
       data: { ...VALIDATION_ROW, filipino_translation: null },
@@ -962,12 +959,10 @@ describe("SupabaseValidationsRepository", () => {
       count: null,
     });
 
-    const error = await catchError(
-      new SupabaseValidationsRepository(fake.client).findById("res_01"),
-    );
+    const found = await new SupabaseValidationsRepository(fake.client).findById("res_01");
 
-    expect(isRepositoryError(error)).toBe(true);
-    expect((error as RepositoryError).operation).toBe("validations.findById");
+    expect(found?.englishTranslation).toBe("Ride the jeep.");
+    expect("filipinoTranslation" in (found ?? {})).toBe(false);
   });
 
   it("raises when a stored cannot_evaluate row carries an English translation", async () => {
@@ -989,9 +984,10 @@ describe("SupabaseValidationsRepository", () => {
     expect((error as RepositoryError).operation).toBe("validations.findById");
   });
 
-  it("raises when a stored translation is whitespace-only", async () => {
-    // The database rejects this via `btrim`, and the domain schema rejects it because
-    // `normalizeResearchText` maps a blank to `null`. Two independent implementations again.
+  it("loads a whitespace-only stored translation as a skipped language, not as text", async () => {
+    // The database's `btrim` check rejects this on the way in, so a stored blank means the row
+    // predates the constraint or bypassed it — either way the read must not invent research text.
+    // `normalizeResearchText` maps the blank to `null`, which reads as a skipped language.
     const fake = createFakeClient();
     fake.enqueue({
       data: { ...VALIDATION_ROW, english_translation: "   " },
@@ -999,12 +995,10 @@ describe("SupabaseValidationsRepository", () => {
       count: null,
     });
 
-    const error = await catchError(
-      new SupabaseValidationsRepository(fake.client).findById("res_01"),
-    );
+    const found = await new SupabaseValidationsRepository(fake.client).findById("res_01");
 
-    expect(isRepositoryError(error)).toBe(true);
-    expect((error as RepositoryError).operation).toBe("validations.findById");
+    expect(found?.filipinoTranslation).toBe("Sumakay ng jeep.");
+    expect(found?.englishTranslation).toBeNull();
   });
 
   it("orders an entry's responses by creation time and asks for an exact count", async () => {

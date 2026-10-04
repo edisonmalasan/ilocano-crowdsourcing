@@ -64,36 +64,41 @@ const bilingual = {
  *   V1 answers E1 (natural) and E2 (incorrect, correction A)
  *   V2 answers E1 (natural) and E2 (incorrect, correction A)
  *   V3 answers E2 (natural, NO correction)
- *   V4 answers E3 (cannot_evaluate)                          — abstention
- *   V5 answers E3 (natural, ENGLISH ONLY, no Filipino)        — partial
- *   V6 answers E3 (unnatural, correction, NO translations)   — partial
+ *   V4 answers E3 (cannot_evaluate)                          — abstention, contributes nothing
+ *   V5 answers E3 (natural, ENGLISH ONLY, no Filipino)        — contributes judgment + English
+ *   V6 answers E3 (unnatural, correction, NO translations)   — contributes judgment only
  *   V7 answers X1 (natural)                                   — second category
  *
- *   E1: 2 rows, 2 qualifying, 2 distinct validators, COMPLETE, no review
- *   E2: 3 rows, 3 qualifying, 3 distinct validators, COMPLETE, FLAGGED
- *       (two `incorrect` with the same correction and one `correct_natural` — the qualifying
- *        evaluations disagree, which is the review rule's first clause)
- *   E3: 3 rows, 0 qualifying, 3 distinct, INCOMPLETE, no review. All three are NON-QUALIFYING:
- *       an abstention and two partials. None can disagree, so this entry is not flagged.
+ *   E1: 2 rows, 2 contributing, 2 distinct validators, COMPLETE, no review
+ *   E2: 3 rows, 3 contributing, 3 distinct validators, COMPLETE, FLAGGED
+ *       (two `incorrect` with the same correction and one `correct_natural` — the valid
+ *        judgments disagree, which is the review rule's first clause)
+ *   E3: 3 rows, 2 contributing, 3 distinct, INCOMPLETE, FLAGGED. V5 and V6 contribute —
+ *       translation effort is per-response and optional — but no row carries Filipino, so the
+ *       pooled pillars (judgment + English, missing Filipino) never all hold. The two valid
+ *       judgments disagree (`correct_natural` vs `correct_unnatural`), so the entry IS flagged:
+ *       a flag computed over full packages only would miss this.
  *   E4, short_greeting: 0 rows each, INCOMPLETE
- *   X1: 1 row, 1 qualifying, 1 distinct, SECOND CATEGORY (landmark_guidance), COMPLETE — one
- *       validating package is the whole of completion, so a single response completes it
+ *   X1: 1 row, 1 contributing, 1 distinct, SECOND CATEGORY (landmark_guidance), COMPLETE —
+ *       pooled coverage from one response is the whole of completion, so a single full response
+ *       completes it
  *
- *   Totals: 9 stored rows, 6 qualifying, 3 non-qualifying, 7 distinct validators in the corpus
- *   (V1..V7), 3 entries complete, 1 flagged.
+ *   Totals: 9 stored rows, 8 contributing, 1 non-contributing, 7 distinct validators in the corpus
+ *   (V1..V7), 3 entries complete, 2 flagged.
  *
  *   TWO DIFFERENT "distinct validators" FIGURES, both correct: `generated_from.distinct_validators`
- *   counts every validator that responded (7, including the three whose responses do not qualify),
- *   while coverage counts distinct validators among QUALIFYING responses only.
+ *   counts every validator that responded (7, including the abstainer), while coverage counts
+ *   distinct validators among CONTRIBUTING responses only.
  *
  *   THE TRAP, and the reason V1 answers two entries: `countQualifyingValidations` over ALL NINE rows
- *   returns 4 — the number of DISTINCT QUALIFYING validators (V1, V2, V3, V7) — not 6. The summary
- *   must sum per entry instead.
+ *   returns 6 — the number of DISTINCT CONTRIBUTING validators (V1, V2, V3, V5, V6, V7) — not 8.
+ *   The summary must sum per entry instead.
  *
- *   WHY THE PARTIAL ROWS ARE HERE: the requirement names three non-qualifying cases, and before they
- *   existed only ONE of the three was represented in this fixture, so a second rule written as
- *   `evaluation !== "cannot_evaluate"` produced byte-identical output on every row. V5 and V6 each
- *   defeat that restatement on their own. */
+ *   WHY THE PARTIAL ROWS ARE HERE: the methodology names per-response choice, and V5 and V6 are
+ *   its two halves — one covering a language without the other, one judging without covering
+ *   either. A rule written as "not cannot_evaluate counts nothing unless fully translated" would
+ *   call neither contributing; the shared rule calls both contributing, and E3's arithmetic is
+ *   what stops the fixture from being satisfied by that restatement. */
 const entries = [
   entry("E1"),
   entry("E2"),
@@ -265,14 +270,15 @@ describe("buildExportSummary", () => {
       requires_researcher_review: false,
     });
     expect(byId.get("E3")).toMatchObject({
-      qualifying_validations: 0,
-      non_qualifying_validations: 3,
+      qualifying_validations: 2,
+      non_qualifying_validations: 1,
       stored_responses: 3,
       distinct_validators: 3,
       coverage_complete: false,
-      // None of the three qualifies, so none can disagree: an abstention is not an opinion, and a
-      // partial response is not a weaker opinion.
-      requires_researcher_review: false,
+      // Two of the three contribute, but no row carries Filipino, so the pooled pillars never all
+      // hold. The two valid judgments disagree, so the entry IS flagged — an abstention is not an
+      // opinion, but two differing judgments are.
+      requires_researcher_review: true,
     });
     expect(byId.get("E4")).toMatchObject({
       qualifying_validations: 0,
@@ -312,13 +318,13 @@ describe("buildExportSummary", () => {
   });
 
   it("sums the qualifying total PER ENTRY rather than counting globally", () => {
-    // The trap, pinned. Counted globally over all nine rows, `countQualifyingValidations` returns 4 —
-    // the number of DISTINCT QUALIFYING validators (V1, V2, V3, V7) — because it dedupes by validator
-    // across its whole input. The correct total is 6, from summing per entry.
+    // The trap, pinned. Counted globally over all nine rows, `countQualifyingValidations` returns 6 —
+    // the number of DISTINCT CONTRIBUTING validators (V1, V2, V3, V5, V6, V7) — because it dedupes
+    // by validator across its whole input. The correct total is 8, from summing per entry.
     const globalCount = countQualifyingForTest(sources.map((item) => item.response));
-    expect(globalCount).toBe(4);
+    expect(globalCount).toBe(6);
 
-    expect(summary.totals.qualifying_validations).toBe(6);
+    expect(summary.totals.qualifying_validations).toBe(8);
     // And the two distinct-validator figures are deliberately different numbers, both correct.
     expect(summary.generated_from.distinct_validators).toBe(7);
   });
@@ -342,8 +348,8 @@ describe("buildExportSummary", () => {
       {
         category: "origin_destination",
         entries: 5,
-        qualifying_validations: 5,
-        non_qualifying_validations: 3,
+        qualifying_validations: 7,
+        non_qualifying_validations: 1,
         stored_responses: 8,
       },
       {
@@ -379,10 +385,9 @@ describe("buildExportSummary", () => {
   });
 
   it("marks completion from the shared predicate, and carries no target", () => {
-    // E1 holds two qualifying responses and X1 holds one: under the superseded target of 3 both
-    // read as incomplete, and under the corrected rule both are complete. One validating package
-    // is the whole of completion, so the count behind a complete entry is a diagnostic, not the
-    // decision.
+    // E1 holds two contributing responses and X1 holds one: under the superseded target of 3 both
+    // read as incomplete, and under pooled coverage both are complete. Coverage is the whole of
+    // completion, so the count behind a complete entry is a diagnostic, not the decision.
     const byId = new Map(summary.by_entry.map((row) => [row.dataset_entry_id, row]));
 
     expect(byId.get("E1")?.coverage_complete).toBe(true);

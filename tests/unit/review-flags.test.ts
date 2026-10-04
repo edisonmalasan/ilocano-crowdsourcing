@@ -25,14 +25,14 @@ import {
 import { nonQualifyingReason } from "@/lib/domain/review-reasons";
 import {
   isQualifyingValidation,
-  type QualifyingResponseShape,
+  type CoverageResponseShape,
 } from "@/lib/domain/validation-response";
 
 const ENGLISH = "Go north past the market.";
 const FILIPINO = "Dumiretso ka sa hilaga lagpas ng palengke.";
 
-// A complete bilingual response, the shape that qualifies.
-const qualifying = (overrides: Partial<QualifyingResponseShape> = {}): QualifyingResponseShape => ({
+// A complete bilingual response, the shape that covers every pillar alone.
+const qualifying = (overrides: Partial<CoverageResponseShape> = {}): CoverageResponseShape => ({
   evaluation: "correct_natural",
   englishTranslation: ENGLISH,
   filipinoTranslation: FILIPINO,
@@ -72,10 +72,10 @@ describe("evaluationsDisagree", () => {
     expect(requiresResearcherReview(responses)).toBe(false);
   });
 
-  it("ignores evaluations on responses that do not qualify", () => {
-    // Two responses with different evaluations, NEITHER carrying translations: neither qualifies,
-    // so there is no qualifying disagreement. A flag computed over raw evaluations would fire
-    // here, which is why the predicate filters first.
+  it("counts translation-free judgments in disagreement", () => {
+    // Two evaluable responses with different evaluations and NO translations are both valid
+    // judgments, so they disagree. A flag computed over full packages only would miss this,
+    // which is why the predicate filters on judgments rather than on coverage.
     const responses = [
       { evaluation: "correct_natural" as const },
       {
@@ -84,8 +84,8 @@ describe("evaluationsDisagree", () => {
       },
     ];
 
-    expect(evaluationsDisagree(responses)).toBe(false);
-    expect(requiresResearcherReview(responses)).toBe(false);
+    expect(evaluationsDisagree(responses)).toBe(true);
+    expect(requiresResearcherReview(responses)).toBe(true);
   });
 });
 
@@ -160,9 +160,9 @@ describe("translations never count toward the flag", () => {
   it("contains no translation field access in the module that computes the flag", () => {
     // The structural half. Comments stripped first — the module's own header explains the rule in
     // prose, and prose about translations is not a comparison of them. What remains must never
-    // READ a translation value, in any casing or snake_case, while NAMING the qualifying rule
-    // (`requiresBilingualTranslations`) stays allowed: the rule is what determines qualifying,
-    // and the guard's subject is value access, not the word. A pattern matching the bare word
+    // READ a translation value, in any casing or snake_case, while NAMING the judgment rule
+    // (`isValidJudgment`) stays allowed: the rule is what determines participation, and the
+    // guard's subject is value access, not the word. A pattern matching the bare word
     // would forbid the import and force the module to restate the rule — the drift this project
     // refuses.
     const source = readFileSync(
@@ -205,19 +205,37 @@ describe("nonQualifyingReason", () => {
   });
 
   it("agrees with isQualifyingValidation on every shape it is given", () => {
-    // The reason and the verdict come from one rule. A shape the verdict accepts must have no
-    // reason, and a shape it rejects must have one — if the two ever disagree, one of them was
+    // The reason and the verdict come from one rule. A shape that contributes in every pillar
+    // has no reason; a shape that contributes nothing has exactly one; a shape that contributes
+    // partially names its first missing pillar. If the two ever disagree, one of them was
     // edited without the other, which is the drift this module exists to prevent.
-    const shapes: QualifyingResponseShape[] = [
-      qualifying(),
-      { evaluation: "cannot_evaluate" },
-      { evaluation: "incorrect", correctedInstruction: "balikas a" },
-      { evaluation: "correct_natural", englishTranslation: ENGLISH },
-      qualifying({ evaluation: "incorrect", correctedInstruction: "balikas a" }),
+    const shapes: Array<{
+      shape: CoverageResponseShape;
+      qualifies: boolean;
+      reason: "unevaluable" | "missing-correction" | "missing-english" | "missing-filipino" | null;
+    }> = [
+      { shape: qualifying(), qualifies: true, reason: null },
+      { shape: { evaluation: "cannot_evaluate" }, qualifies: false, reason: "unevaluable" },
+      {
+        shape: { evaluation: "incorrect", correctedInstruction: "balikas a" },
+        qualifies: true,
+        reason: "missing-english",
+      },
+      {
+        shape: { evaluation: "correct_natural", englishTranslation: ENGLISH },
+        qualifies: true,
+        reason: "missing-filipino",
+      },
+      {
+        shape: qualifying({ evaluation: "incorrect", correctedInstruction: "balikas a" }),
+        qualifies: true,
+        reason: null,
+      },
     ];
 
-    for (const shape of shapes) {
-      expect(nonQualifyingReason(shape) === null).toBe(isQualifyingValidation(shape));
+    for (const { shape, qualifies, reason } of shapes) {
+      expect(isQualifyingValidation(shape)).toBe(qualifies);
+      expect(nonQualifyingReason(shape)).toBe(reason);
     }
   });
 });
