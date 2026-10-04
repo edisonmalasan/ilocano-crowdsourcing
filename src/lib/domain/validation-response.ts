@@ -5,9 +5,10 @@
  * These live in the domain layer, next to the text helper, rather than in the schema, for two
  * reasons, and the second is the important one:
  *
- *  1. The UI needs to answer "should I show the correction field?" and "must I collect both
- *     translations?" *before* any payload exists — the form has to know which fields to render. The
+ *  1. The UI needs to answer "should I show the correction field?" and "may I offer translation
+ *     inputs?" *before* any payload exists — the form has to know which fields to render. The
  *     schema's `superRefine` then enforces exactly the same answers on submit.
+ *
  *  2. The *meaning* of coverage is a research question, not a storage question. It is needed by
  *     allocation, by the admin dashboard, and by export, none of which own the schema. Putting it
  *     here gives it exactly one definition.
@@ -17,7 +18,7 @@
  * and approve an unhandled case.
  *
  * This module deliberately imports NOTHING. It does not import the schema, which is what keeps
- * `isQualifyingValidation` usable from a React component, a Server Action, and a plain test without
+ * coverage usable from a React component, a Server Action, and a plain test without
  * dragging Zod or `server-only` along with it. The compile-time alias in `@/schemas/validation`
  * pins this module's vocabulary to the schema's, so the two cannot drift apart silently.
  */
@@ -40,30 +41,19 @@ export function isCorrectionRequired(evaluation: ValidationEvaluation): boolean 
 }
 
 /**
- * True when the evaluation requires an English translation *and* a Filipino translation of the
- * validated Ilocano sentence: every evaluation except `cannot_evaluate`.
+ * True when the evaluation may carry research translations: every evaluation except
+ * `cannot_evaluate`.
  *
- * A "cannot confidently evaluate" response supplies no reliable content, so requiring a translation
+ * A "cannot confidently evaluate" response supplies no reliable content, so offering a translation
  * of it would force the validator to translate something they just said they could not judge. The
  * saved text would be an unverified rendering of an unverified judgement, which is worse than no
  * translation at all.
  *
- * For the three evaluations this returns true for, both translations are REQUIRED. There is no
- * "skip" and there is no choice of language.
- *
- * ONE FUNCTION, NOT TWO. An earlier draft exported this alongside `isTranslatableContent` — "is there
- * anything here worth translating?" for the form, "must I collect both?" for submit — as two names
- * over one implementation on the reasoning that a caller might want the weaker reading. There is no
- * weaker reading to want: under this methodology a translation is never merely permitted, so the
- * second name had no caller outside its own tests. Two identical exports where one is unused is a
- * speculative abstraction, and `AGENTS.md` prohibits those.
- *
- * The names will genuinely diverge if the methodology ever adds a third target language, at which
- * point "which fields should the form render" and "which must be non-empty" stop being the same
- * question. That change should introduce the split deliberately, with a caller attached, rather than
- * this file carrying a placeholder in advance.
+ * For the three evaluations this returns true for, each supplied translation must be non-blank,
+ * but none is required: the validator chooses English, Filipino, both, or neither per response.
+ * There is no "skip" penalty and no ranking of the choices.
  */
-export function requiresBilingualTranslations(evaluation: ValidationEvaluation): boolean {
+export function isTranslationEligible(evaluation: ValidationEvaluation): boolean {
   return evaluation !== "cannot_evaluate";
 }
 
@@ -75,10 +65,9 @@ export function requiresBilingualTranslations(evaluation: ValidationEvaluation):
  * literal are all accepted without any of them having to be a schema output first.
  *
  * `correctedInstruction` and both translations are typed as possibly-`null` as well as possibly-
- * absent, because both states occur and both mean "not supplied". `isQualifyingValidation` treats
- * them identically, and the type says so rather than leaving it to be inferred.
+ * absent, because both states occur and both mean "not supplied".
  */
-export interface QualifyingResponseShape {
+export interface CoverageResponseShape {
   readonly evaluation: ValidationEvaluation;
   readonly correctedInstruction?: string | null;
   readonly englishTranslation?: string | null;
@@ -91,83 +80,114 @@ function isPresent(value: string | null | undefined): boolean {
 }
 
 /**
- * Whether one stored response counts toward qualifying coverage.
+ * Whether one stored response is a valid judgment: an evaluable evaluation with any required
+ * correction actually present. Translations play no part — a judgment with no translations is
+ * still a judgment, and one missing its required correction is not.
  *
- * RESEARCH INTEGRITY, stated once. A response qualifies only if all of the following hold:
- *
- *   - the evaluation supplies translatable content (so not `cannot_evaluate`);
- *   - any required correction is actually present;
- *   - the English translation is present and non-blank;
- *   - the Filipino translation is present and non-blank.
- *
- * The consequence that matters: **this is not a row count.** A `cannot_evaluate` response counts
- * zero. A partial response counts zero. A stored row that predates the bilingual requirement and is
- * missing either translation counts zero. Three raw rows of which only two carry a complete
- * bilingual pair is TWO qualifying validations.
- *
- * Whether that count completes an entry is a separate question, answered by
- * {@link isEntryComplete} rather than here. A single qualifying validation completes the entry, so
- * this predicate decides *which responses count* and the completion rule decides *what the count
- * means*.
- *
- * The rejected alternative is a SQL expression. It would be a second, independent implementation of
- * the same rule in another language, and the two would drift — and a drifted coverage count is
- * invisible: allocation would quietly stop handing an entry to enough validators, or start
- * retiring one too early, and the research would record the result as if it were the methodology.
- *
- * Note what this function does NOT check, deliberately:
- *
- *   - **Distinctness.** That is a property of a *set* of responses, not of one response, and the
- *     database enforces it structurally via `UNIQUE (validator_id, dataset_entry_id)`. Counting
- *     distinct validators here would be checking a constraint twice, in a layer that cannot see the
- *     database.
- *   - **Whether the integrity rules pass.** A row that reached storage without a correction where
- *     one was required cannot exist, because the column constraint rejects it. Re-deriving that here
- *     would duplicate the schema and let the two disagree.
+ * The consequence that matters: a skipped-translation response counts here. Translation effort
+ * must never cost a validator their evaluation.
  */
-export function isQualifyingValidation(response: QualifyingResponseShape): boolean {
-  if (!requiresBilingualTranslations(response.evaluation)) {
+export function isValidJudgment(response: CoverageResponseShape): boolean {
+  if (!isTranslationEligible(response.evaluation)) {
     return false;
   }
   if (isCorrectionRequired(response.evaluation) && !isPresent(response.correctedInstruction)) {
     return false;
   }
-  return isPresent(response.englishTranslation) && isPresent(response.filipinoTranslation);
+  return true;
+}
+
+/**
+ * Whether one stored response covers English: a non-blank English translation is present on an
+ * evaluation that may carry one.
+ *
+ * The eligibility gate is load-bearing, not redundant: the schema refuses `cannot_evaluate`
+ * rows carrying translations, so such a row is unreachable through storage — but the predicate
+ * is total over all inputs, and an impossible object must still get the methodology's answer
+ * (nothing carried, nothing covered) rather than a presence check's accident. Absence on an
+ * eligible evaluation is not failure — it is the validator's choice — and a blank value is
+ * refused upstream, never stored, so stored presence means non-blank by construction.
+ */
+export function coversEnglishTranslation(response: CoverageResponseShape): boolean {
+  return isTranslationEligible(response.evaluation) && isPresent(response.englishTranslation);
+}
+
+/**
+ * Whether one stored response covers Filipino: a non-blank Filipino translation is present on
+ * an evaluation that may carry one. Same contract as English — absence is a choice, blank is
+ * refused before storage, and the eligibility gate gives impossible rows the methodology's
+ * answer rather than a presence check's accident.
+ */
+export function coversFilipinoTranslation(response: CoverageResponseShape): boolean {
+  return isTranslationEligible(response.evaluation) && isPresent(response.filipinoTranslation);
+}
+
+/**
+ * Whether one stored response counts toward qualifying coverage: it contributes
+ * in at least one pillar — a valid judgment, a covering English translation, or
+ * a covering Filipino translation.
+ *
+ * RESEARCH INTEGRITY, stated once. `cannot_evaluate` counts zero in every
+ * pillar. A response missing its required correction counts zero as a judgment
+ * (but may still cover a language it carries). A blank translation can never
+ * be stored — the schema normalizes it to absent before these rules see it —
+ * so stored presence means cover.
+ *
+ * The consequence that matters: **this is not a row count.** Three raw rows of
+ * which one judges, one covers English, and one covers Filipino are three
+ * contributing responses whose entry is complete — and a raw `count(*)` still
+ * says nothing about that.
+ *
+ * Whether contributions complete an entry is a separate question, answered by
+ * {@link isEntryComplete} rather than here.
+ *
+ * The rejected alternative is a SQL expression. It would be a second, independent
+ * implementation of the same rule in another language, and the two would drift — and
+ * a drifted coverage count is invisible: allocation would quietly stop handing an
+ * entry to enough validators, or start retiring one too early, and the research
+ * would record the result as if it were the methodology.
+ *
+ * Note what this function does NOT check, deliberately:
+ *
+ *   - **Distinctness.** That is a property of a *set* of responses, not of one response, and the
+ *     database enforces it structurally via `UNIQUE (validator_id, dataset_entry_id)`.
+ *   - **Whether the integrity rules pass.** A malformed row cannot exist, because the column
+ *     constraints reject it. Re-deriving that here would duplicate the schema and let the two
+ *     disagree.
+ */
+export function isQualifyingValidation(response: CoverageResponseShape): boolean {
+  return (
+    isValidJudgment(response) ||
+    coversEnglishTranslation(response) ||
+    coversFilipinoTranslation(response)
+  );
 }
 
 /**
  * A stored response together with the validator it belongs to, which coverage needs and
  * {@link isQualifyingValidation} deliberately does not look at.
  */
-export interface CoverageResponseShape extends QualifyingResponseShape {
+export interface ValidatorCoverageResponseShape extends CoverageResponseShape {
   readonly validatorId: string;
 }
 
 /**
- * How many qualifying completed validations a set of stored responses represents, counting each
- * distinct anonymous validator once.
+ * How many distinct anonymous validators hold at least one contributing response in the set.
  *
- * This is the whole of coverage, in one function, and it is the second half of the rule that
- * {@link isQualifyingValidation} cannot express. That predicate answers a question about ONE
- * response; coverage is a question about a SET, and a set has two properties a single response does
- * not. Both are why a raw `count(*)` is not a proxy for coverage:
- *
- *   1. **Not every response qualifies.** A `cannot_evaluate` response, a partial response, and a
- *      legacy row missing a translation all count zero. Three stored rows of which only two carry
- *      a complete bilingual pair is TWO.
- *   2. **A validator counts once.** Two qualifying rows from the same validator are one validator's
- *      opinion, not two. The database makes this structurally impossible for one entry via
- *      `UNIQUE (validator_id, dataset_entry_id)`, and this function does not rely on that: it
- *      deduplicates explicitly, because a consumer that assembled its list some other way would
- *      otherwise silently get a different answer from the same rule. What nothing compares this
- *      count against any more is a target — a single qualifying validation completes the entry, so
- *      the count is a diagnostic and {@link isEntryComplete} is the decision.
+ * This is a diagnostic, never a target: pooled coverage completes entries, not validator counts.
+ * A validator counts once however many pillars their responses cover. The database makes
+ * duplicates structurally impossible for one entry via
+ * `UNIQUE (validator_id, dataset_entry_id)`, and this function does not rely on that: it
+ * deduplicates explicitly, because a consumer that assembled its list some other way would
+ * otherwise silently get a different answer from the same rule.
  *
  * The duplicate branch is unreachable through the repository and is tested anyway. An unreachable
  * branch that is never exercised is an untested branch, and a research metric's failure mode is
  * being quietly wrong rather than being loudly broken.
  */
-export function countQualifyingValidations(responses: readonly CoverageResponseShape[]): number {
+export function countQualifyingValidations(
+  responses: readonly ValidatorCoverageResponseShape[],
+): number {
   const validators = new Set<string>();
 
   for (const response of responses) {
@@ -178,25 +198,84 @@ export function countQualifyingValidations(responses: readonly CoverageResponseS
 }
 
 /**
- * Whether a dataset entry is complete: at least one of its stored responses establishes the
- * complete bilingual package.
+ * Pooled coverage for one entry's stored responses: which of the three pillars hold.
+ *
+ * This is the whole of coverage, in one function. The three pillars may come from different
+ * responses — a judgment with no translations, an English-only response, and a Filipino-only
+ * response together cover an entry. That is the methodology: translation effort is per-response
+ * and optional, while entry coverage is pooled and strict.
+ *
+ * The rejected alternative is a SQL expression. It would be a second, independent implementation of
+ * the same rule in another language, and the two would drift — and a drifted coverage count is
+ * invisible: allocation would quietly stop handing an entry to enough validators, or start
+ * retiring one too early, and the research would record the result as if it were the methodology.
+ */
+export interface EntryCoverage {
+  /** At least one response is a valid judgment. */
+  readonly hasJudgment: boolean;
+  /** At least one response carries a covering English translation. */
+  readonly hasEnglish: boolean;
+  /** At least one response carries a covering Filipino translation. */
+  readonly hasFilipino: boolean;
+}
+
+export function entryCoverage(responses: readonly CoverageResponseShape[]): EntryCoverage {
+  let hasJudgment = false;
+  let hasEnglish = false;
+  let hasFilipino = false;
+
+  for (const response of responses) {
+    if (isValidJudgment(response)) hasJudgment = true;
+    if (coversEnglishTranslation(response)) hasEnglish = true;
+    if (coversFilipinoTranslation(response)) hasFilipino = true;
+  }
+
+  return { hasJudgment, hasEnglish, hasFilipino };
+}
+
+/**
+ * Whether a dataset entry is complete: its stored responses collectively hold a valid judgment,
+ * a covering English translation, and a covering Filipino translation.
  *
  * This is the whole of completion, in one function, and it is deliberately a BOOLEAN rather than a
  * count compared against a target. There is no three-validator target, no three-attempt target, and
- * no 0/1/2/3 coverage level: an entry with one qualifying validation and an entry with fifty are
- * both complete, and an entry whose only responses are `cannot_evaluate`, partial, or missing a
- * translation is incomplete however many rows it holds. The raw count of stored rows plays no part
- * in the decision.
+ * no 0/1/2/3 coverage level: an entry covered by one response and an entry covered by three are
+ * both complete, and an entry whose only responses are `cannot_evaluate` is incomplete however many
+ * rows it holds. The raw count of stored rows plays no part in the decision.
  *
- * The function is `some(isQualifyingValidation)` and says so openly, rather than re-implementing
- * the qualifying rule. A second implementation of which responses qualify would be the drift this
- * module's header warns about; the decision here is only what one qualifying response *means*.
- *
- * Like {@link countQualifyingValidations}, this takes the entry's stored responses and nothing
- * else: no validator count, no target, no configuration. Every consumer that reports completion —
+ * Like the rule it replaces, this takes the entry's stored responses and nothing else: no
+ * validator count, no target, no configuration. Every consumer that reports completion —
  * allocation eligibility, dashboard figures, and export status — calls this function, so
  * disagreement is impossible rather than merely detectable.
  */
-export function isEntryComplete(responses: readonly QualifyingResponseShape[]): boolean {
-  return responses.some(isQualifyingValidation);
+export function isEntryComplete(responses: readonly CoverageResponseShape[]): boolean {
+  const coverage = entryCoverage(responses);
+  return coverage.hasJudgment && coverage.hasEnglish && coverage.hasFilipino;
+}
+
+/**
+ * The instant an entry's pooled coverage first held, or `null` when it never did.
+ *
+ * Responses are replayed in server-minted `createdAt` order accumulating pillars; the returned
+ * instant is the `createdAt` of the response that completed the set. Ties share an instant, and
+ * that is correct: simultaneity at the recorded precision is simultaneity, and the late-arrival
+ * diagnostic treats `>` strictly, so tied rows are never late relative to each other.
+ */
+export function firstCoveredAt(
+  responses: readonly (CoverageResponseShape & { readonly createdAt: string })[],
+): string | null {
+  const ordered = [...responses].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt),
+  );
+
+  let judgment = false;
+  let english = false;
+  let filipino = false;
+  for (const response of ordered) {
+    if (isValidJudgment(response)) judgment = true;
+    if (coversEnglishTranslation(response)) english = true;
+    if (coversFilipinoTranslation(response)) filipino = true;
+    if (judgment && english && filipino) return response.createdAt;
+  }
+  return null;
 }

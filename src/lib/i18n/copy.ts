@@ -342,8 +342,14 @@ export const ENGLISH_COPY = {
   "validation.translation.filipino.description":
     "Isalin sa Filipino ang validated na pangungusap — ang iyong correction kung may isinulat ka, " +
     "kundi ang pangungusap sa itaas.",
-  "validation.translation.required":
-    "Both translations are required for this answer, and neither can be skipped.",
+  "validation.translation.choice.legend": "Would you like to translate this sentence?",
+  "validation.translation.choice.hint":
+    "Choose one language, both, or skip. Skipping carries no penalty.",
+  "validation.translation.choice.english": "English",
+  "validation.translation.choice.filipino": "Filipino",
+  "validation.translation.choice.both": "Both",
+  "validation.translation.choice.skip": "Skip translation",
+  "validation.translation.choice.required": "Choose whether to translate, or skip.",
   "validation.submit": "Save and continue",
   "validation.submitting": "Saving…",
   "validation.failure.invalid":
@@ -737,8 +743,14 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validation.translation.filipino.description":
     "Isalin sa Filipino ang validated na pangungusap — ang iyong pagwawasto kung may isinulat ka, " +
     "kundi ang pangungusap sa ibabaw.",
-  "validation.translation.required":
-    "Kailangan ang dalawang pagsasalin para sa sagot na ito, at wala sa dalawang maaaring laktawan.",
+  "validation.translation.choice.legend": "Gusto mo bang isalin ang pangungusap na ito?",
+  "validation.translation.choice.hint":
+    "Pumili ng isang wika, pareho, o laktawan. Walang parusa ang paglaktaw.",
+  "validation.translation.choice.english": "Ingles",
+  "validation.translation.choice.filipino": "Filipino",
+  "validation.translation.choice.both": "Pareho",
+  "validation.translation.choice.skip": "Laktawan ang pagsasalin",
+  "validation.translation.choice.required": "Pumili kung magsasalin ka o lalaktawan.",
   "validation.submit": "I-save at magpatuloy",
   "validation.submitting": "Ini-save…",
   "validation.failure.invalid":

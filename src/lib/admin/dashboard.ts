@@ -12,7 +12,7 @@
  * EVERY figure here is computed from stored rows with the domain functions, never from a second
  * implementation:
  *
- *   - qualifying counts via `countQualifyingValidations` / `isQualifyingValidation` — the same
+ *   - coverage counts via `countQualifyingValidations` / `isQualifyingValidation` — the same
  *     functions allocation uses, so the dashboard cannot disagree with the pool;
  *   - review flags via `requiresResearcherReview`;
  *   - per-response reasons via `nonQualifyingReason`.
@@ -28,7 +28,7 @@
  *     would report 100% while untouched entries exist, which is the silent-wrong-answer direction.
  *     Zero entries means 0%, not NaN — there is nothing to divide, and NaN on a research
  *     dashboard reads as a broken query. "Complete" is the shared `isEntryComplete` predicate:
- *     one validating package, not a count against a target.
+ *     pooled coverage, not a count against a target.
  */
 
 import type { DatasetEntry } from "@/schemas/dataset";
@@ -37,6 +37,7 @@ import type { AnonymousValidatorId, IlocanoProficiency } from "@/schemas/validat
 
 import {
   countQualifyingValidations,
+  firstCoveredAt,
   isEntryComplete,
   isQualifyingValidation,
   type ValidationEvaluation,
@@ -65,12 +66,12 @@ export interface DashboardRepositories {
 /**
  * The complete/incomplete partition of the dataset.
  *
- * Two buckets and no ladder: an entry is complete when one stored response establishes the
- * complete bilingual package (`isEntryComplete`), and incomplete otherwise, however many
- * responses it holds. An entry with one qualifying validation and an entry with forty are both
- * complete, and the platform does not rank them. The fuller approved figure list — totals,
- * percentage, and diagnostics — belongs to the `completion-metrics-and-export` change; this
- * partition is the interim shape that the corrected methodology makes true.
+ * Two buckets and no ladder: an entry is complete when its stored responses collectively cover
+ * the package (`isEntryComplete`), and incomplete otherwise, however many responses it holds. An
+ * entry covered by one response and an entry covered by three are both complete, and the platform
+ * does not rank them. The fuller approved figure list — totals, percentage, and diagnostics —
+ * belongs to the `completion-metrics-and-export` change; this partition is the interim shape that
+ * the corrected methodology makes true.
  */
 export interface CompletionBuckets {
   /** Entries with no stored response establishing the complete package. */
@@ -196,14 +197,12 @@ export async function loadDashboardOverview(
       buckets.incomplete += 1;
     }
     const qualifying = responses.filter(isQualifyingValidation);
-    // More than one qualifying package is overlap, not error: duplicates from one attempt are
-    // structurally impossible, so each extra package is a distinct attempt's work.
+    // More than one contributing response is overlap, not error: duplicates from one attempt are
+    // structurally impossible, so each extra contribution is a distinct attempt's work.
     if (qualifying.length > 1) extraPackageEntries.push(entry.id);
     // Lateness orders by the SERVER clock: `createdAt` is minted at insert, never supplied by
-    // a client. A response stored after the entry's first qualifying package raced it.
-    const firstAt = qualifying
-      .map((response) => response.createdAt)
-      .reduce((min, at) => (min === null || at < min ? at : min), null as string | null);
+    // a client. A response stored after the entry's pooled coverage first held raced it.
+    const firstAt = firstCoveredAt(responses);
     if (firstAt !== null) {
       const late = responses.filter((response) => response.createdAt > firstAt);
       if (late.length > 0) {

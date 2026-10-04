@@ -176,10 +176,10 @@ function groupByEntry(
 /**
  * Per-entry and per-category summaries, plus totals.
  *
- * The qualifying totals are SUMMED from the per-entry figures rather than counted across the whole
+ * The contribution totals are SUMMED from the per-entry figures rather than counted across the whole
  * corpus, and that is not a style choice: `countQualifyingValidations` dedupes by `validatorId`
  * ACROSS the array it is given, so it is correct for one entry's coverage and returns "the number of
- * validators who ever validated anything" if applied to everything at once. Summing per entry is what
+ * validators who ever contributed anything" if applied to everything at once. Summing per entry is what
  * makes the total a total.
  */
 export function buildExportSummary(
@@ -194,7 +194,7 @@ export function buildExportSummary(
     // Set is here so the figure is right by construction rather than by assumption, and so a
     // fixture that violates the constraint does not silently inflate coverage.
     const distinctValidators = new Set(rows.map((row) => row.response.validatorId)).size;
-    // `ValidationResponse` is structurally a `QualifyingResponseShape` — same evaluation, same
+    // `ValidationResponse` is structurally a `CoverageResponseShape` — same evaluation, same
     // optional correction and translations — so no cast is needed or wanted here. An earlier draft
     // cast each row, which would have silenced a future divergence between the stored type and the
     // shape the coverage rule actually consumes, which is precisely the drift this module must not

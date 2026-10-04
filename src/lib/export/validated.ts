@@ -5,19 +5,23 @@
  * does: the artifact's content must be testable with fakes, no database, and no credential.
  *
  * ============================================================================
- * DERIVED, NEVER CHOSEN
+ * DERIVED PER FIELD, NEVER CHOSEN
  * ============================================================================
- * For each complete entry exactly one stored response supplies the validated record: the
- * earliest qualifying response by server-minted `createdAt`. `createdAt` is minted at insert,
- * never supplied by a client, so earliest-by-clock is a mechanical rule rather than a judgment
- * about which response is best. No vote is taken, no responses are merged, and no preferred
- * validator is selected — the methodology forbids all three, and this module offers no code
- * path that could express them.
+ * For each complete entry each field comes from its earliest covering source by server-minted
+ * `createdAt`: the validated Ilocano from the earliest valid judgment (the correction where the
+ * evaluation required one, otherwise the source instruction), each translation from its earliest
+ * non-blank supplier. `createdAt` is minted at insert, never supplied by a client, so
+ * earliest-by-clock is a mechanical rule rather than a judgment about which response is best. No
+ * vote is taken, no responses are merged into consensus wording, and no preferred validator is
+ * selected — the methodology forbids all three, and this module offers no code path that could
+ * express them.
  *
- * Two cases force `needs_review` without changing the pick:
+ * Any of these force `needs_review` without changing the pick:
  *
  *   - the shared review rule fires (evaluation disagreement or competing corrections);
- *   - two qualifying responses share the same `createdAt`, so "earliest" is ambiguous.
+ *   - the record's fields come from more than one response, so no single response vouches for
+ *     the whole record;
+ *   - two suppliers for one field share the same `createdAt`, so "earliest" is ambiguous.
  *
  * In the tie case the smallest validation id wins, stated as arbitrary and carrying no meaning:
  * ids are CSPRNG hex, so their order means nothing, and a tie-break that pretended otherwise
@@ -29,9 +33,11 @@
  */
 
 import {
+  coversEnglishTranslation,
+  coversFilipinoTranslation,
   isCorrectionRequired,
   isEntryComplete,
-  isQualifyingValidation,
+  isValidJudgment,
 } from "@/lib/domain/validation-response";
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
 import type { DatasetEntry } from "@/schemas/dataset";
@@ -70,7 +76,7 @@ export interface ValidatedRecord {
     readonly destination: string | null;
     readonly transit_mode: string | null;
   };
-  /** The supplying response's id: provenance back to the raw record, without naming whose. */
+  /** The validated-Ilocano supplier's id: provenance back to the raw record, without naming whose. */
   readonly source_validation_id: string;
   readonly needs_review: boolean;
 }
@@ -80,7 +86,7 @@ export type ValidatedCsvRow = Readonly<Record<ValidatedRecordKey, string | null>
 
 /** The derivation rule, stated in the artifact so no reader mistakes it for adjudication. */
 export interface ValidatedDerivation {
-  readonly rule: "earliest-qualifying-package-by-server-created-at";
+  readonly rule: "pooled-earliest-per-field-by-server-created-at";
   readonly tie_break: "smallest-validation-id-arbitrary-carries-no-meaning";
   /** Complete entries omitted: none — every complete entry derives exactly one record. */
   readonly omitted_incomplete_entries: number;
@@ -93,49 +99,96 @@ export interface ValidatedDataset {
 }
 
 /**
- * The validated Ilocano sentence for one qualifying response over its entry.
+ * The validated Ilocano sentence for one valid judgment over its entry.
  *
  * The correction where the evaluation required one, otherwise the source instruction,
  * byte-identical — a correction is never written onto the entry, and the entry is never altered
- * to match a correction. The throw is unreachable through qualifying responses and is tested
- * anyway: a qualifying response missing its required correction means the qualifying predicate
- * and this function disagree about what qualifies, which is precisely the drift this module
- * must not permit silently.
+ * to match a correction. The throw is unreachable through valid judgments and is tested
+ * anyway: a judgment missing its required correction means the predicate and this function
+ * disagree about what judges, which is precisely the drift this module must not permit silently.
  */
 export function validatedIlocanoFor(entry: DatasetEntry, response: ValidationResponse): string {
   if (!isCorrectionRequired(response.evaluation)) return entry.instruction;
   const correction = response.correctedInstruction;
   if (typeof correction === "string" && correction.trim().length > 0) return correction;
-  throw new Error(`qualifying response ${response.id} requires a correction it does not carry`);
+  throw new Error(`valid judgment ${response.id} requires a correction it does not carry`);
 }
 
-/**
- * The supplying response: earliest qualifying by server-minted `createdAt`, ties by smallest id.
- *
- * Sorts a copy: the caller's array order is the repository's, and sorting it in place would
- * corrupt the grouping the caller still owns.
- */
-function supplyingResponse(
+/** Order rows by server-minted instant, ties by smallest id. Sorts a copy, never in place. */
+function orderedByServerClock(
   rows: readonly ExportSourceWithQualifying[],
-): ExportSourceWithQualifying {
-  const qualifying = rows.filter((row) => isQualifyingValidation(row.response));
-  const ordered = [...qualifying].sort(
+): ExportSourceWithQualifying[] {
+  return [...rows].sort(
     (left, right) =>
       left.response.createdAt.localeCompare(right.response.createdAt) ||
       (left.response.id < right.response.id ? -1 : left.response.id > right.response.id ? 1 : 0),
   );
-  const first = ordered[0];
-  if (first === undefined) throw new Error("no qualifying response to supply a validated record");
-  return first;
 }
 
-/** True when "earliest" is ambiguous: two qualifying packages share one instant. */
-function hasTimestampTie(rows: readonly ExportSourceWithQualifying[]): boolean {
-  const ats = rows
-    .filter((row) => isQualifyingValidation(row.response))
-    .map((row) => row.response.createdAt)
-    .sort();
-  return ats.length > 1 && ats[0] === ats[1];
+/**
+ * The three supplying rows: earliest valid judgment, earliest covering English translation,
+ * earliest covering Filipino translation. Each may be a different response — that is pooled
+ * coverage, not a defect — and the multi-source flag below says so openly.
+ */
+interface FieldSuppliers {
+  readonly judgment: ExportSourceWithQualifying;
+  readonly english: ExportSourceWithQualifying;
+  readonly filipino: ExportSourceWithQualifying;
+}
+
+function fieldSuppliers(rows: readonly ExportSourceWithQualifying[]): FieldSuppliers | null {
+  const ordered = orderedByServerClock(rows);
+  const judgment = ordered.find((row) => isValidJudgment(row.response));
+  const english = ordered.find((row) => coversEnglishTranslation(row.response));
+  const filipino = ordered.find((row) => coversFilipinoTranslation(row.response));
+  if (judgment === undefined || english === undefined || filipino === undefined) return null;
+  return { judgment, english, filipino };
+}
+
+/** True when the record's fields come from more than one response. */
+function isMultiSource(suppliers: FieldSuppliers): boolean {
+  const ids = new Set([
+    suppliers.judgment.response.id,
+    suppliers.english.response.id,
+    suppliers.filipino.response.id,
+  ]);
+  return ids.size > 1;
+}
+
+/**
+ * True when "earliest" is ambiguous for any field: two suppliers for one pillar share one
+ * instant. At the recorded precision simultaneity is simultaneity, and the arbitrary tie-break
+ * below must be flagged rather than silent.
+ */
+function hasSupplierTie(rows: readonly ExportSourceWithQualifying[]): boolean {
+  const pillars: ReadonlyArray<(row: ExportSourceWithQualifying) => boolean> = [
+    (row) => isValidJudgment(row.response),
+    (row) => coversEnglishTranslation(row.response),
+    (row) => coversFilipinoTranslation(row.response),
+  ];
+  return pillars.some((pillar) => {
+    const ats = rows
+      .filter(pillar)
+      .map((row) => row.response.createdAt)
+      .sort();
+    return ats.length > 1 && ats[0] === ats[1];
+  });
+}
+
+/** A present-and-non-blank translation cell, or a loud failure naming the drift. */
+function requiredTranslation(
+  value: string | null | undefined,
+  language: string,
+  supplierId: string,
+): string {
+  // Covering guarantees presence-and-non-blank; the guard below turns a drift between the
+  // predicate and this function into a loud failure rather than a blank cell.
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(
+      `covering ${language} supplier ${supplierId} carries no ${language} translation`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -158,21 +211,26 @@ export function buildValidatedDataset(
   for (const entry of entries) {
     const rows = groups.get(entry.id) ?? [];
     if (!isEntryComplete(rows.map((row) => row.response))) continue;
-    const supplying = supplyingResponse(rows);
-    const response = supplying.response;
-    const english = response.englishTranslation;
-    const filipino = response.filipinoTranslation;
-    // Qualifying guarantees both translations present-and-non-blank; the guards below turn a
-    // drift between the predicate and this function into a loud failure rather than a blank cell.
-    if (typeof english !== "string" || english.trim().length === 0) {
-      throw new Error(`qualifying response ${response.id} carries no English translation`);
+    // Complete by the predicate above, so all three suppliers exist; a `null` here names a
+    // disagreement between the predicate and this function rather than an incomplete entry.
+    const suppliers = fieldSuppliers(rows);
+    if (suppliers === null) {
+      throw new Error(`complete entry ${entry.id} has no covering supplier for every pillar`);
     }
-    if (typeof filipino !== "string" || filipino.trim().length === 0) {
-      throw new Error(`qualifying response ${response.id} carries no Filipino translation`);
-    }
+    const judgment = suppliers.judgment.response;
+    const english = requiredTranslation(
+      suppliers.english.response.englishTranslation,
+      "English",
+      suppliers.english.response.id,
+    );
+    const filipino = requiredTranslation(
+      suppliers.filipino.response.filipinoTranslation,
+      "Filipino",
+      suppliers.filipino.response.id,
+    );
     records.push({
       id: entry.id,
-      validated_ilocano: validatedIlocanoFor(entry, response),
+      validated_ilocano: validatedIlocanoFor(entry, judgment),
       english_translation: english,
       filipino_translation: filipino,
       output: {
@@ -180,15 +238,17 @@ export function buildValidatedDataset(
         destination: entry.destination,
         transit_mode: entry.transitMode,
       },
-      source_validation_id: response.id,
+      source_validation_id: judgment.id,
       needs_review:
-        requiresResearcherReview(rows.map((row) => row.response)) || hasTimestampTie(rows),
+        requiresResearcherReview(rows.map((row) => row.response)) ||
+        isMultiSource(suppliers) ||
+        hasSupplierTie(rows),
     });
   }
 
   return {
     derivation: {
-      rule: "earliest-qualifying-package-by-server-created-at",
+      rule: "pooled-earliest-per-field-by-server-created-at",
       tie_break: "smallest-validation-id-arbitrary-carries-no-meaning",
       omitted_incomplete_entries: entries.length - records.length,
     },

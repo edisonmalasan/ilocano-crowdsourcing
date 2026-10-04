@@ -1,7 +1,4 @@
-import {
-  isCorrectionRequired,
-  requiresBilingualTranslations,
-} from "@/lib/domain/validation-response";
+import { isCorrectionRequired, isTranslationEligible } from "@/lib/domain/validation-response";
 import type { Translate } from "@/lib/i18n/copy";
 import type { Evaluation } from "@/schemas/validation";
 import { validationResponseInputSchema, type ValidationResponseInput } from "@/schemas/validation";
@@ -29,7 +26,7 @@ import type { SubmitValidationFailureReason } from "./validation-actions-core";
  * ============================================================================
  * QUESTION 1 IS ANSWERED BY THE DOMAIN PREDICATES, NOT BY A LOCAL RULE
  * ============================================================================
- * `isCorrectionRequired` and `requiresBilingualTranslations` are imported from
+ * `isCorrectionRequired` and `isTranslationEligible` are imported from
  * `@/lib/domain/validation-response`, and this file adds nothing of its own to them. A form that
  * decided "the correction box appears for `correct_unnatural` and `incorrect`" on its own would be
  * a second implementation of an approved research rule, and the two would disagree the first time
@@ -48,6 +45,7 @@ import type { SubmitValidationFailureReason } from "./validation-actions-core";
 export interface EntryFormInput {
   readonly evaluation: Evaluation | null;
   readonly correctedInstruction: string;
+  readonly translationChoice: TranslationChoice | null;
   readonly englishTranslation: string;
   readonly filipinoTranslation: string;
 }
@@ -55,6 +53,7 @@ export interface EntryFormInput {
 export const EMPTY_ENTRY_FORM_INPUT: EntryFormInput = {
   evaluation: null,
   correctedInstruction: "",
+  translationChoice: null,
   englishTranslation: "",
   filipinoTranslation: "",
 };
@@ -65,19 +64,39 @@ export const EMPTY_ENTRY_FORM_INPUT: EntryFormInput = {
  * Both are `false` when nothing is chosen yet, which is why an unstarted form shows the four
  * options and nothing else: asking for a correction before there is a judgement to correct would
  * invite a validator to write a sentence they have not decided is wrong.
+ *
+ * `languageChoice` replaces the old `translations` flag: the form no longer assumes both
+ * translations, it asks which of the four options — English, Filipino, both, or skip — the
+ * validator wants, and renders inputs for exactly the chosen languages.
  */
 export interface EntryFormFields {
   readonly correction: boolean;
-  readonly translations: boolean;
+  readonly languageChoice: boolean;
 }
 
 export function entryFormFields(evaluation: Evaluation | null): EntryFormFields {
-  if (evaluation === null) return { correction: false, translations: false };
+  if (evaluation === null) return { correction: false, languageChoice: false };
   return {
     correction: isCorrectionRequired(evaluation),
-    translations: requiresBilingualTranslations(evaluation),
+    languageChoice: isTranslationEligible(evaluation),
   };
 }
+
+/**
+ * The validator's per-response translation choice.
+ *
+ * Four closed options, and the closure is the point: an open text field here would admit a third
+ * language the columns cannot store. "Skip" is a first-class choice, not an omission — it carries
+ * no penalty and implies no judgment, and the payload it produces is a complete response.
+ */
+export type TranslationChoice = "english" | "filipino" | "both" | "skip";
+
+export const TRANSLATION_CHOICES: readonly TranslationChoice[] = [
+  "english",
+  "filipino",
+  "both",
+  "skip",
+] as const;
 
 /** The free-text half of the form, kept apart so the payload builder cannot be handed a `null`. */
 export interface EntryFormText {
@@ -87,25 +106,29 @@ export interface EntryFormText {
 }
 
 /**
- * The payload to send, with ONLY the fields the chosen evaluation accepts.
+ * The payload to send, with ONLY the fields the chosen evaluation accepts and the chosen
+ * languages supply.
  *
  * The omission is the whole point and it is easy to get wrong. `validationResponseInputSchema`
  * refuses a correction for `correct_natural` and refuses a translation for `cannot_evaluate` — not
  * by ignoring them, but by REJECTING a payload that carries them. So a form which always sent all
- * three fields would be permanently unable to submit `correct_natural`, and the bug would present as
+ * fields would be permanently unable to submit `correct_natural`, and the bug would present as
  * "the form does nothing" rather than as a validation error.
  *
- * The keys are therefore built conditionally, from the same two predicates that decide which inputs
- * are rendered. A validator who picks `incorrect`, types a correction, and then switches to
- * `correct_natural` has the stale text in the component's state; this is where it is dropped, and
- * the alternative — sending it and having the server refuse — would punish a perfectly legitimate
- * change of mind.
+ * The keys are therefore built conditionally, from the same predicates that decide which inputs
+ * are rendered plus the validator's language choice. A validator who picks `incorrect`, types a
+ * correction, and then switches to `correct_natural` has the stale text in the component's state;
+ * this is where it is dropped, and the alternative — sending it and having the server refuse —
+ * would punish a perfectly legitimate change of mind. Likewise a validator who typed a Filipino
+ * translation and then chose English-only has that text dropped here, because sending it would
+ * record a translation under a choice that disclaimed it.
  *
  * The return type is the schema's own, so a field added to `validationResponseInputFields` without a
  * branch here is a type error rather than a silently unsent field.
  */
 export function buildResponsePayload(
   evaluation: Evaluation,
+  choice: TranslationChoice | null,
   text: EntryFormText,
 ): ValidationResponseInput {
   const fields = entryFormFields(evaluation);
@@ -117,8 +140,10 @@ export function buildResponsePayload(
   } = { evaluation };
 
   if (fields.correction) payload.correctedInstruction = text.correctedInstruction;
-  if (fields.translations) {
+  if (fields.languageChoice && (choice === "english" || choice === "both")) {
     payload.englishTranslation = text.englishTranslation;
+  }
+  if (fields.languageChoice && (choice === "filipino" || choice === "both")) {
     payload.filipinoTranslation = text.filipinoTranslation;
   }
 
@@ -145,8 +170,15 @@ export function checkEntryForm(input: EntryFormInput): EntryFormCheck {
     return { complete: false, fieldErrors: { evaluation: "" } };
   }
 
+  // A language choice is required exactly when translations are eligible. Without it the form
+  // cannot know which inputs to require, and the server would receive a payload whose omissions
+  // are ambiguous between "chose skip" and "never asked".
+  if (entryFormFields(input.evaluation).languageChoice && input.translationChoice === null) {
+    return { complete: false, fieldErrors: { translationChoice: "" } };
+  }
+
   const parsed = validationResponseInputSchema.safeParse(
-    buildResponsePayload(input.evaluation, input),
+    buildResponsePayload(input.evaluation, input.translationChoice, input),
   );
   if (parsed.success) return { complete: true, payload: parsed.data };
 
