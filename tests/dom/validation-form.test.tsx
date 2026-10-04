@@ -95,9 +95,28 @@ function form(): HTMLFormElement {
   return view.one<HTMLFormElement>("form");
 }
 
-/** The four evaluation options, in declared order. */
+/** The evaluation options, scoped to the evaluation group — the translation choice renders
+ * its own radiogroup once an evaluable option is chosen, and an unscoped query would mix the two.
+ *
+ * Scoped by the group's `aria-label` rather than by position: the choice group is absent until an
+ * evaluable option is chosen, so "the second radiogroup" is meaningless on a fresh form.
+ */
 function options(): HTMLButtonElement[] {
-  return view.all('button[role="radio"]') as HTMLButtonElement[];
+  const group = view.all('[role="radiogroup"]')[0] as HTMLElement;
+  return Array.from(group.querySelectorAll('button[role="radio"]')) as HTMLButtonElement[];
+}
+
+/** The translation-choice options, in declared order: english, filipino, both, skip. */
+function choiceOptions(): HTMLButtonElement[] {
+  const groups = view.all('[role="radiogroup"]');
+  if (groups.length !== 2) {
+    throw new Error(
+      `expected the evaluation group and the translation-choice group but found ${groups.length} radiogroups. ` +
+        `The choice group renders only for an evaluable evaluation with no write in flight.`,
+    );
+  }
+  const group = groups[1] as HTMLElement;
+  return Array.from(group.querySelectorAll('button[role="radio"]')) as HTMLButtonElement[];
 }
 
 /** The submit control — the only `type="submit"` button, since the options are `type="button"`. */
@@ -154,8 +173,19 @@ async function choose(index: number): Promise<void> {
   await view.pressAndSettle(options()[index]!);
 }
 
-/** Fills both research translations, which every evaluable answer requires. */
+/** Clicks a translation choice — english, filipino, both, or skip — and settles. */
+async function chooseLanguage(index: number): Promise<void> {
+  await view.pressAndSettle(choiceOptions()[index]!);
+}
+
+/** The "both" choice: translations in both languages, as most answers carry. */
+const BOTH_LANGUAGES = 2;
+/** The "skip" choice: a recorded decision to translate neither. */
+const SKIP_TRANSLATION = 3;
+
+/** Chooses both languages and fills both research translations. */
 async function fillTranslations(): Promise<void> {
+  await chooseLanguage(BOTH_LANGUAGES);
   type(field("englishTranslation"), "Go to the Baguio Athletic Bowl.");
   await view.settle();
   type(field("filipinoTranslation"), "Pumunta sa Baguio Athletic Bowl.");
@@ -337,6 +367,7 @@ describe("VF-2 — only the fields the chosen evaluation accepts are submitted",
     await choose(INCORRECT);
     type(field("correctedInstruction"), CORRECTION);
     await view.settle();
+    await chooseLanguage(BOTH_LANGUAGES);
     type(field("englishTranslation"), "Go to the Baguio Athletic Bowl.");
     await view.settle();
     type(field("filipinoTranslation"), "Pumunta sa Baguio Athletic Bowl.");
@@ -371,16 +402,37 @@ describe("VF-2 — only the fields the chosen evaluation accepts are submitted",
 
     await choose(CORRECT_UNNATURAL);
 
+    // The correction renders; the translation FIELDS do not — only the language CHOICE does, and
+    // the choice is a second radiogroup alongside the evaluation one.
     expect(view.all('[name="correctedInstruction"]')).toHaveLength(1);
+    expect(view.all('[name="englishTranslation"]')).toHaveLength(0);
+    expect(view.all('[role="radiogroup"]')).toHaveLength(2);
+
+    await chooseLanguage(BOTH_LANGUAGES);
+
     expect(view.all('[name="englishTranslation"]')).toHaveLength(1);
+    expect(view.all('[name="filipinoTranslation"]')).toHaveLength(1);
 
     await choose(CANNOT_EVALUATE);
 
     // Back to nothing: the decline is a complete response on its own, and a form that left the boxes
-    // visible would be asking for a translation the database will reject.
+    // visible would be asking for a translation the platform will not accept.
     expect(view.all('[name="correctedInstruction"]')).toHaveLength(0);
     expect(view.all('[name="englishTranslation"]')).toHaveLength(0);
     expect(view.all('[name="filipinoTranslation"]')).toHaveLength(0);
+    expect(view.all('[role="radiogroup"]')).toHaveLength(1);
+  });
+
+  it("submits an evaluation-only payload when the validator chose to skip translation", async () => {
+    // Skip is a first-class choice, not an omission: the response carries the evaluation and (for
+    // `incorrect`) its correction, and neither translation key. The server reads the absent keys
+    // as the recorded skip.
+    await choose(CORRECT_NATURAL);
+    await chooseLanguage(SKIP_TRANSLATION);
+
+    await view.submitFormAndSettle(form());
+
+    expect(Object.keys(lastPayload()["response"] as object)).toEqual(["evaluation"]);
   });
 });
 
@@ -823,32 +875,28 @@ describe("VF-8 — a failed write keeps what the participant typed", () => {
     expect(alerts.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("attaches a field-level message to the input that needs fixing", async () => {
-    // The refusal here is the CLIENT's own check, which runs the same `validationResponseInputSchema`
-    // the server runs — which is why the field-level messages are reachable at all. Asserted through
-    // the rendered `aria-describedby` and `aria-invalid`, because those are what a screen reader reads;
-    // asserting only that a message string appears would pass for a message rendered somewhere the
+  it("attaches a field-level message to the choice that needs making", async () => {
+    // The refusal here is the CLIENT's own check: without a language choice the form cannot know
+    // which inputs to require, so it refuses before any payload exists. The message lands on the
+    // CHOICE group — the control the validator must use — asserted through the rendered
+    // `aria-invalid` and the alert text, because those are what a screen reader reads; asserting
+    // only that a message string appears would pass for a message rendered somewhere the
     // participant never looks.
     await choose(CORRECT_NATURAL);
 
     await view.submitFormAndSettle(form());
 
-    const html = view.container.innerHTML;
-    // `aria-describedby` holds a SPACE-SEPARATED LIST of ids, and `Field` points at both the always-on
-    // description and the error. The first draft passed the whole string to `querySelector` and
-    // `happy-dom` threw `DOMException: '#…-description …-error' is not a valid selector` — a failure in
-    // the INSTRUMENT, which is the fourth instrument defect this session and the reason the list is
-    // split here rather than papered over with a `[id~="…"]` attribute selector.
-    const describedBy = (field("filipinoTranslation").getAttribute("aria-describedby") ?? "").split(
-      " ",
-    );
-    expect(describedBy.length, "the invalid field must point at a description").toBeGreaterThan(0);
-    expect(html).toMatch(/aria-invalid="true"/);
-    // And the element it points at actually carries text, rather than existing and being empty.
+    const groups = view.all('[role="radiogroup"]');
+    expect(groups).toHaveLength(2);
+    const choiceGroup = groups[1] as HTMLElement;
+    expect(choiceGroup.getAttribute("aria-invalid")).toBe("true");
+    const describedBy = (choiceGroup.getAttribute("aria-describedby") ?? "").split(" ");
+    expect(describedBy.length, "the invalid group must point at a description").toBeGreaterThan(0);
     const messages = describedBy
       .map((id) => view.container.querySelector(`#${cssEscape(id)}`)?.textContent ?? "")
       .filter((text) => text.length > 0);
-    expect(messages.join(" ")).toMatch(/filipino/i);
+    expect(messages.join(" ")).toMatch(/translate/i);
+    expect(h.submitted).toHaveLength(0);
   });
 
   it("does NOT surface a server issue path as a field message, and says so here", async () => {

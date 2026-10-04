@@ -3,8 +3,8 @@ import { z } from "zod";
 import { normalizeResearchText } from "@/lib/domain/text";
 import {
   isCorrectionRequired,
-  requiresBilingualTranslations,
-  type QualifyingResponseShape,
+  isTranslationEligible,
+  type CoverageResponseShape,
   type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
 
@@ -22,11 +22,11 @@ import { anonymousValidatorIdSchema } from "./validator";
  * the correction lives on the response and not on the entry, and why the two types have disjoint
  * fields.
  *
- * Both research translations are REQUIRED for every evaluable evaluation. There is no language
- * discriminator any more: the languages are named by the fields that hold them, so a request naming
- * an unsupported language is structurally unrepresentable rather than rejected at runtime. That is
- * a change of kind, not of degree — a discriminator extends to more languages, a required pair
- * cannot, and the reason is recorded in the change's `design.md`.
+ * Both research translations are OPTIONAL per response: each evaluable evaluation offers
+ * English, Filipino, both, or neither, and the validator's choice is read from which fields are
+ * present. There is no language discriminator: the languages are named by the fields that hold
+ * them, so a request naming an unsupported language is structurally unrepresentable rather than
+ * rejected at runtime.
  *
  * All approved rules are encoded in ONE `superRefine` over ONE field shape
  * (`validationResponseInputFields`), and both the request-facing schema and the stored-record
@@ -73,15 +73,15 @@ export type Evaluation = z.infer<typeof evaluationSchema>;
  * value vocabulary.
  *
  * There is deliberately no `TRANSLATION_LANGUAGE_CHOICES` vocabulary and no
- * `translationLanguageSchema` here any more. They served a representation where a response named
- * one language and supplied one text, which cannot express "both are required". Naming them now
- * would invite reintroducing a discriminator on two required fields, which is precisely the
- * representation this change exists to remove.
+ * `translationLanguageSchema` here. The choice the validator makes — English, Filipino, both, or
+ * skip — is read from which of the two fields below is present, so a discriminator column would be
+ * a second source of truth that can disagree with the fields. Naming the choice now would invite
+ * reintroducing one.
  *
- * What survives is only what the UI needs to label two fixed text inputs. The values are not a
- * vocabulary, so nothing can select a language, and adding a third target language is a change to
- * this array *and* to the schema fields *and* to the database columns together — not a one-line
- * addition here.
+ * What survives is only what the UI needs to label the choice and the two fixed text inputs. The
+ * per-language label/description pairs below are that chrome. Adding a third target language is a
+ * change to this map *and* to the schema fields *and* to the database columns together — not a
+ * one-line addition here.
  */
 export const TRANSLATION_FIELD_LABELS = {
   english: {
@@ -108,12 +108,18 @@ const normalizedResearchTextFieldSchema = z
 /**
  * The one field shape. `validationResponseInputSchema` and `validationResponseSchema` are both
  * built from it and both receive the same `superRefine`, so a rule added here is added to both.
+ *
+ * Each text field is `.nullable().optional()`, and both nullish states mean "not supplied".
+ * Nullable because the transform below emits `null` for blank input, and because a stored row
+ * read back from the database carries SQL NULL for an absent translation; optional because a
+ * client omits a skipped language rather than sending it. The integrity rules treat both
+ * identically — see the presence checks there.
  */
 const validationResponseInputFields = {
   evaluation: evaluationSchema,
-  correctedInstruction: normalizedResearchTextFieldSchema.optional(),
-  englishTranslation: normalizedResearchTextFieldSchema.optional(),
-  filipinoTranslation: normalizedResearchTextFieldSchema.optional(),
+  correctedInstruction: normalizedResearchTextFieldSchema.nullable().optional(),
+  englishTranslation: normalizedResearchTextFieldSchema.nullable().optional(),
+  filipinoTranslation: normalizedResearchTextFieldSchema.nullable().optional(),
 };
 
 /** The post-transform shape the integrity rules reason about, inferred from the shared fields. */
@@ -147,34 +153,31 @@ export const validationBatchIdSchema = z.string().trim().min(1, "batchId must no
  *  2. correction required for `correct_unnatural` / `incorrect`
  *  3. `correct_natural` carries no correction
  *  4. `cannot_evaluate` carries no correction and no translation
- *  5. evaluable => both translations present and non-blank
+ *  5. each supplied translation is non-blank; none is required
  *  6. no translation-language discriminator -> structural, the field does not exist
  *  7. anything else is rejected            -> the enum, again
  *
- * Rule 5 is written as two independent field-scoped checks rather than one combined check, and the
- * reason is that a single combined check would produce ONE error message for a response missing
- * BOTH translations. A validator who has filled in neither field would be told only about the first,
- * fix it, submit, and be told about the second — two round trips for one omission. Two field-scoped
- * issues also let a form highlight both inputs at once.
- *
- * There is deliberately no separate "must not be empty" message. `normalizeResearchText` already
- * collapses a blank string to `null` before these rules see it, so `absent` and `blank` are the same
- * state by the time they are judged, and a whitespace-only translation is reported as *required* —
- * the same wording the correction rule uses for the same defect. A distinct "empty" message would
- * describe a distinction the pipeline has already thrown away, and it would tell a validator who
- * never typed anything that they had typed something wrong.
+ * Rule 5 needs no check at all: `normalizeResearchText` already collapses a blank string to
+ * `null` before these rules see it, so a whitespace-only translation arrives as absent — which
+ * is a legitimate choice — and a present value is non-blank by construction. There is deliberately
+ * no separate "must not be empty" message: it would describe a distinction the pipeline has
+ * already thrown away, and it would tell a validator who never typed anything that they had typed
+ * something wrong.
  */
 function applyValidationIntegrityRules(
   value: ValidationResponseInputValues,
   ctx: AddIssueCapableContext,
 ): void {
-  const { evaluation, correctedInstruction, englishTranslation, filipinoTranslation } = value;
-  const hasCorrectionField = correctedInstruction !== undefined;
-  const hasEnglishField = englishTranslation !== undefined;
-  const hasFilipinoField = filipinoTranslation !== undefined;
+  const { evaluation, correctedInstruction } = value;
+  // Nullish states are one state: `null` (blank normalized, or SQL NULL read back) and
+  // `undefined` (key omitted) both mean "not supplied". A stored row and a fresh payload therefore
+  // face the same rule, and an explicit `null` from a client is a skip, not a defect.
+  const hasCorrectionField = correctedInstruction != null;
+  const hasEnglishField = value.englishTranslation != null;
+  const hasFilipinoField = value.filipinoTranslation != null;
 
   if (isCorrectionRequired(evaluation)) {
-    if (!hasCorrectionField || correctedInstruction === null) {
+    if (!hasCorrectionField) {
       ctx.addIssue({
         code: "custom",
         path: ["correctedInstruction"],
@@ -189,7 +192,7 @@ function applyValidationIntegrityRules(
     });
   }
 
-  if (!requiresBilingualTranslations(evaluation)) {
+  if (!isTranslationEligible(evaluation)) {
     const notAccepted =
       "A translation is not accepted when the entry cannot be confidently evaluated, because " +
       "that evaluation supplies no reliable content to translate.";
@@ -203,19 +206,10 @@ function applyValidationIntegrityRules(
     return;
   }
 
-  for (const [field, hasField, supplied] of [
-    ["englishTranslation", hasEnglishField, englishTranslation],
-    ["filipinoTranslation", hasFilipinoField, filipinoTranslation],
-  ] as const) {
-    const label = field === "englishTranslation" ? "An English" : "A Filipino";
-    if (!hasField || supplied === null) {
-      ctx.addIssue({
-        code: "custom",
-        path: [field],
-        message: `${label} translation is required for this evaluation. Both translations are required.`,
-      });
-    }
-  }
+  // No translation is required. Each supplied value is non-blank by construction
+  // (`normalizeResearchText` collapses blank to null, and null here means the validator chose
+  // not to supply that language), so there is nothing left to check: absence is a choice the
+  // methodology explicitly permits.
 }
 
 /**
@@ -281,22 +275,22 @@ export type EvaluationVocabularyIsInSync = [ValidationEvaluation] extends [Evalu
 /**
  * Compile-time guard: the domain's coverage shape must be a subset of the schema's response fields.
  *
- * `isQualifyingValidation` lives in the dependency-free domain module and therefore cannot import
+ * `entryCoverage` lives in the dependency-free domain module and therefore cannot import
  * `ValidationResponseInput`. It declares the fields it reads structurally instead, which is what
  * makes it callable from a component, a Server Action, and a plain test without dragging Zod along.
  *
  * The cost of that freedom is that the two declarations can drift: a schema field could be renamed
- * and `isQualifyingValidation` would keep reading a property that no longer exists — at runtime, as
- * `undefined`, silently making every response fail to qualify. That is a coverage bug that produces
+ * and coverage would keep reading a property that no longer exists — at runtime, as
+ * `undefined`, silently making every entry read as uncovered. That is a coverage bug that produces
  * no error anywhere; entries would simply never leave the allocation pool.
  *
  * So this guard fails the build if the domain shape names a field the schema does not have. It
  * checks the *read* direction, which is the dangerous one. The reverse — a schema field the
  * coverage shape ignores — is deliberately not an error: an `id` or `createdAt` is legitimately
- * irrelevant to whether one response qualifies.
+ * irrelevant to coverage.
  */
 export type QualifyingShapeIsInSync = [
-  Exclude<keyof QualifyingResponseShape, keyof ValidationResponseInput>,
+  Exclude<keyof CoverageResponseShape, keyof ValidationResponseInput>,
 ] extends [never]
   ? true
   : never;

@@ -11,10 +11,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  isCorrectionRequired,
-  requiresBilingualTranslations,
-} from "@/lib/domain/validation-response";
+import { isCorrectionRequired } from "@/lib/domain/validation-response";
 import { EVALUATION_CHOICES } from "@/schemas/validation";
 import { ILOCANO_PROFICIENCY_CHOICES } from "@/schemas/validator";
 
@@ -106,15 +103,21 @@ const EXPECTED_MIGRATIONS = [
   // here and in no table list — which is the correct outcome rather than an omission. Same reason
   // as the entries above: a migration this list does not name must FAIL here.
   "20261004140000_rpc_execute_hardening.sql",
+  // Arrived with optional-research-translations: drops the required bilingual pair and keeps a
+  // single cannot_evaluate direction. It changes one dropped pair and one added CHECK and no
+  // table, column, policy, or function, so it appears here and in no table list. Same reason as
+  // the entries above: a migration this list does not name must FAIL here, which is what keeps
+  // a CLOSED list closed.
+  "20261004150000_translation_choice_allowance.sql",
 ] as const;
 
 /**
  * The two required research translations, as a `columns`/`values` fragment.
  *
- * Used by every test whose row is meant to be ACCEPTED on a `correct_natural` evaluation. Since
- * translations are now required, an evaluable insert without this fragment is a rejection, not a
- * valid write — and several tests here are about something other than translations, so their rows
- * must not fail for an unrelated reason.
+ * Used by every test whose row is meant to be ACCEPTED on a `correct_natural` evaluation where
+ * translations are incidental to the rule under test. Translations are optional per response now,
+ * so an evaluable insert without this fragment still stores — but the row would then exercise
+ * two rules at once, and a failure would name the wrong one.
  */
 const BOTH_TRANSLATIONS = {
   columns: ", english_translation, filipino_translation",
@@ -504,10 +507,9 @@ describe("research schema migrations", () => {
 
   describe("vocabulary checks", () => {
     // Rows here are about the evaluation and proficiency VOCABULARIES, not about translations, so
-    // each one supplies `BOTH_TRANSLATIONS` to satisfy the bilingual constraint. Without it the
-    // insert would be rejected by `validations_bilingual_pair_required_when_evaluable` and the
-    // pattern below would fail for a reason unrelated to the rule it names — which is precisely
-    // how a test can be green while proving nothing.
+    // each one supplies `BOTH_TRANSLATIONS` to hold translations constant. Without them an
+    // evaluable row would still store — translations are optional now — but the row would then
+    // exercise two rules at once, and a failure would name the wrong one.
 
     it("rejects an evaluation outside the four approved values", async () => {
       await expectRejected(
@@ -575,14 +577,14 @@ describe("research schema migrations", () => {
       // fails if the SQL and the domain ever disagree.
       //
       // Each row is built from the DOMAIN PREDICATES, not from a retyped table, so it is what a
-      // real validator's submission looks like for that evaluation: the correction only where
-      // `isCorrectionRequired`, and both translations only where `requiresBilingualTranslations`. That is
-      // why this test is also the strongest cross-check that the two agree.
+      // real validator's submission looks like for that evaluation in its MINIMAL form: the
+      // correction only where `isCorrectionRequired`, and no translations at all. Absence is a
+      // legitimate choice now, so the minimal form is the strictest proof the checks are not too
+      // strict — a row carrying translations would pass a check that wrongly demanded them.
       for (const [index, choice] of EVALUATION_CHOICES.entries()) {
         const entryId = `OD_1${String(index).padStart(3, "0")}`;
         const other = `VAL_00${String(index).padStart(4, "0")}`;
         const correction = isCorrectionRequired(choice.value);
-        const translated = requiresBilingualTranslations(choice.value);
         const columns = [
           "id",
           "validator_id",
@@ -590,7 +592,6 @@ describe("research schema migrations", () => {
           "batch_id",
           "evaluation",
           ...(correction ? ["corrected_instruction"] : []),
-          ...(translated ? ["english_translation", "filipino_translation"] : []),
         ].join(", ");
         const values = [
           `'res_${choice.value}'`,
@@ -599,7 +600,6 @@ describe("research schema migrations", () => {
           `'${BATCH}'`,
           `'${choice.value}'`,
           ...(correction ? ["'Ti sentro ti ospital.'"] : []),
-          ...(translated ? ["'Ride the jeep.'", "'Sumakay ng jeep.'"] : []),
         ].join(", ");
         await applySql(
           db,
@@ -740,9 +740,7 @@ describe("research schema migrations", () => {
     // against a constraint that was accidentally far too strict.
     //
     // Every rejection below matches the constraint BY NAME. A generic `check constraint` pattern
-    // would pass when a different constraint fired, which is how a green test can prove nothing —
-    // and with two constraints now covering the bilingual rule, a generic pattern would very likely
-    // pass for the wrong reason.
+    // would pass when a different constraint fired, which is how a green test can prove nothing.
 
     it("requires a correction for the two evaluations that demand one", async () => {
       await expectRejected(
@@ -764,43 +762,55 @@ describe("research schema migrations", () => {
       );
     });
 
-    // The four bilingual quadrants. Each is the one the new cross-column constraint exists to
-    // reject, and each is matched to the NAMED constraint that rejects it.
+    // The translation-choice quadrants. Each evaluable shape below is ACCEPTED: per-response
+    // choice means an evaluable row may carry neither, either, or both translations. Only
+    // `cannot_evaluate` refuses translations, matched to the NAMED constraint that refuses them.
 
-    it("rejects an evaluable validation with NO translations, which the not-blank checks allow", async () => {
-      // The requirement this whole change exists to enforce. Both not-blank checks pass vacuously
-      // on NULL, so without the cross-column constraint an evaluable row with no translation at all
-      // would be storable — and would be counted toward coverage by any row-counting bug.
-      //
-      // Named constraint, and the name is load-bearing: the two bilingual constraints are
-      // deliberately non-overlapping so that exactly one of them rejects any given bad row.
-      // PostgreSQL does not guarantee the order CHECK constraints are evaluated in, so overlapping
-      // constraints would make this assertion an accident of the planner. That is not hypothetical
-      // — the first draft of the migration used a single equivalence constraint, and this test
-      // failed because the other one fired.
-      await expectRejected(
+    it("accepts an evaluable validation with NO translations, the validator having skipped", async () => {
+      // The behavioural statement of the methodology change at the storage layer. Both not-blank
+      // checks pass vacuously on NULL, and no cross-column constraint demands translations of an
+      // evaluable row — so the skipped-translation response stores as a judgment without cover.
+      await applySql(
+        db,
         `insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
          values ('res_notr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural')`,
-        /validations_bilingual_pair_required_when_evaluable/i,
+        "skipped-translation evaluable row",
       );
+      const rows = await query<{ id: string }>(
+        db,
+        "select id from public.validations where id = 'res_notr'",
+      );
+      expect(rows.map((row) => row.id)).toEqual(["res_notr"]);
     });
 
-    it("rejects an evaluable validation with only the English translation", async () => {
-      await expectRejected(
+    it("accepts an evaluable validation with only the English translation", async () => {
+      await applySql(
+        db,
         `insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation)
          values ('res_enonly', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Ride the jeep.')`,
-        /validations_bilingual_pair_required_when_evaluable/i,
+        "English-only evaluable row",
       );
+      const rows = await query<{ id: string }>(
+        db,
+        "select id from public.validations where id = 'res_enonly'",
+      );
+      expect(rows.map((row) => row.id)).toEqual(["res_enonly"]);
     });
 
-    it("rejects an evaluable validation with only the Filipino translation", async () => {
-      await expectRejected(
+    it("accepts an evaluable validation with only the Filipino translation", async () => {
+      await applySql(
+        db,
         `insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation, filipino_translation)
          values ('res_filonly', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural', 'Sumakay ng jeep.')`,
-        /validations_bilingual_pair_required_when_evaluable/i,
+        "Filipino-only evaluable row",
       );
+      const rows = await query<{ id: string }>(
+        db,
+        "select id from public.validations where id = 'res_filonly'",
+      );
+      expect(rows.map((row) => row.id)).toEqual(["res_filonly"]);
     });
 
     it("rejects a translation on an entry the validator could not evaluate", async () => {
@@ -811,7 +821,7 @@ describe("research schema migrations", () => {
            (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation, filipino_translation)
          values ('res_cantr', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate',
                  'Ride the jeep.', 'Sumakay ng jeep.')`,
-        /validations_bilingual_pair_absent_when_unevaluable/i,
+        /validations_no_translation_when_unevaluable/i,
       );
     });
 
@@ -825,7 +835,7 @@ describe("research schema migrations", () => {
         `insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation)
          values ('res_cantr1', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'Ride the jeep.')`,
-        /validations_bilingual_pair_absent_when_unevaluable/i,
+        /validations_no_translation_when_unevaluable/i,
       );
     });
 
@@ -836,7 +846,7 @@ describe("research schema migrations", () => {
         `insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation, filipino_translation)
          values ('res_cantr2', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'cannot_evaluate', 'Sumakay ng jeep.')`,
-        /validations_bilingual_pair_absent_when_unevaluable/i,
+        /validations_no_translation_when_unevaluable/i,
       );
     });
 
@@ -854,11 +864,19 @@ describe("research schema migrations", () => {
 
     it("accepts every combination the domain allows", async () => {
       // The other direction, and the reason the constraints are worth having: a schema that
-      // refused these would destroy real research responses, which is the worse failure. All four
-      // accepted shapes, one row each.
+      // refused these would destroy real research responses, which is the worse failure. Seven
+      // accepted shapes, one row each: the four legacy shapes plus the three translation-choice
+      // shapes (skipped, English-only, Filipino-only) this change adds.
+      //
+      // A third validator and entry are seeded here because `UNIQUE (validator_id,
+      // dataset_entry_id)` allows one response per pair, and the four legacy rows already hold
+      // all four pairs of the two seeded parents.
       await applySql(
         db,
-        `insert into public.validations
+        `insert into public.validators (id) values ('VAL_0000cafe');
+         insert into public.dataset_entries (id, category, instruction, source_payload)
+         values ('OD_0003', 'origin_destination', 'Umasideg ti plaza.', '{"id":"OD_0003"}'::jsonb);
+         insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation${BOTH_TRANSLATIONS.columns})
          values ('res_ok1', '${VALIDATOR}', '${ENTRY}', '${BATCH}', 'correct_natural'${BOTH_TRANSLATIONS.values});
          insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
@@ -870,14 +888,24 @@ describe("research schema migrations", () => {
          insert into public.validations
            (id, validator_id, dataset_entry_id, batch_id, evaluation, corrected_instruction${BOTH_TRANSLATIONS.columns})
          values ('res_ok4', '${OTHER_VALIDATOR}', '${ENTRY}', '${BATCH}_2', 'correct_unnatural',
-                 'Gemahen ti jeep.'${BOTH_TRANSLATIONS.values});`,
+                 'Gemahen ti jeep.'${BOTH_TRANSLATIONS.values});
+         insert into public.validations (id, validator_id, dataset_entry_id, batch_id, evaluation)
+         values ('res_ok5', 'VAL_0000cafe', 'OD_0003', '${BATCH}_2', 'correct_natural');
+         insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, english_translation)
+         values ('res_ok6', 'VAL_0000cafe', '${ENTRY}', '${BATCH}_2', 'correct_natural',
+                 'Ride the jeep.');
+         insert into public.validations
+           (id, validator_id, dataset_entry_id, batch_id, evaluation, filipino_translation)
+         values ('res_ok7', 'VAL_0000cafe', '${OTHER_ENTRY}', '${BATCH}_3', 'correct_natural',
+                 'Sumakay ng jeep.');`,
         "the accepted combinations",
       );
       const rows = await query<{ count: number }>(
         db,
         "select count(*)::int as count from public.validations",
       );
-      expect(rows[0]?.count).toBe(4);
+      expect(rows[0]?.count).toBe(7);
     });
   });
 

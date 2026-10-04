@@ -64,7 +64,7 @@ import type { AnonymousValidatorId } from "@/schemas/validator";
  * service derives the set from every pool entry's stored responses. It has to: a set built only
  * from the returned responses would leave an entry with no responses at all absent, and the rule
  * would then read it as eligible for a reason that is correct but accidental. Deriving completion
- * over the whole pool makes "no validating package means eligible" an explicit statement here
+ * over the whole pool makes "no pooled coverage means eligible" an explicit statement here
  * rather than a fallback the rule happens to have.
  *
  * ============================================================================

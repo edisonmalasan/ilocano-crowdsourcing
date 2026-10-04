@@ -161,25 +161,18 @@ describe("write-intake rejection", () => {
     ]);
   });
 
-  it("attaches the bilingual issue to each translation field, not to one shared bucket", async () => {
-    // A form needs the message on the specific input the validator can fix. With two required
-    // translations and no language selector, "one of them is wrong" is not actionable — so this
-    // asserts the per-field map really has an entry under each translation key.
-    const error = (() => {
-      try {
-        parseWriteIntent(validationResponseInputSchema, { evaluation: "correct_natural" });
-        return null;
-      } catch (caught) {
-        return caught;
-      }
-    })() as WriteIntentError;
+  it("reports NO translation issue for a skipped-translation response, there being none", async () => {
+    // The inverse of what this test asserted under the required pair: absence is now a legitimate
+    // choice, so a payload carrying neither translation parses cleanly rather than producing one
+    // issue per field. A form that needs per-field guidance gets it from the language CHOICE
+    // being unmade, not from the schema — and the choice lives in the form, not in this payload.
+    const parsed = parseWriteIntent(validationResponseInputSchema, {
+      evaluation: "correct_natural",
+    });
 
-    expect(Object.keys(error.fieldIssues).sort()).toEqual([
-      "englishTranslation",
-      "filipinoTranslation",
-    ]);
-    expect(error.fieldIssues.englishTranslation).toHaveLength(1);
-    expect(error.fieldIssues.filipinoTranslation).toHaveLength(1);
+    expect(parsed.evaluation).toBe("correct_natural");
+    expect("englishTranslation" in parsed).toBe(false);
+    expect("filipinoTranslation" in parsed).toBe(false);
   });
 
   it("names the schema in the error so a log identifies which contract rejected the payload", () => {
@@ -260,18 +253,19 @@ describe("write-intake acceptance", () => {
     expect("coverageCount" in parsed).toBe(false);
   });
 
-  it("strips the superseded single-translation keys, so an old client cannot smuggle one through", () => {
+  it("strips the superseded single-translation keys, recording a judgment without translations", () => {
     // A client on the previous wire format sends a language discriminator and one text. Both keys
-    // are unknown to the schema and are dropped rather than honoured, and the payload is then
-    // rejected for supplying neither required translation. The alternative — accepting the old
-    // shape and storing it somewhere — is how a half-translated record would enter the research.
-    expect(() =>
-      parseWriteIntent(validationResponseInputSchema, {
-        evaluation: "correct_natural",
-        translationLanguage: "filipino",
-        translationText: "Pumunta sa bangko.",
-      }),
-    ).toThrow();
+    // are unknown to the schema and are dropped rather than honoured — and with translations
+    // optional, the stripped payload is an ACCEPTED translation-free response. Nothing is
+    // silently lost: the stripped keys carried at most one translation, and the record stands as
+    // a judgment without translations rather than failing closed.
+    const parsed = parseWriteIntent(validationResponseInputSchema, {
+      evaluation: "correct_natural",
+      translationLanguage: "filipino",
+      translationText: "Pumunta sa bangko.",
+    });
+
+    expect(parsed).toEqual({ evaluation: "correct_natural" });
   });
 
   it("writes exactly once when the payload is valid", async () => {

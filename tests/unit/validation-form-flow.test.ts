@@ -44,6 +44,7 @@ function filled(evaluation: string, over: Partial<EntryFormInput> = {}): EntryFo
   return {
     evaluation: evaluationSchema.parse(evaluation),
     correctedInstruction: "Iti Baguio Athletic Bowl ti pagtapon.",
+    translationChoice: "both",
     englishTranslation: "Go to the Baguio Athletic Bowl.",
     filipinoTranslation: "Pumunta sa Baguio Athletic Bowl.",
     ...over,
@@ -54,27 +55,33 @@ describe("which conditional inputs exist", () => {
   it("shows neither a correction nor translations until something is chosen", () => {
     // Asking for a correction before there is a judgement to correct would invite a validator to write
     // a sentence they have not decided is wrong.
-    expect(entryFormFields(null)).toEqual({ correction: false, translations: false });
+    expect(entryFormFields(null)).toEqual({ correction: false, languageChoice: false });
   });
 
-  it("shows translations but NOT a correction for `correct_natural`", () => {
-    expect(entryFormFields("correct_natural")).toEqual({ correction: false, translations: true });
+  it("shows a language choice but NOT a correction for `correct_natural`", () => {
+    expect(entryFormFields("correct_natural")).toEqual({ correction: false, languageChoice: true });
   });
 
-  it("shows BOTH for `correct_unnatural` and for `incorrect`", () => {
-    expect(entryFormFields("correct_unnatural")).toEqual({ correction: true, translations: true });
-    expect(entryFormFields("incorrect")).toEqual({ correction: true, translations: true });
+  it("shows correction AND language choice for `correct_unnatural` and for `incorrect`", () => {
+    expect(entryFormFields("correct_unnatural")).toEqual({
+      correction: true,
+      languageChoice: true,
+    });
+    expect(entryFormFields("incorrect")).toEqual({ correction: true, languageChoice: true });
   });
 
   it("shows NEITHER for `cannot_evaluate`", () => {
-    // The approved way to decline carries nothing else — and `tasks.md` forbids a "skip translation"
-    // affordance, so this is the only no-fields state a validator can reach deliberately.
-    expect(entryFormFields("cannot_evaluate")).toEqual({ correction: false, translations: false });
+    // The approved way to decline carries nothing else. The translation choice is not a way to
+    // decline a single translation — it is offered only where translations are eligible.
+    expect(entryFormFields("cannot_evaluate")).toEqual({
+      correction: false,
+      languageChoice: false,
+    });
   });
 
   it("AGREES with the domain predicates for every approved evaluation, with no local rule", () => {
     // The claim that `entry-form-flow.ts` adds nothing to `isCorrectionRequired` /
-    // `requiresBilingualTranslations`. Enumerated over the table rather than written as four literals,
+    // `isTranslationEligible`. Enumerated over the table rather than written as four literals,
     // so a fifth evaluation added tomorrow is covered by this test rather than escaping it.
     const imported = {
       correction: {
@@ -83,7 +90,7 @@ describe("which conditional inputs exist", () => {
         incorrect: true,
         cannot_evaluate: false,
       },
-      translations: {
+      languageChoice: {
         correct_natural: true,
         correct_unnatural: true,
         incorrect: true,
@@ -97,7 +104,7 @@ describe("which conditional inputs exist", () => {
         `${value}: the form must not disagree with the domain predicate`,
       ).toEqual({
         correction: imported.correction[value],
-        translations: imported.translations[value],
+        languageChoice: imported.languageChoice[value],
       });
     }
   });
@@ -118,7 +125,7 @@ describe("the payload that gets sent", () => {
     // The omission is the whole point, and it is easy to get wrong: the schema REFUSES a correction for
     // `correct_natural`, so a form that always sent all three fields would be permanently unable to
     // submit that answer — and the bug would present as "the form does nothing" rather than as an error.
-    const payload = buildResponsePayload("correct_natural", {
+    const payload = buildResponsePayload("correct_natural", "both", {
       correctedInstruction: "stale text from an earlier choice",
       englishTranslation: "Go to the bowl.",
       filipinoTranslation: "Pumunta sa bowl.",
@@ -132,6 +139,29 @@ describe("the payload that gets sent", () => {
     expect(payload).not.toHaveProperty("correctedInstruction");
   });
 
+  it("sends only the chosen language, dropping stale text in the other", () => {
+    // A validator who typed a Filipino translation and then chose English-only has that text
+    // dropped here: sending it would record a translation under a choice that disclaimed it.
+    const payload = buildResponsePayload("correct_natural", "english", {
+      correctedInstruction: "",
+      englishTranslation: "Go to the bowl.",
+      filipinoTranslation: "Pumunta sa bowl.",
+    });
+
+    expect(Object.keys(payload).sort()).toEqual(["englishTranslation", "evaluation"]);
+    expect(payload.englishTranslation).toBe("Go to the bowl.");
+  });
+
+  it("sends neither translation when the validator chose skip", () => {
+    const payload = buildResponsePayload("correct_natural", "skip", {
+      correctedInstruction: "",
+      englishTranslation: "Go to the bowl.",
+      filipinoTranslation: "Pumunta sa bowl.",
+    });
+
+    expect(Object.keys(payload)).toEqual(["evaluation"]);
+  });
+
   it("carries a correction for `incorrect` and none for `cannot_evaluate`", () => {
     const text = {
       correctedInstruction: "Iti Baguio Athletic Bowl ti pagtapon.",
@@ -139,8 +169,10 @@ describe("the payload that gets sent", () => {
       filipinoTranslation: "Pumonta sa bowl.",
     };
 
-    expect(buildResponsePayload("incorrect", text)).toHaveProperty("correctedInstruction");
-    expect(Object.keys(buildResponsePayload("cannot_evaluate", text))).toEqual(["evaluation"]);
+    expect(buildResponsePayload("incorrect", "both", text)).toHaveProperty("correctedInstruction");
+    expect(Object.keys(buildResponsePayload("cannot_evaluate", null, text))).toEqual([
+      "evaluation",
+    ]);
   });
 
   it("DROPS a stale correction when a validator changes their mind", () => {
@@ -150,14 +182,14 @@ describe("the payload that gets sent", () => {
     const stale = "Iti Baguio Athletic Bowl ti pagtapon.";
 
     expect(
-      buildResponsePayload("correct_unnatural", {
+      buildResponsePayload("correct_unnatural", "both", {
         correctedInstruction: stale,
         englishTranslation: "Go.",
         filipinoTranslation: "Pumonta.",
       }),
     ).toHaveProperty("correctedInstruction", stale);
     expect(
-      buildResponsePayload("correct_natural", {
+      buildResponsePayload("correct_natural", "both", {
         correctedInstruction: stale,
         englishTranslation: "Go.",
         filipinoTranslation: "Pumonta.",
@@ -165,25 +197,29 @@ describe("the payload that gets sent", () => {
     ).not.toHaveProperty("correctedInstruction");
   });
 
-  it("produces a payload the SERVER schema accepts, for every evaluation, when the fields are filled", async () => {
+  it("produces a payload the SERVER schema accepts, for every evaluation and choice", async () => {
     // The property that matters: the form and the server share one schema, so nothing the form can build
     // is refused on arrival. A form that built a payload the server rejects would burn a round trip and
     // lose a typed correction.
     const { validationResponseInputSchema } = await import("@/schemas/validation");
 
     for (const value of EVERY_EVALUATION) {
-      const payload = buildResponsePayload(value, filled(value));
-      expect(
-        validationResponseInputSchema.safeParse(payload).success,
-        `${value} must be acceptable`,
-      ).toBe(true);
+      const choices =
+        value === "cannot_evaluate" ? [null] : (["english", "filipino", "both", "skip"] as const);
+      for (const choice of choices) {
+        const payload = buildResponsePayload(value, choice, filled(value));
+        expect(
+          validationResponseInputSchema.safeParse(payload).success,
+          `${value} / ${choice} must be acceptable`,
+        ).toBe(true);
+      }
     }
   });
 
   it("never invents an `undefined` KEY, only an absent one", () => {
     // `{ correctedInstruction: undefined }` and `{}` serialise differently, and a payload that carries
     // the key with no value can trip a `required`-style check on the receiving side.
-    const payload = buildResponsePayload("cannot_evaluate", {
+    const payload = buildResponsePayload("cannot_evaluate", null, {
       correctedInstruction: "x",
       englishTranslation: "y",
       filipinoTranslation: "z",
@@ -203,6 +239,18 @@ describe("whether what is typed is a complete response", () => {
     expect(result.complete === false && Object.keys(result.fieldErrors)).toEqual(["evaluation"]);
   });
 
+  it("is incomplete — naming the choice — when no language is chosen", () => {
+    // The choice is required exactly when translations are eligible: without it the form cannot
+    // know which inputs to require, and the server would receive omissions it cannot tell from
+    // never having asked.
+    const result = checkEntryForm(filled("correct_natural", { translationChoice: null }));
+
+    expect(result.complete).toBe(false);
+    expect(result.complete === false && Object.keys(result.fieldErrors)).toEqual([
+      "translationChoice",
+    ]);
+  });
+
   it("is complete for a filled evaluable response, and returns the payload it built", () => {
     const result = checkEntryForm(filled("correct_natural"));
 
@@ -218,13 +266,29 @@ describe("whether what is typed is a complete response", () => {
     expect(result.complete).toBe(true);
   });
 
-  it("names the MISSING translation field when one is absent", () => {
-    const result = checkEntryForm(filled("correct_natural", { filipinoTranslation: "" }));
+  it("is complete when the validator chose skip, carrying evaluation and correction only", () => {
+    const result = checkEntryForm(
+      filled("incorrect", {
+        translationChoice: "skip",
+        englishTranslation: "",
+        filipinoTranslation: "",
+      }),
+    );
 
-    expect(result.complete).toBe(false);
-    expect(result.complete === false ? Object.keys(result.fieldErrors).sort() : []).toEqual([
-      "filipinoTranslation",
-    ]);
+    expect(result.complete).toBe(true);
+    if (!result.complete) return;
+    expect(Object.keys(result.payload).sort()).toEqual(["correctedInstruction", "evaluation"]);
+  });
+
+  it("is complete for a single chosen language with the other absent", () => {
+    const result = checkEntryForm(
+      filled("correct_natural", { translationChoice: "english", filipinoTranslation: "" }),
+    );
+
+    expect(result.complete).toBe(true);
+    if (!result.complete) return;
+    expect(result.payload.englishTranslation).toBe("Go to the Baguio Athletic Bowl.");
+    expect("filipinoTranslation" in result.payload).toBe(false);
   });
 
   it("names the MISSING correction field when an evaluation requires one", () => {
@@ -236,28 +300,12 @@ describe("whether what is typed is a complete response", () => {
     ]);
   });
 
-  it("names BOTH translations when both are absent", () => {
-    const result = checkEntryForm({
-      ...EMPTY_ENTRY_FORM_INPUT,
-      evaluation: "correct_natural",
-    });
-
-    expect(result.complete).toBe(false);
-    expect(result.complete === false && Object.keys(result.fieldErrors).sort()).toEqual([
-      "englishTranslation",
-      "filipinoTranslation",
-    ]);
-  });
-
-  it("treats a whitespace-only translation as missing, exactly as the server does", () => {
-    // The whole point of sharing the schema: a form that checked `length > 0` would let three spaces
-    // through and the server would refuse it, costing a round trip and a typed correction.
+  it("treats a whitespace-only translation as absent, exactly as the server does", () => {
+    // Absence is a legitimate choice now: a blank field normalizes to null and the response
+    // completes without that language, on the form and on the server alike.
     const result = checkEntryForm(filled("correct_natural", { englishTranslation: "   " }));
 
-    expect(result.complete).toBe(false);
-    expect(result.complete === false && Object.keys(result.fieldErrors)).toEqual([
-      "englishTranslation",
-    ]);
+    expect(result.complete).toBe(true);
   });
 
   it("keeps ONE message per field, because the second is always a consequence of the first", () => {
@@ -269,7 +317,7 @@ describe("whether what is typed is a complete response", () => {
     });
 
     expect(result.complete).toBe(false);
-    expect(result.complete === false && Object.values(result.fieldErrors)).toHaveLength(2);
+    expect(result.complete === false && Object.values(result.fieldErrors)).toHaveLength(1);
     for (const message of result.complete === false ? Object.values(result.fieldErrors) : []) {
       expect(typeof message).toBe("string");
     }
@@ -277,48 +325,84 @@ describe("whether what is typed is a complete response", () => {
 
   it("reports a message that is SAFE TO SHOW, since it reaches a participant", () => {
     // A Zod message can name internals — a schema key, a `strictObject`. The field errors travel back to
-    // a browser and are rendered, so the check is that they are sentences, not identifiers.
+    // a browser and are rendered, so the check is that they are sentences, not identifiers. The
+    // translation-choice refusal carries an empty marker the component maps to catalog copy in the
+    // participant's own language, so it is excluded here and asserted rendered in the DOM suite.
     const result = checkEntryForm({
       ...EMPTY_ENTRY_FORM_INPUT,
       evaluation: "correct_natural",
     });
 
-    for (const message of result.complete === false ? Object.values(result.fieldErrors) : []) {
-      expect(message.length).toBeGreaterThan(10);
-      expect(message).not.toMatch(/ZodError|invalid_type|too_small|strictObject|\bundefined\b/);
+    expect(result.complete).toBe(false);
+    if (result.complete) return;
+    for (const [field, message] of Object.entries(result.fieldErrors)) {
+      expect(field).toBe("translationChoice");
+      expect(message).toBe("");
     }
   });
 
   it("agrees with the SERVER on every incomplete case, rather than being stricter or laxer", async () => {
     // The strongest available statement of "this form is not a second rule": for each of a set of
-    // incomplete inputs, the form and `validationResponseInputSchema` must both refuse. Compared by
-    // BOOLEAN, so a difference in which message is produced does not fail — a client message differing
+    // inputs, the form and `validationResponseInputSchema` must both refuse or both accept. Compared
+    // by BOOLEAN, so a difference in which message is produced does not fail — a client message differing
     // from the server's is fine; the two disagreeing about WHETHER this is a response is not.
+    //
+    // One deliberate exception: a missing language choice. The form refuses to send anything until
+    // the choice exists (it cannot know which omissions are answers), while the server accepts a
+    // choiceless payload whose absent translations read as skip. Form-strict by design, encoded
+    // below as the one case where the booleans MAY differ, so a future divergence anywhere else
+    // still fails.
     const { validationResponseInputSchema } = await import("@/schemas/validation");
 
-    const attempts: ReadonlyArray<EntryFormInput> = [
-      EMPTY_ENTRY_FORM_INPUT,
-      { ...EMPTY_ENTRY_FORM_INPUT, evaluation: "correct_natural" },
-      filled("correct_natural", { englishTranslation: "" }),
-      filled("correct_natural", { filipinoTranslation: "" }),
-      filled("incorrect", { correctedInstruction: "" }),
-      filled("correct_natural", { correctedInstruction: "a correction nobody asked for" }),
-      { ...EMPTY_ENTRY_FORM_INPUT, evaluation: "cannot_evaluate" },
+    const attempts: ReadonlyArray<{ input: EntryFormInput; formMayBeStricter: boolean }> = [
+      { input: EMPTY_ENTRY_FORM_INPUT, formMayBeStricter: false },
+      {
+        input: { ...EMPTY_ENTRY_FORM_INPUT, evaluation: "correct_natural" },
+        formMayBeStricter: true,
+      },
+      {
+        input: filled("correct_natural", { translationChoice: "english", filipinoTranslation: "" }),
+        formMayBeStricter: false,
+      },
+      {
+        input: filled("correct_natural", { translationChoice: "skip" }),
+        formMayBeStricter: false,
+      },
+      {
+        input: filled("incorrect", { correctedInstruction: "" }),
+        formMayBeStricter: false,
+      },
+      {
+        input: filled("correct_natural", { correctedInstruction: "a correction nobody asked for" }),
+        formMayBeStricter: false,
+      },
+      {
+        input: { ...EMPTY_ENTRY_FORM_INPUT, evaluation: "cannot_evaluate" },
+        formMayBeStricter: false,
+      },
     ];
 
-    for (const attempt of attempts) {
-      const clientComplete = checkEntryForm(attempt).complete;
+    for (const { input, formMayBeStricter } of attempts) {
+      const clientComplete = checkEntryForm(input).complete;
       const serverComplete =
-        attempt.evaluation === null
+        input.evaluation === null
           ? false
           : validationResponseInputSchema.safeParse(
-              buildResponsePayload(attempt.evaluation, attempt),
+              buildResponsePayload(input.evaluation, input.translationChoice, input),
             ).success;
 
-      expect(
-        clientComplete,
-        `the form and the server must agree about whether this is a response: ${JSON.stringify(attempt)}`,
-      ).toBe(serverComplete);
+      if (formMayBeStricter) {
+        expect(
+          clientComplete,
+          `the form must refuse a choiceless payload the server would accept: ${JSON.stringify(input)}`,
+        ).toBe(false);
+        expect(serverComplete).toBe(true);
+      } else {
+        expect(
+          clientComplete,
+          `the form and the server must agree about whether this is a response: ${JSON.stringify(input)}`,
+        ).toBe(serverComplete);
+      }
     }
   });
 });
@@ -423,9 +507,11 @@ describe("the state of the control that started the write", () => {
     expect(state.label).not.toBe(t("validation.submit"));
   });
 
-  it("has no catalog key for any skip-or-save-without-translating control ON THE VALIDATION ROUTE", async () => {
-    // A form that offers to save an evaluable answer without its translations promises something the
-    // DATABASE rejects, so the affordance would be a lie the participant discovers after doing the work.
+  it("names the translation choice, and nothing else, as the skip vocabulary on this route", async () => {
+    // Translation skip is now a designed choice, not a forbidden control — so the guard inverts:
+    // skip-adjacent copy may exist ONLY as the choice set. A second skip affordance (a "later"
+    // button, a deferral link) would be somewhere a validator could abandon translations without
+    // the choice being recorded, which is the shape this guard exists to catch.
     //
     // SCOPED TO THE VALIDATION NAMESPACE, and the scope is load-bearing rather than convenient.
     //
@@ -441,10 +527,9 @@ describe("the state of the control that started the write", () => {
       (key) => key.startsWith("validation.") && /skip|later|without|partial/i.test(key),
     );
 
-    expect(
-      suspicious,
-      "no validation control may offer to skip part of a research response",
-    ).toEqual([]);
+    expect(suspicious.sort(), "skip vocabulary outside the translation-choice set").toEqual([
+      "validation.translation.choice.skip",
+    ]);
     // And the screening refusal the scope excludes is asserted present in the
     // screening namespace — the positive case proving the filter is real.
     expect(Object.keys(ENGLISH_COPY)).toContain("screening.failure.invalid.enroll");

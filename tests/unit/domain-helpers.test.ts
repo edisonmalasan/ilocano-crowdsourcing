@@ -9,7 +9,7 @@ import { normalizeResearchText } from "@/lib/domain/text";
 import * as domainModule from "@/lib/domain/validation-response";
 import {
   isCorrectionRequired,
-  requiresBilingualTranslations,
+  isTranslationEligible,
   type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
 import { anonymousValidatorIdSchema } from "@/schemas/validator";
@@ -76,19 +76,19 @@ describe("isCorrectionRequired", () => {
   it("returns a definitive boolean for every approved evaluation, with no default fallthrough", () => {
     for (const evaluation of ALL_EVALUATIONS) {
       expect(typeof isCorrectionRequired(evaluation)).toBe("boolean");
-      expect(typeof requiresBilingualTranslations(evaluation)).toBe("boolean");
+      expect(typeof isTranslationEligible(evaluation)).toBe("boolean");
     }
   });
 });
 
-describe("requiresBilingualTranslations", () => {
+describe("isTranslationEligible", () => {
   it("is false only for cannot_evaluate", () => {
-    expect(requiresBilingualTranslations("correct_natural")).toBe(true);
-    expect(requiresBilingualTranslations("correct_unnatural")).toBe(true);
-    expect(requiresBilingualTranslations("incorrect")).toBe(true);
+    expect(isTranslationEligible("correct_natural")).toBe(true);
+    expect(isTranslationEligible("correct_unnatural")).toBe(true);
+    expect(isTranslationEligible("incorrect")).toBe(true);
     // There is no reliable content to translate when the validator could not judge the entry, and
-    // requiring it would store an unverified rendering of an unverified judgement.
-    expect(requiresBilingualTranslations("cannot_evaluate")).toBe(false);
+    // offering it would store an unverified rendering of an unverified judgement.
+    expect(isTranslationEligible("cannot_evaluate")).toBe(false);
   });
 
   it("is a total function of the four approved evaluations, with no fifth state", () => {
@@ -103,23 +103,28 @@ describe("requiresBilingualTranslations", () => {
 
     expect(Object.keys(expected).sort()).toEqual([...ALL_EVALUATIONS].sort());
     for (const evaluation of ALL_EVALUATIONS) {
-      expect(requiresBilingualTranslations(evaluation)).toBe(expected[evaluation]);
+      expect(isTranslationEligible(evaluation)).toBe(expected[evaluation]);
     }
   });
 
-  it("is the ONLY translation predicate the domain module exports, with no permitted variant", () => {
-    // A NEGATIVE assertion, probe-confirmed: re-adding an `isTranslatableContent` export that
-    // returns the same value turns this red, and removing `requiresBilingualTranslations` turns it
-    // red the other way. Under this methodology a translation is never merely permitted, so an
-    // "is one allowed?" predicate would have no state in which it returned true — an export that
-    // exists only to be called wrongly.
+  it("exports exactly the eligibility predicate and the two per-language cover predicates", () => {
+    // A NEGATIVE assertion, probe-confirmed: re-adding a `requiresBilingualTranslations` export
+    // turns this red, and removing any of the three turns it red the other way. The three form one
+    // closed vocabulary — may-carry, covers-English, covers-Filipino — with no "must collect both"
+    // variant, because under this methodology no such predicate has a state in which it returns
+    // true.
     const asRecord = domainModule as unknown as Record<string, unknown>;
     const translationPredicates = Object.keys(domainModule)
       .filter((name) => /translat/i.test(name))
       .sort();
 
-    expect(translationPredicates).toEqual(["requiresBilingualTranslations"]);
+    expect(translationPredicates).toEqual([
+      "coversEnglishTranslation",
+      "coversFilipinoTranslation",
+      "isTranslationEligible",
+    ]);
     expect(asRecord.isTranslatableContent).toBeUndefined();
+    expect(asRecord.requiresBilingualTranslations).toBeUndefined();
   });
 });
 

@@ -3,22 +3,20 @@
  *
  * The methodology decision (approved by the thesis team) is stated once, here:
  *
- *   1. the qualifying validators do not all give the same evaluation, or
+ *   1. the entry's valid judgments do not all give the same evaluation, or
  *   2. more than one distinct corrected Ilocano version was submitted.
  *
  * Differences in English or Filipino wording alone are NEVER disagreement, because multiple
  * natural translations may be valid. That is enforced twice: behaviourally, by a test passing
  * rows whose translations differ and asserting no flag; and structurally, by a source test
  * asserting this module never READS a translation value — no `englishTranslation`, no
- * `filipinoTranslation`, in any casing or snake_case. The module does name
- * `requiresBilingualTranslations`, which is the qualifying RULE, not a translation value; the
- * guard matches field access, not the word, so the rule stays usable while the values stay
- * unreadable.
+ * `filipinoTranslation`, in any casing or snake_case.
  *
- * Only QUALIFYING responses participate. A `cannot_evaluate` response is an abstention, not an
+ * Only VALID JUDGMENTS participate. A `cannot_evaluate` response is an abstention, not an
  * opinion: counting it as disagreement would flag entries for having been attempted, and a
- * non-qualifying response contributes nothing to coverage, so it must contribute nothing to the
- * review flag either. Both predicates reuse `isQualifyingValidation` rather than restating it.
+ * translation-only response carries no judgment either, so neither must contribute to the
+ * review flag. Both predicates reuse `isValidJudgment` (and correction presence) rather than
+ * restating them.
  *
  * Corrections are compared after trimming surrounding whitespace and otherwise exact. No case
  * folding, no punctuation normalization: normalization hides real differences, and the safe
@@ -29,13 +27,13 @@
  * Like `validation-response.ts`, this module imports NOTHING except that module, for the same
  * reason: the flag must be usable from a Server Component, a Server Action, and a plain test
  * without dragging Zod or `server-only` along with it. The parameter type is the shared
- * `QualifyingResponseShape`, not a narrower local shape: a second shape would be a second place
+ * `CoverageResponseShape`, not a narrower local shape: a second shape would be a second place
  * for the field list to drift.
  */
 
 import {
-  isQualifyingValidation,
-  type QualifyingResponseShape,
+  isValidJudgment,
+  type CoverageResponseShape,
   type ValidationEvaluation,
 } from "./validation-response";
 
@@ -50,18 +48,18 @@ function canonicalCorrection(value: string): string {
 }
 
 /**
- * Whether the qualifying responses disagree on evaluation.
+ * Whether the entry's valid judgments disagree on evaluation.
  *
- * "Qualifying" is doing the load-bearing work: the distinct evaluations are collected over
- * qualifying responses only, so an entry whose only divergence is a `cannot_evaluate` alongside
- * agreeing qualifying responses does NOT flag. An entry with fewer than two qualifying responses
- * cannot disagree with itself.
+ * "Valid judgment" is doing the load-bearing work: the distinct evaluations are collected over
+ * valid judgments only, so an entry whose only divergence is a `cannot_evaluate` — or a
+ * translation-only response — alongside agreeing judgments does NOT flag. An entry with fewer
+ * than two valid judgments cannot disagree with itself.
  */
-export function evaluationsDisagree(responses: readonly QualifyingResponseShape[]): boolean {
+export function evaluationsDisagree(responses: readonly CoverageResponseShape[]): boolean {
   const evaluations = new Set<ValidationEvaluation>();
 
   for (const response of responses) {
-    if (isQualifyingValidation(response)) evaluations.add(response.evaluation);
+    if (isValidJudgment(response)) evaluations.add(response.evaluation);
   }
 
   return evaluations.size > 1;
@@ -74,7 +72,7 @@ export function evaluationsDisagree(responses: readonly QualifyingResponseShape[
  * and absence is not a version. Two corrections differing only in surrounding whitespace are one
  * version, not two — whitespace is an accident of the input field, not a linguistic claim.
  */
-export function correctionsDiverge(responses: readonly QualifyingResponseShape[]): boolean {
+export function correctionsDiverge(responses: readonly CoverageResponseShape[]): boolean {
   const corrections = new Set<string>();
 
   for (const response of responses) {
@@ -89,13 +87,13 @@ export function correctionsDiverge(responses: readonly QualifyingResponseShape[]
 }
 
 /**
- * Whether an entry requires researcher review: evaluation disagreement among its qualifying
- * responses, or more than one distinct correction submitted.
+ * Whether an entry requires researcher review: evaluation disagreement among its valid
+ * judgments, or more than one distinct correction submitted.
  *
  * This is the whole of the flag in one function. It answers the set-level question the two
  * predicates above cannot ask alone only insofar as it ORs them; everything else — what counts
- * as qualifying, what counts as distinct — lives in the predicates, where the tests pin it.
+ * as a valid judgment, what counts as distinct — lives in the predicates, where the tests pin it.
  */
-export function requiresResearcherReview(responses: readonly QualifyingResponseShape[]): boolean {
+export function requiresResearcherReview(responses: readonly CoverageResponseShape[]): boolean {
   return evaluationsDisagree(responses) || correctionsDiverge(responses);
 }

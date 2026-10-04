@@ -203,55 +203,85 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
         </Field>
       ) : null}
 
-      {fields.translations ? (
+      {fields.languageChoice ? (
         <div className="flex flex-col gap-6">
-          <p className="text-small text-ink-muted">{t("validation.translation.required")}</p>
+          <AnswerGroup
+            legend={t("validation.translation.choice.legend")}
+            hint={t("validation.translation.choice.hint")}
+            options={(
+              [
+                ["english", t("validation.translation.choice.english")],
+                ["filipino", t("validation.translation.choice.filipino")],
+                ["both", t("validation.translation.choice.both")],
+                ["skip", t("validation.translation.choice.skip")],
+              ] as const
+            ).map(([value, label]) => ({ value, label }))}
+            value={input.translationChoice}
+            onChange={(value) => {
+              if (
+                value === "english" ||
+                value === "filipino" ||
+                value === "both" ||
+                value === "skip"
+              ) {
+                edit("translationChoice", value);
+              }
+            }}
+            disabled={isPending}
+            error={
+              fieldErrors["translationChoice"] !== undefined
+                ? t("validation.translation.choice.required")
+                : undefined
+            }
+          />
 
-          <Field
-            label={t("validation.translation.english")}
-            name="englishTranslation"
-            description={t("validation.translation.english.description")}
-            error={fieldErrors["englishTranslation"]}
-            required
-          >
-            {({ id, describedBy, invalid }) => (
-              <textarea
-                id={id}
-                name="englishTranslation"
-                lang="en"
-                rows={3}
-                value={input.englishTranslation}
-                disabled={isPending}
-                aria-describedby={describedBy}
-                aria-invalid={invalid}
-                onChange={(event) => edit("englishTranslation", event.currentTarget.value)}
-                className={controlClasses({ invalid })}
-              />
-            )}
-          </Field>
+          {input.translationChoice === "english" || input.translationChoice === "both" ? (
+            <Field
+              label={t("validation.translation.english")}
+              name="englishTranslation"
+              description={t("validation.translation.english.description")}
+              error={fieldErrors["englishTranslation"]}
+            >
+              {({ id, describedBy, invalid }) => (
+                <textarea
+                  id={id}
+                  name="englishTranslation"
+                  lang="en"
+                  rows={3}
+                  value={input.englishTranslation}
+                  disabled={isPending}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid}
+                  onChange={(event) => edit("englishTranslation", event.currentTarget.value)}
+                  className={controlClasses({ invalid })}
+                />
+              )}
+            </Field>
+          ) : null}
 
-          <Field
-            label={t("validation.translation.filipino")}
-            name="filipinoTranslation"
-            description={t("validation.translation.filipino.description")}
-            error={fieldErrors["filipinoTranslation"]}
-            required
-          >
-            {({ id, describedBy, invalid }) => (
-              <textarea
-                id={id}
-                name="filipinoTranslation"
-                lang="fil"
-                rows={3}
-                value={input.filipinoTranslation}
-                disabled={isPending}
-                aria-describedby={describedBy}
-                aria-invalid={invalid}
-                onChange={(event) => edit("filipinoTranslation", event.currentTarget.value)}
-                className={controlClasses({ invalid })}
-              />
-            )}
-          </Field>
+          {input.translationChoice === "filipino" || input.translationChoice === "both" ? (
+            <Field
+              label={t("validation.translation.filipino")}
+              name="filipinoTranslation"
+              description={t("validation.translation.filipino.description")}
+              error={fieldErrors["filipinoTranslation"]}
+            >
+              {({ id, describedBy, invalid }) => (
+                <textarea
+                  id={id}
+                  name="filipinoTranslation"
+                  lang="fil"
+                  rows={3}
+                  value={input.filipinoTranslation}
+                  disabled={isPending}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid}
+                  onChange={(event) => edit("filipinoTranslation", event.currentTarget.value)}
+                  className={controlClasses({ invalid })}
+                />
+              )}
+            </Field>
+          ) : null}
         </div>
       ) : null}
 
@@ -271,11 +301,11 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
       ) : null}
 
       {/*
-        The ONLY control that starts a write. There is deliberately no "skip", no "later", and no
-        "save without translating": for an evaluable answer the database rejects a missing
-        translation, so an affordance that appeared to offer one would be a promise the platform
-        cannot keep. `cannot confidently evaluate` is the approved way to decline, and it is one of
-        the four options above rather than a separate button.
+        The ONLY control that starts a write. There is deliberately no "later" control: the
+        translation choice includes an explicit skip, so deferral is a recorded answer rather
+        than an accident of navigation. `cannot confidently evaluate` is the approved way to
+        decline the whole entry, and it is one of the four options above rather than a
+        separate button.
       */}
       <div className="flex flex-col gap-3">
         <Button

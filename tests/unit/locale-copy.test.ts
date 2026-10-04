@@ -64,6 +64,10 @@ const ALLOWED_IDENTICAL: ReadonlyArray<{ readonly key: CopyKey; readonly why: st
     key: "switcher.filipinoName",
     why: "endonym: 'Filipino' is the language's own name in both, and translating it would be wrong",
   },
+  {
+    key: "validation.translation.choice.filipino",
+    why: "endonym, same as switcher.filipinoName: the option names the language, and 'Filipino' is its name in both",
+  },
 ];
 
 describe("catalog exhaustiveness", () => {

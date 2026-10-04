@@ -66,23 +66,26 @@ const bilingual = {
 /**
  * ONE CORPUS, with every clause of the agreement claim given a row that exercises it.
  *
- *   C1  two `correct_natural` (V1, V2)                     -> 2 qualifying, COMPLETE
- *   C2  three `incorrect`, corrections A / A / B            -> 3 qualifying, COMPLETE, and the two
+ *   C1  two `correct_natural` (V1, V2)                     -> 2 contributing, COMPLETE
+ *   C2  three `incorrect`, corrections A / A / B            -> 3 contributing, COMPLETE, and the two
  *                                                              distinct corrections flag it
- *   C3  one `correct_natural` (V4) + one `cannot_evaluate`  -> 1 qualifying, COMPLETE, and the
+ *   C3  one `correct_natural` (V4) + one `cannot_evaluate`  -> 1 contributing, COMPLETE, and the
  *                                                              abstention must NOT be read as disagreement
- *   C4  `correct_natural` with English but NO Filipino (V6)  -> NOT qualifying, INCOMPLETE
- *   C5  `correct_unnatural` + correction, NO translations   -> NOT qualifying, INCOMPLETE
+ *   C4  `correct_natural` with English but NO Filipino (V6)  -> contributes, INCOMPLETE (no Filipino
+ *                                                              anywhere); single judgment, no flag
+ *   C5  `correct_unnatural` + correction, NO translations   -> contributes its judgment, INCOMPLETE;
+ *                                                              single judgment, no flag
  *   C6  no responses at all                                  -> INCOMPLETE
- *   X1  SECOND CATEGORY, one `correct_natural` (V8)          -> 1 qualifying, COMPLETE
+ *   X1  SECOND CATEGORY, one `correct_natural` (V8)          -> 1 contributing, COMPLETE
  *   C7, E9, E10, E11: no responses at all                    -> INCOMPLETE
  *
- *   TOTALS: 10 stored rows; qualifying = C1(2) + C2(3) + C3(1) + X1(1) = 7.
+ *   TOTALS: 10 stored rows; contributing = C1(2) + C2(3) + C3(1) + C4(1) + C5(1) + X1(1) = 9.
  *   PARTITION over 11 entries: complete = 4 (C1, C2, C3, X1); incomplete = 7 (C4, C5, C6, C7,
- *   E9, E10, E11). 4 + 7 = 11. One validating package is the whole of completion, so C1 with two
- *   and C2 with three are exactly as complete as C3 and X1 with one each.
+ *   E9, E10, E11). 4 + 7 = 11. Pooled coverage is the whole of completion, so C1 with two
+ *   and C2 with three are exactly as complete as C3 and X1 with one each — and C4/C5 show the
+ *   other side: contributing responses that never assemble all three pillars.
  *   FLAGGED: C2 only — its corrections differ. C3 is NOT flagged despite differing evaluations,
- *   because the `cannot_evaluate` does not qualify and an abstention is not an opinion.
+ *   because the `cannot_evaluate` contributes nothing and an abstention is not an opinion.
  *
  *   These figures were HAND-COUNTED WRONG on the first pass — the draft comment claimed 13 rows,
  *   zero = 4, and complete = 2, and the suite failed on the bucket literal. The measurement was right
@@ -255,7 +258,7 @@ describe("the dashboard and the export agree on one corpus", () => {
   it("agrees on the total qualifying validations", async () => {
     const { overview, summary } = await bothConsumers();
 
-    expect(overview.totalQualifyingValidations).toBe(7);
+    expect(overview.totalQualifyingValidations).toBe(9);
     expect(overview.totalQualifyingValidations).toBe(summary.totals.qualifying_validations);
   });
 
