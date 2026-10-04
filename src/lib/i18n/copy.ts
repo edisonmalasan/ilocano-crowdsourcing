@@ -127,16 +127,6 @@ export const ENGLISH_COPY = {
   "landing.panel.keep.body":
     "We store the entry, your evaluation, any correction you write, and an optional translation. " +
     "We do not ask for your name, your email, your student number, or your phone.",
-  "landing.before.label": "Please read",
-  "landing.before.item1":
-    "Taking part is voluntary. You can stop after any batch, and nothing you have already " +
-    "submitted is taken back.",
-  "landing.before.item2":
-    "You will never see the same sentence twice, and you will stop being offered sentences once " +
-    "enough other people have checked them.",
-  "landing.before.item3":
-    "If a sentence is wrong, we would rather have your version of it than a conversation about it. " +
-    "Write it the way you would actually say it.",
 
   // -- Landing action, scoped to ONE browser session -------------------------------------
   // The single entry button keeps no card and no explanation: where it goes depends on what this
@@ -313,10 +303,6 @@ export const ENGLISH_COPY = {
     "translations are saved as you go.",
   "validate.entry.label": "The sentence",
   "validate.entry.instructionLabel": "Ilocano sentence",
-  "validate.entry.originLabel": "Intended origin",
-  "validate.entry.destinationLabel": "Intended destination",
-  "validate.entry.transitModeLabel": "Intended travel mode",
-  "validate.entry.transitMode.absent": "Not stated",
 
   // -- Progress --------------------------------------------------------------
   // Three fragments rather than one formatted sentence, because "Sentence 3 of 10" and
@@ -360,9 +346,6 @@ export const ENGLISH_COPY = {
     "Both translations are required for this answer, and neither can be skipped.",
   "validation.submit": "Save and continue",
   "validation.submitting": "Saving…",
-  "validation.savingNote":
-    "Each sentence is saved as soon as you finish it, so you can stop at any point without losing " +
-    "what you have already done.",
   "validation.failure.invalid":
     "We could not accept that answer, and nothing was saved. Check the highlighted inputs.",
   "validation.failure.notConfigured": "The study is not open right now, and nothing was saved.",
@@ -552,16 +535,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "Itinatago namin ang entry, ang iyong pagtataya, ang anumang kaayusan na isulat mo, at ang " +
     "isang opsyonal na pagsasalin. Hindi namin itatanong ang iyong pangalan, email, numero ng " +
     "estudyante, o telepono.",
-  "landing.before.label": "Pakisuri, pakibasa",
-  "landing.before.item1":
-    "Boluntary ang pakikilahok. Maaari kang tumigil pagkatapos ng anumang batch, at hindi " +
-    "naibabalik ang anumang naipasa mo na.",
-  "landing.before.item2":
-    "Hindi mo kailanman makikita ang parehong pangungusap nang dalawang beses, at titigil na sa " +
-    "pagbibigay sa iyo ng mga pangungusap kapag sapat nang tao na ang nagsuri nito.",
-  "landing.before.item3":
-    "Kung mali ang isang pangungusap, mas gusto naming ang iyong bersyon kaysa usapanin ito. " +
-    "Isulat ito gaya ng talagang sasabihin mo ito.",
 
   // -- Landing action, scoped to ONE browser session -------------------------------------
   // Tulad ng Ingles: isang button, walang card, session ang tinutukoy.
@@ -725,10 +698,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "pagwawasto, at ang dalawang pagsasalin ay nase-save habang ginagawa mo.",
   "validate.entry.label": "Ang pangungusap",
   "validate.entry.instructionLabel": "Pangungusap sa Ilocano",
-  "validate.entry.originLabel": "Nilayong pinagmulan",
-  "validate.entry.destinationLabel": "Nilayong puntahan",
-  "validate.entry.transitModeLabel": "Nilayong paraan ng paglalakbay",
-  "validate.entry.transitMode.absent": "Hindi nakasaad",
 
   // -- Progreso ---------------------------------------------------------------
   // Tatlong fragmento sa halip na isang pangungusap na may format, dahil ang “Pangungusap 3 ng 10” at
@@ -772,9 +741,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "Kailangan ang dalawang pagsasalin para sa sagot na ito, at wala sa dalawang maaaring laktawan.",
   "validation.submit": "I-save at magpatuloy",
   "validation.submitting": "Ini-save…",
-  "validation.savingNote":
-    "Nase-save ang bawat pangungusap sa oras na natatapos mo, kaya puwede kang tumigil anumang " +
-    "oras nang hindi nawawalan ng ginawa mo na.",
   "validation.failure.invalid":
     "Hindi namin maaanggap ang sagot na iyon, at walang nase-save. Pakisuri ang mga naka-highlight na " +
     "input.",

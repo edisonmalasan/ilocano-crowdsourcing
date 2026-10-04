@@ -14,10 +14,6 @@ import { ENGLISH_COPY, FILIPINO_COPY, translatorFor } from "@/lib/i18n/copy";
  */
 const CHROME = {
   instructionLabel: ENGLISH_COPY["validate.entry.instructionLabel"],
-  originLabel: ENGLISH_COPY["validate.entry.originLabel"],
-  destinationLabel: ENGLISH_COPY["validate.entry.destinationLabel"],
-  transitModeLabel: ENGLISH_COPY["validate.entry.transitModeLabel"],
-  transitModeAbsent: ENGLISH_COPY["validate.entry.transitMode.absent"],
 } as const;
 
 /** One REAL allocated entry, read from the immutable source rather than written out by hand. */

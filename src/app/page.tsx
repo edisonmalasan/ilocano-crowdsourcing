@@ -107,37 +107,6 @@ export default async function HomePage() {
             ))}
           </div>
         </section>
-
-        {/* Notice ------------------------------------------------------- */}
-        <section className="section-y pt-0" aria-labelledby="before-you-start">
-          <h2 id="before-you-start" className="text-title">
-            {t("common.beforeYouStart")}
-          </h2>
-
-          <Card tone="accent" className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-[1fr_2fr]">
-            <p className="label-meta text-accent">{t("landing.before.label")}</p>
-            <ul className="text-small text-ink md:text-lead flex flex-col gap-3">
-              <li className="flex gap-3">
-                <span aria-hidden="true" className="text-accent">
-                  01
-                </span>
-                <span>{t("landing.before.item1")}</span>
-              </li>
-              <li className="flex gap-3">
-                <span aria-hidden="true" className="text-accent">
-                  02
-                </span>
-                <span>{t("landing.before.item2")}</span>
-              </li>
-              <li className="flex gap-3">
-                <span aria-hidden="true" className="text-accent">
-                  03
-                </span>
-                <span>{t("landing.before.item3")}</span>
-              </li>
-            </ul>
-          </Card>
-        </section>
       </main>
     </>
   );

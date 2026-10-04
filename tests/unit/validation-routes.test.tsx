@@ -275,27 +275,34 @@ describe("the session route presents exactly ONE sentence", () => {
     // The presented one still is, so the guard is not passing by rendering nothing. Both halves of the
     // "exactly one" claim, counted rather than asserted present.
     expect(countOccurrences(html, INSTRUCTION)).toBe(1);
-    expect(countOccurrences(html, "OD_0007")).toBe(1);
+    // And the presented entry's own identifier is NOT rendered either: identifiers are
+    // researchers-only, so no entry is distinguishable by id on this screen — by
+    // the presented sentence, which the count above already pins to exactly one.
+    expect(countOccurrences(html, "OD_0007")).toBe(0);
   });
 
-  it("shows the entry's origin, destination, and travel mode as LABELS, not as instructions", async () => {
+  it("shows the sentence with its instruction label, and no endpoint block", async () => {
     const { default: Page } = await loadSessionPage();
 
     const html = await renderRoute(Page as never);
 
-    for (const value of [
-      EN("validate.entry.instructionLabel"),
-      EN("validate.entry.originLabel"),
-      EN("validate.entry.destinationLabel"),
-      EN("validate.entry.transitModeLabel"),
-    ]) {
-      expect(html).toContain(value);
+    expect(html).toContain(EN("validate.entry.instructionLabel"));
+    // Neither the labels nor the values. The keys are gone from the catalog
+    // entirely, so the labels are asserted as literals — a reworded label
+    // would pass, which is exactly why the endpoint VALUES below are asserted
+    // too: a block that relabelled itself would still show its data.
+    for (const value of ["Intended origin", "Intended destination", "Intended travel mode"]) {
+      expect(html).not.toContain(value);
     }
-    // And the values are on the page beside them. Asserted as present so the test cannot pass by
-    // rendering four labels and no data.
-    expect(html).toContain("Baguio Athletic Bowl");
-    expect(html).toContain("Baguio Convention Center");
-    expect(html).toContain("jeepney");
+    // ("Baguio Athletic Bowl" is deliberately NOT asserted absent — it occurs
+    // inside the instruction itself, so that assertion would fail on a correct
+    // page.)
+    expect(html).not.toContain("Baguio Convention Center");
+    expect(html).not.toContain("jeepney");
+    // And the per-entry saving note is gone with the block: the persistence
+    // behavior is unchanged, only the repeated sentence. ("saved" alone would
+    // match the progress count, so the assertion names the sentence's clause.)
+    expect(html).not.toContain("saved as soon as");
   });
 
   it('marks the Ilocano sentence with `lang="ilo"`, so a screen reader pronounces it', async () => {

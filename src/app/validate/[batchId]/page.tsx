@@ -179,10 +179,6 @@ function SessionBody({ outcome, locale }: SessionBodyProps) {
           entry={session.entry}
           label={t("validate.entry.label")}
           instructionLabel={t("validate.entry.instructionLabel")}
-          originLabel={t("validate.entry.originLabel")}
-          destinationLabel={t("validate.entry.destinationLabel")}
-          transitModeLabel={t("validate.entry.transitModeLabel")}
-          transitModeAbsent={t("validate.entry.transitMode.absent")}
         />
 
         <Card as="section" padding="lg">
@@ -208,8 +204,7 @@ function SessionBody({ outcome, locale }: SessionBodyProps) {
 
             A `<dl>` rather than two bare numbers, so the label and the value are programmatically
             associated: a screen reader can answer "how many did I do in this batch?" without the
-            participant inferring it from which number sits where. The pairing is the same shape
-            `EntryCard` uses for its endpoints, and for the same reason.
+            participant inferring it from which number sits where.
 
             The batch figure is `completedCount` and the lifetime figure is `lifetimeAnsweredCount`,
             and the difference between them is the whole point of labelling them: a validator who has
@@ -220,7 +215,7 @@ function SessionBody({ outcome, locale }: SessionBodyProps) {
             Nothing here is comparative, targeted, or encouraging. The lifetime figure is a static
             record of work already done (`design.md` D7), so it carries no "keep going", no next
             milestone, and no rank — the values are rendered as plain numbers with a `label-meta`
-            caption, exactly as `EntryCard` renders an endpoint value.
+            caption.
           */}
           <dl className="border-ink mt-6 grid grid-cols-1 gap-4 border-t-2 pt-5 sm:grid-cols-2">
             <CompletedFigure
