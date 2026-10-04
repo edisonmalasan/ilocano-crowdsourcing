@@ -1,5 +1,5 @@
 /**
- * The export performs no research-data write, and no request path can trigger it.
+ * The export performs no research-data write, and exactly one request path can trigger it.
  *
  * Same technique as `dashboard-read-only.test.ts`, applied to a different surface, and for the same
  * reason: a claim that the export only reads is worth little unless something fails when it stops
@@ -9,6 +9,10 @@
  * The can-fire controls are REAL PRODUCTION WRITERS — the same ones the dashboard scan uses — because
  * a pattern list with no real writer behind it is a list nobody has tested, which is exactly how
  * `.create(` reached the dashboard scan as an untested pattern in the first place.
+ *
+ * The one request path is the authenticated researcher download (`researcher-export-download`),
+ * named below rather than patterned: the superseded CLI-only rule this file once enforced is
+ * recorded in the research-export spec delta, not deleted from history.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -22,6 +26,8 @@ const SCOPED = [
   path.join(SRC, "lib", "export", "records.ts"),
   path.join(SRC, "lib", "export", "csv.ts"),
   path.join(SRC, "lib", "export", "validated.ts"),
+  path.join(SRC, "lib", "export", "documents.ts"),
+  path.join(SRC, "lib", "export", "web-download.ts"),
 ];
 
 /** Real production modules that really write, one per forbidden method. */
@@ -139,7 +145,7 @@ describe("the export performs no writes", () => {
     }
   });
 
-  it("is unreachable from ANY module in the application, including every Server Action", () => {
+  it("is unreachable from every module except the one authenticated download path", () => {
     // SCOPE, and this is the correction an independent verification pass forced. The first version
     // walked `src/app` and `src/components` — 30 of this repository's 110 modules — and so covered
     // NONE of the six modules carrying `"use server"`. The requirement this discharges names Server
@@ -149,6 +155,17 @@ describe("the export performs no writes", () => {
     // The walk is over ALL of `src/`, and the two counts below are the empty-capture guards that
     // make the scope visible: the module total, and the number of Server Actions the walk actually
     // reached. Without the second, a walk that somehow stopped descending would still pass.
+    //
+    // ONE exception, named rather than patterned: the researcher download route and its core are
+    // the single approved request path (see `researcher-export-download`). An exception expressed
+    // as a pattern ("anything under researcher/") would admit the next request path silently;
+    // a second file naming the export module fails here by name. Modules inside `lib/export/`
+    // itself necessarily import each other; the boundary this guards is other callers reaching
+    // in, not the module's own composition.
+    const EXPORT_DOWNLOAD_EXCEPTION = [
+      path.join(SRC, "app", "researcher", "(protected)", "export", "route.ts"),
+      path.join(SRC, "lib", "export", "web-download.ts"),
+    ];
     const files: string[] = [];
     const walk = (directory: string): void => {
       for (const entry of readdirSyncSync(directory, { withFileTypes: true })) {
@@ -175,8 +192,18 @@ describe("the export performs no writes", () => {
       expect(source, `${relative(file)} must not import the export command`).not.toContain(
         "export-research",
       );
+      if (EXPORT_DOWNLOAD_EXCEPTION.includes(file)) continue;
+      if (file.startsWith(path.join(SRC, "lib", "export") + path.sep)) continue;
       expect(source, `${relative(file)} must not import the export module`).not.toContain(
         "@/lib/export/",
+      );
+    }
+
+    // And the exception is exactly what it claims: both files exist, so a deleted route does not
+    // leave an exemption pointing at nothing while a new importer hides behind it.
+    for (const file of EXPORT_DOWNLOAD_EXCEPTION) {
+      expect(existsSync(file), `${relative(file)} is the named exception and must exist`).toBe(
+        true,
       );
     }
   });
@@ -224,8 +251,13 @@ describe("the export performs no writes", () => {
         /VALIDATIONS_JSON|VALIDATIONS_CSV|SUMMARY_JSON|VALIDATED_JSON|VALIDATED_CSV/,
       );
     }
-    // The five names are read from the command's own constants rather than restated, so this
-    // assertion cannot pass while the command's file names drift away from what ships.
+    // The five names are read from the shared documents module's own constants rather than
+    // restated, so this assertion cannot pass while the file names drift away from what ships.
+    // (They moved out of the command when the web download started sharing the derivation; the
+    // single definition now lives in `@/lib/export/documents`.)
+    const documents = stripComments(
+      readFileSync(path.join(SRC, "lib", "export", "documents.ts"), "utf8"),
+    );
     for (const name of [
       "validations.json",
       "validations.csv",
@@ -233,7 +265,7 @@ describe("the export performs no writes", () => {
       "validated-dataset.json",
       "validated-dataset.csv",
     ]) {
-      expect(command).toContain(name);
+      expect(documents).toContain(name);
     }
   });
 });

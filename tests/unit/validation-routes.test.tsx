@@ -1191,14 +1191,17 @@ describe("the two figures the finished screen reports", () => {
     // claimed from one file: "naming one file is not that". So every route in the application is
     // rendered and enumerated here, and the claim is made over the whole set.
     //
-    // FIVE routes, read from the directory rather than listed, and the count is asserted so a sixth
+    // Routes, read from the directory rather than listed, and the count is asserted so a new
     // route cannot be added without this enumeration noticing. A hard-coded list would go stale
     // quietly and the test would keep passing while covering less than it claims.
     const { readdirSync } = await import("node:fs");
     const { join } = await import("node:path");
     const routeFiles = readdirSync(join(process.cwd(), "src", "app"), { recursive: true })
       .map(String)
-      .filter((name) => name.endsWith("page.tsx") || name.endsWith("page.ts"));
+      .filter(
+        (name) =>
+          name.endsWith("page.tsx") || name.endsWith("page.ts") || name.endsWith("route.ts"),
+      );
 
     // The five routes, as they stood when this was written, named here so a reader can see what the
     // directory walk is expected to find. Asserted against the walk, not substituted for it.
@@ -1212,7 +1215,7 @@ describe("the two figures the finished screen reports", () => {
       .map((name) =>
         name
           .replace(/\\/g, "/")
-          .replace(/(^|\/)page\.tsx?$/, "$1")
+          .replace(/(^|\/)(page\.tsx?|route\.ts)$/, "$1")
           .replace(/\/$/, ""),
       )
       .sort();
@@ -1222,6 +1225,7 @@ describe("the two figures the finished screen reports", () => {
       "ready",
       "researcher/(protected)",
       "researcher/(protected)/entries/[id]",
+      "researcher/(protected)/export",
       "researcher/sign-in",
       "start",
       "validate",
@@ -1229,9 +1233,9 @@ describe("the two figures the finished screen reports", () => {
     ]);
 
     // =============================================================================================
-    // WHY THREE ROUTES ARE ENUMERATED BUT NOT RENDERED, AND WHY THAT IS NOT A SILENT SKIP
+    // WHY FOUR ROUTES ARE ENUMERATED BUT NOT RENDERED, AND WHY THAT IS NOT A SILENT SKIP
     // =============================================================================================
-    // The three `researcher/**` routes are behind an authenticated boundary, they are not part of the
+    // The four `researcher/**` routes are behind an authenticated boundary, they are not part of the
     // PUBLIC validator experience, and this file's mocks do not stand in for them — rendering them
     // here would mean either mocking a cookie and a privileged client into a validation-route test,
     // or letting the render fail on a missing request scope. Neither belongs in this file.
@@ -1241,10 +1245,10 @@ describe("the two figures the finished screen reports", () => {
     // a loophole that any future route could be routed through by containing the substring
     // `researcher`, and the claim would quietly cover less than it says. So:
     //
-    //   - the full list above is asserted exactly, so a ninth route fails here by name;
+    //   - the full list above is asserted exactly, so a tenth route fails here by name;
     //   - every route is assigned to exactly one of the two groups below; and
     //   - the researcher group is asserted to be covered by a test file that DOES render it.
-    // Three authenticated routes since the dashboard change added per-entry review: the new
+    // Four authenticated routes since the export download joined the dashboard change: the new
     // route sits beneath the same `(protected)` layout, so it belongs in this group for the same
     // reason — behind the boundary, not part of the public validator experience.
     //
@@ -1259,6 +1263,10 @@ describe("the two figures the finished screen reports", () => {
       {
         route: "researcher/(protected)/entries/[id]",
         witness: "tests/unit/entry-review-page.test.tsx",
+      },
+      {
+        route: "researcher/(protected)/export",
+        witness: "tests/unit/export-route.test.ts",
       },
       { route: "researcher/sign-in", witness: "tests/unit/admin-routes.test.tsx" },
     ];

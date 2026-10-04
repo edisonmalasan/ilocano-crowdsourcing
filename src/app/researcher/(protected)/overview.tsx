@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
+import { linkButtonClasses } from "@/components/ui/button";
+import { RESEARCHER_EXPORT } from "@/lib/admin/routes";
 
 import type { DashboardOverview } from "@/lib/admin/dashboard";
 
@@ -24,11 +26,28 @@ import type { DashboardOverview } from "@/lib/admin/dashboard";
  * here IS one.
  */
 
-function Figure({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Figure({
+  label,
+  value,
+  hint,
+  wide,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  wide?: boolean;
+}) {
   return (
-    <div className="border-ink bg-paper-sunken rounded-card border-2 p-4">
+    <div
+      className={
+        "border-ink bg-paper-sunken rounded-card border-2 p-4" +
+        (wide === true ? " col-span-2 sm:col-span-3" : "")
+      }
+    >
       <p className="text-small text-ink-muted">{label}</p>
-      <p className="text-heading font-display mt-1">{value}</p>
+      <p className={`font-display mt-1 ${wide === true ? "text-title" : "text-heading"}`}>
+        {value}
+      </p>
       {hint !== undefined && <p className="text-small text-ink-muted mt-1">{hint}</p>}
     </div>
   );
@@ -37,7 +56,30 @@ function Figure({ label, value, hint }: { label: string; value: string; hint?: s
 export function OverviewView({ overview }: { overview: DashboardOverview }) {
   return (
     <>
-      <section aria-label="Coverage totals">
+      <section aria-label="Research export">
+        <Card tone="accent">
+          <CardHeader>
+            <CardTitle>Research export</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <p className="text-body text-ink">
+              The current corpus as one dated ZIP: every stored response, the per-entry summary, and
+              the mechanical validated dataset pending adjudication.
+            </p>
+            <p className="mt-4">
+              <Link href={RESEARCHER_EXPORT} className={linkButtonClasses()}>
+                Export research data
+              </Link>
+            </p>
+            <p className="text-small text-ink-muted mt-3">
+              Available only to signed researchers. The download changes nothing; the operator
+              command remains the backup path.
+            </p>
+          </CardBody>
+        </Card>
+      </section>
+
+      <section aria-label="Coverage totals" className="mt-8">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Figure label="Dataset entries" value={String(overview.totalEntries)} />
           <Figure
@@ -52,6 +94,7 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
             label="Overall completion"
             value={`${overview.coveragePercentage}%`}
             hint={`Complete entries, out of ${overview.totalEntries} entries`}
+            wide
           />
           <Figure label="Complete entries" value={String(overview.buckets.complete)} />
           <Figure label="Incomplete entries" value={String(overview.buckets.incomplete)} />

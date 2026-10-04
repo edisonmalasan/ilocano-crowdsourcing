@@ -152,6 +152,17 @@ describe("OverviewView", () => {
     ]);
   });
 
+  it("offers the research export download from the protected overview", () => {
+    // The export action lives inside the authenticated view, not on any public screen: its
+    // presence here is the UI half of the authorization story (the route's own guard is the
+    // other half, proven in `export-route.test.ts`). Asserted as a real anchor to the export
+    // route, so a button-shaped span with no destination fails.
+    const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
+
+    expect(html).toContain('href="/researcher/export"');
+    expect(html).toContain("Export research data");
+  });
+
   it("names the entries behind the overlap and late-arrival figures", () => {
     // The diagnostics identify entries; a count without the ids behind it is a figure a
     // researcher cannot act on.
