@@ -47,7 +47,7 @@ const ALLOCATED: AllocationOutcome = {
 const EXHAUSTED: AllocationOutcome = { status: "exhausted" };
 
 function failed(
-  reason: "invalid" | "not_configured" | "unknown_validator" | "persistence",
+  reason: "invalid" | "not_configured" | "unknown_validator" | "persistence" | "screening_required",
 ): AllocationOutcome {
   return { status: "failed", reason };
 }
@@ -104,6 +104,24 @@ describe("starting a batch", () => {
 });
 
 describe("mapping a refusal to a sentence", () => {
+  it("sends a pre-correction attempt without an answer to restart, not to retry", () => {
+    // The refusal is deterministic: the profile will still record no answer on
+    // the next request, so a retry control could never succeed. The decision is
+    // therefore its own kind — restart, with no message and no batch — rather
+    // than an error carrying a "try again" sentence.
+    for (const locale of ["en", "fil"] as const) {
+      const decision = decideStartBatch(
+        STORED_ID,
+        failed("screening_required"),
+        translatorFor(locale),
+      );
+
+      expect(decision).toEqual({ kind: "screening_required" });
+      expect(decision).not.toHaveProperty("batchId");
+      expect(decision).not.toHaveProperty("message");
+    }
+  });
+
   it("distinguishes a refusal the participant can do nothing about from one they can", () => {
     const notConfigured = decideStartBatch(STORED_ID, failed("not_configured"), t);
     const invalid = decideStartBatch(STORED_ID, failed("invalid"), t);
@@ -142,6 +160,7 @@ describe("mapping a refusal to a sentence", () => {
       "not_configured",
       "unknown_validator",
       "persistence",
+      "screening_required",
     ] as const) {
       const decision = decideStartBatch(STORED_ID, failed(reason), t);
 
@@ -176,7 +195,7 @@ describe("mapping a refusal to a sentence", () => {
   it("carries the batch id ONLY on the start branch, and never on any other", () => {
     // The batch id embeds the anonymous validator id, so it must not travel with a message that might
     // be logged, echoed, or shown to somebody it does not belong to.
-    for (const outcome of [EXHAUSTED, failed("persistence"), null]) {
+    for (const outcome of [EXHAUSTED, failed("persistence"), failed("screening_required"), null]) {
       const decision = decideStartBatch(STORED_ID, outcome, t);
 
       expect(decision).not.toHaveProperty("batchId");

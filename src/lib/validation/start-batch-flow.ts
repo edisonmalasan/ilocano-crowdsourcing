@@ -22,6 +22,13 @@ export type StartBatchDecision =
   | { readonly kind: "start"; readonly batchId: string }
   | { readonly kind: "exhausted" }
   | { readonly kind: "no-identity" }
+  /**
+   * The attempt predates required proficiency. A dedicated kind rather than an
+   * `error` message because the UI is different in the way that matters: retry
+   * is absent (re-requesting a deterministic refusal can never succeed) and a
+   * restart control is present instead.
+   */
+  | { readonly kind: "screening_required" }
   | { readonly kind: "error"; readonly message: string };
 
 /**
@@ -47,6 +54,10 @@ export function decideStartBatch(
     case "exhausted":
       return { kind: "exhausted" };
     case "failed":
+      // Methodology enforcement, not a fault: the participant's next step is a
+      // new screened attempt, not a retry, so this needs its own decision kind
+      // rather than sharing the error message path.
+      if (outcome.reason === "screening_required") return { kind: "screening_required" };
       return {
         kind: "error",
         message:
