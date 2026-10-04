@@ -107,10 +107,7 @@ export const ENGLISH_COPY = {
   // -- Landing -------------------------------------------------------------
   "landing.hero.title1": "Check the Ilocano.",
   "landing.hero.title2": "Fix what’s off.",
-  "landing.hero.lead":
-    "Sadino is a thesis dataset for Ilocano local navigation. It was written by a machine. You " +
-    "are the part of the process that makes it trustworthy: you read a sentence, judge whether it " +
-    "says what it should, and correct it when it does not.",
+  "landing.hero.lead": "Dataset validation for sadino",
   "landing.cta.start": "Start validation",
   "landing.cta.continue": "Continue validation",
   "landing.expectations.heading": "What to expect",
