@@ -63,9 +63,11 @@ export function decideContinueBatch(
         message:
           outcome.reason === "not_configured"
             ? t("validate.finished.failure.notConfigured")
-            : outcome.reason === "invalid" || outcome.reason === "unknown_validator"
-              ? t("validate.finished.failure.invalid")
-              : t("validate.finished.failure.persistence"),
+            : outcome.reason === "screening_required"
+              ? t("validate.finished.failure.screeningRequired")
+              : outcome.reason === "invalid" || outcome.reason === "unknown_validator"
+                ? t("validate.finished.failure.invalid")
+                : t("validate.finished.failure.persistence"),
       };
   }
 }

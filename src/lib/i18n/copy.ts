@@ -296,6 +296,10 @@ export const ENGLISH_COPY = {
   "validateStart.failure.persistence":
     "We could not prepare your sentences just now, and no batch was created. You can try again in " +
     "a moment.",
+  "validateStart.screeningRequired":
+    "This attempt was created before the Ilocano question became required, so it cannot receive " +
+    "sentences. Start a new attempt to answer it — nothing you have already submitted is affected.",
+  "validateStart.restart": "Start a new attempt",
 
   // -- Interrupted batches need no offer copy ------------------------------------
   // The orchestration navigates straight to a recognised interrupted batch, so
@@ -448,6 +452,10 @@ export const ENGLISH_COPY = {
   "validate.finished.failure.persistence":
     "Your next batch could not be prepared just now, and none was created. Everything you have " +
     "already submitted is unchanged.",
+  "validate.finished.failure.screeningRequired":
+    "This attempt was created before the Ilocano question became required, so it cannot receive " +
+    "another batch. Finish here, then start a new attempt — nothing you have already submitted " +
+    "is affected.",
   "validate.absent.label": "We could not find that batch",
   "validate.absent.body":
     "The address may be incomplete, or the batch may belong to a different browser. Nothing you " +
@@ -700,6 +708,11 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validateStart.failure.persistence":
     "Hindi maipaghanda ang iyong mga pangungusap ngayon, at walang batch na nalikha. Puwede " +
     "mong subukan muli sa lalong madaling panahon.",
+  "validateStart.screeningRequired":
+    "Ginawa ang pagsubok na ito bago naging kailangan ang tanong sa Ilocano, kaya hindi ito " +
+    "maaaring bigyan ng mga pangungusap. Magsimula ng bagong pagsubok para sagutin ito — " +
+    "walang naaapektuhan sa naipasa mo na.",
+  "validateStart.restart": "Magsimula ng bagong pagsubok",
 
   // -- Hindi na kailangan ng teksto ng alok -------------------------------------------
   // Direktang nagna-navigate ang orchestration sa kinikilalang naputol na batch, kaya walang card
@@ -836,6 +849,10 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.finished.failure.persistence":
     "Hindi maipaghanda ang iyong susunod na batch ngayon, at wala ring nalikha. Walang binabago sa " +
     "lahat ng ipinasa mo.",
+  "validate.finished.failure.screeningRequired":
+    "Ginawa ang pagsubok na ito bago naging kailangan ang tanong sa Ilocano, kaya hindi ito " +
+    "maaaring bigyan ng panibagong batch. Tapusin dito, pagkatapos ay magsimula ng bagong " +
+    "pagsubok — walang naaapektuhan sa naipasa mo na.",
   "validate.absent.label": "Hindi namin mahanap ang batch na iyon",
   "validate.absent.body":
     "Maaaring hindi kumpleto ang address, o ibang browser ang may hawak ng batch. Walang " +

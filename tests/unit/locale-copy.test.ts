@@ -1255,14 +1255,15 @@ describe("the copy that described a returning person, and now describes one sess
     // asymmetry is the useful part: it means the enumeration is really reading both catalogs
     // rather than matching one list twice.
     //
-    // Re-derived for `onboarding-simplification`: `fil:resume.title` and
-    // `fil:validateStart.resume.title` are gone with the cards that carried them. The session
-    // promise they shared now lives in `start.beforeAnswer.item3`, which still matches — via
-    // `recognis` in English and `kilala` in Filipino — so the enumeration keeps measuring the
-    // same claims at their new address rather than going quiet about them.
+    // Re-derived for `screening-gate`: the two new `screeningRequired`
+    // sentences join via "before" ("created before the Ilocano question became
+    // required") — the history clause is exactly what this vocabulary watches.
+    // Their Filipino mirrors carry no recognition idiom ("Ginawa ... bago
+    // naging kailangan" matches none of the terms), so the `fil:` half is
+    // unchanged: translations are not reworded to satisfy a vocabulary scan.
     const found = mentionsRecognition();
 
-    expect(found.length).toBe(22);
+    expect(found.length).toBe(24);
     expect(found).toEqual([
       "en:common.beforeYouStart",
       "en:ready.next.body1",
@@ -1274,7 +1275,9 @@ describe("the copy that described a returning person, and now describes one sess
       "en:start.beforeAnswer.item3",
       "en:start.beforeAnswer.label",
       "en:validate.finished.failure.invalid",
+      "en:validate.finished.failure.screeningRequired",
       "en:validateStart.failure.invalid",
+      "en:validateStart.screeningRequired",
       "fil:landing.before.item1",
       "fil:notFound.cta",
       "fil:ready.next.body1",

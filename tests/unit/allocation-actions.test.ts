@@ -51,6 +51,13 @@ function createRecordingDependencies(
      * implementation the original proof used.
      */
     readonly answered?: string[];
+    /**
+     * The stored proficiency for the known validator. Defaults to an approved
+     * answer; passing `null` builds the pre-correction attempt the screening
+     * gate exists for, so the refusal can be driven through this action core
+     * rather than asserted only at the service seam.
+     */
+    readonly profileProficiency?: "fluent" | null;
   } = {},
 ) {
   const calls: string[] = [];
@@ -63,10 +70,14 @@ function createRecordingDependencies(
       },
       async findById(id: string) {
         calls.push("validators.findById");
+        // `??` would be wrong here for the same reason as in
+        // `allocation-service.test.ts`: `null` is the meaningful fixture value.
+        const proficiency =
+          over.profileProficiency === undefined ? "fluent" : over.profileProficiency;
         return (over.knownValidator ?? true)
           ? {
               id,
-              ilocanoProficiency: "fluent" as const,
+              ilocanoProficiency: proficiency as "fluent" | null,
               createdAt: "2026-09-30T00:00:00.000Z",
               lastActiveAt: "2026-09-30T00:00:00.000Z",
               totalValidations: 0,
@@ -340,6 +351,24 @@ describe("an accepted payload", () => {
     const outcome = await runAllocateBatch({ validatorId: "VAL_deadbeef" }, dependencies);
 
     expect(outcome).toEqual({ status: "failed", reason: "unknown_validator" });
+  });
+
+  it("reports screening_required for a recognised validator with no recorded answer", async () => {
+    // The methodology gate at the action boundary: a pre-correction attempt
+    // holds a valid identifier but no proficiency answer, so no batch may be
+    // minted for it — and the refusal carries the dedicated reason rather than
+    // collapsing into persistence or exhaustion.
+    const { dependencies, calls } = createRecordingDependencies({
+      pool: [{ id: "OD_0001" }],
+      profileProficiency: null,
+    });
+
+    const outcome = await runAllocateBatch(VALID, dependencies);
+
+    expect(outcome).toEqual({ status: "failed", reason: "screening_required" });
+    // And nothing was created or claimed on the way out: the only repository
+    // call is the profile read that refused the request.
+    expect(calls).toEqual(["validators.findById"]);
   });
 
   it("reports exhausted when nothing eligible remains", async () => {

@@ -319,6 +319,15 @@ export async function allocateBatch(
       return { status: "failed", reason: "unknown_validator" satisfies AllocationFailureReason };
     }
 
+    // The methodology gate: no recorded proficiency answer, no sentences. Rows
+    // without an answer predate the correction and stay valid rows — this
+    // refuses the REQUEST, it does not judge, migrate, or rewrite the profile.
+    // Placed before every other read so the refusal costs exactly the profile
+    // read above: no pool read, no batch persisted, no reservation claimed.
+    if (profile.ilocanoProficiency === null) {
+      return { status: "failed", reason: "screening_required" satisfies AllocationFailureReason };
+    }
+
     const size = resolveBatchSize(request.requestedSize, dependencies.config);
 
     // No category filter: the pool is every active entry, because category-conditional allocation

@@ -52,6 +52,7 @@ const OUTCOMES: ReadonlyArray<AllocationOutcome> = [
   { status: "failed", reason: "invalid" },
   { status: "failed", reason: "unknown_validator" },
   { status: "failed", reason: "persistence" },
+  { status: "failed", reason: "screening_required" },
 ];
 
 /** A real identifier in the format the schema accepts, minted by the schema's own pattern. */
@@ -119,8 +120,8 @@ describe("decideContinueBatch", () => {
   });
 
   it("maps each failure reason to its OWN sentence, and every sentence is a real catalog entry", () => {
-    // Every reason mapped, not two of them — the loop above hands this function six outcomes and an
-    // exhaustive mapping is the only thing that makes all six meaningful.
+    // Every reason mapped — the loop above hands this function seven outcomes and an
+    // exhaustive mapping is the only thing that makes all seven meaningful.
     const mapping: ReadonlyArray<[Exclude<AllocationOutcome, { status: "allocated" }>, string]> = [
       [{ status: "exhausted" }, EN("validate.finished.exhausted")],
       [
@@ -130,9 +131,13 @@ describe("decideContinueBatch", () => {
       [{ status: "failed", reason: "invalid" }, EN("validate.finished.failure.invalid")],
       [{ status: "failed", reason: "unknown_validator" }, EN("validate.finished.failure.invalid")],
       [{ status: "failed", reason: "persistence" }, EN("validate.finished.failure.persistence")],
+      [
+        { status: "failed", reason: "screening_required" },
+        EN("validate.finished.failure.screeningRequired"),
+      ],
     ];
 
-    expect(mapping).toHaveLength(5);
+    expect(mapping).toHaveLength(6);
     for (const [outcome, message] of mapping) {
       const decision = decideContinueBatch(STORED_ID, outcome, EN);
 
@@ -148,15 +153,22 @@ describe("decideContinueBatch", () => {
       EN("validate.finished.failure.notConfigured"),
       EN("validate.finished.failure.invalid"),
       EN("validate.finished.failure.persistence"),
+      EN("validate.finished.failure.screeningRequired"),
     ];
-    expect(new Set(sentences).size).toBe(3);
+    expect(new Set(sentences).size).toBe(4);
   });
 
   it("resolves EVERY message through the SUPPLIED translator, so the two screens differ", () => {
     // The translator is a PARAMETER, not a module-level import, and this is what that buys: one
     // decision function, two vocabularies, and no way for a component to render an English sentence on
     // a Filipino screen. Asserted over every reason that produces a message, in both languages.
-    const reasons = ["not_configured", "invalid", "unknown_validator", "persistence"] as const;
+    const reasons = [
+      "not_configured",
+      "invalid",
+      "unknown_validator",
+      "persistence",
+      "screening_required",
+    ] as const;
 
     // The decision is made ONCE per translator and read from the result, rather than re-decided inside
     // the expectation. A first draft inlined a nested re-decision three levels deep to produce the

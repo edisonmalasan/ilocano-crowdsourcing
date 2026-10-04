@@ -527,12 +527,18 @@ describe("CB-6/CB-7 — what a request that does not allocate reports", () => {
   it("maps every failure reason onto a rendered sentence, and never onto nothing", async () => {
     // The mapping is the pure function's job and is enumerated there; what matters HERE is that no
     // reason reaches the participant as an empty or untranslated string, which is the shape a
-    // forgotten `case` produces. All FOUR reasons are driven, because a control that exercises two
-    // would leave the other two unmeasured — the same defect the finished screen's identifier
+    // forgotten `case` produces. All FIVE reasons are driven, because a control that exercises two
+    // would leave the other three unmeasured — the same defect the finished screen's identifier
     // control in `validation-routes.test.tsx` was caught making.
-    const reasons = ["invalid", "unknown_validator", "persistence", "not_configured"] as const;
-    expect(reasons).toHaveLength(4);
-    expect(new Set(reasons).size).toBe(4);
+    const reasons = [
+      "invalid",
+      "unknown_validator",
+      "persistence",
+      "not_configured",
+      "screening_required",
+    ] as const;
+    expect(reasons).toHaveLength(5);
+    expect(new Set(reasons).size).toBe(5);
 
     const rendered = new Map<string, string>();
     for (const reason of reasons) {
@@ -550,20 +556,36 @@ describe("CB-6/CB-7 — what a request that does not allocate reports", () => {
     }
 
     // And the sentences are the catalog's, not something assembled at the call site: every rendered
-    // sentence is one of the three `validate.finished.failure.*` strings this change added. A branch
+    // sentence is one of the four `validate.finished.failure.*` strings. A branch
     // that interpolated a reason into an untranslated template would fail here by name.
     const catalog = new Set([
       t("validate.finished.failure.notConfigured"),
       t("validate.finished.failure.invalid"),
       t("validate.finished.failure.persistence"),
+      t("validate.finished.failure.screeningRequired"),
     ]);
-    expect(catalog.size, "the three failure sentences are three distinct strings").toBe(3);
+    expect(catalog.size, "the four failure sentences are four distinct strings").toBe(4);
     for (const [reason, text] of rendered) {
       expect(
         catalog,
         `reason "${reason}" rendered a sentence that is not in the catalog`,
       ).toContain(text);
     }
+  });
+
+  it("tells a pre-correction attempt to finish and restart screened, and keeps Finish usable", async () => {
+    h.result = { status: "failed", reason: "screening_required" };
+
+    await view.pressAndSettle(continueControl());
+
+    // The message names the history and the way out: Finish here (which retires
+    // the attempt with no server write), then a new screened attempt. It must
+    // not read as breakage and must not offer a retry that could never succeed.
+    const text = view.one<HTMLElement>('[data-decision-message="true"]').textContent?.trim() ?? "";
+    expect(text).toBe(t("validate.finished.failure.screeningRequired"));
+    expect(text).toMatch(/Finish here/i);
+    expect(h.pushes).toEqual([]);
+    expect(continueControl().hasAttribute("disabled")).toBe(false);
   });
 
   it("asks the participant to answer the Ilocano question when the browser holds no identity", async () => {

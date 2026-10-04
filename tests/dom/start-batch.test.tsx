@@ -42,6 +42,8 @@ const h = vi.hoisted(() => ({
   allocations: [] as unknown[],
   /** Payloads handed to the RECOVERY action. */
   lookups: [] as unknown[],
+  /** Clears of the stored identifier. */
+  cleared: 0,
   /** What the recovery action reports, changed per test. */
   lookupResult: {
     status: "interrupted",
@@ -90,7 +92,9 @@ vi.mock("@/lib/validation/recovery-actions", () => ({
 vi.mock("@/lib/validators/browser-identity", () => ({
   readStoredValidatorId: () => h.storedId,
   writeStoredValidatorId: () => {},
-  clearStoredValidatorId: () => {},
+  clearStoredValidatorId: () => {
+    h.cleared += 1;
+  },
 }));
 
 const t = translatorFor("en");
@@ -110,6 +114,7 @@ beforeEach(async () => {
   h.pushes.length = 0;
   h.allocations.length = 0;
   h.lookups.length = 0;
+  h.cleared = 0;
   h.storedId = "VAL_a81d92c1";
   h.lookupResult = {
     status: "interrupted",
@@ -263,5 +268,42 @@ describe("AO-8 — one mount issues one lookup and at most one allocation", () =
     expect(h.lookups).toHaveLength(1);
     expect(h.allocations.length).toBeLessThanOrEqual(1);
     expect(h.pushes).toHaveLength(1);
+  });
+});
+
+describe("AO-9 — an attempt without a recorded answer restarts screened", () => {
+  it("shows the restart state with no retry, and restarting clears without a write", async () => {
+    h.lookupResult = { status: "none" };
+    h.allocationResult = { status: "failed", reason: "screening_required" };
+    view.unmount();
+    h.pushes.length = 0;
+    h.allocations.length = 0;
+    h.lookups.length = 0;
+    view = await mountSettled();
+
+    // The refusal is deterministic, so no retry control exists: the only
+    // button on this state restarts, and it is labelled as such.
+    expect(h.pushes).toEqual([]);
+    expect(view.container.innerHTML).toContain(t("validateStart.screeningRequired"));
+    const buttons = view.all("button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.textContent).toBe(t("validateStart.restart"));
+
+    // Restarting retires the attempt the way Finish does — the identifier is
+    // browser-held, so clearing it ends the attempt with zero server writes —
+    // and moves to screening for the new screened attempt.
+    await view.pressAndSettle(buttons[0] as Element);
+
+    expect(h.cleared).toBe(1);
+    expect(h.pushes).toEqual(["/start"]);
+    // And no second allocation was attempted on the way out: the restart is a
+    // local retirement plus a navigation, never a request.
+    expect(h.allocations).toHaveLength(1);
+    expect(h.lookups).toHaveLength(1);
+
+    // WEAKNESS: observes that no request left, not that none COULD. A restart
+    // that also re-requested before navigating would still show these counts
+    // if the request failed silently — the write-intake boundary is what makes
+    // an unobserved request impossible rather than merely unobserved.
   });
 });

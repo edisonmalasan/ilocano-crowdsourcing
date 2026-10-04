@@ -13,7 +13,7 @@ import { decideRecovery } from "@/lib/validation/recovery-flow";
 import { batchRouteHref, batchRoutePath } from "@/lib/validation/batch-route";
 import { requestInterruptedBatchAction } from "@/lib/validation/recovery-actions";
 import { decideStartBatch } from "@/lib/validation/start-batch-flow";
-import { readStoredValidatorId } from "@/lib/validators/browser-identity";
+import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/browser-identity";
 
 /**
  * ============================================================================
@@ -71,6 +71,13 @@ type OrchestrationPhase =
   | { readonly kind: "working" }
   | { readonly kind: "no-identity" }
   | { readonly kind: "exhausted" }
+  /**
+   * The attempt predates required proficiency. Restart replaces retry: the
+   * refusal is deterministic, so a control that re-requested could never
+   * succeed — the only honest onward action is retiring this attempt and
+   * beginning a screened one.
+   */
+  | { readonly kind: "screening_required" }
   | { readonly kind: "error"; readonly message: string };
 
 export function StartBatch({ locale }: StartBatchProps) {
@@ -103,6 +110,11 @@ export function StartBatch({ locale }: StartBatchProps) {
     const decision = decideStartBatch(stored, await requestBatchAction({ validatorId: stored }), t);
     if (decision.kind === "start") {
       router.push(batchRouteHref(decision.batchId));
+      return;
+    }
+
+    if (decision.kind === "screening_required") {
+      setPhase({ kind: "screening_required" });
       return;
     }
 
@@ -158,6 +170,28 @@ export function StartBatch({ locale }: StartBatchProps) {
 
       {phase.kind === "exhausted" ? (
         <p className="text-body text-ink-muted mt-5">{t("validateStart.exhausted")}</p>
+      ) : null}
+
+      {phase.kind === "screening_required" ? (
+        <div className="mt-5 flex flex-col gap-3">
+          <p className="text-body text-ink-muted">{t("validateStart.screeningRequired")}</p>
+          <div>
+            <Button
+              type="button"
+              size="lg"
+              onClick={() => {
+                // Retires the pre-correction attempt the way Finish does: the
+                // identifier is browser-held, so clearing it ends the attempt
+                // with zero server writes, and screening mints the screened one.
+                // Synchronous navigation, like a link: no pending state to report.
+                clearStoredValidatorId();
+                router.push("/start");
+              }}
+            >
+              {t("validateStart.restart")}
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       {phase.kind === "error" ? (

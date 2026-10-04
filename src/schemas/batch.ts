@@ -266,12 +266,17 @@ export type AllocatedEntry = z.infer<typeof allocatedEntrySchema>;
  * `not_configured`
  *   This deployment has no database. The expected state of the current environment, and it deserves
  *   a plain "the study is not open" message rather than a database fault.
+ * `screening_required`
+ *   The identifier names a stored validator whose profile records no proficiency answer — a row
+ *   created before proficiency became required. Distinct from every reason above because the
+ *   correct response is to start a new screened attempt, not to retry, wait, or report trouble:
+ *   re-requesting a deterministic refusal is a control that can never succeed.
  *
- * These four are kept apart rather than collapsed into one "failed" on purpose. Collapsing would be
+ * These five are kept apart rather than collapsed into one "failed" on purpose. Collapsing would be
  * less code and would erase the one distinction that decides what a participant is told.
  */
 export type AllocationFailureReason =
-  "invalid" | "unknown_validator" | "persistence" | "not_configured";
+  "invalid" | "unknown_validator" | "persistence" | "not_configured" | "screening_required";
 
 /**
  * The result of one allocation request.

@@ -160,6 +160,13 @@ function createFakes(
       readonly entryIds: readonly string[];
     }>;
     /**
+     * Overrides the stored proficiency for every known validator. The default
+     * profile answers "fluent"; passing `null` builds the pre-correction
+     * attempt the screening gate exists for — a recognised validator with no
+     * recorded answer.
+     */
+    readonly profileProficiency?: ValidatorProfile["ilocanoProficiency"];
+    /**
      * Overrides the claim arbiter. The default grants everything requested; a test passes a
      * function to deny entries (contention), to share one arbiter across two concurrent
      * allocations (the race), or to fail the call. Returning fewer ids than requested is a
@@ -175,6 +182,10 @@ function createFakes(
   const known = new Set<string>(options.knownValidatorIds ?? [VALIDATOR]);
   const stored = new Map<string, BatchRecord>();
   let failures = new Map<string, unknown>();
+  const proficiencies = new Map<string, ValidatorProfile["ilocanoProficiency"]>();
+  if (options.profileProficiency !== undefined) {
+    for (const id of known) proficiencies.set(id, options.profileProficiency);
+  }
 
   const record = (method: string, argument: unknown): void => {
     calls.push({ method, argument });
@@ -189,7 +200,14 @@ function createFakes(
     },
     async findById(id) {
       record("validators.findById", id);
-      return known.has(id) ? profile : null;
+      if (!known.has(id)) return null;
+      // `??` would be wrong here: `null` is a MEANINGFUL stored value (the
+      // pre-correction attempt), not an absence, and `null ?? default` yields
+      // the default. Only an unset override falls back.
+      const proficiency = proficiencies.has(id)
+        ? (proficiencies.get(id) as ValidatorProfile["ilocanoProficiency"])
+        : profile.ilocanoProficiency;
+      return { ...profile, ilocanoProficiency: proficiency };
     },
     async listByIds(ids) {
       record("validators.listByIds", ids);
@@ -813,6 +831,52 @@ describe("a contention-short batch persists its actual size", () => {
     for (const [index, round] of seenRounds.entries()) {
       if (index === 0) continue;
       expect(round).not.toContain("OD_0002");
+    }
+  });
+});
+
+describe("a requester with no recorded proficiency answer", () => {
+  it("is refused as screening_required before any pool read", async () => {
+    // The methodology gate: an attempt created before proficiency became
+    // required cannot be allocated sentences. The refusal costs exactly the
+    // profile read — no pool read, no batch persisted, no reservation claimed —
+    // so a refused request leaves no trace but the read that refused it.
+    const fakes = createFakes({
+      pool: [entry("OD_0001"), entry("OD_0002")],
+      profileProficiency: null,
+    });
+
+    const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+    expect(outcome).toEqual({ status: "failed", reason: "screening_required" });
+    expect(fakes.countOf("validators.findById")).toBe(1);
+    expect(fakes.countOf("datasetEntries.listActive")).toBe(0);
+    expect(fakes.countOf("batches.create")).toBe(0);
+    expect(fakes.countOf("entryReservations.claimReservations")).toBe(0);
+  });
+
+  it("allocates normally for every approved answer, which influences nothing", async () => {
+    // The gate is on ABSENCE, not on value: each approved choice allocates,
+    // and the choice plays no part in which entries are offered.
+    for (const proficiency of [
+      "native",
+      "fluent",
+      "conversational",
+      "basic",
+      "not_confident",
+    ] as const) {
+      const fakes = createFakes({
+        pool: [entry("OD_0001"), entry("OD_0002")],
+        profileProficiency: proficiency,
+      });
+
+      const outcome = await allocateBatch(request, dependenciesFor(fakes));
+
+      expect(
+        allocated(outcome)
+          .entries.map((candidate) => candidate.id)
+          .sort(),
+      ).toEqual(["OD_0001", "OD_0002"]);
     }
   });
 });
