@@ -14,6 +14,6 @@
 
 ## 3. Verification and ledger
 
-- [ ] 3.1 Run the full suite: `lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`, `build`. Verify: all exit 0 with counts read back.
+- [x] 3.1 Run the full suite: `lint`, `format:check`, `typecheck`, `test:unit`, `test:dom`, `test:integration`, `build`. Verify: all exit 0 with counts read back.
 - [x] 3.2 Run can-fire probes on the refusal-before-read guard and the equivalence assertion with green controls and byte-identical restore. Verify: both fire red on mutation.
 - [x] 3.3 Update `docs/ROADMAP.md` Project Status rows for the Apply and verify `ledger-integrity` passes.
