@@ -398,6 +398,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `screening-gate`, the TWENTY-SEVENTH archived change, so this coupling has now
       // been paid ELEVEN times. Same one-line edit, same reason.
       27: "Twenty-seven",
+      // Added for `sentence-only-presentation`, the TWENTY-EIGHTH archived change, so this coupling has now
+      // been paid TWELVE times. Same one-line edit, same reason.
+      28: "Twenty-eight",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
