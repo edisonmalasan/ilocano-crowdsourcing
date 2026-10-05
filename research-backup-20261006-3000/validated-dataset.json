@@ -1,0 +1,8 @@
+{
+  "derivation": {
+    "rule": "pooled-earliest-per-field-by-server-created-at",
+    "tie_break": "smallest-validation-id-arbitrary-carries-no-meaning",
+    "omitted_incomplete_entries": 3000
+  },
+  "records": []
+}
