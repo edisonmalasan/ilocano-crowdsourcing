@@ -166,6 +166,8 @@ const cleanReport = {
 const entry = (id: string) => ({
   id,
   category: "origin_destination" as const,
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: `instruction for ${id}`,
   origin: `origin of ${id}`,
   destination: `destination of ${id}`,

@@ -42,6 +42,8 @@ const stripComments = (source: string): string =>
 const ENTRY: ImportedDatasetEntry = {
   id: "OD_0001",
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction:
     "Iti Baguio Athletic Bowl ti ayanko ita; masapulko a makadanon iti Baguio Convention Center.",
   origin: "Baguio Athletic Bowl",
@@ -113,7 +115,7 @@ describe("SupabaseDatasetEntrySink", () => {
     // two places the name is written in TypeScript, and the integration test checks a THIRD against
     // the migration file. A test asserting the constant equals itself would pass if both were wrong;
     // this one is checked against `pg_proc` in `tests/integration/`.
-    expect(DATASET_ENTRIES_IMPORT_FUNCTION).toBe("dataset_entries_import");
+    expect(DATASET_ENTRIES_IMPORT_FUNCTION).toBe("dataset_entries_import_v2");
   });
 
   it("maps `inserted` and `updated` onto the importer's own vocabulary", async () => {
@@ -136,6 +138,8 @@ describe("SupabaseDatasetEntrySink", () => {
     expect(calls[0]!.args).toEqual({
       p_id: ENTRY.id,
       p_category: ENTRY.category,
+      p_source_entry_id: ENTRY.sourceEntryId,
+      p_category_name: ENTRY.categoryName,
       p_instruction: ENTRY.instruction,
       p_origin: ENTRY.origin,
       p_destination: ENTRY.destination,
@@ -143,6 +147,17 @@ describe("SupabaseDatasetEntrySink", () => {
       p_source_payload: ENTRY.sourcePayload,
       p_is_active: true,
     });
+  });
+
+  it("carries the source-local id and category name, so provenance survives the RPC", async () => {
+    // The whole point of v2: a row whose provenance was dropped at the sink would store NULLs
+    // that no later read could recover. Asserted on values rather than shape — the shape test
+    // above would pass with `p_source_entry_id: undefined`, and PostgREST would store the NULL.
+    const { calls, client } = recordingClient(inserted);
+    await new SupabaseDatasetEntrySink(client).upsert(ENTRY);
+
+    expect(calls[0]!.args.p_source_entry_id).toBe(1);
+    expect(calls[0]!.args.p_category_name).toBe("Origin + Destination");
   });
 
   it("sends a real JSON value for the payload rather than a stringified one", async () => {
@@ -171,7 +186,7 @@ describe("SupabaseDatasetEntrySink", () => {
     }
   });
 
-  it("names the entry in that refusal, so a 600-entry run says which one", async () => {
+  it("names the entry in that refusal, so a 3000-entry run says which one", async () => {
     const { client } = recordingClient({ data: "???", error: null });
 
     const thrown = await failureOf(new SupabaseDatasetEntrySink(client).upsert(ENTRY));

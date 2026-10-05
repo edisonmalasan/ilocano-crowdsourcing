@@ -11,6 +11,8 @@ import {
 const OD_RECORD = {
   id: "OD_0001",
   category: ORIGIN_DESTINATION_CATEGORY,
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti Bangko Sentral ti Baguio tije mangimed ti jeep.",
   origin: "Baguio",
   destination: "Bangko Sentral ng Pilipinas",
@@ -21,6 +23,21 @@ describe("dataset entry ID", () => {
   it("accepts the real source IDs used by the immutable synthetic dataset", () => {
     expect(datasetEntryIdSchema.parse("OD_0001")).toBe("OD_0001");
     expect(datasetEntryIdSchema.parse("OD_0600")).toBe("OD_0600");
+  });
+
+  it("accepts every merged category prefix", () => {
+    // One per block of the merged source, read from the mapping rather than retyped, so a
+    // prefix added to the table without updating this list still fails loudly below.
+    for (const [prefix, local] of [
+      ["DO", 1],
+      ["DT", 600],
+      ["OD", 124],
+      ["ODT", 42],
+      ["CPE", 600],
+    ] as const) {
+      const id = `${prefix}_${String(local).padStart(4, "0")}`;
+      expect(datasetEntryIdSchema.parse(id)).toBe(id);
+    }
   });
 
   it("rejects an ID that is not a source-shaped ID", () => {
@@ -37,13 +54,32 @@ describe("dataset entry input", () => {
   it("accepts a complete Origin + Destination record and preserves the source ID exactly", () => {
     const parsed = datasetEntryInputSchema.parse(OD_RECORD);
 
-    // The source ID is the join key back to data/ilocano-synthetic-data.json, so it must survive
+    // The source ID is the join key back to data/merged-ilocano-synthetic-data.json, so it must survive
     // byte-for-byte: no case folding, no re-numbering, no prefix rewrite.
     expect(parsed.id).toBe("OD_0001");
     expect(parsed.category).toBe("origin_destination");
     expect(parsed.instruction).toBe(OD_RECORD.instruction);
     expect(parsed.origin).toBe("Baguio");
     expect(parsed.destination).toBe("Bangko Sentral ng Pilipinas");
+  });
+
+  it("requires the source-local id and category name, so provenance cannot be silently absent", () => {
+    for (const field of ["sourceEntryId", "categoryName"] as const) {
+      const partial: Record<string, unknown> = { ...OD_RECORD };
+      delete partial[field];
+      const result = datasetEntryInputSchema.safeParse(partial);
+      expect(result.success, `expected a missing ${field} to be refused`).toBe(false);
+      if (result.success) return;
+      expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(field);
+    }
+
+    for (const sourceEntryId of [0, 601, -3, 1.5]) {
+      const result = datasetEntryInputSchema.safeParse({ ...OD_RECORD, sourceEntryId });
+      expect(result.success, `expected sourceEntryId ${sourceEntryId} to be refused`).toBe(false);
+    }
+
+    const blankName = datasetEntryInputSchema.safeParse({ ...OD_RECORD, categoryName: "   " });
+    expect(blankName.success).toBe(false);
   });
 
   it("preserves the exact instruction content rather than normalizing its casing", () => {

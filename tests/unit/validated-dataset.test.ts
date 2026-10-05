@@ -36,6 +36,8 @@ const AT = (day: string, ms = "00:00:00.000Z"): string => `2026-09-${day}T${ms}`
 const entry = (id: string): DatasetEntry => ({
   id,
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: `instruction for ${id}`,
   origin: `origin of ${id}`,
   destination: `destination of ${id}`,

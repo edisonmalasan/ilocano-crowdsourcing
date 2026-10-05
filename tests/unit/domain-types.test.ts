@@ -76,6 +76,8 @@ const TIMESTAMP = "2026-09-30T00:00:00.000Z";
 const entry: DatasetEntry = {
   id: "OD_0001",
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: "Langet ti Bangon ti Mainit.",
   origin: "Bangon",
   destination: "Mainit",
@@ -153,6 +155,8 @@ describe("static dataset definition and runtime response state are distinct type
     const input: DatasetEntryInput = {
       id: "OD_0002",
       category: "origin_destination",
+      sourceEntryId: 2,
+      categoryName: "Origin + Destination",
       instruction: "Langet ti Sentro ti Kadaklapan.",
       origin: "Sentro",
       destination: "Kadaklapan",

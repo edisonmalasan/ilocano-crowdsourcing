@@ -18,6 +18,8 @@ import type { BatchRecord } from "@/schemas/batch";
 const ENTRY: DatasetEntry = {
   id: "OD_0001",
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti jeep.",
   origin: "Baguio",
   destination: "Bangko Sentral",
@@ -265,12 +267,14 @@ describe("repository interfaces are satisfiable without a database", () => {
     // The domain type is camelCase and carries no persistence metadata.
     expect(Object.keys(found ?? {}).sort()).toEqual([
       "category",
+      "categoryName",
       "createdAt",
       "destination",
       "id",
       "instruction",
       "isActive",
       "origin",
+      "sourceEntryId",
       "transitMode",
     ]);
 

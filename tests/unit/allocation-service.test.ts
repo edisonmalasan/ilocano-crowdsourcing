@@ -82,6 +82,8 @@ function entry(id: string, overrides: Partial<DatasetEntry> = {}): DatasetEntry 
   return {
     id,
     category: "origin_destination",
+    sourceEntryId: 1,
+    categoryName: "Origin + Destination",
     instruction: `Langet an ti ${id}.`,
     origin: "Bangon",
     destination: "Kablantayan",

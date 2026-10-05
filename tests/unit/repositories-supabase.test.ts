@@ -283,6 +283,8 @@ const SOURCE_PAYLOAD = {
 const ENTRY_ROW = {
   id: "OD_0001",
   category: "origin_destination",
+  source_entry_id: 1,
+  category_name: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti jeep.",
   origin: "Baguio",
   destination: "Bangco Sentral",
@@ -295,6 +297,8 @@ const ENTRY_ROW = {
 const ENTRY: DatasetEntry = {
   id: "OD_0001",
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti jeep.",
   origin: "Baguio",
   destination: "Bangco Sentral",
@@ -482,12 +486,14 @@ describe("SupabaseDatasetEntriesRepository", () => {
     // The domain shape, exactly: no `source_payload`, no `created_at`, no `is_active`.
     expect(Object.keys(entry ?? {}).sort()).toEqual([
       "category",
+      "categoryName",
       "createdAt",
       "destination",
       "id",
       "instruction",
       "isActive",
       "origin",
+      "sourceEntryId",
       "transitMode",
     ]);
   });
@@ -635,6 +641,36 @@ describe("the archival copy, and unmodelled fields", () => {
     expect(Object.keys(entry ?? {})).not.toContain("sourcePayload");
     // The archival copy is still fetched, so it stays in the database and stays recoverable.
     expect(fake.lastCall().columns?.split(",")).toContain("source_payload");
+  });
+
+  it("carries the provenance columns from the row onto the domain entry", async () => {
+    // `source_entry_id` and `category_name` are fetched and mapped by name, like every other
+    // column in this module — spelled out here so a rename on either side fails loudly.
+    const fake = createFakeClient();
+    fake.enqueue(rows([ENTRY_ROW], 1));
+
+    const [entry] = await new SupabaseDatasetEntriesRepository(fake.client).listActive();
+
+    expect(entry?.sourceEntryId).toBe(1);
+    expect(entry?.categoryName).toBe("Origin + Destination");
+    expect(fake.lastCall().columns?.split(",")).toEqual(
+      expect.arrayContaining(["source_entry_id", "category_name"]),
+    );
+  });
+
+  it("refuses a legacy row with no provenance rather than inventing it", async () => {
+    // Rows predating the provenance columns read NULL here. The schema rejects the row instead
+    // of defaulting the join key — a manufactured `source_entry_id` would join a response to
+    // the wrong source record, which is worse than a loud failure.
+    const { source_entry_id: _dropped, category_name: _name, ...legacy } = ENTRY_ROW;
+    expect(_dropped).toBe(1);
+    expect(_name).toBe("Origin + Destination");
+    const fake = createFakeClient();
+    fake.enqueue(rows([legacy], 1));
+
+    await expect(
+      new SupabaseDatasetEntriesRepository(fake.client).listActive(),
+    ).rejects.toThrow();
   });
 
   it("never leaks an unmodelled column into the domain entry itself", async () => {

@@ -30,6 +30,8 @@ import { DATASET_ENTRIES_OPERATIONS as OPS } from "./operations";
 interface DatasetEntryRow {
   id: unknown;
   category: unknown;
+  source_entry_id: unknown;
+  category_name: unknown;
   instruction: unknown;
   origin: unknown;
   destination: unknown;
@@ -51,6 +53,8 @@ interface DatasetEntryRow {
 const ENTRY_COLUMNS = [
   "id",
   "category",
+  "source_entry_id",
+  "category_name",
   "instruction",
   "origin",
   "destination",
@@ -78,6 +82,12 @@ function toDomain(
     {
       id: row.id,
       category: row.category,
+      // Legacy rows predate the provenance columns and read NULL here; the schema then rejects
+      // the row rather than inventing provenance. That is the correct behaviour: a domain entry
+      // without its source-local id is not joinable back to the research source, and silently
+      // defaulting it would manufacture the join key.
+      sourceEntryId: row.source_entry_id ?? null,
+      categoryName: row.category_name ?? null,
       instruction: row.instruction,
       origin: row.origin ?? null,
       destination: row.destination ?? null,

@@ -403,6 +403,8 @@ const DASHBOARD_ENTRIES: DatasetEntry[] = [
   {
     id: "OD_0001",
     category: "origin_destination",
+    sourceEntryId: 1,
+    categoryName: "Origin + Destination",
     instruction: "instruction for OD_0001",
     origin: "origin of OD_0001",
     destination: "destination of OD_0001",
@@ -413,6 +415,8 @@ const DASHBOARD_ENTRIES: DatasetEntry[] = [
   {
     id: "OD_0002",
     category: "origin_destination",
+    sourceEntryId: 2,
+    categoryName: "Origin + Destination",
     instruction: "instruction for OD_0002",
     origin: "origin of OD_0002",
     destination: "destination of OD_0002",
