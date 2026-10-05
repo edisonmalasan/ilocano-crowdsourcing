@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import type { SignInAttemptsRepository } from "@/lib/repositories";
 import {
+  formatSignInDiagnostic,
   runResearcherSignIn,
   researcherSignInRefusalMessage,
   SIGN_IN_MAX_FAILURES,
@@ -287,5 +288,109 @@ describe("the outward refusal", () => {
     // is the assertion above.
     expect(typeof researcherSignInRefusalMessage).toBe("function");
     expect(researcherSignInRefusalMessage.length).toBe(0);
+  });
+});
+
+describe("the server-side diagnostic line", () => {
+  /** Signs in with a recording log sink, so the test states only the outcome inputs. */
+  async function signInLogged(
+    presented: unknown,
+    overrides: {
+      adminEnv?: typeof CONFIGURED | null;
+      counts?: number[];
+      failOn?: "record" | "clear";
+      originKey?: string;
+    } = {},
+  ) {
+    const harness = attemptsHarness({ counts: overrides.counts, failOn: overrides.failOn });
+    const lines: string[] = [];
+    const outcome = await runResearcherSignIn({
+      deps: { attempts: harness.repository, nowMs: NOW_MS, log: (line) => lines.push(line) },
+      presented,
+      originKey: overrides.originKey ?? "origin-a",
+      adminEnv: overrides.adminEnv === undefined ? CONFIGURED : overrides.adminEnv,
+    });
+    return { outcome, lines };
+  }
+
+  it("logs each refusal reason exactly once, with the origin and nothing credential-like", async () => {
+    // One line per outcome, and the line is where the reason is allowed to appear: server log,
+    // never the requester. The presented value, every configured credential, and the session
+    // secret must appear in NO line — a log that echoed the credential would store what the
+    // comparison was built never to retain.
+    const cases: ReadonlyArray<{
+      presented: unknown;
+      overrides: {
+        adminEnv?: typeof CONFIGURED | null;
+        counts?: number[];
+        failOn?: "record" | "clear";
+      };
+      reason: string;
+    }> = [
+      { presented: "wrong", overrides: { adminEnv: null }, reason: "not_configured" },
+      {
+        presented: "wrong",
+        overrides: { counts: [SIGN_IN_MAX_FAILURES + 1] },
+        reason: "limit_reached",
+      },
+      { presented: "wrong", overrides: { counts: [1] }, reason: "bad_credential" },
+      {
+        presented: "wrong",
+        overrides: { counts: [1], failOn: "record" },
+        reason: "counter_unavailable",
+      },
+    ];
+
+    for (const { presented, overrides, reason } of cases) {
+      const { outcome, lines } = await signInLogged(presented, {
+        ...overrides,
+        originKey: "origin-log",
+      });
+      expect(outcome).toEqual({ status: "refused", reason });
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(`reason=${reason}`);
+      expect(lines[0]).toContain("origin=origin-log");
+      for (const credential of CREDENTIALS) expect(lines[0]).not.toContain(credential);
+      expect(lines[0]).not.toContain(SECRET);
+      expect(lines[0]).not.toContain(String(presented));
+    }
+  });
+
+  it("logs success with the credential ordinal and no credential", async () => {
+    const { outcome, lines } = await signInLogged(CREDENTIALS[1], {
+      counts: [1],
+      originKey: "origin-log",
+    });
+
+    expect(outcome.status).toBe("authenticated");
+    if (outcome.status !== "authenticated") return;
+    expect(outcome.ordinal).toBe(2);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("ordinal=2");
+    expect(lines[0]).toContain("origin=origin-log");
+    for (const credential of CREDENTIALS) expect(lines[0]).not.toContain(credential);
+    expect(lines[0]).not.toContain(SECRET);
+  });
+
+  it("works without a sink: existing callers log nothing and decide identically", async () => {
+    // The sink is optional so the decision never depends on observability. A caller that does
+    // not pass one gets the same outcome — proven here rather than assumed, because a log
+    // wired into the decision path (rather than beside it) would be a behavioural change.
+    const { outcome } = await signIn(CREDENTIALS[0], { counts: [1] });
+    expect(outcome.status).toBe("authenticated");
+    const refused = await signIn("wrong", { counts: [1] });
+    expect(refused.outcome).toEqual({ status: "refused", reason: "bad_credential" });
+  });
+
+  it("formats one dialect for both emitters, so the action cannot drift from the core", () => {
+    // The action logs pre-core refusals itself; the core logs decided outcomes. Both go through
+    // this formatter, so a rewording in one place cannot produce two dialects — and a test that
+    // only asserted `toContain("reason=")` would pass with either.
+    expect(
+      formatSignInDiagnostic({ kind: "refused", reason: "limit_reached", originKey: "origin-a" }),
+    ).toBe("researcher sign-in refused reason=limit_reached origin=origin-a");
+    expect(
+      formatSignInDiagnostic({ kind: "authenticated", ordinal: 1, originKey: "origin-a" }),
+    ).toBe("researcher sign-in authenticated ordinal=1 origin=origin-a");
   });
 });
