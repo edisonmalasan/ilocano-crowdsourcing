@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { signInAction } from "@/lib/admin/actions";
 import { RESEARCHER_SIGN_IN_REFUSAL_MESSAGE } from "@/lib/admin/refusal";
+import { RESEARCHER_HOME } from "@/lib/admin/routes";
 import { Button } from "@/components/ui/button";
 import { Field, controlClasses } from "@/components/ui/field";
 
@@ -15,9 +17,10 @@ import { Field, controlClasses } from "@/components/ui/field";
  * ============================================================================
  * The decision is entirely server-side — `runResearcherSignIn` compares the credential, consults the
  * durable counter, and issues the session. This component holds no credential of its own beyond the
- * field's current value, decides nothing, and receives no status it could pass back to the server. It
- * renders exactly one thing the server told it: the refusal message, which is the SAME STRING for
- * every refusal reason, so there is no client-side state that distinguishes "wrong credential" from
+ * field's current value, decides nothing about access, and receives no status it could pass back
+ * to the server. It renders exactly one thing the server told it — the refusal message, which is
+ * the SAME STRING for every refusal reason — and navigates on the success member, which carries
+ * nothing to render. There is no client-side state that distinguishes "wrong credential" from
  * "rate limited" from "not configured".
  *
  * ============================================================================
@@ -41,6 +44,7 @@ const FIELD_LABEL = "Researcher access key";
 export function SignInForm() {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
   // Read inside the handler and written synchronously, so two clicks in one task both see `true`
   // and the second returns before any state is scheduled.
   const inFlight = useRef(false);
@@ -55,8 +59,12 @@ export function SignInForm() {
     startTransition(async () => {
       try {
         const result = await signInAction(formData);
-        // Only a refusal reaches here. A success ends in `redirect`, which throws to end the
-        // request — so there is no "signed-in" branch to render and no navigation this file owns.
+        // Success and refusal arrive as SEPARATE members, so no `catch` anywhere here can turn
+        // one into the other. A success navigates; only a returned refusal renders the message.
+        if (result.status === "authenticated") {
+          router.push(RESEARCHER_HOME);
+          return;
+        }
         setRefusal(result.message);
       } catch {
         // A Server Action REJECTS when the request never produced an answer: the deployment is down,

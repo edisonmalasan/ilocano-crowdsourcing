@@ -29,7 +29,7 @@ import { researcherSignInInputSchema } from "@/schemas/researcher";
  * four things and no more: read the request, read the environment, delegate, and manage the cookie.
  */
 
-import { RESEARCHER_HOME, RESEARCHER_SIGN_IN } from "@/lib/admin/routes";
+import { RESEARCHER_SIGN_IN } from "@/lib/admin/routes";
 
 /** The form field the sign-in control submits under. Not a credential-like name, so a password manager does not fill it. */
 const CREDENTIAL_FIELD = "researcherAccessKey";
@@ -37,23 +37,29 @@ const CREDENTIAL_FIELD = "researcherAccessKey";
 /**
  * The single outward answer to a refused sign-in.
  *
- * There is no success variant, and that is a type-level statement rather than an omission. The
- * function below ends a successful sign-in with `redirect`, which signals by THROWING, so the only
- * way it can ever RETURN is to refuse. Declaring a `"signed-in"` variant would have been a lie the
- * compiler could not detect — and worse, it would have forced the client component to carry a branch
- * that can never run, which is a place for the next person to start treating "signed in" as a
- * state the browser is told about. The browser is not told: the cookie is set, and the browser
- * navigates because the response redirects.
- *
- * `message` is the SAME string for all four internal reasons (unconfigured, limit reached, wrong
- * credential, unreachable counter). A distinguishable refusal would be an oracle: "limit reached"
- * tells an attacker they are currently being rate limited, and "not configured" tells them
- * something about the deployment, and neither is something a refusal should carry.
+ * One member of the result union below, alongside an authenticated member that carries
+ * nothing. Success travels as a RETURNED value rather than as a thrown redirect, so no
+ * client-side `catch` — present or future — can convert a granted access into the refusal
+ * message. The browser learns nothing beyond which member arrived: the cookie is set, and
+ * navigation is the form's own decision on the success member.
  */
 export interface ResearcherSignInRefusal {
   readonly status: "refused";
   readonly message: string;
 }
+
+/**
+ * A successful sign-in, as a value.
+ *
+ * Deliberately empty: the session travels as the httpOnly cookie the server just set, and the
+ * credential never travels at all. Anything added here would be something the browser is told,
+ * so this stays a bare status by design rather than by omission.
+ */
+export interface ResearcherSignInSuccess {
+  readonly status: "authenticated";
+}
+
+export type ResearcherSignInResult = ResearcherSignInSuccess | ResearcherSignInRefusal;
 
 /**
  * Exchanges a presented operator credential for a session cookie.
@@ -63,7 +69,7 @@ export interface ResearcherSignInRefusal {
  * and not a boundary; `@/lib/server/write-intake` exists so that rule cannot be forgotten in one
  * place, and this action is one of its callers.
  */
-export async function signInAction(formData: FormData): Promise<ResearcherSignInRefusal> {
+export async function signInAction(formData: FormData): Promise<ResearcherSignInResult> {
   // The field must appear EXACTLY ONCE. `formData.get` returns the first value and says nothing
   // about the rest, so a payload carrying two copies would be silently half-read — and which copy
   // wins would depend on the browser rather than on this code.
@@ -156,10 +162,11 @@ export async function signInAction(formData: FormData): Promise<ResearcherSignIn
   }
 
   await writeResearcherSessionCookie(outcome.session);
-  // Outside every `try`, deliberately. `redirect` signals control flow by THROWING, so a `catch`
-  // anywhere above this line would swallow it and the researcher would sit on the sign-in screen
-  // holding a valid session.
-  redirect(RESEARCHER_HOME);
+  // Returned, not redirected. `redirect()` signals by THROWING, and a throw crosses the Server
+  // Action boundary as a rejection — which the form's `catch` renders as the refusal message,
+  // showing a refusal for an access that was just granted. A returned value cannot be caught
+  // into a refusal by anything downstream.
+  return { status: "authenticated" };
 }
 
 /**
