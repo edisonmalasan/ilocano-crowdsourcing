@@ -453,7 +453,7 @@ describe("the sentence a participant reads when the write fails", () => {
     const { ENGLISH_COPY } = await import("@/lib/i18n/copy");
 
     expect(failureMessageFor("not_configured", t)).not.toMatch(/try again/i);
-    expect(ENGLISH_COPY["validation.failure.notConfigured"]).toMatch(/not open right now/i);
+    expect(ENGLISH_COPY["validation.failure.notConfigured"]).toMatch(/closed at the moment/i);
   });
 
   it("tells the participant NOTHING WAS SAVED, so they know to retype", () => {

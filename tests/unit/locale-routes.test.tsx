@@ -405,7 +405,7 @@ describe("the screening screen, in both languages", () => {
     const filipino = renderToStaticMarkup(<ScreeningForm locale="fil" />);
 
     expect(filipino).toContain("Magpatuloy");
-    expect(filipino).toContain("hindi maaaring maidagdag sa orihinal");
+    expect(filipino).toContain("hindi mapapatungan ang orihinal");
     // And not the English, which is the half that actually matters: a localized button label
     // beside an English sentence is the half-localized page D3 forbids.
     expect(filipino).not.toContain("Continue");

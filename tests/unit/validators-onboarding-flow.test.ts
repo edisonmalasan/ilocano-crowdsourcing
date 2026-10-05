@@ -68,7 +68,7 @@ describe("decideEnrollment", () => {
       throw new Error("expected two error decisions");
     }
     expect(notConfigured.message).not.toBe(persistence.message);
-    expect(notConfigured.message).toMatch(/not open/i);
+    expect(notConfigured.message).toMatch(/closed at the moment/i);
   });
 
   it("never reports an identifier for a failed enrollment, so none can be stored", () => {
@@ -83,7 +83,7 @@ describe("decideEnrollment", () => {
         // A participant who cannot tell whether a failure persisted something will
         // either assume the worst or retry and create a duplicate.
         expect(messageForFailure(reason, subject, EN)).toMatch(
-          /nothing was saved|nothing was changed/i,
+          /nothing was saved|nothing changed/i,
         );
       }
     }
@@ -133,7 +133,7 @@ describe("decideEnrollment", () => {
  * alternation would either be unreadable or would be one long pattern nobody verifies.
  */
 describe("failure copy in Filipino", () => {
-  const isSafeToRetry = (message: string): boolean => /nase-save|binago/i.test(message);
+  const isSafeToRetry = (message: string): boolean => /nase-save|nagbago|binago/i.test(message);
 
   it("still says nothing was saved or changed, in every reason and subject", () => {
     for (const reason of ["not_configured", "invalid", "persistence"] as const) {
@@ -324,7 +324,7 @@ describe("the resume announcement", () => {
     // This used to be a module-level `RESUMED_NOTICE` constant, and it is now a catalog key read
     // through the same translator as everything else. The two claims below are about the English
     // wording because that is the approved copy; the localization claim is separate.
-    expect(EN("screening.resumed")).toMatch(/already held/i);
+    expect(EN("screening.resumed")).toMatch(/left off/i);
     // And it must not read as though something new was created.
     expect(EN("screening.resumed")).not.toMatch(/new validator|created|signed up/i);
   });
