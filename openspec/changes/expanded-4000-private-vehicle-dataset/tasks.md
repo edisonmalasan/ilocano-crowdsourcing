@@ -12,8 +12,8 @@
 - [x] 2.1 Write one forward migration widening the `source_entry_id` CHECK to 1..800 (nullable preserved, v2 untouched, no transit constraint invented). Verify: PGlite applies the full set; 800 accepted; 801 and 0 refused with the CHECK named.
 - [x] 2.2 Record the pre-import source audit as Apply evidence (structure, distribution, contradiction scan with capable markers plus eye-sampled remainder). Verify: audit scripts rerun green against the committed file.
 - [x] 2.3 Prove the 4,000-row round-trip through PostgreSQL with per-category counts, exact id sets, byte-identical fields, payload values, and the exact transit distribution. Verify: integration tests over the real engine.
-- [ ] 2.4 Back up the hosted 3,000-entry corpus and verify readability; apply the migration and read the constraint back; FK-order delete to zeros; import 4,000 rows; read back every verification (counts, id sets, fields, payloads, distribution, actives). Verify: measured hosted numbers recorded, never claimed.
-- [ ] 2.5 Prove the hosted zero state (4000/0/0/4000/0%, empty exports with `omitted_incomplete_entries = 4000`) and run the production smoke with zero fake responses. Verify: export artifacts read back; anon gateway still denied.
+- [x] 2.4 Back up the hosted 3,000-entry corpus and verify readability; apply the migration and read the constraint back; FK-order delete to zeros; import 4,000 rows; read back every verification (counts, id sets, fields, payloads, distribution, actives). Verify: measured hosted numbers recorded, never claimed.
+- [x] 2.5 Prove the hosted zero state (4000/0/0/4000/0%, empty exports with `omitted_incomplete_entries = 4000`) and run the production smoke with zero fake responses. Verify: export artifacts read back; anon gateway still denied.
 
 ## 3. Exports, allocation, dashboard, ledger, and full verification
 
