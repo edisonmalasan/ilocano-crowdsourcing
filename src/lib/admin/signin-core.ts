@@ -84,6 +84,24 @@ export type SignInOutcome =
   | { readonly status: "refused"; readonly reason: SignInRefusal };
 
 /**
+ * What one sign-in outcome contributes to the server log, as data rather than text.
+ *
+ * The line is formatted here so the two places that emit it — the core for decided outcomes,
+ * the action for refusals that never reach the core — cannot drift into two dialects. The
+ * origin key is already stored in the research database by design (coarse, non-identifying);
+ * the ordinal is the guard's non-secret position. No credential, no session, no digest.
+ */
+export type SignInDiagnosticEvent =
+  | { readonly kind: "refused"; readonly reason: SignInRefusal; readonly originKey: string }
+  | { readonly kind: "authenticated"; readonly ordinal: number; readonly originKey: string };
+
+export function formatSignInDiagnostic(event: SignInDiagnosticEvent): string {
+  return event.kind === "refused"
+    ? `researcher sign-in refused reason=${event.reason} origin=${event.originKey}`
+    : `researcher sign-in authenticated ordinal=${event.ordinal} origin=${event.originKey}`;
+}
+
+/**
  * The refusal a requester is shown. One string, for every {@link SignInRefusal}.
  *
  * A FUNCTION rather than a bare constant, deliberately. `@/lib/admin/refusal` holds the same string in
@@ -106,6 +124,13 @@ export function researcherSignInRefusalMessage(): string {
 export interface ResearcherSignInDeps {
   readonly attempts: SignInAttemptsRepository;
   readonly nowMs: number;
+  /**
+   * Where one line per outcome goes. Optional so existing callers keep working; the Server
+   * Action supplies a namespaced `console.info`. A sink that throws would turn a decided outcome
+   * into a 500, so implementations must not throw — and the core never awaits it, so a slow
+   * sink cannot stall a sign-in either.
+   */
+  readonly log?: (line: string) => void;
 }
 
 export interface ResearcherSignInArgs {
@@ -137,9 +162,15 @@ export interface ResearcherSignInArgs {
 }
 
 export async function runResearcherSignIn(args: ResearcherSignInArgs): Promise<SignInOutcome> {
+  const log = args.deps.log ?? (() => {});
+  const diagnosed = (reason: SignInRefusal): SignInOutcome => {
+    log(formatSignInDiagnostic({ kind: "refused", reason, originKey: args.originKey }));
+    return refuse(reason);
+  };
+
   // 1. An unconfigured researcher area refuses before anything else is touched. No counter write, no
   //    comparison, no session.
-  if (args.adminEnv === null) return refuse("not_configured");
+  if (args.adminEnv === null) return diagnosed("not_configured");
 
   // 2. The atomic increment. A failure here FAILS CLOSED, and that is a deliberate trade: refusing
   //    a legitimate researcher because the counter is unreachable is an availability cost, whereas
@@ -150,18 +181,18 @@ export async function runResearcherSignIn(args: ResearcherSignInArgs): Promise<S
   try {
     count = await args.deps.attempts.recordAttempt(args.originKey, SIGN_IN_WINDOW_SECONDS);
   } catch {
-    return refuse("counter_unavailable");
+    return diagnosed("counter_unavailable");
   }
 
   // The refusal is returned BEFORE any comparison. This is the scenario "further attempts are refused
   // without the presented value being compared against the configured credentials", and it is also
   // why the limit cannot be used as an oracle: past the limit, the submitted value is never looked at.
-  if (count > SIGN_IN_MAX_FAILURES) return refuse("limit_reached");
+  if (count > SIGN_IN_MAX_FAILURES) return diagnosed("limit_reached");
 
   // 3. The comparison. Exact, no early exit at either loop level, and the only call to it per
   //    attempt — see `@/lib/admin/credentials` for why each of those is load-bearing.
   const verification = verifyOperatorCredential(args.presented, args.adminEnv.operatorSecrets);
-  if (!verification.matched || verification.ordinal === null) return refuse("bad_credential");
+  if (!verification.matched || verification.ordinal === null) return diagnosed("bad_credential");
 
   // 4. A verified credential. The counter is cleared FIRST so the allowance is restored before the
   //    session exists; the reverse order would hand out a session while this origin was still one
@@ -173,9 +204,16 @@ export async function runResearcherSignIn(args: ResearcherSignInArgs): Promise<S
   try {
     await args.deps.attempts.clear(args.originKey);
   } catch {
-    return refuse("counter_unavailable");
+    return diagnosed("counter_unavailable");
   }
 
+  log(
+    formatSignInDiagnostic({
+      kind: "authenticated",
+      ordinal: verification.ordinal,
+      originKey: args.originKey,
+    }),
+  );
   return {
     status: "authenticated",
     session: issueResearcherSession({

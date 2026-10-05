@@ -366,6 +366,33 @@ describe("a configured deployment reaches the database", () => {
   });
 });
 
+describe("the action logs the refusal through without changing its contract", () => {
+  it("emits one namespaced diagnostic line on the unconfigured path", async () => {
+    // The sink the action hands the core is the only new behaviour here: same refusal shape,
+    // same message, same zero client constructions — plus exactly one log line carrying the
+    // internal reason. Stubbed at `console.info` because that is the boundary the action owns;
+    // the line's content contract belongs to the core suite, not this one.
+    reset();
+    const lines: string[] = [];
+    const info = console.info;
+    console.info = (line: unknown) => {
+      lines.push(String(line));
+    };
+    try {
+      const { result } = await signIn(formWith(WELL_FORMED));
+      expect(result).toMatchObject({ status: "refused" });
+      expect(clientConstructions).toBe(0);
+    } finally {
+      console.info = info;
+    }
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("[sadino:researcher-signin]");
+    expect(lines[0]).toContain("reason=not_configured");
+    expect(lines[0]).not.toContain(WELL_FORMED.researcherAccessKey);
+  });
+});
+
 describe("the origin key is derived from the request, not the form", () => {
   it.each([
     ["no forwarded headers at all", {}, "no-forwarded-origin"],

@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 
 import { clearResearcherSessionCookie, writeResearcherSessionCookie } from "@/lib/admin/cookie";
 import { getAdminEnv } from "@/lib/admin/env";
-import { runResearcherSignIn, researcherSignInRefusalMessage } from "@/lib/admin/signin-core";
+import {
+  formatSignInDiagnostic,
+  runResearcherSignIn,
+  researcherSignInRefusalMessage,
+} from "@/lib/admin/signin-core";
 import { resolveOriginKey } from "@/lib/admin/origin";
 import type { SignInAttemptsRepository } from "@/lib/repositories";
 import { createSignInAttemptsRepository } from "@/lib/repositories/supabase";
@@ -103,8 +107,15 @@ export async function signInAction(formData: FormData): Promise<ResearcherSignIn
   //
   // `adminEnv` is also captured once rather than read inside the call, so the environment a decision
   // is made against and the one a client is built for cannot differ.
+  const originKey = await requestOriginKey();
   const adminEnv = getAdminEnv();
   if (adminEnv === null) {
+    // Logged here rather than in the core, because this refusal never reaches it: the
+    // environment check precedes repository construction, so there is no decision to delegate
+    // to. Same line shape, same sink, via the shared formatter — not a second dialect.
+    console.info(
+      `[sadino:researcher-signin] ${formatSignInDiagnostic({ kind: "refused", reason: "not_configured", originKey })}`,
+    );
     return { status: "refused", message: researcherSignInRefusalMessage() };
   }
 
@@ -121,14 +132,23 @@ export async function signInAction(formData: FormData): Promise<ResearcherSignIn
   try {
     attempts = createSignInAttemptsRepository();
   } catch {
+    console.info(
+      `[sadino:researcher-signin] ${formatSignInDiagnostic({ kind: "refused", reason: "counter_unavailable", originKey })}`,
+    );
     return { status: "refused", message: researcherSignInRefusalMessage() };
   }
 
   const outcome = await runResearcherSignIn({
     presented: credential,
     adminEnv,
-    originKey: await requestOriginKey(),
-    deps: { attempts, nowMs: Date.now() },
+    originKey,
+    deps: {
+      attempts,
+      nowMs: Date.now(),
+      // The only I/O this decision performs. Namespaced so the line is attributable in a shared
+      // log; the core formats the line and never sees the console.
+      log: (line) => console.info(`[sadino:researcher-signin] ${line}`),
+    },
   });
 
   if (outcome.status === "refused") {

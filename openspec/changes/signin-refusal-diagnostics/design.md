@@ -18,11 +18,13 @@ See proposal.md - Why. `runResearcherSignIn` already returns the discriminated `
 
 ## Decisions
 
-**D1: Add an optional `log` sink to `ResearcherSignInDeps`, defaulting to a no-op.**
+**D1: Add an optional `log` sink to `ResearcherSignInDeps`, defaulting to a no-op, plus a shared line formatter.**
 
-The core calls `deps.log(line)` once per outcome. Optional so existing callers (including the web-download-adjacent paths, of which there are none — sign-in is the only caller) need no change; tests inject a recording array. Alternative (logging in `actions.ts` from the outcome) rejected: the outcome's reason is the core's vocabulary, and re-deriving it outside duplicates the decision.
+The core calls `deps.log(line)` once per outcome. Optional so existing callers keep working; tests inject a recording array. The line shape lives in `formatSignInDiagnostic`, used by the core for decided outcomes AND by the action for the two refusals that never reach it (unconfigured env, unreachable client constructor) — one dialect, two emitters. Alternative (logging in `actions.ts` from the outcome) rejected: the outcome's reason is the core's vocabulary, and re-deriving it outside duplicates the decision.
 
-**D2: Log line shape: `researcher sign-in <outcome> reason=<reason|ok> origin=<originKey>[ ordinal=<n>]`.**
+A malformed payload (unparseable intake) logs nothing: it was never compared against a credential, and the action refuses it before the origin key is even read. That silence is deliberate and stated here rather than discovered.
+
+**D2: Log line shape: `researcher sign-in refused reason=<reason> origin=<key>` or `researcher sign-in authenticated ordinal=<n> origin=<key>`.**
 
 Origin key is already stored in the research database by design (coarse, non-identifying). Ordinal is the guard's non-secret position. No credential, no session, no digest, no timing.
 
