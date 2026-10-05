@@ -45,12 +45,13 @@ import {
   type TestDatabase,
 } from "./support/pglite";
 
-const SOURCE_PATH = path.resolve(process.cwd(), "data", "ilocano-synthetic-data.json");
+const SOURCE_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthetic-data.json");
 const IMPORT_MIGRATION = "20261003120000_dataset_entries_import.sql";
+const PROVENANCE_MIGRATION = "20261005120000_merged_dataset_provenance.sql";
 const GUARD_MIGRATION = "20261004120000_dataset_entries_import_guard.sql";
 
 /**
- * The eight parameters, in the migration's own declaration order.
+ * The ten parameters of `dataset_entries_import_v2`, in the migration's own declaration order.
  *
  * Written as an explicit tuple rather than derived from the argument object's keys, because the
  * positional mapping IS the contract: PostgREST's `rpc` matches a named argument object to the
@@ -62,6 +63,8 @@ const GUARD_MIGRATION = "20261004120000_dataset_entries_import_guard.sql";
 const PARAMETER_ORDER = [
   "p_id",
   "p_category",
+  "p_source_entry_id",
+  "p_category_name",
   "p_instruction",
   "p_origin",
   "p_destination",
@@ -71,7 +74,10 @@ const PARAMETER_ORDER = [
 ] as const;
 
 const FUNCTION_SIGNATURE =
-  "public.dataset_entries_import(text, text, text, text, text, text, jsonb, boolean)";
+  "public.dataset_entries_import_v2(text, text, integer, text, text, text, text, text, jsonb, boolean)";
+
+/** v1 stays deployed as history; this is what the guard migration still pins. */
+const V1_FUNCTION_NAME = "dataset_entries_import";
 
 /**
  * `created_at`, read as an epoch NUMBER's text rather than as a `timestamptz`.
@@ -93,10 +99,15 @@ const CREATED_AT_AS_EPOCH_TEXT =
   "extract(epoch from created_at)::text as created_at, origin " +
   "from public.dataset_entries where id = $1";
 
+const CREATED_AT_AS_EPOCH_TEXT_V2 =
+  "select instruction, source_payload, " +
+  "extract(epoch from created_at)::text as created_at, origin, category, source_entry_id, category_name " +
+  "from public.dataset_entries where id = $1";
+
 /**
  * A `SupabaseRpcClientLike` over PGlite.
  *
- * Maps `rpc(fn, args)` onto a positional `select public.fn($1, …, $8)`, which is what PostgREST
+ * Maps `rpc(fn, args)` onto a positional `select public.fn($1, …, $10)`, which is what PostgREST
  * does with a named argument object. That equivalence is the reason this adapter can stand in for
  * the real client: the migration's parameter names are checked by name against `PARAMETER_ORDER`
  * below, so an argument renamed on the TypeScript side fails here rather than passing as a call
@@ -107,7 +118,7 @@ function pgliteRpcClient(executor: QueryExecutor) {
     async rpc(fn: string, args: Record<string, unknown>): Promise<SupabaseRpcResultLike> {
       // The only function any caller here may name. Refusing rather than interpolating means a
       // test cannot accidentally prove something about a different function.
-      if (fn !== "dataset_entries_import") {
+      if (fn !== "dataset_entries_import_v2") {
         return { data: null, error: { code: "TESTREFUSED", message: `unexpected fn ${fn}` } };
       }
 
@@ -123,11 +134,13 @@ function pgliteRpcClient(executor: QueryExecutor) {
       }
 
       try {
-        const result = await executor.query<{ dataset_entries_import: string }>(
-          `select public.dataset_entries_import($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+        const result = await executor.query<{ dataset_entries_import_v2: string }>(
+          `select public.dataset_entries_import_v2($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
           [
             args.p_id as string,
             args.p_category as string,
+            args.p_source_entry_id as number,
+            args.p_category_name as string,
             args.p_instruction as string,
             args.p_origin as string | null,
             args.p_destination as string | null,
@@ -136,7 +149,7 @@ function pgliteRpcClient(executor: QueryExecutor) {
             args.p_is_active as boolean,
           ] as never[],
         );
-        return { data: result.rows[0]?.dataset_entries_import ?? null, error: null };
+        return { data: result.rows[0]?.dataset_entries_import_v2 ?? null, error: null };
       } catch (cause) {
         // PostgREST reports a raised `raise exception` as an error envelope rather than a rejected
         // promise, and the sink's `expectNoError` is what turns it into a `RepositoryError`.
@@ -220,6 +233,9 @@ describe("the dataset_entries_import function", () => {
     expect(
       await sinkFor().upsert({
         ...entry,
+        category: "destination_only",
+        sourceEntryId: 7,
+        categoryName: "Destination Only",
         origin: "A DIFFERENT ORIGIN",
         destination: "A DIFFERENT DESTINATION",
         transitMode: "a-different-mode",
@@ -231,15 +247,22 @@ describe("the dataset_entries_import function", () => {
       source_payload: Record<string, unknown>;
       created_at: string;
       origin: string | null;
-    }>(db, CREATED_AT_AS_EPOCH_TEXT, [entry.id]);
+      category: string;
+      source_entry_id: number;
+      category_name: string;
+    }>(db, CREATED_AT_AS_EPOCH_TEXT_V2, [entry.id]);
 
     // The three immutable columns are byte-identical.
     expect(after[0]!.instruction).toBe(before[0]!.instruction);
     expect(after[0]!.created_at).toBe(before[0]!.created_at);
     expect(after[0]!.source_payload).toEqual(before[0]!.source_payload);
-    // And the mutable one really did change, so the three assertions above are not vacuous: they
-    // would pass on a function that updated nothing at all.
+    // And the mutable ones really did change, so the three assertions above are not vacuous: they
+    // would pass on a function that updated nothing at all. Provenance converges rather than
+    // freezing a first-write value beside a corrected file.
     expect(after[0]!.origin).toBe("A DIFFERENT ORIGIN");
+    expect(after[0]!.category).toBe("destination_only");
+    expect(after[0]!.source_entry_id).toBe(7);
+    expect(after[0]!.category_name).toBe("Destination Only");
   });
 
   it("keeps `source_payload` immutable even though nothing forbids it, because it CONTAINS the instruction", async () => {
@@ -305,10 +328,12 @@ describe("the dataset_entries_import function", () => {
     // in the log, and Ilocano research text must not end up there.
     const failure = await rawFailure(
       db,
-      `select public.dataset_entries_import($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+      `select public.dataset_entries_import_v2($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
       [
         entry.id,
         entry.category,
+        entry.sourceEntryId,
+        entry.categoryName,
         DIVERGENT,
         entry.origin,
         entry.destination,
@@ -325,15 +350,15 @@ describe("the dataset_entries_import function", () => {
   });
 
   // ---------------------------------------------------------------------------------------------
-  // All 600 records through the PRODUCTION sink. Task 6.2.
+  // All 3,000 records through the PRODUCTION sink.
   // ---------------------------------------------------------------------------------------------
 
-  it("imports all 600 records through the production sink with every instruction byte-identical", async () => {
+  it("imports all 3000 records through the production sink with every instruction byte-identical", async () => {
     const { entries, report } = parsedEntries();
-    expect(entries.length).toBe(600);
+    expect(entries.length).toBe(3000);
 
     const result = await importDatasetEntries(entries, sinkFor(), report);
-    expect(result).toMatchObject({ parsed: 600, inserted: 600, updated: 0 });
+    expect(result).toMatchObject({ parsed: 3000, inserted: 3000, updated: 0 });
 
     const stored = await query<{ id: string; instruction: string }>(
       db,
@@ -341,20 +366,71 @@ describe("the dataset_entries_import function", () => {
     );
 
     // Read the SOURCE, not the parse, so this cannot pass by checking the import against
-    // something the import produced.
-    const source = JSON.parse(readFileSync(SOURCE_PATH, "utf8")) as {
-      id: string;
-      instruction: string;
-    }[];
+    // something the import produced. Canonical ids are derived here by the same documented
+    // rule (`{prefix}_{local:04d}`), spelled out per block rather than imported from the
+    // parser — deriving the expectation from the implementation would pass with any rule.
+    const document = JSON.parse(readFileSync(SOURCE_PATH, "utf8")) as {
+      categories: { category_name: string; entries: { id: number; instruction: string }[] }[];
+    };
+    const prefixes = ["DO", "DT", "OD", "ODT", "CPE"];
+    const expected = new Map<string, string>();
+    document.categories.forEach((block, index) => {
+      const prefix = prefixes[index] as string;
+      for (const record of block.entries) {
+        expected.set(`${prefix}_${String(record.id).padStart(4, "0")}`, record.instruction);
+      }
+    });
 
-    expect(stored).toHaveLength(600);
-    expect(stored.map((row) => row.id)).toEqual(source.map((record) => record.id).sort());
-    for (const [index, row] of stored.entries()) {
-      expect(row.instruction).toBe(source[index]!.instruction);
+    expect(stored).toHaveLength(3000);
+    expect(new Set(stored.map((row) => row.id))).toEqual(new Set(expected.keys()));
+    for (const row of stored) {
+      expect(row.instruction, `instruction for ${row.id}`).toBe(expected.get(row.id));
     }
   });
 
-  it("leaves all 600 rows byte-identical on a second run, reporting 0 inserted / 600 updated", async () => {
+  it("stores provenance on every row: 600 per category, local ids 1..600, payloads verbatim", async () => {
+    const { entries, report } = parsedEntries();
+    await importDatasetEntries(entries, sinkFor(), report);
+
+    const stored = await query<{
+      id: string;
+      category: string;
+      source_entry_id: number;
+      category_name: string;
+      source_payload: { id: unknown };
+    }>(
+      db,
+      "select id, category, source_entry_id, category_name, source_payload from public.dataset_entries",
+    );
+
+    expect(stored).toHaveLength(3000);
+    const byCategory = new Map<string, { locals: number[]; names: Set<string> }>();
+    for (const row of stored) {
+      // The payload preserves the ORIGINAL source record: numeric local id, no canonical id.
+      expect(row.source_payload.id).toBe(row.source_entry_id);
+      const group = byCategory.get(row.category) ?? { locals: [], names: new Set<string>() };
+      group.locals.push(row.source_entry_id);
+      group.names.add(row.category_name);
+      byCategory.set(row.category, group);
+    }
+    expect([...byCategory.keys()].sort()).toEqual(
+      [
+        "complex_preference_expressions",
+        "destination_only",
+        "destination_transit_mode",
+        "origin_destination",
+        "origin_destination_transit_mode",
+      ].sort(),
+    );
+    for (const [category, group] of byCategory) {
+      expect(group.locals.sort((a, b) => a - b)).toEqual(
+        Array.from({ length: 600 }, (_, index) => index + 1),
+      );
+      expect(group.names.size, `category names for ${category}`).toBe(1);
+    }
+  });
+
+  it("leaves all 3000 rows byte-identical on a second run, reporting 0 inserted / 3000 updated", async () => {
     const { entries, report } = parsedEntries();
 
     await importDatasetEntries(entries, sinkFor(), report);
@@ -365,7 +441,7 @@ describe("the dataset_entries_import function", () => {
     );
 
     const second = await importDatasetEntries(entries, sinkFor(), report);
-    expect(second).toMatchObject({ parsed: 600, inserted: 0, updated: 600 });
+    expect(second).toMatchObject({ parsed: 3000, inserted: 0, updated: 3000 });
 
     const after = await query<{ id: string; instruction: string; created_at: string }>(
       db,
@@ -387,7 +463,7 @@ describe("the dataset_entries_import function", () => {
       const failure = await asRoleFailure(
         db,
         role,
-        `select public.dataset_entries_import('OD_0001', 'origin_destination', 'x', null, null, null, '{}'::jsonb, true)`,
+        `select public.dataset_entries_import_v2('OD_0001', 'origin_destination', 1, 'Origin + Destination', 'x', null, null, null, '{}'::jsonb, true)`,
       );
       expect(failure).toMatch(/permission denied/i);
     }
@@ -410,12 +486,24 @@ describe("the dataset_entries_import function", () => {
          p.proconfig as config
        from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname = 'public' and p.proname = 'dataset_entries_import'`,
+       where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
     );
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.has_service_role).toBe(true);
     expect(rows[0]!.has_public).toBe(false);
+  });
+
+  it("leaves v1 deployed with its eight-argument signature, because history is not rewritten", async () => {
+    // v1 is superseded, not deleted: the old guard migration pins its signature, and deleting
+    // the function would turn that deployed guard into a check against a ghost.
+    const rows = await query<{ count: number }>(
+      db,
+      `select count(*)::int as count from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = '${V1_FUNCTION_NAME}'`,
+    );
+    expect(rows[0]!.count).toBe(1);
   });
 
   it("is SECURITY INVOKER, because a definer function would let `anon` write arbitrary rows", async () => {
@@ -424,7 +512,7 @@ describe("the dataset_entries_import function", () => {
       `select p.prosecdef as prosecdef
          from pg_proc p
          join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = 'dataset_entries_import'`,
+        where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
     );
     expect(rows[0]!.prosecdef).toBe(false);
   });
@@ -435,7 +523,7 @@ describe("the dataset_entries_import function", () => {
       `select p.proconfig as config
          from pg_proc p
          join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = 'dataset_entries_import'`,
+        where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
     );
     expect(rows).toHaveLength(1);
     // The stored value is `search_path=""` — the EMPTY path, quoted — not `search_path=`. Asserted
@@ -481,7 +569,15 @@ describe("the dataset_entries_import function", () => {
 
     const updateClause = body.slice(updateStart, guardStart);
 
-    for (const mutable of ["category", "origin", "destination", "transit_mode", "is_active"]) {
+    for (const mutable of [
+      "category",
+      "source_entry_id",
+      "category_name",
+      "origin",
+      "destination",
+      "transit_mode",
+      "is_active",
+    ]) {
       expect(updateClause.match(new RegExp(`\\b${mutable}\\s*=`, "g"))).toHaveLength(1);
     }
     for (const immutable of ["instruction", "source_payload", "created_at"]) {
@@ -710,6 +806,69 @@ describe("the dataset_entries_import function", () => {
       }
     });
   });
+
+  // ---------------------------------------------------------------------------------------------
+  // The provenance migration: columns, checks, and the versioned function.
+  // ---------------------------------------------------------------------------------------------
+
+  describe("the provenance migration", () => {
+    it("adds the provenance columns without disturbing existing rows", async () => {
+      const columns = await query<{ column_name: string; is_nullable: string }>(
+        db,
+        `select column_name, is_nullable from information_schema.columns
+          where table_schema = 'public' and table_name = 'dataset_entries'
+            and column_name in ('source_entry_id', 'category_name')
+          order by column_name`,
+      );
+      expect(columns.map((column) => column.column_name)).toEqual([
+        "category_name",
+        "source_entry_id",
+      ]);
+      // Nullable, so the migration applies over a table that already holds rows.
+      expect(new Set(columns.map((column) => column.is_nullable))).toEqual(new Set(["YES"]));
+    });
+
+    it("rejects a source-local id outside 1..600 and a blank category name", async () => {
+      for (const [column, value, check] of [
+        ["source_entry_id", 0, "dataset_entries_source_entry_id_range"],
+        ["source_entry_id", 601, "dataset_entries_source_entry_id_range"],
+        ["category_name", "   ", "dataset_entries_category_name_not_blank"],
+      ] as const) {
+        const failure = await rawFailure(
+          db,
+          `insert into public.dataset_entries (id, category, ${column}, instruction, source_payload) values ('PROV_${column}_${String(value).trim()}', 'origin_destination', $1, 'Provenance check.', '{}'::jsonb)`,
+          [value] as never[],
+        );
+        expect(failure, `${column} = ${JSON.stringify(value)}`).toContain(check);
+      }
+    });
+
+    it("applies cleanly to a correct schema, so its precondition is a CONDITION", async () => {
+      const bare = await createTestDatabase();
+      try {
+        await applyMigrationsUntil(bare, PROVENANCE_MIGRATION);
+        const sql = (await readMigrations()).find((m) => m.filename === PROVENANCE_MIGRATION)!.sql;
+        expect(await execFailure(bare, sql)).toBe("");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses against a database with no `dataset_entries`, creating nothing", async () => {
+      const bare = await createTestDatabase();
+      try {
+        await applyMigrationsUntil(bare, PROVENANCE_MIGRATION);
+        await applySql(bare, "drop table public.dataset_entries cascade", "drop dataset_entries");
+        const sql = (await readMigrations()).find((m) => m.filename === PROVENANCE_MIGRATION)!.sql;
+
+        const failure = await execFailure(bare, sql);
+        expect(failure).toContain("merged_dataset_provenance precondition failed");
+        expect(failure).toContain("does not exist");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+  });
 });
 
 /** The engine's stored source for the function, from `pg_proc`. */
@@ -719,7 +878,7 @@ async function functionSource(db: TestDatabase): Promise<string> {
     `select p.prosrc as prosrc
        from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname = 'dataset_entries_import'`,
+      where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
   );
   expect(rows).toHaveLength(1);
   return rows[0]!.prosrc;
