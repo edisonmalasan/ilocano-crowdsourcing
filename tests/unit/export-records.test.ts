@@ -233,6 +233,27 @@ describe("buildExportRecords", () => {
     expect(records[0]?.attempt_id).toBe("VAL_00000001");
   });
 
+  it("carries the entry's source provenance on every raw record", () => {
+    // `source_entry_id` is the source-local id as text (the CSV has no typed columns);
+    // `category_name` is the human-readable source name. Both travel from the entry, so a raw
+    // record is joinable to its source block without parsing a canonical id. Asserted per
+    // record against its own entry — the fixture spans two categories, and a single expected
+    // value would pass while every record silently carried the default.
+    const entryByRecord = new Map(sources.map((item) => [item.response.id, item.entry]));
+    for (const record of records) {
+      const entry = entryByRecord.get(record.response_id);
+      expect(record.source_entry_id).toBe(String(entry?.sourceEntryId));
+      expect(record.category).toBe(entry?.category);
+      expect(record.category_name).toBe(entry?.categoryName);
+    }
+    // And the CSV carries the same cells under the same names.
+    const csv = buildCsv(records, EXPORT_RECORD_KEYS);
+    const header = (csv.split("\n")[0] ?? "").split(",");
+    for (const key of ["source_entry_id", "category_name"] as const) {
+      expect(header).toContain(key);
+    }
+  });
+
   it("carries per-pillar contribution flags so each pillar total is recomputable", () => {
     // r07 judges and covers English but not Filipino; r08 judges and covers neither language.
     // The flags name exactly what each response contributes — which is what lets the summary's

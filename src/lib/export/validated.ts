@@ -54,7 +54,9 @@ import type { ExportSourceWithQualifying } from "./records";
  */
 export const VALIDATED_RECORD_KEYS = [
   "id",
+  "source_entry_id",
   "category",
+  "category_name",
   "validated_ilocano",
   "evaluation",
   "self_reported_proficiency",
@@ -73,7 +75,12 @@ export type ValidatedRecordKey = (typeof VALIDATED_RECORD_KEYS)[number];
 /** One validated entry, as the JSON document carries it. */
 export interface ValidatedRecord {
   readonly id: string;
+  /** The source-local id 1..600 within the entry's category block. A number here (not text): the
+   * JSON document is typed while the CSV carries the same value as text. */
+  readonly source_entry_id: number;
   readonly category: string;
+  /** The human-readable source category name, verbatim. Provenance; the slug stays the key. */
+  readonly category_name: string;
   readonly validated_ilocano: string;
   /**
    * The judgment supplier's evaluation. Describes the response that supplied
@@ -253,7 +260,9 @@ export function buildValidatedDataset(
     );
     records.push({
       id: entry.id,
+      source_entry_id: entry.sourceEntryId,
       category: entry.category,
+      category_name: entry.categoryName,
       validated_ilocano: validatedIlocanoFor(entry, judgment),
       evaluation: judgment.evaluation,
       self_reported_proficiency: suppliers.judgment.proficiency,
@@ -287,7 +296,9 @@ export function buildValidatedDataset(
 export function validatedCsvRow(record: ValidatedRecord): ValidatedCsvRow {
   return {
     id: record.id,
+    source_entry_id: String(record.source_entry_id),
     category: record.category,
+    category_name: record.category_name,
     validated_ilocano: record.validated_ilocano,
     evaluation: record.evaluation,
     self_reported_proficiency: record.self_reported_proficiency,
