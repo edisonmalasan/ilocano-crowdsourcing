@@ -165,6 +165,53 @@ describe("loadDashboardOverview", () => {
     expect(overview.reviewEntryIds).toEqual(["E5", "E6"]);
   });
 
+  it("counts entries from every category, never one category's slice", async () => {
+    // The merged corpus holds five categories; a total derived from a single-category read
+    // would report 600 of 3,000. Two entries sharing a source-local id under different
+    // categories are two entries here, and review links key on canonical ids that cannot
+    // collide across them.
+    const mixed: DashboardRepositories = {
+      entries: {
+        listActive: async () => [
+          {
+            id: "OD_0042",
+            category: "origin_destination",
+            sourceEntryId: 42,
+            categoryName: "Origin + Destination",
+            instruction: "instruction for OD_0042",
+            origin: "origin of OD_0042",
+            destination: "destination of OD_0042",
+            transitMode: null,
+            createdAt: AT("01"),
+            isActive: true,
+          },
+          {
+            id: "ODT_0042",
+            category: "origin_destination_transit_mode",
+            sourceEntryId: 42,
+            categoryName: "Origin + Destination + Transit Mode",
+            instruction: "instruction for ODT_0042",
+            origin: "origin of ODT_0042",
+            destination: "destination of ODT_0042",
+            transitMode: "jeepney",
+            createdAt: AT("01"),
+            isActive: true,
+          },
+        ],
+        findById: async () => null,
+      },
+      validations: { listForEntries: async () => [] },
+      validators: { listByIds: async () => [] },
+    };
+
+    const overview = await loadDashboardOverview(mixed);
+
+    expect(overview.totalEntries).toBe(2);
+    expect(overview.totalResponses).toBe(0);
+    expect(overview.buckets).toEqual({ incomplete: 2, complete: 0 });
+    expect(overview.coveragePercentage).toBe(0);
+  });
+
   it("reports overlap and late arrivals as diagnostics, never as demotions", async () => {
     // Four entries hold extra packages and three hold late arrivals, yet all five complete
     // entries stay complete: overlap is a collection diagnostic, and the partition does not

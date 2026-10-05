@@ -244,12 +244,24 @@ describe("merged-shape validation", () => {
   });
 
   it("rejects a duplicated category block", () => {
-    const names = [NAMES[0] as string, NAMES[1] as string, NAMES[1] as string, NAMES[2] as string, NAMES[3] as string];
+    const names = [
+      NAMES[0] as string,
+      NAMES[1] as string,
+      NAMES[1] as string,
+      NAMES[2] as string,
+      NAMES[3] as string,
+    ];
     expect(() => parseSyntheticDataset(documentOf(names))).toThrow(/duplicate category block/);
   });
 
   it("rejects an unknown category name rather than inventing a mapping", () => {
-    const names = [NAMES[0] as string, "Harbor + Ferry", NAMES[2] as string, NAMES[3] as string, NAMES[4] as string];
+    const names = [
+      NAMES[0] as string,
+      "Harbor + Ferry",
+      NAMES[2] as string,
+      NAMES[3] as string,
+      NAMES[4] as string,
+    ];
     expect(() => parseSyntheticDataset(documentOf(names))).toThrow(/unknown category/);
   });
 
@@ -299,9 +311,7 @@ describe("merged-shape validation", () => {
   it("mints canonical ids deterministically across runs", () => {
     const first = parseSyntheticDataset(documentOf(NAMES));
     const second = parseSyntheticDataset(documentOf(NAMES));
-    expect(first.entries.map((entry) => entry.id)).toEqual(
-      second.entries.map((entry) => entry.id),
-    );
+    expect(first.entries.map((entry) => entry.id)).toEqual(second.entries.map((entry) => entry.id));
     expect(first.entries[0]?.id).toBe("DO_0001");
     expect(first.entries[600]?.id).toBe("DT_0001");
     expect(first.entries[1200]?.id).toBe("OD_0001");
@@ -410,9 +420,9 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
   it("rejects a blank instruction rather than importing an entry with nothing to judge", () => {
     // A dataset entry with no instruction gives a validator nothing to evaluate. Defaulting it
     // would manufacture a research record that never existed.
-    expect(() =>
-      parseSyntheticDataset(wrapped({ ...validRecord(1), instruction: "   " })),
-    ).toThrow(DatasetParseError);
+    expect(() => parseSyntheticDataset(wrapped({ ...validRecord(1), instruction: "   " }))).toThrow(
+      DatasetParseError,
+    );
   });
 
   it("rejects a missing instruction and identifies the block", () => {
@@ -455,9 +465,7 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
   });
 
   it("treats an omitted optional field and an explicit null identically", () => {
-    const omitted = parseSyntheticDataset(
-      wrapped({ ...validRecord(1), output: {} }),
-    ).entries[0];
+    const omitted = parseSyntheticDataset(wrapped({ ...validRecord(1), output: {} })).entries[0];
     const explicitNull = parseSyntheticDataset(
       wrapped({
         ...validRecord(1),

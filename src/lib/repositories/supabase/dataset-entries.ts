@@ -140,9 +140,9 @@ export class SupabaseDatasetEntriesRepository implements DatasetEntriesRepositor
    * default) and signals the cap only by returning fewer rows than match. Allocation reads the
    * whole active pool, so a silent cap would look like a smaller dataset and would quietly reduce
    * coverage. The exact count is therefore requested in the same round trip and a short read
-   * raises `RepositoryError` rather than returning the truncated list. The `Origin + Destination`
-   * dataset is 600 records, so this cannot trigger today — it is here because the failure would be
-   * invisible and the next dataset will not be 600 records.
+   * raises `RepositoryError` rather than returning the truncated list. The merged corpus is
+   * 3,000 active entries across five categories — past the default cap — so this guard is live
+   * rather than hypothetical.
    *
    * ORDER. No `order()` is applied, following the interface: the result carries no research
    * meaning, and allocation applies its own coverage-aware ordering and randomization. The

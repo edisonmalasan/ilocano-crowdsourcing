@@ -240,7 +240,7 @@ describe("the operator command cannot write a file", () => {
       );
 
     for (const evasion of [
-      'writeFile("data/ilocano-synthetic-data.json", "{}");',
+      'writeFile("data/merged-ilocano-synthetic-data.json", "{}");',
       'writeFile(DEFAULT_SOURCE_PATH, "{}");',
       'appendFile(`${ROOT}/data/out.json`, "x");',
       'rm("data", { recursive: true });',
@@ -262,7 +262,7 @@ describe("the operator command cannot write a file", () => {
     // The invariant the previous blanket scan only implied. Checked by looking for the research
     // directory — or the constant that names it — in any filesystem call, and by asserting `data/`
     // is real, so a typo in the path cannot make this pass on nothing.
-    expect(existsSync(path.join(ROOT, "data", "ilocano-synthetic-data.json"))).toBe(true);
+    expect(existsSync(path.join(ROOT, "data", "merged-ilocano-synthetic-data.json"))).toBe(true);
 
     for (const file of scriptFiles()) {
       const relative = path.relative(ROOT, file).split(path.sep).join("/");
@@ -288,7 +288,7 @@ describe("the operator command cannot write a file", () => {
   it("reads the source dataset through the read-only entry point, and names it as a constant", () => {
     // The scan above proves the command cannot write. This proves it is reading the RIGHT file, and
     // that the path is not an argument — see the `main` argument test below for the second half.
-    expect(DEFAULT_SOURCE_PATH).toBe("data/ilocano-synthetic-data.json");
+    expect(DEFAULT_SOURCE_PATH).toBe("data/merged-ilocano-synthetic-data.json");
     expect(existsSync(path.join(ROOT, DEFAULT_SOURCE_PATH))).toBe(true);
   });
 });

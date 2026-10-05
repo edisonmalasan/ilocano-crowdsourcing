@@ -344,7 +344,7 @@ export class SupabaseBatchesRepository implements BatchesRepository {
    * neither is guarded by `assertPageIsComplete`, which needs a `count` this read does not request.
    * That is a real gap and it is stated rather than hidden. It is bounded in the same way
    * `listEntryIdsForValidator` states its bound: one row per allocation, and no validator's rows
-   * approach a thousand in a study of 600 entries, because the database refuses to let anyone answer
+   * approach a thousand in a study of 3,000 entries, because the database refuses to let anyone answer
    * an entry twice.
    */
   async listForRecovery(validatorId: string): Promise<RecoverableBatch[]> {

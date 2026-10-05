@@ -19,9 +19,11 @@ const CHROME = {
 /** One REAL allocated entry, read from the immutable source rather than written out by hand. */
 function readFirstInstruction(): ReturnType<typeof parseSyntheticDataset>["entries"][number] {
   const { entries } = parseSyntheticDataset(
-    JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+    JSON.parse(
+      readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
+    ),
   );
-  expect(entries.length, "this helper read a real dataset, not an empty one").toBe(600);
+  expect(entries.length, "this helper read a real dataset, not an empty one").toBe(3000);
   return entries[0];
 }
 

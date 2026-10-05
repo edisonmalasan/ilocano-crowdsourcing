@@ -208,8 +208,9 @@ describe("the refusal surface", () => {
     // the half of the guarantee that a test can observe.
     //
     // Everything below reads {@link visibleText}, so class names cannot satisfy or break it.
-    // `OD_0001` is the dataset entry identifier's shape from `data/ilocano-synthetic-data.json`, so
-    // an entry-specific refusal would carry something matching it.
+    // `OD_0001` is a canonical dataset entry identifier's shape from
+    // `data/merged-ilocano-synthetic-data.json`, so an entry-specific refusal would carry
+    // something matching it.
     const shown = visibleText(html);
     expect(shown).not.toMatch(/OD_\d{4}/);
     // No digit is displayed at all, so there is no count, no figure, and no identifier anywhere on

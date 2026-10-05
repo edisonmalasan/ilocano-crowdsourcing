@@ -1,7 +1,4 @@
-import {
-  datasetEntryInputSchema,
-  type DatasetEntryInput,
-} from "@/schemas/dataset";
+import { datasetEntryInputSchema, type DatasetEntryInput } from "@/schemas/dataset";
 
 /**
  * Parser for the immutable merged synthetic source dataset.
@@ -135,7 +132,7 @@ export interface DatasetParseReport {
  *
  * Carries the index and, where it can be recovered, the id of the offending record. An import
  * error that says "invalid input" without saying which record is unusable is not actionable when
- * the input is 600 lines of research data.
+ * the input is 3,000 records of research data.
  */
 export class DatasetParseError extends Error {
   readonly recordIndex: number;

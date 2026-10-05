@@ -540,6 +540,50 @@ describe("completion retires the entry", () => {
   });
 });
 
+describe("entries sharing a source-local id across categories", () => {
+  // The merged source reuses ids 1..600 inside every category block, so `OD_0042` and
+  // `ODT_0042` are two distinct canonical entries that happen to share a local id. The pool,
+  // the answered rule, and the reservation claim must all key on the canonical id — anything
+  // keying on the local id would confuse or collapse them.
+  const od = () => entry("OD_0042", { sourceEntryId: 42, categoryName: "Origin + Destination" });
+  const odt = () =>
+    entry("ODT_0042", {
+      category: "origin_destination_transit_mode",
+      sourceEntryId: 42,
+      categoryName: "Origin + Destination + Transit Mode",
+    });
+
+  it("treats the same local id in two categories as two distinct allocatable entries", async () => {
+    const fakes = createFakes({ pool: [od(), odt()] });
+
+    const outcome = await allocateBatch(
+      request,
+      dependenciesFor(fakes, { config: config({ batchSize: 2 }) }),
+    );
+
+    expect(
+      allocated(outcome)
+        .entries.map((candidate) => candidate.id)
+        .sort(),
+    ).toEqual(["ODT_0042", "OD_0042"]);
+  });
+
+  it("excludes only the answered canonical entry, never its same-local-id sibling", async () => {
+    const fakes = createFakes({
+      pool: [od(), odt()],
+      responses: [response({ datasetEntryId: "OD_0042", validatorId: VALIDATOR })],
+    });
+
+    const outcome = await allocateBatch(
+      request,
+      dependenciesFor(fakes, { config: config({ batchSize: 2 }) }),
+    );
+
+    // Honest short batch: one entry answered, one still eligible — the sibling is unaffected.
+    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual(["ODT_0042"]);
+  });
+});
+
 describe("an entry the validator already answered", () => {
   it("is excluded from the batch offered to that validator", async () => {
     const mine = entry("OD_0001");

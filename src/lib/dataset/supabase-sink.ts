@@ -57,7 +57,7 @@ export const DATASET_ENTRIES_IMPORT_FUNCTION = "dataset_entries_import_v2";
  *
  * The database already refuses a diverging instruction by raising
  * `dataset_entries_instruction_diverged`, and that raise is deliberately visible in the error: an
- * import that continued past a divergence would report "600 updated" while meaning something else.
+ * import that continued past a divergence would report "3000 updated" while meaning something else.
  * This sink therefore does NOT catch and convert that refusal into a return value. `design.md` D4
  * requires a re-run that diverges to stop loudly, and the loudest available signal is the database's
  * own named exception reaching the operator's terminal through the command's non-zero exit.

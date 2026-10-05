@@ -351,7 +351,7 @@ export async function allocateBatch(
       for (const entryId of batch.entryIds) answered.add(entryId);
     }
 
-    // One read for the WHOLE pool. Per-entry reads would be up to 600 round trips for one batch
+    // One read for the WHOLE pool. Per-entry reads would be up to 3,000 round trips for one batch
     // request, and each would be a separate chance to observe a different snapshot of coverage.
     const responses = await dependencies.validations.listForEntries(pool.map((entry) => entry.id));
 

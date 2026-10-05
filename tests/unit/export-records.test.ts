@@ -239,12 +239,13 @@ describe("buildExportRecords", () => {
     // record is joinable to its source block without parsing a canonical id. Asserted per
     // record against its own entry — the fixture spans two categories, and a single expected
     // value would pass while every record silently carried the default.
-    const entryByRecord = new Map(sources.map((item) => [item.response.id, item.entry]));
-    for (const record of records) {
-      const entry = entryByRecord.get(record.response_id);
-      expect(record.source_entry_id).toBe(String(entry?.sourceEntryId));
-      expect(record.category).toBe(entry?.category);
-      expect(record.category_name).toBe(entry?.categoryName);
+    const recordByResponse = new Map(records.map((record) => [record.response_id, record]));
+    for (const item of sources) {
+      const record = recordByResponse.get(item.response.id);
+      if (record === undefined) throw new Error(`no record for response ${item.response.id}`);
+      expect(record.source_entry_id).toBe(String(item.entry.sourceEntryId));
+      expect(record.category).toBe(item.entry.category);
+      expect(record.category_name).toBe(item.entry.categoryName);
     }
     // And the CSV carries the same cells under the same names.
     const csv = buildCsv(records, EXPORT_RECORD_KEYS);

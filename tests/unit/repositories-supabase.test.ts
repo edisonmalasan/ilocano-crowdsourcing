@@ -668,9 +668,7 @@ describe("the archival copy, and unmodelled fields", () => {
     const fake = createFakeClient();
     fake.enqueue(rows([legacy], 1));
 
-    await expect(
-      new SupabaseDatasetEntriesRepository(fake.client).listActive(),
-    ).rejects.toThrow();
+    await expect(new SupabaseDatasetEntriesRepository(fake.client).listActive()).rejects.toThrow();
   });
 
   it("never leaks an unmodelled column into the domain entry itself", async () => {
