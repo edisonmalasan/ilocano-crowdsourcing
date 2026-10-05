@@ -19,8 +19,8 @@ const record = (): ExportRecord =>
 const FULL: ExportRecord = {
   dataset_entry_id: "OD_0001",
   category: "origin_destination",
-  validation_id: "res_01",
-  validator_id: "VAL_00000001",
+  response_id: "res_01",
+  attempt_id: "VAL_00000001",
   self_reported_proficiency: "fluent",
   evaluation: "correct_natural",
   corrected_instruction: null,
@@ -179,16 +179,16 @@ describe("a full round trip", () => {
     const rows = parseCsv(
       buildCsv(
         [
-          { ...FULL, validation_id: "res_01" },
-          { ...FULL, validation_id: "res_02" },
+          { ...FULL, response_id: "res_01" },
+          { ...FULL, response_id: "res_02" },
         ],
         EXPORT_RECORD_KEYS,
       ),
     );
 
     expect(rows).toHaveLength(3);
-    expect((rows[1] as string[])[EXPORT_RECORD_KEYS.indexOf("validation_id")]).toBe("res_01");
-    expect((rows[2] as string[])[EXPORT_RECORD_KEYS.indexOf("validation_id")]).toBe("res_02");
+    expect((rows[1] as string[])[EXPORT_RECORD_KEYS.indexOf("response_id")]).toBe("res_01");
+    expect((rows[2] as string[])[EXPORT_RECORD_KEYS.indexOf("response_id")]).toBe("res_02");
   });
 
   it("ends the document on a line boundary", () => {
