@@ -56,10 +56,10 @@ function Figure({
 export function OverviewView({ overview }: { overview: DashboardOverview }) {
   return (
     <>
-      <section aria-label="Research export">
+      <section aria-label="Data export">
         <Card tone="accent">
           <CardHeader>
-            <CardTitle>Research export</CardTitle>
+            <CardTitle>Data export</CardTitle>
           </CardHeader>
           <CardBody>
             <p className="text-body text-ink">
@@ -68,12 +68,8 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
             </p>
             <p className="mt-4">
               <Link href={RESEARCHER_EXPORT} className={linkButtonClasses()}>
-                Export research data
+                Export data
               </Link>
-            </p>
-            <p className="text-small text-ink-muted mt-3">
-              Available only to signed researchers. The download changes nothing; the operator
-              command remains the backup path.
             </p>
           </CardBody>
         </Card>
