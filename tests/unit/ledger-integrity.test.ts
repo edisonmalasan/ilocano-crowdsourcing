@@ -428,6 +428,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `double-transit-mode-category`, the THIRTY-SEVENTH archived change, so this coupling has now
       // been paid TWENTY-TWO times. Same one-line edit, same reason.
       37: "Thirty-seven",
+      // Added for `remove-em-dash-interface-copy`, the THIRTY-EIGHTH archived change, so this coupling has now
+      // been paid TWENTY-THREE times. Same one-line edit, same reason.
+      38: "Thirty-eight",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
