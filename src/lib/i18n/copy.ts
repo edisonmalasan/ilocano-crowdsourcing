@@ -141,13 +141,13 @@ export const ENGLISH_COPY = {
 
   // -- Screening route ------------------------------------------------------
   "start.lead":
-    "One question about your Ilocano. It is background information for the research record — it " +
+    "One question about your Ilocano. It is background information for the research record. It " +
     "is not a score, and it does not change what you are asked to do. You must answer it to " +
     "continue.",
   "start.beforeAnswer.label": "Before you answer",
   "start.beforeAnswer.item1":
     "Taking part is voluntary. You can stop at any point, including on this screen, and close the " +
-    "tab — nothing is saved unless you press Continue.",
+    "tab. Nothing is saved unless you press Continue.",
   "start.beforeAnswer.item2":
     "We do not ask for your name, your email, your student number, or your phone number, and there " +
     "is no field on any screen where you could enter one.",
@@ -268,7 +268,7 @@ export const ENGLISH_COPY = {
   "validateStart.noIdentity.cta": "Go to the Ilocano question",
   "validateStart.exhausted":
     "Every sentence available to this validator has already been answered by the required number of " +
-    "people. Thank you — there is nothing more to do right now.",
+    "people. Thank you. There is nothing more to do right now.",
   "validateStart.failure.notConfigured":
     "The study is closed at the moment, and no batch was created.",
   "validateStart.failure.invalid":
@@ -278,7 +278,7 @@ export const ENGLISH_COPY = {
     "Your sentences did not come through just now, and no batch was created. Try again in a moment.",
   "validateStart.screeningRequired":
     "This attempt was created before the Ilocano question became required, so it cannot receive " +
-    "sentences. Start a new attempt to answer it — nothing you have already submitted is affected.",
+    "sentences. Start a new attempt to answer it. Nothing you have already submitted is affected.",
   "validateStart.restart": "Start a new attempt",
 
   // -- Interrupted batches need no offer copy ------------------------------------
@@ -329,11 +329,11 @@ export const ENGLISH_COPY = {
     "never changes.",
   "validation.translation.english": TRANSLATION_FIELD_LABELS.english.label,
   "validation.translation.english.description":
-    "Put the validated Ilocano sentence into English — your correction if you wrote one, " +
+    "Put the validated Ilocano sentence into English: your correction if you wrote one, " +
     "otherwise the sentence above.",
   "validation.translation.filipino": TRANSLATION_FIELD_LABELS.filipino.label,
   "validation.translation.filipino.description":
-    "Isalin sa Filipino ang validated na pangungusap — ang iyong correction kung may isinulat ka, " +
+    "Isalin sa Filipino ang validated na pangungusap: ang iyong correction kung may isinulat ka, " +
     "kundi ang pangungusap sa itaas.",
   "validation.translation.choice.legend": "Would you like to translate this sentence?",
   "validation.translation.choice.hint": "One language, both, or skip. Skipping costs you nothing.",
@@ -348,8 +348,7 @@ export const ENGLISH_COPY = {
     "That answer did not go through, and nothing was saved. Check the highlighted inputs.",
   "validation.failure.notConfigured": "The study is closed at the moment, and nothing was saved.",
   "validation.failure.persistence":
-    "That answer wouldn't save. Nothing was saved, so nothing is lost — try again in a " +
-    "moment.",
+    "That answer wouldn't save. Nothing was saved, so nothing is lost. Try again in a " + "moment.",
 
   // -- Session states --------------------------------------------------------
   "validate.finished.label": "This batch is finished",
@@ -408,7 +407,7 @@ export const ENGLISH_COPY = {
   "validate.finished.finish": "Finish for now",
   "validate.finished.finishNote":
     "Stopping here changes nothing you have already submitted. It ends this attempt in this browser " +
-    "session — to take part again, start a new one.",
+    "session. To take part again, start a new one.",
   // The exhausted pool, in this screen's own words. `validateStart.exhausted` cannot be reused here:
   // it says every available sentence "has already been answered by the required number of people",
   // which is COVERAGE vocabulary, and this screen also shows a lifetime figure that is deliberately
@@ -432,7 +431,7 @@ export const ENGLISH_COPY = {
     "already submitted is unchanged.",
   "validate.finished.failure.screeningRequired":
     "This attempt was created before the Ilocano question became required, so it cannot take " +
-    "another batch. Finish here, then start a new one — nothing you already submitted is " +
+    "another batch. Finish here, then start a new one. Nothing you already submitted is " +
     "affected.",
   "validate.absent.label": "We could not find that batch",
   "validate.absent.body":
@@ -543,12 +542,12 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   // -- Screening route ------------------------------------------------------
   "start.lead":
     "Isang tanong tungkol sa iyong Ilocano. Ito ay impormasyong panlikod para sa talaan ng " +
-    "pananaliksik — hindi ito iskor, at hindi nito binabago ang hinihingi sa iyo. Kailangan " +
+    "pananaliksik. Hindi ito iskor, at hindi nito binabago ang hinihingi sa iyo. Kailangan " +
     "mong sagutin ito para magpatuloy.",
   "start.beforeAnswer.label": "Bago ka sumagot",
   "start.beforeAnswer.item1":
     "Boluntary ang pakikilahok. Maaari kang tumigil anumang oras, kahit sa screen na ito, at " +
-    "isara ang tab — walang nase-save maliban kung pindutin mo ang Magpatuloy.",
+    "isara ang tab. Walang nase-save maliban kung pindutin mo ang Magpatuloy.",
   "start.beforeAnswer.item2":
     "Hindi namin itatanong ang iyong pangalan, email, numero ng estudyante, o numero ng telepono, " +
     "at walang anumang field sa alinmang screen kung saan mo ito maaaring ilagay.",
@@ -614,7 +613,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "ready.notStarted.label": "Kung hindi ka pa nagsimula",
   "ready.notStarted.body":
     "Ang pagpunta rito ay hindi ibig sabihing sinagot mo ang tanong sa Ilocano. Ang tanong na " +
-    "iyon lang ang lumilikha ng pagkakakilanlan mo bilang validator — walang paraan para " +
+    "iyon lang ang lumilikha ng pagkakakilanlan mo bilang validator. Walang paraan para " +
     "gumawa nito mula sa pahinang ito.",
   "ready.notStarted.cta": "Pumunta sa tanong ng Ilocano",
   "ready.next.label": "Ang susunod",
@@ -662,7 +661,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validateStart.noIdentity.cta": "Pumunta sa tanong tungkol sa Ilocano",
   "validateStart.exhausted":
     "Sagot na ng kinakailangang bilang ng tao ang bawat pangungusap na abot ng validator na ito. " +
-    "Salamat — wala nang kailangang gawin sa ngayon.",
+    "Salamat. Wala nang kailangang gawin sa ngayon.",
   "validateStart.failure.notConfigured":
     "Sarado ang pag-aaral sa ngayon, at walang batch na nalikha.",
   "validateStart.failure.invalid":
@@ -673,7 +672,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "muli maya-maya.",
   "validateStart.screeningRequired":
     "Nilikha ang pagsubok na ito bago naging required ang tanong sa Ilocano, kaya hindi ito " +
-    "mabibigyan ng mga pangungusap. Magsimula ng bagong pagsubok para sagutin ito — walang " +
+    "mabibigyan ng mga pangungusap. Magsimula ng bagong pagsubok para sagutin ito. Walang " +
     "naaapektuhan sa mga naipasa mo na.",
   "validateStart.restart": "Magsimula ng bagong pagsubok",
 
@@ -724,15 +723,15 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "kailanman nagbabago.",
   "validation.translation.english": "Pagsasalin sa Ingles",
   "validation.translation.english.description":
-    "Ilagay sa Ingles ang validated na Ilocano — ang pagwawasto mo kung may isinulat ka, kundi " +
+    "Ilagay sa Ingles ang validated na Ilocano: ang pagwawasto mo kung may isinulat ka, kundi " +
     "ang pangungusap sa itaas.",
   "validation.translation.filipino": "Pagsasalin sa Filipino",
   "validation.translation.filipino.description":
-    "Isalin sa Filipino ang validated na pangungusap — ang iyong pagwawasto kung may isinulat ka, " +
+    "Isalin sa Filipino ang validated na pangungusap: ang iyong pagwawasto kung may isinulat ka, " +
     "kundi ang pangungusap sa ibabaw.",
   "validation.translation.choice.legend": "Gusto mo bang isalin ang pangungusap na ito?",
   "validation.translation.choice.hint":
-    "Isang wika, pareho, o laktawan — walang mawawala sa iyo ang paglaktaw.",
+    "Isang wika, pareho, o laktawan. Walang mawawala sa iyo ang paglaktaw.",
   "validation.translation.choice.english": "Ingles",
   "validation.translation.choice.filipino": "Filipino",
   "validation.translation.choice.both": "Pareho",
@@ -745,7 +744,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
     "input.",
   "validation.failure.notConfigured": "Sarado ang pag-aaral sa ngayon, at walang nase-save.",
   "validation.failure.persistence":
-    "Ayaw ma-save ang sagot na iyon. Walang nase-save, kaya walang nawala — subukan mong " +
+    "Ayaw ma-save ang sagot na iyon. Walang nase-save, kaya walang nawala. Subukan mong " +
     "muli maya-maya.",
 
   // -- Mga kalagayan ng session -------------------------------------------------
@@ -791,7 +790,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.finished.finish": "Tapusin na muna",
   "validate.finished.finishNote":
     "Walang binabago sa ipinasa mo kung tatapusin mo na dito. Tinatapos nito ang pagsubok na ito sa " +
-    "browser session na ito — para makilahok muli, magsimula ng bago.",
+    "browser session na ito. Para makilahok muli, magsimula ng bago.",
   // Ang naubos na pool, sa sariling salita ng screen na ito. Hindi maaaring gamitin ang
   // `validateStart.exhausted`: sinasabi nito na "sagot na ng kinakailangang bilang ng tao" ang bawat
   // pangungusap, at iyon ay salitang COVERAGE — samantalang ang lifetime figure sa screen na ito ay
@@ -815,7 +814,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.finished.failure.screeningRequired":
     "Nilikha ang pagsubok na ito bago naging required ang tanong sa Ilocano, kaya hindi ito " +
     "mabibigyan ng panibagong batch. Tapusin dito, pagkatapos ay magsimula ng bagong " +
-    "pagsubok — walang naaapektuhan sa naipasa mo na.",
+    "pagsubok. Walang naaapektuhan sa naipasa mo na.",
   "validate.absent.label": "Hindi namin mahanap ang batch na iyon",
   "validate.absent.body":
     "Maaaring kulang ang address, o ang batch ay sa ibang browser. Walang naaapektuhan sa mga " +

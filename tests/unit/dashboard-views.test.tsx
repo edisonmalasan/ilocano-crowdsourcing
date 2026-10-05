@@ -359,7 +359,7 @@ describe("EntryReviewView", () => {
     // `entry-review.tsx` asserted nowhere — a researcher reading "The English translation is
     // missing or blank" had no test behind that sentence at all.
     const cases = [
-      { reason: "unevaluable", expected: "abstentions never count toward coverage" },
+      { reason: "unevaluable", expected: "Abstentions never count toward coverage" },
       { reason: "missing-correction", expected: "A correction was required" },
       { reason: "missing-english", expected: "English translation is missing or blank" },
       { reason: "missing-filipino", expected: "Filipino translation is missing or blank" },
