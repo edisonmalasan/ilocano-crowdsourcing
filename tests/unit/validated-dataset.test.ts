@@ -166,11 +166,11 @@ describe("buildValidatedDataset", () => {
 
     expect(records.map((record) => record.id)).toEqual(["E1", "E2", "E3", "E5", "E6"]);
     const byEntry = byId(records);
-    expect(byEntry.get("E1")?.source_validation_id).toBe("rv01");
-    expect(byEntry.get("E2")?.source_validation_id).toBe("rv03");
-    expect(byEntry.get("E5")?.source_validation_id).toBe("rv08");
+    expect(byEntry.get("E1")?.source_response_id).toBe("rv01");
+    expect(byEntry.get("E2")?.source_response_id).toBe("rv03");
+    expect(byEntry.get("E5")?.source_response_id).toBe("rv08");
     // The pooled entry's Ilocano supplier is the earliest valid judgment.
-    expect(byEntry.get("E6")?.source_validation_id).toBe("rv09");
+    expect(byEntry.get("E6")?.source_response_id).toBe("rv09");
   });
 
   it("takes the correction where one was required and the instruction otherwise", () => {
@@ -190,7 +190,7 @@ describe("buildValidatedDataset", () => {
     // in the raw document and neither moves the validated record off the earliest package.
     const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
 
-    expect(byEntry.get("E1")?.source_validation_id).toBe("rv01");
+    expect(byEntry.get("E1")?.source_response_id).toBe("rv01");
     expect(byEntry.get("E1")?.needs_review).toBe(false);
     expect(byEntry.get("E2")?.needs_review).toBe(true);
   });
@@ -202,7 +202,7 @@ describe("buildValidatedDataset", () => {
     const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
 
     expect(byEntry.get("E3")?.needs_review).toBe(true);
-    expect(byEntry.get("E3")?.source_validation_id).toBe("rv05");
+    expect(byEntry.get("E3")?.source_response_id).toBe("rv05");
   });
 
   it("assembles a pooled record per field and flags that no single response vouches for it", () => {
@@ -228,10 +228,25 @@ describe("buildValidatedDataset", () => {
     );
   });
 
-  it("carries no validator or attempt identifier on any record", () => {
+  it("names the judgment supplier and nothing else as the record's provenance", () => {
+    // Supersedes the "carries no identifier" rule: the record now names the judgment's response
+    // and attempt — but ONLY there. An attempt id anywhere else (a bare endorsement, a second
+    // author field) would invite reading persons into a pooled record, so the text outside those
+    // two fields must be free of attempt ids.
     const { records } = buildValidatedDataset(ENTRIES, SOURCES);
-    const text = JSON.stringify(records);
 
+    for (const record of records) {
+      expect(record.source_response_id).toMatch(/^rv\d+$/);
+      expect(record.source_attempt_id).toMatch(/^VAL_[0-9a-f]+$/);
+    }
+    const withoutProvenance = JSON.stringify(
+      records.map((record) => {
+        const rest: Record<string, unknown> = { ...record };
+        delete rest.source_response_id;
+        delete rest.source_attempt_id;
+        return rest;
+      }),
+    );
     for (const id of [
       "VAL_00000001",
       "VAL_00000002",
@@ -240,28 +255,55 @@ describe("buildValidatedDataset", () => {
       "VAL_00000005",
       "VAL_00000006",
     ]) {
-      expect(text).not.toContain(id);
+      expect(withoutProvenance).not.toContain(id);
     }
     expect(Object.keys(records[0] ?? {}).sort()).toEqual(
       [
+        "category",
         "english_translation",
+        "evaluation",
         "filipino_translation",
         "id",
         "needs_review",
         "output",
-        "source_validation_id",
+        "self_reported_proficiency",
+        "source_attempt_id",
+        "source_response_id",
         "validated_ilocano",
       ].sort(),
     );
   });
 
+  it("attributes evaluation and proficiency to the judgment supplier, even pooled", () => {
+    // E2's judgment is rv03 (incorrect, fluent attempt VAL_00000001). E6's judgment is rv09
+    // (correct_natural, conversational attempt VAL_00000004) while its translations come from
+    // rv10 and rv11 — so the record's evaluation and proficiency describe rv09's attempt
+    // alone, and say nothing about who supplied the translations.
+    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+
+    expect(byEntry.get("E2")).toMatchObject({
+      category: "origin_destination",
+      evaluation: "incorrect",
+      self_reported_proficiency: "fluent",
+      source_response_id: "rv03",
+      source_attempt_id: "VAL_00000001",
+    });
+    expect(byEntry.get("E6")).toMatchObject({
+      category: "origin_destination",
+      evaluation: "correct_natural",
+      self_reported_proficiency: "conversational",
+      source_response_id: "rv09",
+      source_attempt_id: "VAL_00000004",
+    });
+  });
+
   it("links every record back to a row of the raw document", () => {
     const { records } = buildValidatedDataset(ENTRIES, SOURCES);
-    const rawIds = new Set(buildExportRecords(SOURCES).map((record) => record.validation_id));
+    const rawIds = new Set(buildExportRecords(SOURCES).map((record) => record.response_id));
 
     expect(records.length).toBeGreaterThan(0);
     for (const record of records) {
-      expect(rawIds.has(record.source_validation_id)).toBe(true);
+      expect(rawIds.has(record.source_response_id)).toBe(true);
     }
   });
 
@@ -273,6 +315,10 @@ describe("buildValidatedDataset", () => {
       expect(Object.keys(row).sort()).toEqual([...VALIDATED_RECORD_KEYS].sort());
       expect(row.id).toBe(record.id);
       expect(row.validated_ilocano).toBe(record.validated_ilocano);
+      expect(row.evaluation).toBe(record.evaluation);
+      expect(row.self_reported_proficiency).toBe(record.self_reported_proficiency);
+      expect(row.source_response_id).toBe(record.source_response_id);
+      expect(row.source_attempt_id).toBe(record.source_attempt_id);
       expect(row.origin).toBe(record.output.origin);
       expect(row.destination).toBe(record.output.destination);
       expect(row.transit_mode).toBe(record.output.transit_mode);
@@ -296,11 +342,15 @@ describe("validated CSV document", () => {
     // flows through them rather than around them.
     const nasty: ValidatedRecord = {
       id: "E9",
+      category: "origin_destination",
       validated_ilocano: 'Iti, Baguio — " Athletic Bowl',
+      evaluation: "correct_natural",
+      self_reported_proficiency: "native",
       english_translation: 'Go north, then say "here"',
       filipino_translation: "Pumunta, ka",
       output: { origin: null, destination: null, transit_mode: null },
-      source_validation_id: "rv99",
+      source_response_id: "rv99",
+      source_attempt_id: "VAL_00000009",
       needs_review: true,
     };
     const [, row] = buildCsv([validatedCsvRow(nasty)], VALIDATED_RECORD_KEYS)
@@ -309,7 +359,7 @@ describe("validated CSV document", () => {
 
     expect(row).toContain('"Iti, Baguio — "" Athletic Bowl"');
     expect(row).toContain('"Go north, then say ""here"""');
-    expect(row?.endsWith(",rv99,true")).toBe(true);
+    expect(row?.endsWith(",rv99,VAL_00000009,true")).toBe(true);
   });
 });
 

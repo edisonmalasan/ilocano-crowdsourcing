@@ -52,12 +52,17 @@ export interface ExportSource {
  *
  * Declared once and used by both serializers, so the JSON and the CSV cannot drift into describing
  * different records — which is a failure a reader of either artifact alone would never notice.
+ *
+ * `response_id` names one stored response; `attempt_id` names the anonymous attempt that
+ * submitted it. The older `validation_id` / `validator_id` names are superseded: they invited
+ * reading an attempt as a person. Values and prefixes are unchanged — only the labels moved —
+ * and no database column changed for this rename.
  */
 export const EXPORT_RECORD_KEYS = [
   "dataset_entry_id",
   "category",
-  "validation_id",
-  "validator_id",
+  "response_id",
+  "attempt_id",
   "self_reported_proficiency",
   "evaluation",
   "corrected_instruction",
@@ -102,8 +107,8 @@ export function buildExportRecords(sources: readonly ExportSourceWithQualifying[
   return sources.map(({ entry, response, proficiency, qualifies }) => ({
     dataset_entry_id: entry.id,
     category: entry.category,
-    validation_id: response.id,
-    validator_id: response.validatorId,
+    response_id: response.id,
+    attempt_id: response.validatorId,
     self_reported_proficiency: proficiency,
     evaluation: response.evaluation,
     corrected_instruction: nullableText(response.correctedInstruction),

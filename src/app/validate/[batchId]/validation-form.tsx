@@ -85,6 +85,28 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
   const [isPending, startTransition] = useTransition();
 
   /**
+   * The entry this state was built for. Compared against the prop during render, below.
+   */
+  const [entryId, setEntryId] = useState(datasetEntryId);
+
+  /**
+   * Entry-scoped reset, decided DURING RENDER rather than in an effect.
+   *
+   * Advancing navigates within one route, so React reuses this component instance for the next
+   * entry and `useState` initializers do not run again. Resetting in a `useEffect` would paint
+   * one frame of the previous entry's answers first; adjusting here means the frame committed
+   * for a new entry never held the old one. Only entry-scoped fields reset, and only when the
+   * entry actually changed — re-rendering the same entry (locale switch, parent update) keeps
+   * everything the participant typed.
+   */
+  if (entryId !== datasetEntryId) {
+    setEntryId(datasetEntryId);
+    setInput(EMPTY_ENTRY_FORM_INPUT);
+    setFieldErrors({});
+    setFailure(null);
+  }
+
+  /**
    * The single-flight latch.
    *
    * `isPending` alone is not sufficient, and the reason is specific: it becomes true only when

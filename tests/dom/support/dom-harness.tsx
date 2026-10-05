@@ -108,6 +108,14 @@ export interface Mounted {
    * `change` or `blur` does not reintroduce the same defect in a new place.
    */
   dispatch(target: Element, event: Event): void;
+  /**
+   * Renders a new element into the SAME root, so a same-instance prop change is observable.
+   *
+   * Added for the entry-advance regression: advancing reuses the form instance with a new entry
+   * id, and only a rerender of a live root reproduces that. Unmount-plus-mount would prove
+   * nothing — a fresh mount is fresh by construction.
+   */
+  rerender(element: ReactElement): void;
   unmount(): void;
 }
 
@@ -121,6 +129,12 @@ export function mount(element: ReactElement): Mounted {
 
   return {
     container,
+    /** Re-renders the SAME root with a new element, so same-instance prop changes are observable. */
+    rerender(element: ReactElement): void {
+      act(() => {
+        root.render(element);
+      });
+    },
     one<T extends Element>(selector: string): T {
       const found = container.querySelectorAll(selector);
       if (found.length !== 1) {

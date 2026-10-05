@@ -23,7 +23,7 @@
  *     the whole record;
  *   - two suppliers for one field share the same `createdAt`, so "earliest" is ambiguous.
  *
- * In the tie case the smallest validation id wins, stated as arbitrary and carrying no meaning:
+ * In the tie case the smallest response id wins, stated as arbitrary and carrying no meaning:
  * ids are CSPRNG hex, so their order means nothing, and a tie-break that pretended otherwise
  * would be a finding dressed as a method. The flag says a human must decide; the determinism
  * says the artifact is reproducible until they do.
@@ -38,6 +38,7 @@ import {
   isCorrectionRequired,
   isEntryComplete,
   isValidJudgment,
+  type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
 import type { DatasetEntry } from "@/schemas/dataset";
@@ -53,13 +54,17 @@ import type { ExportSourceWithQualifying } from "./records";
  */
 export const VALIDATED_RECORD_KEYS = [
   "id",
+  "category",
   "validated_ilocano",
+  "evaluation",
+  "self_reported_proficiency",
   "english_translation",
   "filipino_translation",
   "origin",
   "destination",
   "transit_mode",
-  "source_validation_id",
+  "source_response_id",
+  "source_attempt_id",
   "needs_review",
 ] as const;
 
@@ -68,7 +73,19 @@ export type ValidatedRecordKey = (typeof VALIDATED_RECORD_KEYS)[number];
 /** One validated entry, as the JSON document carries it. */
 export interface ValidatedRecord {
   readonly id: string;
+  readonly category: string;
   readonly validated_ilocano: string;
+  /**
+   * The judgment supplier's evaluation. Describes the response that supplied
+   * `validated_ilocano` — never the translations, which may come from elsewhere.
+   */
+  readonly evaluation: ValidationEvaluation;
+  /**
+   * The self-reported proficiency attached to the judgment supplier's attempt, or null when
+   * unrecorded. Metadata about the supplier, never a quality score, and never evidence about
+   * who authored any other field — least of all about a real human being.
+   */
+  readonly self_reported_proficiency: string | null;
   readonly english_translation: string;
   readonly filipino_translation: string;
   readonly output: {
@@ -76,8 +93,14 @@ export interface ValidatedRecord {
     readonly destination: string | null;
     readonly transit_mode: string | null;
   };
-  /** The validated-Ilocano supplier's id: provenance back to the raw record, without naming whose. */
-  readonly source_validation_id: string;
+  /** The validated-Ilocano supplier's response id: provenance back to the raw record. */
+  readonly source_response_id: string;
+  /**
+   * The anonymous attempt that submitted the judgment response. An attempt identifier, never a
+   * person identifier: one attempt may own many responses, and one person may hold many
+   * attempts.
+   */
+  readonly source_attempt_id: string;
   readonly needs_review: boolean;
 }
 
@@ -230,7 +253,10 @@ export function buildValidatedDataset(
     );
     records.push({
       id: entry.id,
+      category: entry.category,
       validated_ilocano: validatedIlocanoFor(entry, judgment),
+      evaluation: judgment.evaluation,
+      self_reported_proficiency: suppliers.judgment.proficiency,
       english_translation: english,
       filipino_translation: filipino,
       output: {
@@ -238,7 +264,8 @@ export function buildValidatedDataset(
         destination: entry.destination,
         transit_mode: entry.transitMode,
       },
-      source_validation_id: judgment.id,
+      source_response_id: judgment.id,
+      source_attempt_id: judgment.validatorId,
       needs_review:
         requiresResearcherReview(rows.map((row) => row.response)) ||
         isMultiSource(suppliers) ||
@@ -260,13 +287,17 @@ export function buildValidatedDataset(
 export function validatedCsvRow(record: ValidatedRecord): ValidatedCsvRow {
   return {
     id: record.id,
+    category: record.category,
     validated_ilocano: record.validated_ilocano,
+    evaluation: record.evaluation,
+    self_reported_proficiency: record.self_reported_proficiency,
     english_translation: record.english_translation,
     filipino_translation: record.filipino_translation,
     origin: record.output.origin,
     destination: record.output.destination,
     transit_mode: record.output.transit_mode,
-    source_validation_id: record.source_validation_id,
+    source_response_id: record.source_response_id,
+    source_attempt_id: record.source_attempt_id,
     needs_review: record.needs_review ? "true" : "false",
   };
 }

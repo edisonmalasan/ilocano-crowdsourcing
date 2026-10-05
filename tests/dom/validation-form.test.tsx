@@ -29,6 +29,7 @@ import { mount, type Mounted } from "./support/dom-harness";
  *   VF-6  a recorded response navigates to the NEXT position, never past the batch
  *   VF-7  a refused duplicate also advances, because the answer IS stored
  *   VF-8  a failed write leaves the typed answer on screen and reports the reason
+ *   VF-9  advancing to the next entry presents a fresh form with nothing carried over
  *
  * =================================================================================================
  * WHAT THIS DOES NOT PROVE
@@ -972,3 +973,67 @@ function cssEscape(value: string): string {
  * `23505` PostgREST has ever raised. The `lang`/`disabled`/`aria-busy` assertions are about what
  * `happy-dom` reports, which is a synthetic DOM and not a browser.
  */
+
+describe("VF-9 — each presented entry begins with a fresh form", () => {
+  it("clears entry 1's answers when entry 2 renders in the same instance", async () => {
+    // The leak this guards: advancing reuses this component instance, so `useState` initializers
+    // do not run again and entry 1's answers would sit in entry 2's inputs — submittable as
+    // entry 2's response. Rerendering with a new entry id is the production advance, minus the
+    // router: same instance, new props, which is exactly the shape that leaks.
+    await answerFully(INCORRECT);
+    await view.submitFormAndSettle(form());
+    expect(h.submitted).toHaveLength(1);
+
+    view.rerender(
+      <ValidationForm locale="en" batchId={BATCH_ID} datasetEntryId="OD_0008" position={4} />,
+    );
+    await view.settle();
+
+    // No evaluation selected: every option announces unselected.
+    expect(
+      options().filter((option) => option.getAttribute("aria-checked") === "true"),
+    ).toHaveLength(0);
+    // No correction, no translations, no choice: the conditional inputs are absent, not merely
+    // emptied — an emptied-but-present box would still read as an answer the validator gave.
+    expect(view.all('[name="correctedInstruction"]')).toHaveLength(0);
+    expect(view.all('[name="englishTranslation"]')).toHaveLength(0);
+    expect(view.all('[name="filipinoTranslation"]')).toHaveLength(0);
+    expect(view.all('[role="radiogroup"]')).toHaveLength(1);
+    // No error carried over either.
+    expect(view.container.querySelector('[role="alert"]')).toBeNull();
+    expect(view.all('[aria-invalid="true"]')).toHaveLength(0);
+  });
+
+  it("sends nothing stale when entry 2 is submitted untouched", async () => {
+    // The payload half of the same guarantee. Rendering empty inputs while keeping entry 1's
+    // payload underneath would pass every assertion above and still submit the wrong answer —
+    // which is why the fix resets state rather than hiding it, and why this submits.
+    await answerFully(INCORRECT);
+    await view.submitFormAndSettle(form());
+
+    view.rerender(
+      <ValidationForm locale="en" batchId={BATCH_ID} datasetEntryId="OD_0008" position={4} />,
+    );
+    await view.settle();
+    await view.submitFormAndSettle(form());
+
+    // The untouched entry-2 submit is refused as incomplete (no evaluation chosen), so the
+    // server receives nothing further: one payload total, and it names entry 1.
+    expect(h.submitted).toHaveLength(1);
+    expect((h.submitted[0] as { datasetEntryId: string }).datasetEntryId).toBe("OD_0007");
+  });
+
+  it("keeps typing when the same entry re-renders, because that is not an advance", async () => {
+    // The guard compares entry ids, not renders: a locale switch or parent update re-renders
+    // this same entry, and wiping a half-typed answer there would destroy work for no reason.
+    await choose(CORRECT_NATURAL);
+    await fillTranslations();
+
+    view.rerender(
+      <ValidationForm locale="en" batchId={BATCH_ID} datasetEntryId="OD_0007" position={3} />,
+    );
+    await view.settle();
+
+    expect(field("englishTranslation").value).toBe("Go to the Baguio Athletic Bowl.");
+  });
+});

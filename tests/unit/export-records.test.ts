@@ -190,7 +190,7 @@ describe("buildExportRecords", () => {
 
   it("emits one record per stored response, in order, and drops none", () => {
     expect(records).toHaveLength(9);
-    expect(records.map((record) => record.validation_id)).toEqual([
+    expect(records.map((record) => record.response_id)).toEqual([
       "r01",
       "r02",
       "r03",
@@ -212,18 +212,30 @@ describe("buildExportRecords", () => {
     }
   });
 
-  it("keeps each validator's own translations in that validator's record", () => {
+  it("keeps each attempt's own translations in that attempt's record", () => {
     const [first, second] = records;
     expect(first?.english_translation).toBe("Go north past the market.");
-    expect(first?.validator_id).toBe("VAL_00000001");
-    expect(second?.validator_id).toBe("VAL_00000002");
+    expect(first?.attempt_id).toBe("VAL_00000001");
+    expect(second?.attempt_id).toBe("VAL_00000002");
+  });
+
+  it("names one response per record and the attempt that submitted it", () => {
+    // Terminology, pinned: `response_id` is the `RSP_…`-shaped stored response, `attempt_id`
+    // is the `VAL_…`-shaped anonymous attempt. The older `validation_id` / `validator_id`
+    // names invited reading an attempt as a person; the values and prefixes are unchanged.
+    for (const record of records) {
+      expect(record.response_id).toMatch(/^r\d+$/);
+      expect(record.attempt_id).toMatch(/^VAL_[0-9a-f]+$/);
+    }
+    expect(records[0]?.response_id).toBe("r01");
+    expect(records[0]?.attempt_id).toBe("VAL_00000001");
   });
 
   it("carries per-pillar contribution flags so each pillar total is recomputable", () => {
     // r07 judges and covers English but not Filipino; r08 judges and covers neither language.
     // The flags name exactly what each response contributes — which is what lets the summary's
     // per-pillar totals be recomputed from the records document alone.
-    const byValidation = new Map(records.map((record) => [record.validation_id, record]));
+    const byValidation = new Map(records.map((record) => [record.response_id, record]));
 
     expect(byValidation.get("r07")).toMatchObject({
       qualifies_toward_completion: "true",
