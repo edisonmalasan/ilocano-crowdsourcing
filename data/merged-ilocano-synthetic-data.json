@@ -2,7 +2,7 @@
   "categories": [
     {
       "category_id": 1,
-      "category_name": "Dataset Synthesis: Destination Only",
+      "category_name": "Destination Only",
       "entries": [
         {
           "id": 1,
@@ -5408,7 +5408,7 @@
     },
     {
       "category_id": 2,
-      "category_name": "Dataset Synthesis: Destination + Transit Mode",
+      "category_name": "Destination + Transit Mode",
       "entries": [
         {
           "id": 1,
@@ -10814,7 +10814,7 @@
     },
     {
       "category_id": 3,
-      "category_name": "Dataset Synthesis: Origin + Destination",
+      "category_name": "Origin + Destination",
       "entries": [
         {
           "id": 1,
@@ -16220,7 +16220,7 @@
     },
     {
       "category_id": 4,
-      "category_name": "Dataset Synthesis: Origin + Destination + Transit Mode",
+      "category_name": "Origin + Destination + Transit Mode",
       "entries": [
         {
           "id": 1,
@@ -21626,7 +21626,7 @@
     },
     {
       "category_id": 5,
-      "category_name": "Dataset Synthesis: Complex/Preference Expressions",
+      "category_name": "Complex/Preference Expressions",
       "entries": [
         {
           "id": 1,
