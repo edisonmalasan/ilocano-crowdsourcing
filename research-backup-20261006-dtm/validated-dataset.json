@@ -1,0 +1,64 @@
+{
+  "derivation": {
+    "rule": "pooled-earliest-per-field-by-server-created-at",
+    "tie_break": "smallest-validation-id-arbitrary-carries-no-meaning",
+    "omitted_incomplete_entries": 3999
+  },
+  "categories": [
+    {
+      "category_id": 1,
+      "category": "destination_only",
+      "category_name": "Destination Only",
+      "records": []
+    },
+    {
+      "category_id": 2,
+      "category": "destination_transit_mode",
+      "category_name": "Destination + Transit Mode",
+      "records": []
+    },
+    {
+      "category_id": 3,
+      "category": "origin_destination",
+      "category_name": "Origin + Destination",
+      "records": [
+        {
+          "id": "OD_675",
+          "source_entry_id": 675,
+          "validated_ilocano": "Iti Baguio Botanical Garden ti ayanko ita; masapulko a makadanon iti Malcolm Square.",
+          "evaluation": "correct_natural",
+          "self_reported_proficiency": "basic",
+          "english_translation": "I am in the Baguio Botanical Garden now; i need to get to Malcolm Square",
+          "filipino_translation": "Nasa Baguio Botanical Garden ako ngayon; kailangan kong pumunta sa Malcolm Square",
+          "output": {
+            "origin": "Baguio Botanical Garden",
+            "destination": "Malcolm Square",
+            "transit_mode": null
+          },
+          "source_response_id": "RSP_29cbe8f5550b2924",
+          "source_attempt_id": "VAL_c5c392f8",
+          "needs_review": false,
+          "category_id": 3
+        }
+      ]
+    },
+    {
+      "category_id": 4,
+      "category": "origin_destination_transit_mode",
+      "category_name": "Origin + Destination + Transit Mode",
+      "records": []
+    },
+    {
+      "category_id": 5,
+      "category": "complex_preference_expressions",
+      "category_name": "Complex/Preference Expressions",
+      "records": []
+    },
+    {
+      "category_id": 6,
+      "category": "double_transit_mode",
+      "category_name": "Double Transit Mode",
+      "records": []
+    }
+  ]
+}
