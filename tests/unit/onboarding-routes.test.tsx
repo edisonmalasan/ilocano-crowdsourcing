@@ -309,7 +309,7 @@ describe("screening route", () => {
     ).not.toMatch(/start checking sentences|check sentences|start validating/i);
 
     // And the honest version is present: what this route is actually for.
-    expect(startMetadata.description).toMatch(/nothing about you is collected/i);
+    expect(startMetadata.description).toMatch(/nothing collected about you/i);
   });
 
   it("asks the approved question verbatim", () => {
@@ -338,8 +338,8 @@ describe("screening route", () => {
     // string verbatim — protecting the error from review rather than catching it.
     expect(html).not.toMatch(/random code held only in this browser/i);
 
-    expect(html).toMatch(/kept in this browser/i);
-    expect(html).toMatch(/stored in the study database/i);
+    expect(html).toMatch(/keeps a copy for the session/i);
+    expect(html).toMatch(/stores the code with your answers/i);
   });
 
   it("places every notice statement ABOVE the first submit control", () => {
@@ -453,10 +453,10 @@ describe("screening form neutrality", () => {
 
   it("tells the participant an existing identity will be resumed, not duplicated", async () => {
     const html = await renderScreeningForm();
-    expect(html).toMatch(/resume it instead of creating a second one/);
+    expect(html).toMatch(/resumes it instead of creating a second one/i);
     // And that their answer will not be silently overwritten, which is the failure an
     // independent review actually found in this flow.
-    expect(html).toMatch(/will not be stored over the original/);
+    expect(html).toMatch(/will not overwrite the original/i);
   });
 });
 
@@ -644,18 +644,18 @@ describe("confirmation route", () => {
     expect(html).toMatch(/will not replace your screening answer/i);
 
     // ...and the unconditionally-true forms are present instead.
-    expect(html).toMatch(/is generated for you and saved to the database/i);
-    expect(html).toMatch(/is kept in this browser only/i);
+    expect(html).toMatch(/You get a random code, saved to the database/i);
+    expect(html).toMatch(/Only this browser keeps a copy of that code/i);
 
     // The ethics-relevant content survived the rewording. These are the parts of this
     // page that actually matter to a participant deciding whether to take part, and
     // softening the copy must not cost any of them.
     expect(html).toMatch(/not derived from anything about you/i);
-    expect(html).toMatch(/Nothing identifying was collected/);
+    expect(html).toMatch(/We collected nothing identifying/);
   });
 
   it("states that nothing identifying was collected", () => {
-    expect(html).toMatch(/Nothing identifying was collected/);
+    expect(html).toMatch(/We collected nothing identifying/);
   });
 
   it("no longer says the next part of the study is switched off, because it is not", () => {
@@ -726,9 +726,10 @@ describe("confirmation route", () => {
     // separately asserted because each was separately wrong. There is no decline
     // path anymore, so the skip clause is gone with it — and its absence is
     // asserted here rather than merely not mentioned.
-    expect(html).toMatch(/kept with your validator identity/i);
+    // (Wording refreshed by the copy rewrite; the invariant clauses are unchanged in meaning.)
+    expect(html).toMatch(/stays with your validator identity/i);
     expect(html).not.toMatch(/if you chose to skip it/i);
-    expect(html).toMatch(/the answer already stored with\s+it is the one that was kept/i);
+    expect(html).toMatch(/the answer stored with it is the one that stands/i);
 
     expect(html).not.toMatch(/was stored as background information/i);
     expect(html).not.toMatch(/exactly as you gave it/i);
@@ -764,7 +765,7 @@ describe("confirmation route", () => {
     // ...and the page says so in words, because a link labelled with jargon is not a way
     // in for a participant. This also guards the reason the link exists: a bare link to
     // /start would be reachable but unexplained.
-    expect(html).toMatch(/Reaching this page does not mean you answered the Ilocano question/);
+    expect(html).toMatch(/Landing here does not mean you answered the Ilocano question/);
     expect(html).toMatch(/Go to the Ilocano question/);
 
     // The "you can finish" line must not be unconditional. It presupposes a start, and

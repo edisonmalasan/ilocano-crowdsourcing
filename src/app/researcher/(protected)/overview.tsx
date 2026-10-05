@@ -64,7 +64,7 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           <CardBody>
             <p className="text-body text-ink">
               The current corpus as one dated ZIP: every stored response, the per-entry summary, and
-              the mechanical validated dataset pending adjudication.
+              the mechanical validated dataset, still awaiting adjudication.
             </p>
             <p className="mt-4">
               <Link href={RESEARCHER_EXPORT} className={linkButtonClasses()}>
@@ -125,8 +125,8 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           </CardHeader>
           <CardBody>
             <p className="text-small text-ink-muted">
-              Stored responses by evaluation value. Every stored row counts here, including
-              responses that do not qualify toward coverage.
+              Stored responses by evaluation value. Every stored row counts here — including ones
+              that do not qualify toward coverage.
             </p>
             <dl className="mt-4 space-y-2">
               {(
@@ -158,8 +158,8 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           </CardHeader>
           <CardBody>
             <p className="text-small text-ink-muted">
-              Validators who submitted responses, by the proficiency they reported about themselves.
-              This is metadata, not a score: nothing here ranks or weights a validator.
+              Validators who answered, grouped by the proficiency they reported. Metadata, not a
+              score — nothing here ranks or weights anyone.
             </p>
             <dl className="mt-4 space-y-2">
               {(
@@ -197,9 +197,9 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           <CardBody>
             {overview.reviewEntryIds.length === 0 ? (
               <p className="text-body text-ink">
-                No entries currently meet the review rule. An entry appears here when its qualifying
+                No entries currently meet the review rule. One lands here when its qualifying
                 validators disagree on evaluation, or when more than one distinct correction was
-                submitted — never for translation wording alone.
+                submitted — never over translation wording alone.
               </p>
             ) : (
               <ul className="space-y-2">
