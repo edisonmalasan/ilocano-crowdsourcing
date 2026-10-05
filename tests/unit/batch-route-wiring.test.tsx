@@ -51,6 +51,8 @@ const STORED: ReadonlySet<string> = new Set([STORED_BATCH_ID, OTHER_BATCH_ID]);
 const storedEntry = (id: string) => ({
   id,
   category: "origin_destination" as const,
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: "Iti Baguio Athletic Bowl ti ayanko ita.",
   origin: "Baguio Athletic Bowl",
   destination: "Baguio Convention Center",
@@ -62,7 +64,7 @@ const storedBatch = (id: string) => ({
   id,
   validatorId: "VAL_720f59cd",
   createdAt: "2026-10-02T19:46:56.320Z",
-  entries: [{ datasetEntryId: "OD_0001", position: 1 }],
+  entries: [{ datasetEntryId: "OD_1", position: 1 }],
 });
 
 /**
@@ -91,7 +93,7 @@ vi.mock("@/lib/repositories/supabase", () => ({
       },
     },
     datasetEntries: {
-      findById: async (id: string) => (id === "OD_0001" ? storedEntry(id) : null),
+      findById: async (id: string) => (id === "OD_1" ? storedEntry(id) : null),
     },
     validations: {
       listEntryIdsForValidator: async () => [],

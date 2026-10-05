@@ -143,7 +143,7 @@ describe("dataset entry input", () => {
   it("accepts a category the platform has never seen, so a new import needs no code change", () => {
     const result = datasetEntryInputSchema.safeParse({
       ...OD_RECORD,
-      id: "TR_0001",
+      id: "OD_125",
       category: "time_reference",
     });
 
@@ -163,7 +163,7 @@ describe("dataset entry input", () => {
   it("accepts an explicit null origin and destination for a category that has neither", () => {
     const result = datasetEntryInputSchema.safeParse({
       ...OD_RECORD,
-      id: "GE_0001",
+      id: "D_7",
       category: "greetings",
       origin: null,
       destination: null,
@@ -218,7 +218,7 @@ describe("dataset entry record", () => {
       isActive: false,
     });
 
-    expect(parsed.id).toBe("OD_0001");
+    expect(parsed.id).toBe("OD_124");
     expect(parsed.instruction).toBe(OD_RECORD.instruction);
     expect(parsed.isActive).toBe(false);
   });
@@ -246,9 +246,9 @@ describe("dataset entry record", () => {
       // which the id regex rejects, so the assertion passed for the wrong reason: it proved the
       // id format, not the structural disjointness the comment claims. With a well-formed id the
       // only thing left that can reject this payload is the missing entry fields.
-      id: "OD_0001",
+      id: "OD_124",
       validatorId: "VAL_a81d92c1",
-      datasetEntryId: "OD_0001",
+      datasetEntryId: "OD_124",
       batchId: "batch-1",
       evaluation: "correct_natural",
       createdAt: "2026-09-30T00:00:00.000Z",

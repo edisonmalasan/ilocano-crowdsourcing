@@ -17,10 +17,11 @@ const record = (): ExportRecord =>
   Object.fromEntries(EXPORT_RECORD_KEYS.map((key) => [key, null])) as ExportRecord;
 
 const FULL: ExportRecord = {
-  dataset_entry_id: "OD_0001",
-  source_entry_id: "1",
+  category_id: "3",
   category: "origin_destination",
   category_name: "Origin + Destination",
+  dataset_entry_id: "OD_124",
+  source_entry_id: "124",
   response_id: "res_01",
   attempt_id: "VAL_00000001",
   self_reported_proficiency: "fluent",

@@ -168,7 +168,7 @@ function createRecordingDependencies(over: RecordingOptions = {}): Recording {
   };
 }
 
-const A_BATCH = { id: "batch-1", validatorId: VALIDATOR_ID, entryIds: ["OD_0001", "OD_0002"] };
+const A_BATCH = { id: "batch-1", validatorId: VALIDATOR_ID, entryIds: ["OD_1", "OD_2"] };
 
 /**
  * A submit intent carrying the three keys the action accepts, and nothing else.
@@ -179,7 +179,7 @@ const A_BATCH = { id: "batch-1", validatorId: VALIDATOR_ID, entryIds: ["OD_0001"
  * is exactly right — the point of the refusals is that the action accepts anything and decides.
  */
 function intentFor(response: unknown, over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { batchId: "batch-1", datasetEntryId: "OD_0001", response, ...over };
+  return { batchId: "batch-1", datasetEntryId: "OD_1", response, ...over };
 }
 
 /**
@@ -207,7 +207,7 @@ describe("recording a completed response", () => {
     expect(result).toEqual({
       status: "recorded",
       responseId: "rsp_read_back",
-      datasetEntryId: "OD_0001",
+      datasetEntryId: "OD_1",
     });
     // And the record handed to storage is NOT what the repository echoed.
     const stored = deps.inserted[0] as { readonly id: string };
@@ -233,9 +233,9 @@ describe("recording a completed response", () => {
     const result = await runSubmitValidation(intentFor(evaluableResponse()), deps);
 
     expect(result.status).toBe("recorded");
-    expect(deps.calls).toContain(`entryReservations.releaseReservation:${VALIDATOR_ID}:OD_0001`);
+    expect(deps.calls).toContain(`entryReservations.releaseReservation:${VALIDATOR_ID}:OD_1`);
     expect(deps.calls.indexOf("validations.insert")).toBeLessThan(
-      deps.calls.indexOf(`entryReservations.releaseReservation:${VALIDATOR_ID}:OD_0001`),
+      deps.calls.indexOf(`entryReservations.releaseReservation:${VALIDATOR_ID}:OD_1`),
     );
   });
 
@@ -289,7 +289,7 @@ describe("recording a completed response", () => {
     expect(deps.calls).toEqual([
       "batches.findById:batch-1",
       "validations.insert",
-      "entryReservations.releaseReservation:VAL_0a1b2c3d:OD_0001",
+      "entryReservations.releaseReservation:VAL_0a1b2c3d:OD_1",
     ]);
     expect(deps.calls.some((call) => call.includes("dataset"))).toBe(false);
     // And the correction went into the RESPONSE, beside the instruction — not anywhere else.
@@ -354,7 +354,7 @@ describe("recording a completed response", () => {
     expect(deps.calls).toEqual([
       "batches.findById:batch-1",
       "validations.insert",
-      "entryReservations.releaseReservation:VAL_0a1b2c3d:OD_0001",
+      "entryReservations.releaseReservation:VAL_0a1b2c3d:OD_1",
     ]);
     // And the stored row carries no field that could be one.
     const stored = deps.inserted[0] as Record<string, unknown>;
@@ -389,7 +389,7 @@ describe("recording a completed response", () => {
     const parsed = validationResponseSchema.safeParse(deps.inserted[0]);
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.batchId).toBe("batch-1");
-    expect(parsed.success && parsed.data.datasetEntryId).toBe("OD_0001");
+    expect(parsed.success && parsed.data.datasetEntryId).toBe("OD_1");
   });
 
   it("records a `cannot_evaluate` response with NEITHER correction NOR translation", async () => {
@@ -538,7 +538,7 @@ describe("what the write REFUSES, and what it never touches", () => {
     const deps = createRecordingDependencies({ batch: A_BATCH });
 
     const result = await runSubmitValidation(
-      { batchId: "batch-1", datasetEntryId: "OD_0500", response: evaluableResponse() },
+      { batchId: "batch-1", datasetEntryId: "OD_500", response: evaluableResponse() },
       deps,
     );
 
@@ -548,18 +548,18 @@ describe("what the write REFUSES, and what it never touches", () => {
   });
 
   it("checks MEMBERSHIP and not POSITION, so a position cannot redirect the response", async () => {
-    // `OD_0002` is the batch's SECOND entry. Asking for it with `position: 1` must still record against
-    // `OD_0002` — the entry id is the subject, and the position is not a routing instruction.
+    // `OD_2` is the batch's SECOND entry. Asking for it with `position: 1` must still record against
+    // `OD_2` — the entry id is the subject, and the position is not a routing instruction.
     const deps = createRecordingDependencies({ batch: A_BATCH });
 
     const result = await runSubmitValidation(
-      { batchId: "batch-1", datasetEntryId: "OD_0002", response: evaluableResponse() },
+      { batchId: "batch-1", datasetEntryId: "OD_2", response: evaluableResponse() },
       deps,
     );
 
     expect(result.status).toBe("recorded");
     const stored = deps.inserted[0] as { readonly datasetEntryId: string };
-    expect(stored.datasetEntryId).toBe("OD_0002");
+    expect(stored.datasetEntryId).toBe("OD_2");
   });
 
   it("applies the SEVEN integrity rules, and reports which field failed", async () => {
@@ -692,7 +692,7 @@ describe("the duplicate refusal, which is a SUCCESS with a different name", () =
 
     const result = await runSubmitValidation(intentFor(evaluableResponse()), deps);
 
-    expect(result).toEqual({ status: "already_recorded", datasetEntryId: "OD_0001" });
+    expect(result).toEqual({ status: "already_recorded", datasetEntryId: "OD_1" });
   });
 
   it("does NOT report a duplicate as `recorded`, because no new row exists", async () => {

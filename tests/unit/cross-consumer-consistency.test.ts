@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest";
 import { loadDashboardOverview } from "@/lib/admin/dashboard";
 import { buildExportSummary, isQualifyingValidation } from "@/lib/export/records";
 import type { ExportSourceWithQualifying } from "@/lib/export/records";
-import { buildValidatedDataset } from "@/lib/export/validated";
+import { buildValidatedDataset, flattenValidatedGroups } from "@/lib/export/validated";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
 import type { AnonymousValidatorId, ValidatorProfile } from "@/schemas/validator";
@@ -254,7 +254,7 @@ describe("the dashboard and the export agree on one corpus", () => {
     const { overview, summary, validated } = await bothConsumers();
     expect(overview.totalQualifyingValidations).toBeGreaterThan(0);
     expect(summary.by_entry.length).toBe(ENTRIES.length);
-    expect(validated.records.length).toBeGreaterThan(0);
+    expect(flattenValidatedGroups(validated).length).toBeGreaterThan(0);
   });
 
   it("agrees on the total qualifying validations", async () => {
@@ -311,11 +311,11 @@ describe("the dashboard and the export agree on one corpus", () => {
     const completeBySummary = new Set(
       summary.by_entry.filter((row) => row.coverage_complete).map((row) => row.dataset_entry_id),
     );
-    const validatedIds = new Set(validated.records.map((record) => record.id));
+    const validatedIds = new Set(flattenValidatedGroups(validated).map((record) => record.id));
 
     expect(validatedIds).toEqual(completeBySummary);
     expect(validatedIds).toEqual(new Set(["C1", "C2", "C3", "X1"]));
-    expect(validated.records).toHaveLength(overview.buckets.complete);
+    expect(flattenValidatedGroups(validated)).toHaveLength(overview.buckets.complete);
     expect(validated.derivation.omitted_incomplete_entries).toBe(overview.buckets.incomplete);
     // The omission figure is stated twice — once in the validated derivation block, once in the
     // raw summary totals — so the two statements are asserted equal, not merely present.
@@ -331,7 +331,7 @@ describe("the dashboard and the export agree on one corpus", () => {
     // equality here would forbid the tie rule from ever firing.
     const { overview, validated } = await bothConsumers();
 
-    const flaggedValidated = validated.records
+    const flaggedValidated = flattenValidatedGroups(validated)
       .filter((record) => record.needs_review)
       .map((record) => record.id)
       .sort();
@@ -387,7 +387,7 @@ describe("the dashboard and the export agree on one corpus", () => {
     expect(overview.buckets).toEqual(exportBuckets(summary));
     expect(overview.reviewEntryIds).toEqual([]);
     expect(summary.by_entry).toEqual([]);
-    expect(validated.records).toEqual([]);
+    expect(validated.categories.map((group) => group.records)).toEqual([[], [], [], [], []]);
     expect(validated.derivation.omitted_incomplete_entries).toBe(0);
   });
 

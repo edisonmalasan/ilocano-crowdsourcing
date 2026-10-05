@@ -438,11 +438,13 @@ describe("the typing of the research material that must never be localized", () 
     // and a verifier, extending it to the Filipino catalog, found it matching real Filipino interface
     // copy - "Walang naka-save na pagkakakilanlan", "Hindi ka pa naka-sign up" - because `naka` is
     // both an Ilocano root and the Filipino productive prefix na- + ka-. Chasing that collision is
-    // what exposed the real problem, and it is much worse than a false positive:
+    // what exposed the real problem, and it is much worse than a false positive (recorded as
+    // history: the counts below describe the previous 3,000-entry source — the defect shape is
+    // what matters, not the count):
     //
-    //   **EVERY ONE OF THOSE MARKERS MATCHES ZERO OF THE 600 REAL INSTRUCTIONS.**
+    //   **EVERY ONE OF THOSE MARKERS MATCHED ZERO OF THOSE 600 REAL INSTRUCTIONS.**
     //
-    // Measured, not assumed. The synthetic OD dataset is Ayta/Itao with place-name-first
+    // Measured, not assumed. That source was Ayta/Itao with place-name-first
     // constructions - "Iti Baguio Athletic Bowl ti ayanko ita; masapulko a makadanon iti Baguio
     // Convention Center" - not the "Pumunta sa ..." / "Naka-..." shapes the markers assume. The
     // check therefore could never fail. It had been reporting coverage it was not providing, which
@@ -454,7 +456,7 @@ describe("the typing of the research material that must never be localized", () 
     // ==============================================================================================
     // A marker encodes an assumption about the dialect, and the data just proved the assumption
     // wrong. Any marker set would be another assumption, and a dialect change would silently
-    // disarm it again. So the guard reads the 600 records and compares them directly. It has no
+    // disarm it again. So the guard reads the 4000 records and compares them directly. It has no
     // opinion about what Ilocano looks like, and it keeps working if the phrasing changes.
     //
     // The comparison is BILATERAL: a catalog value must not CONTAIN an instruction, and an
@@ -478,13 +480,13 @@ describe("the typing of the research material that must never be localized", () 
     );
     // Asserted rather than assumed: a guard that silently read an empty set would pass every check
     // below, which is the very defect this rewrite exists to remove.
-    expect(entries.length, "the guard read a real dataset, not an empty one").toBe(3000);
+    expect(entries.length, "the guard read a real dataset, not an empty one").toBe(4000);
 
     // The distinct place names, computed ONCE rather than inside the per-language loop below. Every
     // one is a proper noun of at least ten characters, so this carries no false-positive risk - the
     // property the old `naka` marker lacked, where ordinary Filipino UI copy tripped a guard meant
     // for Ilocano. It does not depend on the language, so rebuilding it twice asserted nothing
-    // extra and cost a second pass over 600 records.
+    // extra and cost a second pass over 4000 records.
     const placeNames = new Set<string>();
     for (const entry of entries) {
       // `origin` and `destination` are optional in the domain type, so the narrowing is explicit
@@ -510,7 +512,7 @@ describe("the typing of the research material that must never be localized", () 
       // ===========================================================================================
       // COLLECTED, NOT ASSERTED ONE CELL AT A TIME. This rewrite is a bug fix, not a style choice.
       // ===========================================================================================
-      // The previous version made 2 catalogs x 85 keys x 3000 entries x 2 directions = **1,020,000
+      // The previous version made 2 catalogs x 85 keys x 4000 entries x 2 directions = **1,360,000
       // individual `expect()` calls**, and every one of them builds an assertion object, records a
       // result, and is counted by the reporter.
       //
@@ -545,17 +547,17 @@ describe("the typing of the research material that must never be localized", () 
           // Plain `instruction.includes(value)` is not a usable test in either language, and the
           // two languages fail for DIFFERENT reasons, which is why neither fix alone was kept:
           //
-          //   Filipino "ng" is the linker and appears inside 368 of the 600 instructions as a
-          //   fragment of a longer word — zero whole-word matches, 368 substring matches. Whole-word
+          //   Filipino "ng" is the linker and appears inside 2309 of the 4000 instructions as a
+          //   fragment of a longer word — zero whole-word matches, 2309 substring matches. Whole-word
           //   matching alone removes every one of those.
           //
-          //   English "of" matches 60 instructions AS A WHOLE WORD, because the dataset contains
-          //   English institution names — "University of Baguio", "University of the
+          //   English "of" matches 321 instructions AS A WHOLE WORD, because the dataset contains
+          //   English institution names — "Our Lady of Lourdes Church", "University of the
           //   Cordilleras" — and "of" is a legitimate English word. No amount of word-boundary
           //   care fixes a coincidence between two real things.
           //
           // So the reverse direction requires a whole-word match AND a length floor. The floor is
-          // not fitted to the offender: across both catalogs and all 600 instructions, exactly one
+          // not fitted to the offender: across both catalogs and all 4000 instructions, exactly one
           // value collides at whole-word level, it is two characters long, and every value of
           // eight or more characters collides zero times. The test immediately below re-measures
           // both halves of that claim, so if a future copy edit creates a collision the floor is
@@ -572,8 +574,10 @@ describe("the typing of the research material that must never be localized", () 
       }
 
       const all = Object.values(catalog).join(" ");
-      // A dataset identifier, in either catalog.
-      if (/OD_\d{4}/.test(all)) {
+      // A dataset identifier, in either catalog. Canonical ids are unpadded (`D_1`, `OD_124`),
+      // so the pattern matches the strict canonical shape rather than the previous revision's
+      // zero-padded form.
+      if (/\b(D|DT|OD|ODT|CPE)_\d+\b/.test(all)) {
         violations.push(`${language} catalog holds a dataset identifier`);
       }
       for (const name of placeNames) {
@@ -609,7 +613,7 @@ describe("the typing of the research material that must never be localized", () 
         readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
       ),
     );
-    expect(entries.length, "this measurement read a real dataset").toBe(3000);
+    expect(entries.length, "this measurement read a real dataset").toBe(4000);
 
     const belowFloor: string[] = [];
     const atOrAboveFloor: string[] = [];

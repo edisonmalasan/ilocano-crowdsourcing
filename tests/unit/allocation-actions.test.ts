@@ -237,7 +237,7 @@ describe("a rejected payload", () => {
     const { dependencies, calls } = createRecordingDependencies();
 
     const outcome = await runAllocateBatch(
-      { validatorId: "VAL_a81d92c1", entryIds: ["OD_0001", "OD_0002"] },
+      { validatorId: "VAL_a81d92c1", entryIds: ["OD_1", "OD_2"] },
       dependencies,
     );
 
@@ -249,7 +249,7 @@ describe("a rejected payload", () => {
     const { dependencies } = createRecordingDependencies();
 
     const outcome = await runAllocateBatch(
-      { validatorId: "VAL_a81d92c1", order: ["OD_0002", "OD_0001"] },
+      { validatorId: "VAL_a81d92c1", order: ["OD_2", "OD_1"] },
       dependencies,
     );
 
@@ -283,7 +283,7 @@ describe("a rejected payload", () => {
     const { dependencies, calls } = createRecordingDependencies();
 
     const outcome = await runAllocateBatch(
-      { validatorId: "VAL_a81d92c1", positions: { OD_0001: 3 } },
+      { validatorId: "VAL_a81d92c1", positions: { OD_1: 3 } },
       dependencies,
     );
 
@@ -320,7 +320,7 @@ describe("a rejected payload", () => {
 
 describe("an accepted payload", () => {
   it("passes the requested size through as a preference the server still caps", async () => {
-    const pool = Array.from({ length: 6 }, (_, index) => ({ id: `OD_00${index + 10}` }));
+    const pool = Array.from({ length: 6 }, (_, index) => ({ id: `OD_${index + 10}` }));
     const short = createRecordingDependencies({ pool });
     const long = createRecordingDependencies({ pool });
 
@@ -341,7 +341,7 @@ describe("an accepted payload", () => {
   });
 
   it("mints the batch from the REQUESTED validator, not from anything in the payload", async () => {
-    const { dependencies, calls } = createRecordingDependencies({ pool: [{ id: "OD_0001" }] });
+    const { dependencies, calls } = createRecordingDependencies({ pool: [{ id: "OD_1" }] });
 
     const outcome = await runAllocateBatch(
       { validatorId: "VAL_a81d92c1", requestedSize: 1 },
@@ -353,7 +353,7 @@ describe("an accepted payload", () => {
   });
 
   it("allocates when the request carries nothing but an identifier", async () => {
-    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_0001" }] });
+    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_1" }] });
 
     const outcome = await runAllocateBatch(VALID, dependencies);
 
@@ -376,7 +376,7 @@ describe("an accepted payload", () => {
     // minted for it — and the refusal carries the dedicated reason rather than
     // collapsing into persistence or exhaustion.
     const { dependencies, calls } = createRecordingDependencies({
-      pool: [{ id: "OD_0001" }],
+      pool: [{ id: "OD_1" }],
       profileProficiency: null,
     });
 
@@ -397,7 +397,7 @@ describe("an accepted payload", () => {
   });
 
   it("propagates the service's persistence classification unchanged", async () => {
-    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_0001" }] });
+    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_1" }] });
     vi.spyOn(dependencies.batches, "create").mockRejectedValue(
       new RepositoryError("validation_batches.insert", "insert rejected"),
     );
@@ -433,8 +433,8 @@ describe("continuing after a finished batch, through the action the continue con
     // excluded the action would still return four entries and a weaker assertion — "some entries were
     // returned" — would pass. Asserted as a set difference against the whole pool instead, so a
     // response that happened to return the right COUNT with an answered entry among it fails.
-    const pool = Array.from({ length: 6 }, (_, index) => ({ id: `OD_00${index + 10}` }));
-    const answered = ["OD_0010", "OD_0012"];
+    const pool = Array.from({ length: 6 }, (_, index) => ({ id: `OD_${index + 10}` }));
+    const answered = ["OD_10", "OD_12"];
     const { dependencies, calls } = createRecordingDependencies({ pool, answered });
 
     const outcome = await runAllocateBatch(
@@ -472,8 +472,8 @@ describe("continuing after a finished batch, through the action the continue con
     // The same pool, the same size, the same validator, the same action. Only the answered list
     // differs, and the answer differs with it — which is what proves the exclusion is load-bearing
     // rather than incidental to the pool's size.
-    const pool = [{ id: "OD_0010" }, { id: "OD_0012" }];
-    const withAnswers = createRecordingDependencies({ pool, answered: ["OD_0010"] });
+    const pool = [{ id: "OD_10" }, { id: "OD_12" }];
+    const withAnswers = createRecordingDependencies({ pool, answered: ["OD_10"] });
     const withoutAnswers = createRecordingDependencies({ pool, answered: [] });
 
     const excluded = runAllocateBatch({ validatorId: "VAL_a81d92c1" }, withAnswers.dependencies);
@@ -484,8 +484,8 @@ describe("continuing after a finished batch, through the action the continue con
         throw new Error("both requests were expected to allocate");
       }
       // Without the exclusion the answered entry IS served; with it, it is not.
-      expect(before.entries.map((entry) => entry.id)).toContain("OD_0010");
-      expect(after.entries.map((entry) => entry.id)).not.toContain("OD_0010");
+      expect(before.entries.map((entry) => entry.id)).toContain("OD_10");
+      expect(after.entries.map((entry) => entry.id)).not.toContain("OD_10");
       // And the two runs really did differ, so the first assertion is a comparison and not a tautology.
       expect(after.entries.map((entry) => entry.id)).not.toEqual(
         before.entries.map((entry) => entry.id),
@@ -553,7 +553,7 @@ describe("the configuration-failure branch", () => {
     // as a persistence fault, and it is proven here because `validators-actions.test.ts` proves the
     // same shape for the onboarding core.
     class ServerEnvError extends Error {}
-    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_0001" }] });
+    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_1" }] });
     const withFailure = {
       ...dependencies,
       ConfigurationFailure: ServerEnvError,
@@ -572,7 +572,7 @@ describe("the configuration-failure branch", () => {
     // so a throw that reaches the core's catch is a BUG. Reporting it as `persistence` would send an
     // operator to the database for a defect in the code.
     class ServerEnvError extends Error {}
-    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_0001" }] });
+    const { dependencies } = createRecordingDependencies({ pool: [{ id: "OD_1" }] });
     const withFailure = {
       ...dependencies,
       ConfigurationFailure: ServerEnvError,

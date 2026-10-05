@@ -34,6 +34,11 @@ import {
   isQualifyingValidation,
   isValidJudgment,
 } from "@/lib/domain/validation-response";
+import {
+  categoryRowForSlug,
+  compareCanonicalEntryIds,
+  DATASET_CATEGORY_TABLE,
+} from "@/lib/domain/categories";
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
@@ -59,10 +64,11 @@ export interface ExportSource {
  * and no database column changed for this rename.
  */
 export const EXPORT_RECORD_KEYS = [
-  "dataset_entry_id",
-  "source_entry_id",
+  "category_id",
   "category",
   "category_name",
+  "dataset_entry_id",
+  "source_entry_id",
   "response_id",
   "attempt_id",
   "self_reported_proficiency",
@@ -106,14 +112,20 @@ function nullableText(value: string | null | undefined): string | null {
 
 /** One record per stored response, in the order given. Never merges, never drops a response. */
 export function buildExportRecords(sources: readonly ExportSourceWithQualifying[]): ExportRecord[] {
-  return sources.map(({ entry, response, proficiency, qualifies }) => ({
-    dataset_entry_id: entry.id,
-    // Stored as text, like every other cell: the CSV has no typed columns, and a consumer
-    // comparing JSON against CSV compares strings. The value is the source-local id 1..600,
-    // recoverable here without parsing the canonical id.
-    source_entry_id: String(entry.sourceEntryId),
-    category: entry.category,
-    category_name: entry.categoryName,
+  return sources.map(({ entry, response, proficiency, qualifies }) => {
+    const categoryId = categoryRowForSlug(entry.category)?.categoryId;
+    return {
+      // Numeric category id as text, like every other cell: the CSV has no typed columns.
+      // `null` for a slug outside the canonical table, so an unseen category stays
+      // representable (open-category contract) instead of breaking the export.
+      category_id: categoryId === undefined ? null : String(categoryId),
+      category: entry.category,
+      category_name: entry.categoryName,
+      dataset_entry_id: entry.id,
+      // Stored as text, like every other cell: the CSV has no typed columns, and a consumer
+      // comparing JSON against CSV compares strings. The value is the source-local id 1..800,
+      // recoverable here without parsing the canonical id.
+      source_entry_id: String(entry.sourceEntryId),
     response_id: response.id,
     attempt_id: response.validatorId,
     self_reported_proficiency: proficiency,
@@ -126,7 +138,119 @@ export function buildExportRecords(sources: readonly ExportSourceWithQualifying[
     covers_english: coversEnglishTranslation(response) ? "true" : "false",
     covers_filipino: coversFilipinoTranslation(response) ? "true" : "false",
     submitted_at: response.createdAt,
-  }));
+    };
+  });
+}
+
+/**
+ * Research-facing order for export records: by category file order, then numeric entry
+ * suffix, stable within an entry so response submission order survives.
+ *
+ * A stable sort, not a re-collection: equal elements keep the order they arrived in, which is
+ * what keeps "then response submission order" true without a timestamp comparison that would
+ * be a second implementation of the derivation rule.
+ */
+export function sortExportRecords(records: readonly ExportRecord[]): ExportRecord[] {
+  return [...records].sort((left, right) =>
+    compareCanonicalEntryIds(left.dataset_entry_id ?? "", right.dataset_entry_id ?? ""),
+  );
+}
+
+/** One category's grouped responses, as the grouped JSON documents carry them. */
+export interface ExportCategoryGroup {
+  readonly category_id: number | null;
+  readonly category: string;
+  readonly category_name: string | null;
+  /** Full records, in research-facing order. The JSON form strips the enclosing triple. */
+  readonly responses: ExportRecord[];
+}
+
+/** One grouped-JSON response: the record without the enclosing category triple. */
+export type GroupedExportResponse = Omit<ExportRecord, "category_id" | "category" | "category_name">;
+
+/** One category group for JSON: triple established once, responses without it. */
+export interface ExportCategoryJsonGroup {
+  readonly category_id: number | null;
+  readonly category: string;
+  readonly category_name: string | null;
+  readonly responses: GroupedExportResponse[];
+}
+
+/**
+ * Groups records by category slug for the grouped JSON documents.
+ *
+ * Known categories travel in table (`category_id`) order; a slug outside the table keeps its
+ * own group after the known ones, in first-seen order, so the open-category contract holds
+ * here too. Every group is present when its records exist; groups for categories with no
+ * records are added by `withEmptyCategoryGroups`, not here, so this function cannot invent a
+ * category nobody asked about.
+ */
+export function groupExportRecordsByCategory(
+  records: readonly ExportRecord[],
+): ExportCategoryGroup[] {
+  const order = new Map<string, number>(
+    DATASET_CATEGORY_TABLE.map((row) => [row.slug, row.categoryId] as const),
+  );
+  const groups = new Map<string, ExportRecord[]>();
+  for (const record of sortExportRecords(records)) {
+    const list = groups.get(record.category ?? "");
+    if (list === undefined) groups.set(record.category ?? "", [record]);
+    else list.push(record);
+  }
+  return [...groups.entries()]
+    .map(([slug, responses]) => {
+      const first = responses[0];
+      return {
+        category_id:
+          first?.category_id === null || first?.category_id === undefined
+            ? (order.get(slug) ?? null)
+            : Number(first.category_id),
+        category: slug,
+        category_name: first?.category_name ?? null,
+        responses,
+      };
+    })
+    .sort((left, right) => {
+      if (left.category_id === null && right.category_id === null) {
+        return left.category < right.category ? -1 : left.category > right.category ? 1 : 0;
+      }
+      if (left.category_id === null) return 1;
+      if (right.category_id === null) return -1;
+      return left.category_id - right.category_id;
+    });
+}
+
+/**
+ * Adds empty groups for categories with no records, so grouped JSON always carries all five
+ * groups in `category_id` order — including at pristine zero state, where the alternative is
+ * a document that looks like it forgot its categories.
+ */
+export function withEmptyCategoryGroups(groups: readonly ExportCategoryGroup[]): ExportCategoryGroup[] {
+  const present = new Set(groups.map((group) => group.category));
+  const full: ExportCategoryGroup[] = [...groups];
+  for (const row of DATASET_CATEGORY_TABLE) {
+    if (!present.has(row.slug)) {
+      full.push({ category_id: row.categoryId, category: row.slug, category_name: row.name, responses: [] });
+    }
+  }
+  const order = new Map<string, number>(DATASET_CATEGORY_TABLE.map((row) => [row.slug, row.categoryId] as const));
+  return full.sort((left, right) => (order.get(left.category) ?? 999) - (order.get(right.category) ?? 999));
+}
+
+/** The JSON form of one group: the triple once, then responses without it. */
+export function toJsonGroup(group: ExportCategoryGroup): ExportCategoryJsonGroup {
+  return {
+    category_id: group.category_id,
+    category: group.category,
+    category_name: group.category_name,
+    responses: group.responses.map((record) => {
+      const { category_id: _droppedId, category: _droppedCategory, category_name: _droppedName, ...rest } = record;
+      void _droppedId;
+      void _droppedCategory;
+      void _droppedName;
+      return rest;
+    }),
+  };
 }
 
 /**

@@ -18,7 +18,11 @@ import {
   EXPORT_RECORD_KEYS,
   buildExportRecords,
   buildExportSummary,
+  groupExportRecordsByCategory,
   isQualifyingValidation,
+  sortExportRecords,
+  toJsonGroup,
+  withEmptyCategoryGroups,
   type ExportSourceWithQualifying,
 } from "@/lib/export/records";
 import { buildCsv } from "@/lib/export/csv";
@@ -250,10 +254,82 @@ describe("buildExportRecords", () => {
     // And the CSV carries the same cells under the same names.
     const csv = buildCsv(records, EXPORT_RECORD_KEYS);
     const header = (csv.split("\n")[0] ?? "").split(",");
-    for (const key of ["source_entry_id", "category_name"] as const) {
+    for (const key of ["source_entry_id", "category_name", "category_id"] as const) {
       expect(header).toContain(key);
     }
   });
+
+  it("carries the numeric category id, null for a slug outside the table", () => {
+    // The second category (landmark_guidance) is not in the canonical table: its records
+    // keep the slug but carry a null category_id, so an unseen category stays representable
+    // instead of breaking the export.
+    const byResponse = new Map(records.map((record) => [record.response_id, record]));
+    expect(byResponse.get("r01")?.category_id).toBe("3");
+    expect(byResponse.get("r09")?.category_id).toBeNull();
+    expect(byResponse.get("r09")?.category).toBe("landmark_guidance");
+  });
+});
+
+describe("grouped raw document", () => {
+  it("sorts records numerically, never lexically", () => {
+    const unsorted = buildExportRecords([
+      {
+        entry: { ...entries[0], id: "OD_10", sourceEntryId: 10 },
+        response: { ...sources[0].response, id: "r10", datasetEntryId: "OD_10" },
+        proficiency: "fluent",
+        qualifies: true,
+      },
+      {
+        entry: { ...entries[0], id: "OD_2", sourceEntryId: 2 },
+        response: { ...sources[0].response, id: "r02b", datasetEntryId: "OD_2" },
+        proficiency: "fluent",
+        qualifies: true,
+      },
+    ] as ExportSourceWithQualifying[]);
+
+    expect(sortExportRecords(unsorted).map((record) => record.dataset_entry_id)).toEqual([
+      "OD_2",
+      "OD_10",
+    ]);
+  });
+
+  it("groups by category with the triple once per group and all five groups present", () => {
+    const records = sortExportRecords(buildExportRecords(sources));
+    const groups = withEmptyCategoryGroups(groupExportRecordsByCategory(records)).map(toJsonGroup);
+
+    // Known categories in table order, then the unknown slug last.
+    expect(groups.map((group) => group.category)).toEqual([
+      "destination_only",
+      "destination_transit_mode",
+      "origin_destination",
+      "origin_destination_transit_mode",
+      "complex_preference_expressions",
+      "landmark_guidance",
+    ]);
+    expect(groups[2]?.category_id).toBe(3);
+    expect(groups[5]?.category_id).toBeNull();
+    // Nine fixture responses: eight in origin_destination, one landmark_guidance.
+    expect(groups[2]?.responses).toHaveLength(8);
+    expect(groups[5]?.responses).toHaveLength(1);
+    // The JSON member carries no repeated triple.
+    for (const response of groups[2]?.responses ?? []) {
+      expect(response).not.toHaveProperty("category");
+      expect(response).not.toHaveProperty("category_name");
+      expect(response).not.toHaveProperty("category_id");
+    }
+    // And the CSV carries the same cells: every JSON leaf appears under the same name.
+    const csv = buildCsv(records, EXPORT_RECORD_KEYS);
+    const header = (csv.split("\n")[0] ?? "").split(",");
+    expect(header[0]).toBe("category_id");
+    expect(csv.trimEnd().split("\n")).toHaveLength(records.length + 1);
+  });
+});
+
+describe("buildExportRecords continued", () => {
+  // The tests below belonged to `describe("buildExportRecords")` before the grouped-document
+  // tests were added as a sibling block; they share its `records` fixture, so they stay
+  // scoped where that fixture is visible rather than being moved.
+  const records = buildExportRecords(sources);
 
   it("carries per-pillar contribution flags so each pillar total is recomputable", () => {
     // r07 judges and covers English but not Filipino; r08 judges and covers neither language.
