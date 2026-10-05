@@ -422,6 +422,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `expanded-4000-private-vehicle-dataset`, the THIRTY-FIFTH archived change, so this coupling has now
       // been paid NINETEEN times. Same one-line edit, same reason.
       35: "Thirty-five",
+      // Added for `humanize-interface-copy`, the THIRTY-SIXTH archived change, so this coupling has now
+      // been paid TWENTY-ONE times. Same one-line edit, same reason.
+      36: "Thirty-six",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
