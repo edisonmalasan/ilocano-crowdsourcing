@@ -105,10 +105,10 @@ against which a consumer is invited to compare the complete flag.
 The export SHALL record the category of every dataset entry it includes, and
 the summary SHALL be grouped by category, so that a consumer can select one
 category's data without inferring it. Every category reference SHALL carry the
-numeric `category_id` (1..5 in file order) alongside the slug and the
+numeric `category_id` (1..6 in file order) alongside the slug and the
 human-readable name. Research-facing record order SHALL be numeric: by
 `category_id`, then by the canonical id's numeric suffix — never lexical, so
-`D_2` precedes `D_10`. The export SHALL NOT assume a single category, and
+`D_2` precedes `D_10` and `DTM_2` precedes `DTM_10`. The export SHALL NOT assume a single category, and
 SHALL NOT treat a category's absent optional fields as a defect.
 
 #### Scenario: Records carry their category
@@ -119,18 +119,18 @@ SHALL NOT treat a category's absent optional fields as a defect.
 #### Scenario: Records sort numerically within their category
 
 - **WHEN** a category's records are listed in JSON or CSV
-- **THEN** they appear ordered by numeric suffix, so `D_2` precedes `D_10`
+- **THEN** they appear ordered by numeric suffix, so `D_2` precedes `D_10` and `DTM_2` precedes `DTM_10`
 
 ### Requirement: JSON and CSV forms are both produced and both round-trip
 
 The export SHALL produce JSON documents grouped by category and flat CSV
-renderings. `validations.json` SHALL group responses under their five
+renderings. `validations.json` SHALL group responses under their six
 categories in `category_id` order; `validated-dataset.json` SHALL group
-validated records the same way beneath its derivation block. Grouped JSON
+validated records the same way beneath its derivation block, with Double Transit Mode `output.transit_mode` carried as an ordered two-element JSON array. Grouped JSON
 records SHALL NOT repeat the enclosing category triple. The CSV SHALL quote
 any field containing a comma, a double quote, or a newline, and escape an
 embedded double quote, so that a translation containing punctuation or a line
-break survives the round trip unchanged. The grouped and flat forms SHALL
+break survives the round trip unchanged. A Double Transit Mode validated CSV cell SHALL carry the compact JSON form `["jeepney","walking"]` (order-preserved; never `jeepney, walking` or `jeepney / walking`), scalars stay bare labels, and parsing the CSV SHALL reconstruct the exact ordered pair. The grouped and flat forms SHALL
 carry equivalent research information: every JSON record's fields appear as
 CSV cells under the same names plus the enclosing group's category triple,
 and no field SHALL be dropped from the CSV to make quoting easier.
@@ -147,10 +147,15 @@ and no field SHALL be dropped from the CSV to make quoting easier.
 - **THEN** they contain the same number of records and the same per-record values, with the
   category triple recovered from the enclosing JSON group
 
-#### Scenario: All five categories appear even when empty
+#### Scenario: A Double Transit Mode pair round-trips through CSV
+
+- **WHEN** a validated DTM record with `["jeepney", "walking"]` is serialized to CSV and parsed back
+- **THEN** the pair is exactly `["jeepney", "walking"]` in order, never a single mode and never an ambiguous split
+
+#### Scenario: All six categories appear even when empty
 
 - **WHEN** the export runs over a corpus with no responses
-- **THEN** both JSON documents still carry all five category groups in `category_id` order,
+- **THEN** both JSON documents still carry all six category groups in `category_id` order,
   with empty record arrays
 
 ### Requirement: The export runs as an operator command and as one authenticated download, and performs no research-data write
@@ -185,11 +190,11 @@ than silently producing a partial artifact.
 One operator run SHALL write five files into the operator's destination: `validations.json` and
 `validations.csv` (every stored response as its own record, grouped shape in JSON and flat
 rows in CSV), `summary.json` (per-entry and aggregate counts, unchanged shape, now over
-4,000 entries), plus `validated-dataset.json` and `validated-dataset.csv` (one record per
+4,800 entries), plus `validated-dataset.json` and `validated-dataset.csv` (one record per
 complete entry, derived, grouped in JSON and flat in CSV). Incomplete entries appear in
 the raw documents and are absent from the validated ones; at pristine zero state the summary
-SHALL report 4,000 entries, 0 responses, 0 complete, 4,000 incomplete, and
-`omitted_incomplete_entries` SHALL be 4,000. The run SHALL refuse an unwritable
+SHALL report 4,800 entries, 0 responses, 0 complete, 4,800 incomplete, and
+`omitted_incomplete_entries` SHALL be 4,800. The run SHALL refuse an unwritable
 destination rather than producing a partial set, and SHALL report all five file names on success
 so a missing document is noticed rather than assumed.
 
@@ -210,10 +215,10 @@ as redundant, and no consumer SHALL be told the validated document is adjudicate
 - **THEN** no record for it appears in either validated file, and the summary states how many
   entries were omitted for that reason
 
-#### Scenario: Zero state reports 4000 omitted, not 0
+#### Scenario: Zero state reports 4800 omitted, not 0
 
 - **WHEN** the export runs over a corpus with no responses at all
-- **THEN** `omitted_incomplete_entries` is 4,000 and both validated files carry no records
+- **THEN** `omitted_incomplete_entries` is 4,800 and both validated files carry no records
 
 #### Scenario: A partial write is refused, not completed
 
@@ -223,14 +228,15 @@ as redundant, and no consumer SHALL be told the validated document is adjudicate
 ### Requirement: A validated record carries its judgment metadata under response/attempt terminology
 
 For each complete entry the export SHALL derive exactly one validated record with exactly these
-fields: `id` (the verbatim canonical id, e.g. `ODT_63`), `source_entry_id` (the numeric
+fields: `id` (the verbatim canonical id, e.g. `DTM_1`), `source_entry_id` (the numeric
 suffix), `validated_ilocano` (the correction from the earliest valid judgment that required one,
 otherwise the source instruction), `evaluation` (that same judgment's evaluation),
 `self_reported_proficiency` (the self-reported proficiency attached to that judgment's attempt,
 or null when unrecorded), `english_translation` (the earliest non-blank English translation on
 the entry's responses), `filipino_translation` (the earliest non-blank Filipino translation on
-the entry's responses), `output` (the entry's `origin`, `destination`, and `transit_mode`,
-including `private_vehicle` where supplied), `source_response_id` (the response id that
+the entry's responses), `output` (the entry's `origin`, `destination`, and `transit_mode` —
+scalar label, ordered two-element array for Double Transit Mode including `private_vehicle` pairs where supplied),
+`source_response_id` (the response id that
 supplied `validated_ilocano` and `evaluation`, the provenance link back to the raw record),
 `source_attempt_id` (the anonymous attempt that submitted that judgment response), and
 `needs_review` (the shared review flag for the entry, additionally true whenever the record's
@@ -243,7 +249,7 @@ stated as arbitrary and carrying no meaning.
 describe the judgment supplier only: on a multi-source record they MUST NOT be read as authoring
 every translation, and `source_attempt_id` MUST NOT be read as a unique human being — one attempt
 may own many responses, and one person may hold many attempts. Existing pooled derivation,
-`needs_review` rules, and non-adjudication are unchanged.
+`needs_review` rules, and non-adjudication are unchanged. The source transit-mode pair is metadata; validators never vote on which of the two modes wins.
 
 No vote SHALL be taken, no responses SHALL be merged into consensus wording, and no preferred
 response SHALL be selected beyond the mechanical earliest rule: earliest-per-field-by-server-clock
@@ -313,6 +319,10 @@ and a supplied correction is already represented by `validated_ilocano`.
 - **THEN** both the JSON record and the CSV row carry the exact label `private_vehicle`,
   never `private`, `car`, or another invented synonym
 
+#### Scenario: A Double Transit Mode pair survives both serializations
+
+- **WHEN** a complete DTM entry's output carries `transit_mode` `["jeepney", "walking"]`
+- **THEN** the JSON record carries the ordered array and the CSV row carries `["jeepney","walking"]`, never one mode and never an ambiguous join
 ### Requirement: Raw export identifiers use response/attempt terminology
 
 Raw validation records SHALL name their response `response_id` and their attempt `attempt_id`

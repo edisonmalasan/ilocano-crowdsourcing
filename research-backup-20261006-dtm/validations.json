@@ -1,0 +1,57 @@
+{
+  "categories": [
+    {
+      "category_id": 1,
+      "category": "destination_only",
+      "category_name": "Destination Only",
+      "responses": []
+    },
+    {
+      "category_id": 2,
+      "category": "destination_transit_mode",
+      "category_name": "Destination + Transit Mode",
+      "responses": []
+    },
+    {
+      "category_id": 3,
+      "category": "origin_destination",
+      "category_name": "Origin + Destination",
+      "responses": [
+        {
+          "dataset_entry_id": "OD_675",
+          "source_entry_id": "675",
+          "response_id": "RSP_29cbe8f5550b2924",
+          "attempt_id": "VAL_c5c392f8",
+          "self_reported_proficiency": "basic",
+          "evaluation": "correct_natural",
+          "corrected_instruction": null,
+          "english_translation": "I am in the Baguio Botanical Garden now; i need to get to Malcolm Square",
+          "filipino_translation": "Nasa Baguio Botanical Garden ako ngayon; kailangan kong pumunta sa Malcolm Square",
+          "qualifies_toward_completion": "true",
+          "contributes_judgment": "true",
+          "covers_english": "true",
+          "covers_filipino": "true",
+          "submitted_at": "2026-10-05T15:15:17.343Z"
+        }
+      ]
+    },
+    {
+      "category_id": 4,
+      "category": "origin_destination_transit_mode",
+      "category_name": "Origin + Destination + Transit Mode",
+      "responses": []
+    },
+    {
+      "category_id": 5,
+      "category": "complex_preference_expressions",
+      "category_name": "Complex/Preference Expressions",
+      "responses": []
+    },
+    {
+      "category_id": 6,
+      "category": "double_transit_mode",
+      "category_name": "Double Transit Mode",
+      "responses": []
+    }
+  ]
+}
