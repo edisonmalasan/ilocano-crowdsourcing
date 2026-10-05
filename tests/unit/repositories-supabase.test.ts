@@ -508,6 +508,38 @@ describe("SupabaseDatasetEntriesRepository", () => {
     expect(entry?.createdAt).not.toBe(TIMESTAMPTZ);
   });
 
+  it("maps a Double Transit Mode pair row to the ordered pair domain value", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: {
+        ...ENTRY_ROW,
+        id: "DTM_1",
+        category: "double_transit_mode",
+        category_name: "Double Transit Mode",
+        origin: null,
+        destination: "Abanao Square",
+        transit_mode: null,
+        transit_modes: ["jeepney", "walking"],
+      },
+      error: null,
+      count: null,
+    });
+
+    const entry = await new SupabaseDatasetEntriesRepository(fake.client).findById("DTM_1");
+
+    expect(entry?.transitMode).toEqual(["jeepney", "walking"]);
+  });
+
+  it("fetches the pair column, because a select without it would drop every DTM pair", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(rows([ENTRY_ROW], 1));
+    await new SupabaseDatasetEntriesRepository(fake.client).listActive();
+
+    const call = fake.lastCall();
+    expect(call.method).toBe("select");
+    expect((call.columns ?? "").split(",")).toContain("transit_modes");
+  });
+
   it("reads only active entries, of a category when one is given, and asks for an exact count", async () => {
     const fake = createFakeClient();
     fake.enqueue(rows([ENTRY_ROW], 1));

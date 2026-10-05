@@ -6,6 +6,7 @@ import {
   CANONICAL_SUFFIX_MIN,
   parseCanonicalEntryId,
 } from "@/lib/domain/categories";
+import { transitModeValueSchema, type TransitModeValue } from "@/lib/domain/transit-mode";
 
 /**
  * Dataset entry contract.
@@ -53,7 +54,7 @@ export const datasetEntryIdSchema = z
   .min(1, "id must not be empty")
   .refine((value) => parseCanonicalEntryId(value) !== null, {
     message:
-      "id must be a canonical dataset id (prefix D, DT, OD, ODT, or CPE with an unpadded suffix 1..800, for example ODT_63)",
+      "id must be a canonical dataset id (prefix D, DT, OD, ODT, CPE, or DTM with an unpadded suffix 1..800, for example ODT_63)",
   });
 
 /**
@@ -84,6 +85,20 @@ export const requiredTextSchema = normalizedTextSchema.refine((value) => value !
  */
 export const optionalTextSchema = normalizedTextSchema.nullable().default(null);
 
+/**
+ * The transit mode of a dataset entry: absent, one approved mode, or an
+ * ordered pair of two distinct approved modes (Double Transit Mode only).
+ *
+ * The shared union in `@/lib/domain/transit-mode` is the single definition;
+ * this alias is its name at the dataset boundary. An omitted key normalizes
+ * to `null`, like the other optional fields, so an importer that leaves the
+ * field out and one that sends an explicit `null` produce the same stored
+ * record.
+ */
+export const transitModeValueInputSchema = transitModeValueSchema;
+
+export type TransitModeValueInput = TransitModeValue;
+
 /** An ISO 8601 datetime string, as produced by `Date.prototype.toISOString()`. */
 export const isoDateTimeSchema = z
   .string()
@@ -109,7 +124,7 @@ export const datasetEntryInputSchema = z.object({
   instruction: requiredTextSchema,
   origin: optionalTextSchema,
   destination: optionalTextSchema,
-  transitMode: optionalTextSchema,
+  transitMode: transitModeValueInputSchema,
 });
 
 export const datasetEntrySchema = datasetEntryInputSchema.extend({

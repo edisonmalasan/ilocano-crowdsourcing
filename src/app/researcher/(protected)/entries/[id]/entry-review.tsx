@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 
 import type { DisqualifyReason } from "@/lib/domain/review-reasons";
+import { formatTransitModeValue } from "@/lib/domain/transit-mode";
 import type { EntryReview } from "@/lib/admin/dashboard";
 
 /**
@@ -49,7 +50,10 @@ export function EntryReviewView({ review }: { review: EntryReview }) {
               <Field label="Original Ilocano instruction" value={review.entry.instruction} />
               <Field label="Origin" value={review.entry.origin ?? "—"} />
               <Field label="Destination" value={review.entry.destination ?? "—"} />
-              <Field label="Transit mode" value={review.entry.transitMode ?? "—"} />
+              <Field
+                label="Transit mode"
+                value={formatTransitModeValue(review.entry.transitMode) ?? "—"}
+              />
               <p className="text-small text-ink-muted">
                 {review.isComplete ? "Complete" : "Incomplete"} · {review.qualifyingCount}{" "}
                 qualifying {review.qualifyingCount === 1 ? "validation" : "validations"}

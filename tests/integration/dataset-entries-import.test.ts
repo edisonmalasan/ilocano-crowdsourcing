@@ -51,7 +51,7 @@ const PROVENANCE_MIGRATION = "20261005120000_merged_dataset_provenance.sql";
 const GUARD_MIGRATION = "20261004120000_dataset_entries_import_guard.sql";
 
 /**
- * The ten parameters of `dataset_entries_import_v2`, in the migration's own declaration order.
+ * The eleven parameters of `dataset_entries_import_v3`, in the migration's own declaration order.
  *
  * Written as an explicit tuple rather than derived from the argument object's keys, because the
  * positional mapping IS the contract: PostgREST's `rpc` matches a named argument object to the
@@ -69,12 +69,13 @@ const PARAMETER_ORDER = [
   "p_origin",
   "p_destination",
   "p_transit_mode",
+  "p_transit_modes",
   "p_source_payload",
   "p_is_active",
 ] as const;
 
 const FUNCTION_SIGNATURE =
-  "public.dataset_entries_import_v2(text, text, integer, text, text, text, text, text, jsonb, boolean)";
+  "public.dataset_entries_import_v3(text, text, integer, text, text, text, text, text, text[], jsonb, boolean)";
 
 /** v1 stays deployed as history; this is what the guard migration still pins. */
 const V1_FUNCTION_NAME = "dataset_entries_import";
@@ -118,7 +119,7 @@ function pgliteRpcClient(executor: QueryExecutor) {
     async rpc(fn: string, args: Record<string, unknown>): Promise<SupabaseRpcResultLike> {
       // The only function any caller here may name. Refusing rather than interpolating means a
       // test cannot accidentally prove something about a different function.
-      if (fn !== "dataset_entries_import_v2") {
+      if (fn !== "dataset_entries_import_v3") {
         return { data: null, error: { code: "TESTREFUSED", message: `unexpected fn ${fn}` } };
       }
 
@@ -134,8 +135,8 @@ function pgliteRpcClient(executor: QueryExecutor) {
       }
 
       try {
-        const result = await executor.query<{ dataset_entries_import_v2: string }>(
-          `select public.dataset_entries_import_v2($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+        const result = await executor.query<{ dataset_entries_import_v3: string }>(
+          `select public.dataset_entries_import_v3($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
           [
             args.p_id as string,
             args.p_category as string,
@@ -145,11 +146,12 @@ function pgliteRpcClient(executor: QueryExecutor) {
             args.p_origin as string | null,
             args.p_destination as string | null,
             args.p_transit_mode as string | null,
+            args.p_transit_modes as readonly string[] | null,
             JSON.stringify(args.p_source_payload),
             args.p_is_active as boolean,
           ] as never[],
         );
-        return { data: result.rows[0]?.dataset_entries_import_v2 ?? null, error: null };
+        return { data: result.rows[0]?.dataset_entries_import_v3 ?? null, error: null };
       } catch (cause) {
         // PostgREST reports a raised `raise exception` as an error envelope rather than a rejected
         // promise, and the sink's `expectNoError` is what turns it into a `RepositoryError`.
@@ -238,7 +240,7 @@ describe("the dataset_entries_import function", () => {
         categoryName: "Destination Only",
         origin: "A DIFFERENT ORIGIN",
         destination: "A DIFFERENT DESTINATION",
-        transitMode: "a-different-mode",
+        transitMode: "walking",
       }),
     ).toBe("updated");
 
@@ -328,7 +330,7 @@ describe("the dataset_entries_import function", () => {
     // in the log, and Ilocano research text must not end up there.
     const failure = await rawFailure(
       db,
-      `select public.dataset_entries_import_v2($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+      `select public.dataset_entries_import_v3($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
       [
         entry.id,
         entry.category,
@@ -338,6 +340,7 @@ describe("the dataset_entries_import function", () => {
         entry.origin,
         entry.destination,
         entry.transitMode,
+        null,
         JSON.stringify(entry.sourcePayload),
         true,
       ] as never[],
@@ -353,12 +356,12 @@ describe("the dataset_entries_import function", () => {
   // All 3,000 records through the PRODUCTION sink.
   // ---------------------------------------------------------------------------------------------
 
-  it("imports all 4000 records through the production sink with every instruction byte-identical", async () => {
+  it("imports all 4800 records through the production sink with every instruction byte-identical", async () => {
     const { entries, report } = parsedEntries();
-    expect(entries.length).toBe(4000);
+    expect(entries.length).toBe(4800);
 
     const result = await importDatasetEntries(entries, sinkFor(), report);
-    expect(result).toMatchObject({ parsed: 4000, inserted: 4000, updated: 0 });
+    expect(result).toMatchObject({ parsed: 4800, inserted: 4800, updated: 0 });
 
     const stored = await query<{ id: string; instruction: string }>(
       db,
@@ -378,7 +381,7 @@ describe("the dataset_entries_import function", () => {
       }
     });
 
-    expect(stored).toHaveLength(4000);
+    expect(stored).toHaveLength(4800);
     expect(new Set(stored.map((row) => row.id))).toEqual(new Set(expected.keys()));
     for (const row of stored) {
       expect(row.instruction, `instruction for ${row.id}`).toBe(expected.get(row.id));
@@ -400,7 +403,7 @@ describe("the dataset_entries_import function", () => {
       "select id, category, source_entry_id, category_name, source_payload from public.dataset_entries",
     );
 
-    expect(stored).toHaveLength(4000);
+    expect(stored).toHaveLength(4800);
     const byCategory = new Map<string, { locals: number[]; names: Set<string> }>();
     for (const row of stored) {
       // The payload preserves the ORIGINAL source record: the filed string id, identical to
@@ -416,6 +419,7 @@ describe("the dataset_entries_import function", () => {
         "complex_preference_expressions",
         "destination_only",
         "destination_transit_mode",
+        "double_transit_mode",
         "origin_destination",
         "origin_destination_transit_mode",
       ].sort(),
@@ -428,7 +432,7 @@ describe("the dataset_entries_import function", () => {
     }
   });
 
-  it("leaves all 4000 rows byte-identical on a second run, reporting 0 inserted / 4000 updated", async () => {
+  it("leaves all 4800 rows byte-identical on a second run, reporting 0 inserted / 4800 updated", async () => {
     const { entries, report } = parsedEntries();
 
     await importDatasetEntries(entries, sinkFor(), report);
@@ -439,7 +443,7 @@ describe("the dataset_entries_import function", () => {
     );
 
     const second = await importDatasetEntries(entries, sinkFor(), report);
-    expect(second).toMatchObject({ parsed: 4000, inserted: 0, updated: 4000 });
+    expect(second).toMatchObject({ parsed: 4800, inserted: 0, updated: 4800 });
 
     const after = await query<{ id: string; instruction: string; created_at: string }>(
       db,
@@ -461,7 +465,7 @@ describe("the dataset_entries_import function", () => {
       const failure = await asRoleFailure(
         db,
         role,
-        `select public.dataset_entries_import_v2('OD_0001', 'origin_destination', 1, 'Origin + Destination', 'x', null, null, null, '{}'::jsonb, true)`,
+        `select public.dataset_entries_import_v3('DTM_1', 'double_transit_mode', 1, 'Double Transit Mode', 'x', null, 'Abanao Square', null, array['jeepney','walking'], '{}'::jsonb, true)`,
       );
       expect(failure).toMatch(/permission denied/i);
     }
@@ -484,7 +488,7 @@ describe("the dataset_entries_import function", () => {
          p.proconfig as config
        from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
+       where n.nspname = 'public' and p.proname = 'dataset_entries_import_v3'`,
     );
 
     expect(rows).toHaveLength(1);
@@ -492,16 +496,17 @@ describe("the dataset_entries_import function", () => {
     expect(rows[0]!.has_public).toBe(false);
   });
 
-  it("leaves v1 deployed with its eight-argument signature, because history is not rewritten", async () => {
-    // v1 is superseded, not deleted: the old guard migration pins its signature, and deleting
-    // the function would turn that deployed guard into a check against a ghost.
+  it("leaves v1 and v2 deployed with their signatures, because history is not rewritten", async () => {
+    // v1 and v2 are superseded, not deleted: the old guard migration pins v1's signature, the
+    // provenance migration pins v2's, and deleting either function would turn a deployed guard
+    // into a check against a ghost.
     const rows = await query<{ count: number }>(
       db,
       `select count(*)::int as count from pg_proc p
          join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = '${V1_FUNCTION_NAME}'`,
+        where n.nspname = 'public' and (p.proname = '${V1_FUNCTION_NAME}' or p.proname = 'dataset_entries_import_v2')`,
     );
-    expect(rows[0]!.count).toBe(1);
+    expect(rows[0]!.count).toBe(2);
   });
 
   it("is SECURITY INVOKER, because a definer function would let `anon` write arbitrary rows", async () => {
@@ -510,7 +515,7 @@ describe("the dataset_entries_import function", () => {
       `select p.prosecdef as prosecdef
          from pg_proc p
          join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
+        where n.nspname = 'public' and p.proname = 'dataset_entries_import_v3'`,
     );
     expect(rows[0]!.prosecdef).toBe(false);
   });
@@ -521,7 +526,7 @@ describe("the dataset_entries_import function", () => {
       `select p.proconfig as config
          from pg_proc p
          join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
+        where n.nspname = 'public' and p.proname = 'dataset_entries_import_v3'`,
     );
     expect(rows).toHaveLength(1);
     // The stored value is `search_path=""` — the EMPTY path, quoted — not `search_path=`. Asserted
@@ -574,6 +579,7 @@ describe("the dataset_entries_import function", () => {
       "origin",
       "destination",
       "transit_mode",
+      "transit_modes",
       "is_active",
     ]) {
       expect(updateClause.match(new RegExp(`\\b${mutable}\\s*=`, "g"))).toHaveLength(1);
@@ -885,6 +891,149 @@ describe("the dataset_entries_import function", () => {
   });
 
   // ---------------------------------------------------------------------------------------------
+  // The Double Transit Mode migration: pair column, CHECKs, and the versioned v3 function.
+  // ---------------------------------------------------------------------------------------------
+
+  describe("the double_transit_mode migration", () => {
+    const PAIR_MIGRATION = "20261007120000_double_transit_mode.sql";
+
+    it("adds the nullable pair column without disturbing existing rows", async () => {
+      const columns = await query<{ column_name: string; is_nullable: string }>(
+        db,
+        `select column_name, is_nullable from information_schema.columns
+          where table_schema = 'public' and table_name = 'dataset_entries'
+            and column_name = 'transit_modes'`,
+      );
+      expect(columns.map((column) => column.column_name)).toEqual(["transit_modes"]);
+      expect(new Set(columns.map((column) => column.is_nullable))).toEqual(new Set(["YES"]));
+    });
+
+    it("declares the three pair CHECKs under stable names", async () => {
+      const rows = await query<{ name: string }>(
+        db,
+        `select conname as name from pg_constraint
+          where conrelid = 'public.dataset_entries'::regclass
+            and conname like 'dataset_entries_transit_%'
+          order by conname`,
+      );
+      expect(rows.map((row) => row.name)).toEqual([
+        "dataset_entries_transit_mode_pair_absent",
+        "dataset_entries_transit_modes_pair_shape",
+        "dataset_entries_transit_modes_scalar_absent",
+      ]);
+    });
+
+    it("stores a Double Transit Mode pair ordered through the production sink", async () => {
+      const { entries } = parsedEntries();
+      const dtm = entries.filter((entry) => entry.category === "double_transit_mode");
+      expect(dtm).toHaveLength(800);
+
+      const first = dtm[0]!;
+      expect(first.id).toBe("DTM_1");
+      expect(await sinkFor().upsert(first)).toBe("inserted");
+
+      const stored = await query<{ transit_mode: string | null; transit_modes: string[] | null }>(
+        db,
+        "select transit_mode, transit_modes from public.dataset_entries where id = $1",
+        [first.id],
+      );
+      expect(stored[0]!.transit_mode).toBe(null);
+      expect(stored[0]!.transit_modes).toEqual(["jeepney", "walking"]);
+    });
+
+    it("refuses a malformed pair by the named shape CHECK", async () => {
+      for (const [modes, check] of [
+        [["walking"], "dataset_entries_transit_modes_pair_shape"],
+        [["walking", "jeepney", "taxi"], "dataset_entries_transit_modes_pair_shape"],
+        [["walking", "walking"], "dataset_entries_transit_modes_pair_shape"],
+        [["bus", "taxi"], "dataset_entries_transit_modes_pair_shape"],
+      ] as const) {
+        const failure = await rawFailure(
+          db,
+          `insert into public.dataset_entries (id, category, transit_modes, instruction, source_payload) values ($1, 'double_transit_mode', $2, 'Pair shape check.', '{}'::jsonb)`,
+          [`PROV_pair_${modes.join("_")}`, modes] as never[],
+        );
+        expect(failure, JSON.stringify(modes)).toContain(check);
+      }
+      await applySql(
+        db,
+        "delete from public.dataset_entries where id like 'PROV_pair_%'",
+        "clean pairs",
+      );
+    });
+
+    it("refuses a scalar mode on a Double Transit Mode row and a pair on a scalar row", async () => {
+      const scalarOnPair = await rawFailure(
+        db,
+        `insert into public.dataset_entries (id, category, transit_mode, instruction, source_payload) values ('PROV_scalar_on_pair', 'double_transit_mode', 'walking', 'Pair absent check.', '{}'::jsonb)`,
+      );
+      expect(scalarOnPair).toContain("dataset_entries_transit_mode_pair_absent");
+
+      const pairOnScalar = await rawFailure(
+        db,
+        `insert into public.dataset_entries (id, category, transit_modes, instruction, source_payload) values ('PROV_pair_on_scalar', 'origin_destination', array['jeepney','walking'], 'Pair absent check.', '{}'::jsonb)`,
+      );
+      expect(pairOnScalar).toContain("dataset_entries_transit_modes_scalar_absent");
+
+      await applySql(
+        db,
+        "delete from public.dataset_entries where id like 'PROV_%_on_%'",
+        "clean cross",
+      );
+    });
+
+    it("refuses to EXECUTE v3 for `anon` and `authenticated`, and grants it to `service_role`", async () => {
+      for (const role of ["anon", "authenticated"] as const) {
+        const failure = await asRoleFailure(
+          db,
+          role,
+          `select public.dataset_entries_import_v3('DTM_1', 'double_transit_mode', 1, 'Double Transit Mode', 'x', null, 'Abanao Square', null, array['jeepney','walking'], '{}'::jsonb, true)`,
+        );
+        expect(failure).toMatch(/permission denied/i);
+      }
+      const rows = await query<{ has_service_role: boolean; prosecdef: boolean }>(
+        db,
+        `select
+           has_function_privilege('service_role', '${FUNCTION_SIGNATURE}', 'execute') as has_service_role,
+           p.prosecdef as prosecdef
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname = 'dataset_entries_import_v3'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.has_service_role).toBe(true);
+      expect(rows[0]!.prosecdef).toBe(false);
+    });
+
+    it("applies cleanly to a correct schema and converges on re-run", async () => {
+      const bare = await createTestDatabase();
+      try {
+        await applyMigrationsUntil(bare, PAIR_MIGRATION);
+        const sql = (await readMigrations()).find((m) => m.filename === PAIR_MIGRATION)!.sql;
+        expect(await execFailure(bare, sql)).toBe("");
+        expect(await execFailure(bare, sql)).toBe("");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses against a database with no `dataset_entries`, creating nothing", async () => {
+      const bare = await createTestDatabase();
+      try {
+        await applyMigrationsUntil(bare, PAIR_MIGRATION);
+        await applySql(bare, "drop table public.dataset_entries cascade", "drop dataset_entries");
+        const sql = (await readMigrations()).find((m) => m.filename === PAIR_MIGRATION)!.sql;
+
+        const failure = await execFailure(bare, sql);
+        expect(failure).toContain("double_transit_mode precondition failed");
+        expect(failure).toContain("does not exist");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
   // The range-800 migration: the same constraint name, widened to the revised corpus.
   // ---------------------------------------------------------------------------------------------
 
@@ -901,7 +1050,7 @@ describe("the dataset_entries_import function", () => {
       expect(rows[0]!.check).not.toContain("600");
     });
 
-    it("creates no v3 function and changes no other function", async () => {
+    it("creates the v3 function beside v1 and v2 and changes no earlier function", async () => {
       const rows = await query<{ name: string }>(
         db,
         `select p.proname as name from pg_proc p
@@ -912,6 +1061,7 @@ describe("the dataset_entries_import function", () => {
       expect(rows.map((row) => row.name)).toEqual([
         "dataset_entries_import",
         "dataset_entries_import_v2",
+        "dataset_entries_import_v3",
       ]);
     });
 
@@ -953,7 +1103,7 @@ async function functionSource(db: TestDatabase): Promise<string> {
     `select p.prosrc as prosrc
        from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname = 'dataset_entries_import_v2'`,
+      where n.nspname = 'public' and p.proname = 'dataset_entries_import_v3'`,
   );
   expect(rows).toHaveLength(1);
   return rows[0]!.prosrc;

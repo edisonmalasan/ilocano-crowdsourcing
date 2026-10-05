@@ -68,7 +68,7 @@ const ENTRY_ID_COLUMN = "dataset_entry_id";
  * WHY THIS READ PAGES AT ALL, which `findByEntry` does not have to
  * --------------------------------------------------
  * `findByEntry` reads one entry's responses and asserts the read was complete. This method reads
- * the responses of an ENTIRE POOL: 4,000 entries with several responses each is thousands of rows
+ * the responses of an ENTIRE POOL: 4,800 entries with several responses each is thousands of rows
  * filtered out, and PostgREST caps a response at the project's configured maximum (1000 by
  * default) while signalling the cap only by returning fewer rows than match.
  *

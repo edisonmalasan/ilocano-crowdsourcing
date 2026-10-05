@@ -166,8 +166,8 @@ describe("loadDashboardOverview", () => {
   });
 
   it("counts entries from every category, never one category's slice", async () => {
-    // The merged corpus holds five categories; a total derived from a single-category read
-    // would report 600 of 3,000. Two entries sharing a source-local id under different
+    // The merged corpus holds six categories; a total derived from a single-category read
+    // would report 800 of 4,800. Two entries sharing a source-local id under different
     // categories are two entries here, and review links key on canonical ids that cannot
     // collide across them.
     const mixed: DashboardRepositories = {

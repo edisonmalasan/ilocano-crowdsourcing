@@ -293,7 +293,7 @@ describe("grouped raw document", () => {
     ]);
   });
 
-  it("groups by category with the triple once per group and all five groups present", () => {
+  it("groups by category with the triple once per group and all six groups present", () => {
     const records = sortExportRecords(buildExportRecords(sources));
     const groups = withEmptyCategoryGroups(groupExportRecordsByCategory(records)).map(toJsonGroup);
 
@@ -304,13 +304,14 @@ describe("grouped raw document", () => {
       "origin_destination",
       "origin_destination_transit_mode",
       "complex_preference_expressions",
+      "double_transit_mode",
       "landmark_guidance",
     ]);
     expect(groups[2]?.category_id).toBe(3);
-    expect(groups[5]?.category_id).toBeNull();
+    expect(groups[6]?.category_id).toBeNull();
     // Nine fixture responses: eight in origin_destination, one landmark_guidance.
     expect(groups[2]?.responses).toHaveLength(8);
-    expect(groups[5]?.responses).toHaveLength(1);
+    expect(groups[6]?.responses).toHaveLength(1);
     // The JSON member carries no repeated triple.
     for (const response of groups[2]?.responses ?? []) {
       expect(response).not.toHaveProperty("category");

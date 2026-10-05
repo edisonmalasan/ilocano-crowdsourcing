@@ -115,7 +115,7 @@ describe("SupabaseDatasetEntrySink", () => {
     // two places the name is written in TypeScript, and the integration test checks a THIRD against
     // the migration file. A test asserting the constant equals itself would pass if both were wrong;
     // this one is checked against `pg_proc` in `tests/integration/`.
-    expect(DATASET_ENTRIES_IMPORT_FUNCTION).toBe("dataset_entries_import_v2");
+    expect(DATASET_ENTRIES_IMPORT_FUNCTION).toBe("dataset_entries_import_v3");
   });
 
   it("maps `inserted` and `updated` onto the importer's own vocabulary", async () => {
@@ -144,9 +144,27 @@ describe("SupabaseDatasetEntrySink", () => {
       p_origin: ENTRY.origin,
       p_destination: ENTRY.destination,
       p_transit_mode: ENTRY.transitMode,
+      p_transit_modes: null,
       p_source_payload: ENTRY.sourcePayload,
       p_is_active: true,
     });
+  });
+
+  it("sends a Double Transit Mode pair as a null scalar with the ordered array", async () => {
+    const pair: ImportedDatasetEntry = {
+      ...ENTRY,
+      id: "DTM_1",
+      category: "double_transit_mode",
+      categoryName: "Double Transit Mode",
+      origin: null,
+      destination: "Abanao Square",
+      transitMode: ["jeepney", "walking"],
+    };
+    const { calls, client } = recordingClient(inserted);
+    await new SupabaseDatasetEntrySink(client).upsert(pair);
+
+    expect(calls[0]!.args.p_transit_mode).toBe(null);
+    expect(calls[0]!.args.p_transit_modes).toEqual(["jeepney", "walking"]);
   });
 
   it("carries the source-local id and category name, so provenance survives the RPC", async () => {
@@ -186,7 +204,7 @@ describe("SupabaseDatasetEntrySink", () => {
     }
   });
 
-  it("names the entry in that refusal, so a 3000-entry run says which one", async () => {
+  it("names the entry in that refusal, so a 4800-entry run says which one", async () => {
     const { client } = recordingClient({ data: "???", error: null });
 
     const thrown = await failureOf(new SupabaseDatasetEntrySink(client).upsert(ENTRY));

@@ -3,7 +3,7 @@
  *
  * ── WHY THE TWO CLAIMS ARE SEPARATE FILES' WORTH OF CARE ───────────────────────────────────────
  * "The dataset is immutable" is the repository's hardest research constraint, and this command is the
- * one place in the product that opens all 4000 records. An immutability check that compares SHA-256
+ * one place in the product that opens all 4800 records. An immutability check that compares SHA-256
  * before and after a run proves the CONTENT survived; it cannot see a write that opens, truncates,
  * and restores, nor a write that writes somewhere else entirely. So the claim tested here is
  * stronger and different: **there is no code path in `scripts/` capable of writing a file at all.**
@@ -156,7 +156,7 @@ function writesFound(source: string): string[] {
   return WRITE_APIS.filter((pattern) => pattern.test(stripComments(source))).map(String);
 }
 
-/** A parse report with nothing unmapped, which is what the real 4000-record parse produces. */
+/** A parse report with nothing unmapped, which is what the real 4800-record parse produces. */
 const cleanReport = {
   recordCount: 1,
   recordsWithPreservedFields: 0,

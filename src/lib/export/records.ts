@@ -224,7 +224,7 @@ export function groupExportRecordsByCategory(
 }
 
 /**
- * Adds empty groups for categories with no records, so grouped JSON always carries all five
+ * Adds empty groups for categories with no records, so grouped JSON always carries all six
  * groups in `category_id` order — including at pristine zero state, where the alternative is
  * a document that looks like it forgot its categories.
  */

@@ -7,6 +7,7 @@ import {
   type RepositoryOperation,
 } from "@/lib/repositories";
 import { datasetEntrySchema, type DatasetEntry, type DatasetEntryId } from "@/schemas/dataset";
+import { isTransitModePair } from "@/lib/domain/transit-mode";
 
 import type { SupabaseClientLike } from "./client";
 import {
@@ -37,6 +38,7 @@ interface DatasetEntryRow {
   origin: unknown;
   destination: unknown;
   transit_mode: unknown;
+  transit_modes: unknown;
   source_payload: unknown;
   is_active: unknown;
   created_at: unknown;
@@ -60,6 +62,7 @@ const ENTRY_COLUMNS = [
   "origin",
   "destination",
   "transit_mode",
+  "transit_modes",
   "source_payload",
   "is_active",
   "created_at",
@@ -71,13 +74,17 @@ const ENTRY_COLUMNS = [
  * `transitMode` is spelled out rather than derived, because this is the whole job of the module: a
  * `snake_case` column name must stop at this line. A SQL `NULL` for `origin`/`destination`/
  * `transit_mode` becomes the domain's `null`, which is how a category without a transit mode is
- * represented honestly instead of with a placeholder string.
+ * represented honestly instead of with a placeholder string. Double Transit Mode rows carry
+ * their ordered pair in `transit_modes` with a null scalar; every other row carries the scalar
+ * (or null) with a null pair. The domain schema validates the result, so a row that mixes both
+ * columns is reported rather than guessed about.
  */
 function toDomain(
   row: Record<string, unknown>,
   context: string,
   operation: RepositoryOperation,
 ): DatasetEntry {
+  const pair = row.transit_modes ?? null;
   return parseDomainValue(
     datasetEntrySchema,
     {
@@ -92,7 +99,7 @@ function toDomain(
       instruction: row.instruction,
       origin: row.origin ?? null,
       destination: row.destination ?? null,
-      transitMode: row.transit_mode ?? null,
+      transitMode: isTransitModePair(pair) ? [...pair] : (row.transit_mode ?? null),
       createdAt: toIsoDateTime(row.created_at, "created_at", operation),
       isActive: row.is_active,
     },
@@ -142,7 +149,7 @@ export class SupabaseDatasetEntriesRepository implements DatasetEntriesRepositor
    * whole active pool, so a silent cap would look like a smaller dataset and would quietly reduce
    * coverage. The exact count is therefore requested in the same round trip and a short read
    * raises `RepositoryError` rather than returning the truncated list. The merged corpus is
-   * 4,000 active entries across five categories — past the default cap — so this guard is live
+   * 4,800 active entries across six categories — past the default cap — so this guard is live
    * rather than hypothetical.
    *
    * ORDER. No `order()` is applied, following the interface: the result carries no research

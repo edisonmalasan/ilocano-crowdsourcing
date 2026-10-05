@@ -12,6 +12,7 @@ import { buildCsv } from "@/lib/export/csv";
 import { buildExportRecords } from "@/lib/export/records";
 import type { ExportSourceWithQualifying } from "@/lib/export/records";
 import type { DatasetEntry } from "@/schemas/dataset";
+import { parseTransitModeCsvCell, serializeTransitModeCsvCell } from "@/lib/domain/transit-mode";
 import type { ValidationResponse } from "@/schemas/validation";
 import type { AnonymousValidatorId } from "@/schemas/validator";
 
@@ -346,7 +347,14 @@ describe("buildValidatedDataset", () => {
       expect(row.source_attempt_id).toBe(record.source_attempt_id);
       expect(row.origin).toBe(record.output.origin);
       expect(row.destination).toBe(record.output.destination);
-      expect(row.transit_mode).toBe(record.output.transit_mode);
+      // Scalars and nulls compare directly; a pair compares through its CSV cell, which
+      // serializes as compact JSON and parses back to the same ordered pair.
+      if (Array.isArray(record.output.transit_mode)) {
+        expect(row.transit_mode).toBe(serializeTransitModeCsvCell(record.output.transit_mode));
+        expect(parseTransitModeCsvCell(row.transit_mode)).toEqual(record.output.transit_mode);
+      } else {
+        expect(row.transit_mode).toBe(record.output.transit_mode);
+      }
       expect(row.needs_review).toBe(record.needs_review ? "true" : "false");
     }
   });
@@ -372,6 +380,7 @@ describe("grouped validated document", () => {
     category: DatasetEntry["category"],
     sourceEntryId: number,
     categoryName: string,
+    transitMode: DatasetEntry["transitMode"] = null,
   ): DatasetEntry {
     return {
       id,
@@ -381,7 +390,7 @@ describe("grouped validated document", () => {
       instruction: `instruction for ${id}`,
       origin: `origin of ${id}`,
       destination: `destination of ${id}`,
-      transitMode: null,
+      transitMode,
       createdAt: AT("01"),
       isActive: true,
     };
@@ -422,8 +431,8 @@ describe("grouped validated document", () => {
 
     const dataset = buildValidatedDataset(entries, sources);
 
-    // All five groups always travel, empty or not; only three hold records here.
-    expect(dataset.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    // All six groups always travel, empty or not; only three hold records here.
+    expect(dataset.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5, 6]);
     const nonEmpty = dataset.categories.filter((group) => group.records.length > 0);
     expect(nonEmpty.map((group) => group.category)).toEqual([
       "destination_only",
@@ -463,10 +472,10 @@ describe("grouped validated document", () => {
     });
   });
 
-  it("carries all five groups empty at pristine zero state", () => {
+  it("carries all six groups empty at pristine zero state", () => {
     const dataset = buildValidatedDataset(ENTRIES, []);
 
-    expect(dataset.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    expect(dataset.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5, 6]);
     for (const group of dataset.categories) expect(group.records).toEqual([]);
     expect(dataset.derivation.omitted_incomplete_entries).toBe(ENTRIES.length);
   });
@@ -489,6 +498,31 @@ describe("grouped validated document", () => {
     expect(record?.output.transit_mode).toBe("private_vehicle");
     expect(validatedCsvRow(record as ValidatedRecord).transit_mode).toBe("private_vehicle");
     expect(JSON.stringify(dataset)).toContain('"transit_mode":"private_vehicle"');
+  });
+
+  it("preserves a Double Transit Mode pair in both forms without selecting a mode", () => {
+    const pairEntry: DatasetEntry = {
+      ...completeEntry("DTM_1", "double_transit_mode", 1, "Double Transit Mode"),
+      origin: null,
+      destination: "Abanao Square",
+      transitMode: ["jeepney", "walking"],
+    };
+    const sources = [completeSource(pairEntry, "rv0", "VAL_00000000")];
+
+    const dataset = buildValidatedDataset([pairEntry], sources);
+    const record = flattenValidatedGroups(dataset)[0];
+
+    // JSON carries the ordered array; CSV carries the compact-JSON cell; neither selects a mode.
+    expect(record?.output.transit_mode).toEqual(["jeepney", "walking"]);
+    expect(validatedCsvRow(record as ValidatedRecord).transit_mode).toBe('["jeepney","walking"]');
+    expect(JSON.stringify(dataset)).toContain('"transit_mode":["jeepney","walking"]');
+    // The group triple establishes the sixth category.
+    const group = dataset.categories.find(
+      (candidate) => candidate.category === "double_transit_mode",
+    );
+    expect(group?.category_id).toBe(6);
+    expect(group?.records).toHaveLength(1);
+    expect(group?.records.map((member) => member.id)).toEqual(["DTM_1"]);
   });
 });
 

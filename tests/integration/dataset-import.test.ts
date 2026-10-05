@@ -1,5 +1,5 @@
 /**
- * Import verification: all 4,000 real records of the revised source, through the real migrations,
+ * Import verification: all 4,800 real records of the revised source, through the real migrations,
  * into a real PostgreSQL engine.
  *
  * The comparison reads `data/merged-ilocano-synthetic-data.json` itself, never another derived
@@ -31,7 +31,11 @@ const SOURCE_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-syntheti
 type SourceRecord = {
   id: string;
   instruction: string;
-  output: { origin: string | null; destination: string | null; transit_mode: string | null };
+  output: {
+    origin: string | null;
+    destination: string | null;
+    transit_mode: string | string[] | null;
+  };
 };
 
 type SourceBlock = {
@@ -51,11 +55,11 @@ function readSource(): unknown {
 /**
  * The upsert used throughout this file.
  *
- * It mirrors the deployed `dataset_entries_import_v2`: the update list carries category,
- * provenance, and the mutable projection, while `instruction`, `source_payload`, and
- * `created_at` are excluded. A re-run must not be able to rewrite what a validator was shown,
- * and the only reliable way to guarantee that is for the write itself to exclude the column
- * rather than for a caller to remember.
+ * It mirrors the deployed `dataset_entries_import_v3`: the update list carries category,
+ * provenance, and the mutable projection (scalar and pair transit columns), while
+ * `instruction`, `source_payload`, and `created_at` are excluded. A re-run must not be able to
+ * rewrite what a validator was shown, and the only reliable way to guarantee that is for the
+ * write itself to exclude the column rather than for a caller to remember.
  */
 async function upsertWithParams(
   db: TestDatabase,
@@ -66,18 +70,20 @@ async function upsertWithParams(
     "select id from public.dataset_entries where id = $1",
     [entry.id],
   );
+  const pair = Array.isArray(entry.transitMode) ? [...entry.transitMode] : null;
   await db.query(
     `insert into public.dataset_entries
        (id, category, source_entry_id, category_name, instruction, origin, destination,
-        transit_mode, source_payload)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+        transit_mode, transit_modes, source_payload)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
      on conflict (id) do update set
        category = excluded.category,
        source_entry_id = excluded.source_entry_id,
        category_name = excluded.category_name,
        origin = excluded.origin,
        destination = excluded.destination,
-       transit_mode = excluded.transit_mode`,
+       transit_mode = excluded.transit_mode,
+       transit_modes = excluded.transit_modes`,
     [
       entry.id,
       entry.category,
@@ -86,7 +92,8 @@ async function upsertWithParams(
       entry.instruction,
       entry.origin,
       entry.destination,
-      entry.transitMode,
+      pair !== null ? null : entry.transitMode,
+      pair,
       JSON.stringify(entry.sourcePayload),
     ] as never[],
   );
@@ -135,15 +142,15 @@ describe("importing the merged synthetic dataset", () => {
     await resetToEmpty();
   });
 
-  it("stores all 4000 records with the exact canonical id set", async () => {
+  it("stores all 4800 records with the exact canonical id set", async () => {
     const result = await importAll();
 
-    expect(result.parsed).toBe(4000);
-    expect(result.inserted).toBe(4000);
+    expect(result.parsed).toBe(4800);
+    expect(result.inserted).toBe(4800);
     expect(result.updated).toBe(0);
 
     const stored = await query<{ id: string }>(db, "select id from public.dataset_entries");
-    expect(stored).toHaveLength(4000);
+    expect(stored).toHaveLength(4800);
 
     const expected = new Set<string>();
     document.categories.forEach((block) => {
@@ -178,18 +185,23 @@ describe("importing the merged synthetic dataset", () => {
 
   it("stores the exact intended transit-mode distribution", async () => {
     // The distribution is a research property of the source revision, not an accident of
-    // random assignment: null-mode categories carry no mode at all, and each mode-bearing
-    // category carries 200 of each of the four modes.
+    // random assignment: null-mode categories carry no mode at all, each single-mode
+    // category carries 200 of each of the four modes, and Double Transit Mode carries 800
+    // ordered distinct pairs (all twelve ordered pairs represented).
     await importAll();
 
-    const stored = await query<{ category: string; transit_mode: string | null }>(
-      db,
-      "select category, transit_mode from public.dataset_entries",
-    );
+    const stored = await query<{
+      category: string;
+      transit_mode: string | null;
+      transit_modes: string[] | null;
+    }>(db, "select category, transit_mode, transit_modes from public.dataset_entries");
     const counts = new Map<string, Map<string, number>>();
     for (const row of stored) {
       const modes = counts.get(row.category) ?? new Map<string, number>();
-      const key = row.transit_mode ?? "null";
+      const key =
+        row.transit_modes !== null
+          ? `pair:${row.transit_modes[0]}+${row.transit_modes[1]}`
+          : (row.transit_mode ?? "null");
       modes.set(key, (modes.get(key) ?? 0) + 1);
       counts.set(row.category, modes);
     }
@@ -208,6 +220,20 @@ describe("importing the merged synthetic dataset", () => {
         jeepney: 200,
         taxi: 200,
         private_vehicle: 200,
+      },
+      double_transit_mode: {
+        "pair:jeepney+walking": 50,
+        "pair:jeepney+taxi": 100,
+        "pair:jeepney+private_vehicle": 50,
+        "pair:walking+jeepney": 100,
+        "pair:walking+taxi": 50,
+        "pair:walking+private_vehicle": 50,
+        "pair:taxi+walking": 50,
+        "pair:taxi+jeepney": 50,
+        "pair:taxi+private_vehicle": 100,
+        "pair:private_vehicle+walking": 100,
+        "pair:private_vehicle+jeepney": 50,
+        "pair:private_vehicle+taxi": 50,
       },
     };
     for (const [category, modes] of Object.entries(expected)) {
@@ -240,7 +266,11 @@ describe("importing the merged synthetic dataset", () => {
       origin: string | null;
       destination: string | null;
       transit_mode: string | null;
-    }>(db, "select id, origin, destination, transit_mode from public.dataset_entries");
+      transit_modes: string[] | null;
+    }>(
+      db,
+      "select id, origin, destination, transit_mode, transit_modes from public.dataset_entries",
+    );
     const byId = new Map(stored.map((row) => [row.id, row]));
 
     document.categories.forEach((block) => {
@@ -248,8 +278,15 @@ describe("importing the merged synthetic dataset", () => {
         const row = byId.get(record.id);
         expect(row?.origin).toBe(record.output.origin);
         expect(row?.destination).toBe(record.output.destination);
-        // Taken from the file, never defaulted: the source genuinely varies this column.
-        expect(row?.transit_mode).toBe(record.output.transit_mode);
+        // Taken from the file, never defaulted: the source genuinely varies these columns.
+        // Scalars travel in `transit_mode`, Double Transit Mode pairs in `transit_modes`.
+        if (Array.isArray(record.output.transit_mode)) {
+          expect(row?.transit_mode).toBe(null);
+          expect(row?.transit_modes).toEqual(record.output.transit_mode);
+        } else {
+          expect(row?.transit_mode).toBe(record.output.transit_mode);
+          expect(row?.transit_modes).toBe(null);
+        }
       }
     });
   });
@@ -264,19 +301,27 @@ describe("importing the merged synthetic dataset", () => {
       origin: string | null;
       destination: string | null;
       transit_mode: string | null;
+      transit_modes: string[] | null;
       source_payload: {
         output?: { origin?: unknown; destination?: unknown; transit_mode?: unknown };
       };
     }>(
       db,
-      "select id, origin, destination, transit_mode, source_payload from public.dataset_entries",
+      "select id, origin, destination, transit_mode, transit_modes, source_payload from public.dataset_entries",
     );
 
-    expect(stored).toHaveLength(4000);
+    expect(stored).toHaveLength(4800);
     for (const row of stored) {
       expect(row.origin).toBe(row.source_payload.output?.origin);
       expect(row.destination).toBe(row.source_payload.output?.destination);
-      expect(row.transit_mode).toBe(row.source_payload.output?.transit_mode);
+      const filed = row.source_payload.output?.transit_mode ?? null;
+      if (Array.isArray(filed)) {
+        expect(row.transit_mode).toBe(null);
+        expect(row.transit_modes).toEqual(filed);
+      } else {
+        expect(row.transit_mode).toBe(filed);
+        expect(row.transit_modes).toBe(null);
+      }
     }
   });
 
@@ -309,19 +354,19 @@ describe("importing the merged synthetic dataset", () => {
   it("is idempotent: a second import updates rather than duplicates", async () => {
     // Both halves run here rather than relying on an earlier test having done the first import.
     const first = await importAll();
-    expect(first.inserted).toBe(4000);
+    expect(first.inserted).toBe(4800);
 
     const second = await importAll();
 
-    expect(second.parsed).toBe(4000);
-    expect(second.updated).toBe(4000);
+    expect(second.parsed).toBe(4800);
+    expect(second.updated).toBe(4800);
     expect(second.inserted).toBe(0);
 
     const count = await query<{ count: number }>(
       db,
       "select count(*)::int as count from public.dataset_entries",
     );
-    expect(count[0]?.count).toBe(4000);
+    expect(count[0]?.count).toBe(4800);
   });
 
   it("cannot rewrite a stored instruction on a re-run", async () => {
@@ -368,7 +413,7 @@ describe("importing the merged synthetic dataset", () => {
 
     expect(report.preservedFields).toHaveLength(1);
     expect(report.preservedFields[0]?.fieldPath).toBe("difficulty");
-    expect(report.preservedFields[0]?.recordCount).toBe(4000);
+    expect(report.preservedFields[0]?.recordCount).toBe(4800);
   });
 
   it("leaves the source dataset file unchanged", async () => {

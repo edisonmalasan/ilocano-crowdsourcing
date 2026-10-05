@@ -11,23 +11,25 @@ import {
 } from "@/lib/domain/categories";
 
 describe("the canonical category table", () => {
-  it("holds exactly the five approved categories in file order", () => {
-    // Hardcoded, not derived: deriving the expectation from the table would pass with any five
-    // rows, including five wrong ones.
+  it("holds exactly the six approved categories in file order", () => {
+    // Hardcoded, not derived: deriving the expectation from the table would pass with any six
+    // rows, including six wrong ones.
     expect(DATASET_CATEGORY_TABLE.map((row) => row.prefix)).toEqual([
       "D",
       "DT",
       "OD",
       "ODT",
       "CPE",
+      "DTM",
     ]);
-    expect(DATASET_CATEGORY_TABLE.map((row) => row.categoryId)).toEqual([1, 2, 3, 4, 5]);
+    expect(DATASET_CATEGORY_TABLE.map((row) => row.categoryId)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(DATASET_CATEGORY_TABLE.map((row) => row.slug)).toEqual([
       "destination_only",
       "destination_transit_mode",
       "origin_destination",
       "origin_destination_transit_mode",
       "complex_preference_expressions",
+      "double_transit_mode",
     ]);
     expect(DATASET_CATEGORY_TABLE.map((row) => row.name)).toEqual([
       "Destination Only",
@@ -35,6 +37,7 @@ describe("the canonical category table", () => {
       "Origin + Destination",
       "Origin + Destination + Transit Mode",
       "Complex/Preference Expressions",
+      "Double Transit Mode",
     ]);
   });
 
@@ -64,6 +67,8 @@ describe("parseCanonicalEntryId", () => {
       ["ODT_800", "ODT", 800],
       ["CPE_1", "CPE", 1],
       ["CPE_800", "CPE", 800],
+      ["DTM_1", "DTM", 1],
+      ["DTM_800", "DTM", 800],
       ["OD_124", "OD", 124],
       ["ODT_63", "ODT", 63],
     ];
@@ -77,13 +82,13 @@ describe("parseCanonicalEntryId", () => {
   });
 
   it("rejects zero-padded suffixes, so D_1 has exactly one spelling", () => {
-    for (const bad of ["D_01", "D_001", "D_0001", "OD_0042"]) {
+    for (const bad of ["D_01", "D_001", "D_0001", "OD_0042", "DTM_0001"]) {
       expect(parseCanonicalEntryId(bad), `${bad} should not parse`).toBeNull();
     }
   });
 
   it("rejects out-of-range suffixes", () => {
-    for (const bad of ["D_0", "D_801", "DT_900", "ODT_9999", "CPE_-1"]) {
+    for (const bad of ["D_0", "D_801", "DT_900", "ODT_9999", "CPE_-1", "DTM_0", "DTM_801"]) {
       expect(parseCanonicalEntryId(bad), `${bad} should not parse`).toBeNull();
     }
   });
@@ -114,14 +119,26 @@ describe("compareCanonicalEntryIds", () => {
     ]);
   });
 
+  it("orders Double Transit Mode numerically, not lexically", () => {
+    const shuffled = ["DTM_800", "DTM_10", "DTM_2", "DTM_1", "DTM_100"];
+    expect([...shuffled].sort(compareCanonicalEntryIds)).toEqual([
+      "DTM_1",
+      "DTM_2",
+      "DTM_10",
+      "DTM_100",
+      "DTM_800",
+    ]);
+  });
+
   it("orders categories by file order before suffixes", () => {
-    const shuffled = ["ODT_1", "CPE_800", "D_800", "DT_1", "OD_1"];
+    const shuffled = ["ODT_1", "CPE_800", "D_800", "DT_1", "OD_1", "DTM_42"];
     expect([...shuffled].sort(compareCanonicalEntryIds)).toEqual([
       "D_800",
       "DT_1",
       "OD_1",
       "ODT_1",
       "CPE_800",
+      "DTM_42",
     ]);
   });
 
