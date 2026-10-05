@@ -47,7 +47,7 @@ describe("product copy carries no em dash except the site title", () => {
         categoryName: "Destination Only",
         instruction: "Mapan idiay Abanao Square.",
         origin: null,
-        destination: "Abanao Square",
+        destination: null,
         transitMode: null,
         createdAt: "2026-09-01T12:00:00.000Z",
         isActive: true,
@@ -74,7 +74,8 @@ describe("product copy carries no em dash except the site title", () => {
     };
     const html = renderToStaticMarkup(<EntryReviewView review={review} />);
 
-    expect(html).toContain("None");
+    // All three absent fields render the placeholder: origin, destination, and transit mode.
+    expect(html.match(/>None</g)).toHaveLength(3);
     expect(html).toContain("Marked cannot confidently evaluate. Abstentions never count");
     expect(html).not.toContain(EM_DASH);
   });
