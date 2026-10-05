@@ -40,17 +40,17 @@ import { mount, type Mounted } from "./support/dom-harness";
  * =================================================================================================
  * WHAT HAPPENS-NEVER-FIRED LOOKS LIKE HERE
  * =================================================================================================
- * `happy-dom` performs no real navigation and no form submission, so a successful sign-in cannot be
- * observed leaving the component. The stubbed action therefore never succeeds: a success ends in
- * `redirect`, which throws inside the server action, and reproducing that would be testing Next's
- * router rather than this feature. Asserting "nothing left the component" would be asserting the
- * harness, so it is not asserted.
+ * `happy-dom` performs no real navigation and no form submission, so navigation is observed
+ * as a recorded router call in mount order rather than as a page change — the same arrangement
+ * `start-batch.test.tsx` uses for its pushes.
  */
 
 /** What the stubbed `signInAction` does for one call. */
 type Behaviour =
   /** Refuse, resolving with the server's shared message. */
   | { kind: "refuse" }
+  /** Succeed, resolving with the success member and setting nothing. */
+  | { kind: "succeed" }
   /** Reject, which is what a transport failure looks like to the component. */
   | { kind: "reject" }
   /** Never settle, so the pending window is observable and released deliberately. */
@@ -101,6 +101,20 @@ function releaseSuspended(): void {
   while (suspended.length > 0) suspended.pop()?.();
 }
 
+/** Every router navigation the component requested, in order. */
+let pushes: string[] = [];
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: (destination: string) => {
+      pushes.push(destination);
+    },
+    replace: () => {},
+    refresh: () => {},
+    back: () => {},
+  }),
+}));
+
 vi.mock("@/lib/admin/actions", () => ({
   signInAction: async (formData: FormData) => {
     calls.push({
@@ -109,6 +123,7 @@ vi.mock("@/lib/admin/actions", () => ({
     });
     if (behaviour.kind === "reject") throw new Error("the request never produced an answer");
     if (behaviour.kind === "hang") await hang();
+    if (behaviour.kind === "succeed") return { status: "authenticated" };
     return { status: "refused", message: SHARED_REFUSAL };
   },
   signOutAction: async () => {
@@ -138,6 +153,7 @@ function type(harness: Mounted, value: string): void {
 
 beforeEach(() => {
   calls = [];
+  pushes = [];
   behaviour = { kind: "refuse" };
 });
 
@@ -274,6 +290,35 @@ describe("the sign-in form reaches the Server Action", () => {
     expect(mounted.one<HTMLElement>('[role="alert"]').textContent).toContain(
       RESEARCHER_SIGN_IN_REFUSAL_MESSAGE,
     );
+  });
+});
+
+describe("a successful sign-in navigates with no refusal ever rendered", () => {
+  it("pushes the researcher area and shows no refusal message at any point", async () => {
+    // The exact regression: success used to end in a thrown redirect, which the form's `catch`
+    // rendered as the refusal message while the access had been granted. Success now arrives as
+    // a returned member, so there is nothing for the `catch` to convert — and this test would
+    // fail against that code, because nothing would navigate and nothing would refuse either.
+    mounted = await mountSignIn();
+    behaviour = { kind: "succeed" };
+    type(mounted, "the-right-operator-key");
+    await mounted.submitFormAndSettle(mounted.one<HTMLFormElement>("form"));
+
+    expect(calls).toHaveLength(1);
+    expect(pushes).toEqual(["/researcher"]);
+    // And no refusal is rendered for the granted access — neither as a flash nor as a final
+    // state. Against the old code this fails on the navigation alone (nothing navigates), and
+    // against old code driven by a redirect-throw it would fail here too, with the message shown.
+    expect(mounted.container.querySelector('[role="alert"]')).toBeNull();
+    expect(mounted.container.textContent ?? "").not.toContain(SHARED_REFUSAL);
+  });
+
+  it("re-enables the controls after navigating, so the latch does not wedge", async () => {
+    mounted = await mountSignIn();
+    behaviour = { kind: "succeed" };
+    await mounted.submitFormAndSettle(mounted.one<HTMLFormElement>("form"));
+
+    expect(mounted.one<HTMLButtonElement>("button").disabled).toBe(false);
   });
 });
 

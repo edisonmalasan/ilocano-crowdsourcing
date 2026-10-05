@@ -70,6 +70,10 @@ vi.mock("next/navigation", () => ({
 
 /** Whether the privileged client constructor was reached. */
 let clientConstructions = 0;
+/** When `"memory"`, the constructor returns an in-memory counter instead of throwing. */
+let attemptsImpl: "throw" | "memory" = "throw";
+/** Calls the in-memory counter received, in order. */
+const memoryCalls: string[] = [];
 /** What `getAdminEnv` should return. `null` is the shipped default. */
 let adminEnvOverride: { operatorSecrets: string[]; sessionSecret: string } | null = null;
 
@@ -90,6 +94,17 @@ vi.mock("@/lib/admin/env", async (importOriginal) => {
 vi.mock("@/lib/repositories/supabase", () => ({
   createSignInAttemptsRepository: () => {
     clientConstructions += 1;
+    if (attemptsImpl === "memory") {
+      return {
+        recordAttempt: async (originKey: string) => {
+          memoryCalls.push(`record:${originKey}`);
+          return 1;
+        },
+        clear: async (originKey: string) => {
+          memoryCalls.push(`clear:${originKey}`);
+        },
+      };
+    }
     // Throwing here is the point: the real constructor needs a service-role key this suite does not
     // have, and a throw makes "was a client built?" observable instead of inferred.
     throw new Error("SUPABASE_SERVICE_ROLE_KEY is absent in this suite");
@@ -102,6 +117,8 @@ function reset(options: { adminEnv?: typeof adminEnvOverride } = {}): void {
   redirects.length = 0;
   requestHeaders = new Map();
   clientConstructions = 0;
+  attemptsImpl = "throw";
+  memoryCalls.length = 0;
   adminEnvOverride = options.adminEnv ?? null;
 }
 
@@ -363,6 +380,35 @@ describe("a configured deployment reaches the database", () => {
     );
     expect(message).not.toContain("s3cr3t");
     expect(message).not.toContain("an-operator-access-key-4f2a");
+  });
+
+  it("returns success with a session cookie and NO redirect when the credential matches", async () => {
+    // The exact regression for the deployed false-refusal: success used to end in a thrown
+    // redirect, which the form's `catch` rendered as the refusal message. Success now returns,
+    // so there is nothing for any `catch` to convert — and this test would fail against that
+    // code, because the action would throw `NEXT_REDIRECT` instead of returning.
+    reset({
+      adminEnv: { operatorSecrets: ["an-operator-access-key-4f2a"], sessionSecret: "s3cr3t" },
+    });
+    attemptsImpl = "memory";
+    const { result, threw } = await signIn(formWith(WELL_FORMED));
+
+    expect(threw).toBeUndefined();
+    expect(result).toEqual({ status: "authenticated" });
+    // The session is issued as an httpOnly cookie scoped to the researcher area, carrying a
+    // value that is not the credential and revealing nothing else.
+    expect(cookieWrites).toHaveLength(1);
+    const write = cookieWrites[0];
+    expect(write).toBeDefined();
+    expect(typeof write?.value).toBe("string");
+    expect((write?.value as string).length).toBeGreaterThan(0);
+    expect(write?.value).not.toContain("an-operator-access-key-4f2a");
+    expect(write?.options.httpOnly).toBe(true);
+    expect(write?.options.path).toBe("/researcher");
+    // The counter was consulted and then cleared by the success, in that order.
+    expect(memoryCalls).toEqual(["record:no-forwarded-origin", "clear:no-forwarded-origin"]);
+    // And no redirect was issued: navigation is the form's decision on this result.
+    expect(redirects).toEqual([]);
   });
 });
 
