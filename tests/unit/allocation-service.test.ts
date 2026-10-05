@@ -225,6 +225,13 @@ function createFakes(
       record("datasetEntries.listActive", query);
       return (options.pool ?? []).filter((candidate) => candidate.isActive);
     },
+    // No cap in memory: the fake holds the whole pool, so the paged read and the single read
+    // agree exactly — which is what lets this file's tests stay about allocation rather than
+    // about paging. Paging itself is proven against the recording fake below.
+    async listAllActive() {
+      record("datasetEntries.listAllActive", undefined);
+      return (options.pool ?? []).filter((candidate) => candidate.isActive);
+    },
     async findById(id) {
       record("datasetEntries.findById", id);
       return (options.pool ?? []).find((candidate) => candidate.id === id) ?? null;
@@ -1392,8 +1399,10 @@ describe("the read pattern", () => {
 
     // Category-conditional allocation would let a category with no incomplete entries starve while
     // another had them, and that is a completion-reporting question rather than an allocation one.
+    // The whole-pool read pages past the per-request cap, so it is `listAllActive` rather than
+    // `listActive` — and the argument is still no category filter.
     expect(
-      fakes.calls.find((call) => call.method === "datasetEntries.listActive")?.argument,
+      fakes.calls.find((call) => call.method === "datasetEntries.listAllActive")?.argument,
     ).toBeUndefined();
   });
 

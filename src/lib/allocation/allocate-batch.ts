@@ -332,8 +332,10 @@ export async function allocateBatch(
 
     // No category filter: the pool is every active entry, because category-conditional allocation
     // would let a category with no under-covered entries starve while another category had them, and
-    // that is a coverage-reporting question rather than an allocation one.
-    const pool = await dependencies.datasetEntries.listActive();
+    // that is a coverage-reporting question rather than an allocation one. `listAllActive`, not
+    // `listActive`: the pool is 3,000 rows across five categories and a single PostgREST response
+    // is capped, so an uncapped read would refuse rather than serve.
+    const pool = await dependencies.datasetEntries.listAllActive();
     if (pool.length === 0) return { status: "exhausted" };
 
     const answeredEntryIds = await dependencies.validations.listEntryIdsForValidator(

@@ -42,12 +42,15 @@ vi.mock("@/lib/repositories/supabase", () => ({
   createSupabaseRepositories: () => ({
     datasetEntries: {
       listActive: async () => [],
+      listAllActive: async () => [],
       findById: async (id: string) => {
         askedFor.push(id);
         if (id !== KNOWN_ID) return null;
         return {
           id,
           category: "origin_destination",
+          sourceEntryId: 1,
+          categoryName: "Origin + Destination",
           instruction: "Iti Baguio Athletic Bowl ti ayanko.",
           origin: "Baguio Athletic Bowl",
           destination: "Baguio Convention Center",

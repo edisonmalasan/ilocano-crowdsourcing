@@ -397,7 +397,7 @@ describe("the sign-in page", () => {
  * with three disagreeing ones (flagged, complete). What these tests prove is the WIRING —
  * repositories into service into markup — while `dashboard-views.test.tsx` proves the markup
  * itself. A page test that re-asserted every figure would duplicate that file; a view test cannot
- * prove the page called `listActive`.
+ * prove the page called `listAllActive`.
  */
 const dashboardCalls: string[] = [];
 const DASHBOARD_ENTRIES: DatasetEntry[] = [
@@ -464,8 +464,8 @@ const DASHBOARD_PROFILES = new Map([
 vi.mock("@/lib/repositories/supabase", () => ({
   createSupabaseRepositories: () => ({
     datasetEntries: {
-      listActive: async () => {
-        dashboardCalls.push("entries.listActive");
+      listAllActive: async () => {
+        dashboardCalls.push("entries.listAllActive");
         return DASHBOARD_ENTRIES;
       },
       findById: async (id: string) => DASHBOARD_ENTRIES.find((entry) => entry.id === id) ?? null,
@@ -550,7 +550,7 @@ describe("the protected home page renders the dashboard from its repositories", 
     // The view tests prove markup from data; nothing but this page proves the page asked for
     // the data. A page that rendered canned figures without reading would pass every other
     // test in this file.
-    expect(dashboardCalls).toContain("entries.listActive");
+    expect(dashboardCalls).toContain("entries.listAllActive");
     expect(dashboardCalls).toContain("validations.listForEntries");
     expect(dashboardCalls).toContain("validators.listByIds");
   });

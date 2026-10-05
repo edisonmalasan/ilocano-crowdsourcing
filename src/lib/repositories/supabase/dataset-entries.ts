@@ -13,6 +13,7 @@ import {
   assertPageIsComplete,
   awaitQuery,
   parseDomainValue,
+  readExactCount,
   readRows,
   readSingleRow,
   toIsoDateTime,
@@ -193,6 +194,73 @@ export class SupabaseDatasetEntriesRepository implements DatasetEntriesRepositor
     return rows.map((row, index) =>
       toDomain(row, `dataset_entries.listActive row ${index}`, OPS.listActive),
     );
+  }
+
+  /**
+   * Every active entry, stitched across pages.
+   *
+   * The page size matches PostgREST's default cap rather than exceeding it: a page that returns
+   * fewer rows than the cap is a last page, and a page that returns the cap is followed. The
+   * exact count is requested on every page and must agree everywhere — `dataset_entries` is
+   * operator-written, so a mid-read import is possible in principle, and rows shifting between
+   * pages would otherwise duplicate one entry and drop another with no error.
+   */
+  async listAllActive(
+    options?: Pick<ListDatasetEntriesOptions, "category">,
+  ): Promise<DatasetEntry[]> {
+    const PAGE_SIZE = 1000;
+    const context = "dataset_entries.listAllActive";
+    const all: DatasetEntry[] = [];
+    let expectedTotal: number | null = null;
+
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const result = await awaitQuery(OPS.listAllActive, context, () => {
+        let handle = this.client
+          .from("dataset_entries")
+          .select(ENTRY_COLUMNS.join(","), { count: "exact" })
+          .eq("is_active", true);
+        if (options?.category !== undefined) {
+          handle = handle.eq("category", options.category);
+        }
+        return handle.range(offset, offset + PAGE_SIZE - 1);
+      });
+
+      const rows = readRows(result, OPS.listAllActive, context);
+      const total = readExactCount(result, OPS.listAllActive, context);
+      if (expectedTotal === null) {
+        expectedTotal = total;
+      } else if (total !== expectedTotal) {
+        throw new RepositoryError(
+          OPS.listAllActive,
+          `${context} saw ${total} matching rows after seeing ${expectedTotal}: the pool ` +
+            "changed mid-read, so stitched pages would duplicate one entry and drop another. " +
+            "Re-run the read rather than trusting a shifted result.",
+          { detail: `count moved from ${expectedTotal} to ${total}` },
+        );
+      }
+      if (rows.length === 0 && all.length < expectedTotal) {
+        throw new RepositoryError(
+          OPS.listAllActive,
+          `${context} made no progress at offset ${offset} with ${expectedTotal - all.length} ` +
+            "rows still unread. Re-run the read rather than returning a short pool.",
+          { detail: `empty page at offset ${offset}` },
+        );
+      }
+      for (const [index, row] of rows.entries()) {
+        all.push(toDomain(row, `${context} row ${offset + index}`, OPS.listAllActive));
+      }
+      if (all.length >= expectedTotal) break;
+    }
+
+    if (all.length !== expectedTotal) {
+      throw new RepositoryError(
+        OPS.listAllActive,
+        `${context} stitched ${all.length} rows against a count of ${expectedTotal}. ` +
+          "Re-run the read rather than trusting a short pool.",
+        { detail: `stitched ${all.length} of ${expectedTotal}` },
+      );
+    }
+    return all;
   }
 
   /** The single entry with this source ID, or `null` when absent. */

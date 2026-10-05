@@ -135,7 +135,7 @@ function profile(
 function repositories(): DashboardRepositories {
   return {
     entries: {
-      listActive: async () => ENTRIES,
+      listAllActive: async () => ENTRIES,
       findById: async (id) => ENTRIES.find((entry) => entry.id === id) ?? null,
     },
     validations: {
@@ -172,7 +172,7 @@ describe("loadDashboardOverview", () => {
     // collide across them.
     const mixed: DashboardRepositories = {
       entries: {
-        listActive: async () => [
+        listAllActive: async () => [
           {
             id: "OD_0042",
             category: "origin_destination",
@@ -248,7 +248,7 @@ describe("loadDashboardOverview", () => {
 
   it("reports 0% — not NaN — over an empty dataset", async () => {
     const empty: DashboardRepositories = {
-      entries: { listActive: async () => [], findById: async () => null },
+      entries: { listAllActive: async () => [], findById: async () => null },
       validations: { listForEntries: async () => [] },
       validators: { listByIds: async () => [] },
     };

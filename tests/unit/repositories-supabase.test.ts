@@ -682,6 +682,94 @@ describe("the archival copy, and unmodelled fields", () => {
   });
 });
 
+describe("SupabaseDatasetEntriesRepository.listAllActive", () => {
+  // One pool larger than a single PostgREST response, stitched from scripted pages. The fake
+  // does not slice by range — it returns what was enqueued — so the page BOUNDARIES are
+  // asserted on the recorded calls while the stitched CONTENT is asserted on the result.
+  // Ids cycle the five real prefixes, so every row satisfies the domain schema: a row the
+  // schema rejects would fail here on mapping rather than on paging, testing the wrong thing.
+  const PREFIXES = ["DO", "DT", "OD", "ODT", "CPE"] as const;
+  const canonicalId = (index: number): string =>
+    `${PREFIXES[Math.floor(index / 600) % PREFIXES.length]}_${String((index % 600) + 1).padStart(4, "0")}`;
+  const page = (from: number, to: number, total: number) =>
+    rows(
+      Array.from({ length: to - from + 1 }, (_, offset) => {
+        const index = from + offset;
+        return {
+          ...ENTRY_ROW,
+          id: canonicalId(index),
+          source_entry_id: (index % 600) + 1,
+        };
+      }),
+      total,
+    );
+
+  it("stitches pages into one pool and asks for the exact count on every page", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), page(1000, 1999, 2500), page(2000, 2499, 2500));
+
+    const entries = await new SupabaseDatasetEntriesRepository(fake.client).listAllActive();
+
+    expect(entries).toHaveLength(2500);
+    expect(new Set(entries.map((entry) => entry.id)).size).toBe(2500);
+    expect(fake.calls).toHaveLength(3);
+    expect(fake.calls.map((call) => call.filters)).toEqual([
+      [{ kind: "eq", column: "is_active", value: true }, { kind: "range", from: 0, to: 999 }],
+      [{ kind: "eq", column: "is_active", value: true }, { kind: "range", from: 1000, to: 1999 }],
+      [{ kind: "eq", column: "is_active", value: true }, { kind: "range", from: 2000, to: 2999 }],
+    ]);
+    for (const call of fake.calls) {
+      expect(call.options).toEqual({ count: "exact" });
+    }
+  });
+
+  it("stops after one page when the pool fits", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 599, 600));
+
+    const entries = await new SupabaseDatasetEntriesRepository(fake.client).listAllActive();
+
+    expect(entries).toHaveLength(600);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("refuses when the count moves between pages rather than stitching a shifted pool", async () => {
+    // A concurrent operator import mid-read: the second page's count disagrees, so rows may
+    // have shifted between pages and the stitched result would duplicate one entry and drop
+    // another with no error. Refusing is the only honest outcome.
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), page(1000, 1999, 2501));
+
+    await expect(
+      new SupabaseDatasetEntriesRepository(fake.client).listAllActive(),
+    ).rejects.toThrow(/changed mid-read/);
+  });
+
+  it("refuses an empty page that makes no progress rather than looping forever", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), rows([], 2500));
+
+    await expect(
+      new SupabaseDatasetEntriesRepository(fake.client).listAllActive(),
+    ).rejects.toThrow(/no progress/);
+  });
+
+  it("narrows by category when one is given", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 599, 600));
+
+    await new SupabaseDatasetEntriesRepository(fake.client).listAllActive({
+      category: "origin_destination",
+    });
+
+    expect(fake.lastCall().filters).toContainEqual({
+      kind: "eq",
+      column: "category",
+      value: "origin_destination",
+    });
+  });
+});
+
 describe("SupabaseValidatorsRepository", () => {
   it("writes the profile in snake_case and returns the stored row, not the argument", async () => {
     const fake = createFakeClient();
@@ -1988,6 +2076,9 @@ describe("the operation name each method reports", () => {
     // method, which is the opposite of "reconciled".
     const declared: RepositoryOperation[] = [
       "dataset_entries.list",
+      // Arrived with the merged corpus: the whole pool no longer fits one PostgREST response,
+      // so the paged whole-pool read carries its own operation name under the same contract.
+      "dataset_entries.listAll",
       "dataset_entries.findById",
       "dataset_entries.listByIds",
       "validators.insert",

@@ -58,7 +58,7 @@ import type { ValidatorsRepository } from "@/lib/repositories/validators-reposit
  * is the same guarantee the read-only source scan asserts, one layer down.
  */
 export interface DashboardRepositories {
-  readonly entries: Pick<DatasetEntriesRepository, "listActive" | "findById">;
+  readonly entries: Pick<DatasetEntriesRepository, "listAllActive" | "findById">;
   readonly validations: Pick<ValidationsRepository, "listForEntries">;
   readonly validators: Pick<ValidatorsRepository, "listByIds">;
 }
@@ -155,7 +155,7 @@ function toOneDecimal(value: number): number {
 export async function loadDashboardOverview(
   repositories: DashboardRepositories,
 ): Promise<DashboardOverview> {
-  const entries = await repositories.entries.listActive();
+  const entries = await repositories.entries.listAllActive();
   const validations = await repositories.validations.listForEntries(
     entries.map((entry) => entry.id),
   );
@@ -173,7 +173,7 @@ export async function loadDashboardOverview(
     // It is currently UNREACHABLE in production, and that is a measurement, not a guess: the only
     // writers of `is_active` are the column default and the import function's
     // `coalesce(p_is_active, true)`, so no code path retires an entry today. The branch is kept
-    // because `listActive()` is a FILTER, not a promise about what the validations table holds, and
+    // because `listAllActive()` is a FILTER, not a promise about what the validations table holds, and
     // the alternative — indexing straight in — would throw on exactly the row this guard absorbs.
     if (list !== undefined) list.push(response);
   }

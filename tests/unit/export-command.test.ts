@@ -78,7 +78,7 @@ const ENTRIES = [entry("E1"), entry("E2")];
 const RESPONSES = [response("r01", "VAL_00000001", "E1"), response("r02", "VAL_00000002", "E1")];
 
 const sources = (): ExportSources => ({
-  entries: { listActive: async () => ENTRIES },
+  entries: { listAllActive: async () => ENTRIES },
   validations: {
     listForEntries: async (ids) => RESPONSES.filter((r) => ids.includes(r.datasetEntryId)),
   },
@@ -154,7 +154,7 @@ describe("collectExportSources", () => {
 
   it("reads no responses and no profiles when the dataset is empty", async () => {
     const empty: ExportSources = {
-      entries: { listActive: async () => [] },
+      entries: { listAllActive: async () => [] },
       validations: { listForEntries: async () => [] },
       validators: { listByIds: async () => [] },
     };
