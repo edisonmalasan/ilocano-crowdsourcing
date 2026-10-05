@@ -4,7 +4,7 @@
 
 **Sadino Crowdsourcing Validation Platform** is a research-focused web application for crowdsourced validation of synthesized Ilocano local-navigation dataset entries for the Sadino thesis project.
 
-The project is currently greenfield. The starting research artifact is the synthesized **Origin + Destination** dataset, `data/ilocano-synthetic-data.json`, containing 600 Ilocano navigation instructions with stable external IDs such as `OD_0001` through `OD_0600`. `docs/ROADMAP.md` is the program-level development plan. The source synthetic dataset is reference research material and must remain immutable during validation; human responses are stored separately.
+The authoritative research artifact is the merged multi-category synthetic dataset, `data/merged-ilocano-synthetic-data.json`, containing 3,000 Ilocano navigation instructions in five category blocks of 600 entries each (Destination Only, Destination + Transit Mode, Origin + Destination, Origin + Destination + Transit Mode, Complex/Preference Expressions), with source-local ids 1..600 per block and stable canonical external IDs such as `OD_0001` through `OD_0600` (prefixes `DO_`, `DT_`, `OD_`, `ODT_`, `CPE_`). (History, recorded rather than deleted: the pre-study single-category `data/ilocano-synthetic-data.json` with 600 `OD_*` records was superseded by the merged source in the `merged-multi-category-dataset` change.) `docs/ROADMAP.md` is the program-level development plan. The source synthetic dataset is reference research material and must remain immutable during validation; human responses are stored separately.
 
 The target architecture is a Next.js web application deployed on Vercel with Supabase PostgreSQL as the persistence layer. Validators participate anonymously, complete a self-reported Ilocano-proficiency screening, receive coverage-aware randomized batches of 10 entries, submit structured judgments and corrections together with the required bilingual research translations, and may continue with additional batches. Researchers use a protected admin area to monitor coverage, inspect disagreements, and export research data. The architecture must support additional dataset categories without hard-coding behavior to `OD_*` records.
 
@@ -962,7 +962,7 @@ before assuming the code is at fault.**
 - Never weaken authentication, authorization, validation, sandboxing, permission checks, or trust boundaries without explicit requirements.
 - Never delete user data, migration data, production data, or preservation material as part of ordinary feature work.
 - Do not modify CI/CD, deployment, infrastructure, security, or repository governance unless the active task requires it.
-- Do not touch `raw source datasets under `data/` (especially `data/ilocano-synthetic-data.json`) and any other explicitly designated immutable research-source files` unless the active task explicitly requires it.
+- Do not touch `raw source datasets under `data/` (especially `data/merged-ilocano-synthetic-data.json`) and any other explicitly designated immutable research-source files` unless the active task explicitly requires it.
 
 ---
 
