@@ -32,6 +32,7 @@ export const POSTGREST_UNIQUE_VIOLATION_CODE = "23505";
 
 export type RepositoryOperation =
   | "dataset_entries.list"
+  | "dataset_entries.listAll"
   | "dataset_entries.findById"
   | "dataset_entries.listByIds"
   /**

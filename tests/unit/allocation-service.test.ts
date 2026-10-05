@@ -82,6 +82,8 @@ function entry(id: string, overrides: Partial<DatasetEntry> = {}): DatasetEntry 
   return {
     id,
     category: "origin_destination",
+    sourceEntryId: 1,
+    categoryName: "Origin + Destination",
     instruction: `Langet an ti ${id}.`,
     origin: "Bangon",
     destination: "Kablantayan",
@@ -221,6 +223,13 @@ function createFakes(
   const datasetEntries: DatasetEntriesRepository = {
     async listActive(query) {
       record("datasetEntries.listActive", query);
+      return (options.pool ?? []).filter((candidate) => candidate.isActive);
+    },
+    // No cap in memory: the fake holds the whole pool, so the paged read and the single read
+    // agree exactly — which is what lets this file's tests stay about allocation rather than
+    // about paging. Paging itself is proven against the recording fake below.
+    async listAllActive() {
+      record("datasetEntries.listAllActive", undefined);
       return (options.pool ?? []).filter((candidate) => candidate.isActive);
     },
     async findById(id) {
@@ -535,6 +544,50 @@ describe("completion retires the entry", () => {
     );
 
     expect(allocated(outcome).entries).toHaveLength(2);
+  });
+});
+
+describe("entries sharing a source-local id across categories", () => {
+  // The merged source reuses ids 1..600 inside every category block, so `OD_0042` and
+  // `ODT_0042` are two distinct canonical entries that happen to share a local id. The pool,
+  // the answered rule, and the reservation claim must all key on the canonical id — anything
+  // keying on the local id would confuse or collapse them.
+  const od = () => entry("OD_0042", { sourceEntryId: 42, categoryName: "Origin + Destination" });
+  const odt = () =>
+    entry("ODT_0042", {
+      category: "origin_destination_transit_mode",
+      sourceEntryId: 42,
+      categoryName: "Origin + Destination + Transit Mode",
+    });
+
+  it("treats the same local id in two categories as two distinct allocatable entries", async () => {
+    const fakes = createFakes({ pool: [od(), odt()] });
+
+    const outcome = await allocateBatch(
+      request,
+      dependenciesFor(fakes, { config: config({ batchSize: 2 }) }),
+    );
+
+    expect(
+      allocated(outcome)
+        .entries.map((candidate) => candidate.id)
+        .sort(),
+    ).toEqual(["ODT_0042", "OD_0042"]);
+  });
+
+  it("excludes only the answered canonical entry, never its same-local-id sibling", async () => {
+    const fakes = createFakes({
+      pool: [od(), odt()],
+      responses: [response({ datasetEntryId: "OD_0042", validatorId: VALIDATOR })],
+    });
+
+    const outcome = await allocateBatch(
+      request,
+      dependenciesFor(fakes, { config: config({ batchSize: 2 }) }),
+    );
+
+    // Honest short batch: one entry answered, one still eligible — the sibling is unaffected.
+    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual(["ODT_0042"]);
   });
 });
 
@@ -1346,8 +1399,10 @@ describe("the read pattern", () => {
 
     // Category-conditional allocation would let a category with no incomplete entries starve while
     // another had them, and that is a completion-reporting question rather than an allocation one.
+    // The whole-pool read pages past the per-request cap, so it is `listAllActive` rather than
+    // `listActive` — and the argument is still no category filter.
     expect(
-      fakes.calls.find((call) => call.method === "datasetEntries.listActive")?.argument,
+      fakes.calls.find((call) => call.method === "datasetEntries.listAllActive")?.argument,
     ).toBeUndefined();
   });
 

@@ -7,7 +7,7 @@ import type { ValidationResponse } from "@/schemas/validation";
  *
  * `ValidationResponse` carries the correction and the translation as fields on the *response*,
  * never as a mutation of the dataset entry — that separation is the immutability guarantee for
- * `data/ilocano-synthetic-data.json` and it is visible in this signature.
+ * `data/merged-ilocano-synthetic-data.json` and it is visible in this signature.
  *
  * The uniqueness of `(validatorId, datasetEntryId)` is a data-layer constraint, not something this
  * interface enforces. A second insert for the same pair is expected to raise `RepositoryError`
@@ -47,7 +47,7 @@ export interface ValidationsRepository {
    *
    * So this returns what is STORED and the domain predicate decides what counts. The cost is
    * honest and named in `design.md` D1: response rows travel to the server to be counted there.
-   * At the current scale (600 entries × 3 validators, and fewer in practice because only
+   * At the current scale (3,000 entries × 3 validators, and fewer in practice because only
    * under-covered entries are queried) that is small. The revisit, if a future dataset reaches six
    * figures, is a projection of only the columns the predicate reads — not a second copy of the
    * predicate.

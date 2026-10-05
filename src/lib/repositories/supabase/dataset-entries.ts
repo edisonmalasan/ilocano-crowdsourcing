@@ -13,6 +13,7 @@ import {
   assertPageIsComplete,
   awaitQuery,
   parseDomainValue,
+  readExactCount,
   readRows,
   readSingleRow,
   toIsoDateTime,
@@ -30,6 +31,8 @@ import { DATASET_ENTRIES_OPERATIONS as OPS } from "./operations";
 interface DatasetEntryRow {
   id: unknown;
   category: unknown;
+  source_entry_id: unknown;
+  category_name: unknown;
   instruction: unknown;
   origin: unknown;
   destination: unknown;
@@ -51,6 +54,8 @@ interface DatasetEntryRow {
 const ENTRY_COLUMNS = [
   "id",
   "category",
+  "source_entry_id",
+  "category_name",
   "instruction",
   "origin",
   "destination",
@@ -78,6 +83,12 @@ function toDomain(
     {
       id: row.id,
       category: row.category,
+      // Legacy rows predate the provenance columns and read NULL here; the schema then rejects
+      // the row rather than inventing provenance. That is the correct behaviour: a domain entry
+      // without its source-local id is not joinable back to the research source, and silently
+      // defaulting it would manufacture the join key.
+      sourceEntryId: row.source_entry_id ?? null,
+      categoryName: row.category_name ?? null,
       instruction: row.instruction,
       origin: row.origin ?? null,
       destination: row.destination ?? null,
@@ -130,9 +141,9 @@ export class SupabaseDatasetEntriesRepository implements DatasetEntriesRepositor
    * default) and signals the cap only by returning fewer rows than match. Allocation reads the
    * whole active pool, so a silent cap would look like a smaller dataset and would quietly reduce
    * coverage. The exact count is therefore requested in the same round trip and a short read
-   * raises `RepositoryError` rather than returning the truncated list. The `Origin + Destination`
-   * dataset is 600 records, so this cannot trigger today — it is here because the failure would be
-   * invisible and the next dataset will not be 600 records.
+   * raises `RepositoryError` rather than returning the truncated list. The merged corpus is
+   * 3,000 active entries across five categories — past the default cap — so this guard is live
+   * rather than hypothetical.
    *
    * ORDER. No `order()` is applied, following the interface: the result carries no research
    * meaning, and allocation applies its own coverage-aware ordering and randomization. The
@@ -183,6 +194,73 @@ export class SupabaseDatasetEntriesRepository implements DatasetEntriesRepositor
     return rows.map((row, index) =>
       toDomain(row, `dataset_entries.listActive row ${index}`, OPS.listActive),
     );
+  }
+
+  /**
+   * Every active entry, stitched across pages.
+   *
+   * The page size matches PostgREST's default cap rather than exceeding it: a page that returns
+   * fewer rows than the cap is a last page, and a page that returns the cap is followed. The
+   * exact count is requested on every page and must agree everywhere — `dataset_entries` is
+   * operator-written, so a mid-read import is possible in principle, and rows shifting between
+   * pages would otherwise duplicate one entry and drop another with no error.
+   */
+  async listAllActive(
+    options?: Pick<ListDatasetEntriesOptions, "category">,
+  ): Promise<DatasetEntry[]> {
+    const PAGE_SIZE = 1000;
+    const context = "dataset_entries.listAllActive";
+    const all: DatasetEntry[] = [];
+    let expectedTotal: number | null = null;
+
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const result = await awaitQuery(OPS.listAllActive, context, () => {
+        let handle = this.client
+          .from("dataset_entries")
+          .select(ENTRY_COLUMNS.join(","), { count: "exact" })
+          .eq("is_active", true);
+        if (options?.category !== undefined) {
+          handle = handle.eq("category", options.category);
+        }
+        return handle.range(offset, offset + PAGE_SIZE - 1);
+      });
+
+      const rows = readRows(result, OPS.listAllActive, context);
+      const total = readExactCount(result, OPS.listAllActive, context);
+      if (expectedTotal === null) {
+        expectedTotal = total;
+      } else if (total !== expectedTotal) {
+        throw new RepositoryError(
+          OPS.listAllActive,
+          `${context} saw ${total} matching rows after seeing ${expectedTotal}: the pool ` +
+            "changed mid-read, so stitched pages would duplicate one entry and drop another. " +
+            "Re-run the read rather than trusting a shifted result.",
+          { detail: `count moved from ${expectedTotal} to ${total}` },
+        );
+      }
+      if (rows.length === 0 && all.length < expectedTotal) {
+        throw new RepositoryError(
+          OPS.listAllActive,
+          `${context} made no progress at offset ${offset} with ${expectedTotal - all.length} ` +
+            "rows still unread. Re-run the read rather than returning a short pool.",
+          { detail: `empty page at offset ${offset}` },
+        );
+      }
+      for (const [index, row] of rows.entries()) {
+        all.push(toDomain(row, `${context} row ${offset + index}`, OPS.listAllActive));
+      }
+      if (all.length >= expectedTotal) break;
+    }
+
+    if (all.length !== expectedTotal) {
+      throw new RepositoryError(
+        OPS.listAllActive,
+        `${context} stitched ${all.length} rows against a count of ${expectedTotal}. ` +
+          "Re-run the read rather than trusting a short pool.",
+        { detail: `stitched ${all.length} of ${expectedTotal}` },
+      );
+    }
+    return all;
   }
 
   /** The single entry with this source ID, or `null` when absent. */

@@ -283,6 +283,8 @@ const SOURCE_PAYLOAD = {
 const ENTRY_ROW = {
   id: "OD_0001",
   category: "origin_destination",
+  source_entry_id: 1,
+  category_name: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti jeep.",
   origin: "Baguio",
   destination: "Bangco Sentral",
@@ -295,6 +297,8 @@ const ENTRY_ROW = {
 const ENTRY: DatasetEntry = {
   id: "OD_0001",
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti jeep.",
   origin: "Baguio",
   destination: "Bangco Sentral",
@@ -482,12 +486,14 @@ describe("SupabaseDatasetEntriesRepository", () => {
     // The domain shape, exactly: no `source_payload`, no `created_at`, no `is_active`.
     expect(Object.keys(entry ?? {}).sort()).toEqual([
       "category",
+      "categoryName",
       "createdAt",
       "destination",
       "id",
       "instruction",
       "isActive",
       "origin",
+      "sourceEntryId",
       "transitMode",
     ]);
   });
@@ -637,6 +643,34 @@ describe("the archival copy, and unmodelled fields", () => {
     expect(fake.lastCall().columns?.split(",")).toContain("source_payload");
   });
 
+  it("carries the provenance columns from the row onto the domain entry", async () => {
+    // `source_entry_id` and `category_name` are fetched and mapped by name, like every other
+    // column in this module — spelled out here so a rename on either side fails loudly.
+    const fake = createFakeClient();
+    fake.enqueue(rows([ENTRY_ROW], 1));
+
+    const [entry] = await new SupabaseDatasetEntriesRepository(fake.client).listActive();
+
+    expect(entry?.sourceEntryId).toBe(1);
+    expect(entry?.categoryName).toBe("Origin + Destination");
+    expect(fake.lastCall().columns?.split(",")).toEqual(
+      expect.arrayContaining(["source_entry_id", "category_name"]),
+    );
+  });
+
+  it("refuses a legacy row with no provenance rather than inventing it", async () => {
+    // Rows predating the provenance columns read NULL here. The schema rejects the row instead
+    // of defaulting the join key — a manufactured `source_entry_id` would join a response to
+    // the wrong source record, which is worse than a loud failure.
+    const { source_entry_id: _dropped, category_name: _name, ...legacy } = ENTRY_ROW;
+    expect(_dropped).toBe(1);
+    expect(_name).toBe("Origin + Destination");
+    const fake = createFakeClient();
+    fake.enqueue(rows([legacy], 1));
+
+    await expect(new SupabaseDatasetEntriesRepository(fake.client).listActive()).rejects.toThrow();
+  });
+
   it("never leaks an unmodelled column into the domain entry itself", async () => {
     const fake = createFakeClient();
     fake.enqueue(rows([{ ...ENTRY_ROW, added_by_a_later_migration: "kept" }]));
@@ -645,6 +679,103 @@ describe("the archival copy, and unmodelled fields", () => {
 
     expect(entry).toEqual(ENTRY);
     expect(Object.keys(entry ?? {})).not.toContain("added_by_a_later_migration");
+  });
+});
+
+describe("SupabaseDatasetEntriesRepository.listAllActive", () => {
+  // One pool larger than a single PostgREST response, stitched from scripted pages. The fake
+  // does not slice by range — it returns what was enqueued — so the page BOUNDARIES are
+  // asserted on the recorded calls while the stitched CONTENT is asserted on the result.
+  // Ids cycle the five real prefixes, so every row satisfies the domain schema: a row the
+  // schema rejects would fail here on mapping rather than on paging, testing the wrong thing.
+  const PREFIXES = ["DO", "DT", "OD", "ODT", "CPE"] as const;
+  const canonicalId = (index: number): string =>
+    `${PREFIXES[Math.floor(index / 600) % PREFIXES.length]}_${String((index % 600) + 1).padStart(4, "0")}`;
+  const page = (from: number, to: number, total: number) =>
+    rows(
+      Array.from({ length: to - from + 1 }, (_, offset) => {
+        const index = from + offset;
+        return {
+          ...ENTRY_ROW,
+          id: canonicalId(index),
+          source_entry_id: (index % 600) + 1,
+        };
+      }),
+      total,
+    );
+
+  it("stitches pages into one pool and asks for the exact count on every page", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), page(1000, 1999, 2500), page(2000, 2499, 2500));
+
+    const entries = await new SupabaseDatasetEntriesRepository(fake.client).listAllActive();
+
+    expect(entries).toHaveLength(2500);
+    expect(new Set(entries.map((entry) => entry.id)).size).toBe(2500);
+    expect(fake.calls).toHaveLength(3);
+    expect(fake.calls.map((call) => call.filters)).toEqual([
+      [
+        { kind: "eq", column: "is_active", value: true },
+        { kind: "range", from: 0, to: 999 },
+      ],
+      [
+        { kind: "eq", column: "is_active", value: true },
+        { kind: "range", from: 1000, to: 1999 },
+      ],
+      [
+        { kind: "eq", column: "is_active", value: true },
+        { kind: "range", from: 2000, to: 2999 },
+      ],
+    ]);
+    for (const call of fake.calls) {
+      expect(call.options).toEqual({ count: "exact" });
+    }
+  });
+
+  it("stops after one page when the pool fits", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 599, 600));
+
+    const entries = await new SupabaseDatasetEntriesRepository(fake.client).listAllActive();
+
+    expect(entries).toHaveLength(600);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("refuses when the count moves between pages rather than stitching a shifted pool", async () => {
+    // A concurrent operator import mid-read: the second page's count disagrees, so rows may
+    // have shifted between pages and the stitched result would duplicate one entry and drop
+    // another with no error. Refusing is the only honest outcome.
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), page(1000, 1999, 2501));
+
+    await expect(new SupabaseDatasetEntriesRepository(fake.client).listAllActive()).rejects.toThrow(
+      /changed mid-read/,
+    );
+  });
+
+  it("refuses an empty page that makes no progress rather than looping forever", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), rows([], 2500));
+
+    await expect(new SupabaseDatasetEntriesRepository(fake.client).listAllActive()).rejects.toThrow(
+      /no progress/,
+    );
+  });
+
+  it("narrows by category when one is given", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 599, 600));
+
+    await new SupabaseDatasetEntriesRepository(fake.client).listAllActive({
+      category: "origin_destination",
+    });
+
+    expect(fake.lastCall().filters).toContainEqual({
+      kind: "eq",
+      column: "category",
+      value: "origin_destination",
+    });
   });
 });
 
@@ -773,6 +904,25 @@ describe("SupabaseValidatorsRepository", () => {
 
     expect(profiles).toEqual([]);
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("chunks the id filter past 200 values and keeps caller order across chunks", async () => {
+    // Same URL-length wall as the validations read: a study with thousands of attempts would
+    // otherwise put every id in one `.in()`. Each chunk returns at most 200 rows, so no chunk
+    // can hit the response cap either.
+    const ids = Array.from({ length: 250 }, (_, index) => `VAL_${String(index).padStart(8, "0")}`);
+    const fake = createFakeClient();
+    fake.enqueue(rows(ids.slice(0, 200).map((id) => ({ ...VALIDATOR_ROW, id }))));
+    fake.enqueue(rows(ids.slice(200).map((id) => ({ ...VALIDATOR_ROW, id }))));
+
+    const profiles = await new SupabaseValidatorsRepository(fake.client).listByIds(ids);
+
+    expect(fake.calls).toHaveLength(2);
+    for (const call of fake.calls) {
+      const filter = call.filters.find((entry) => entry.kind === "in");
+      expect((filter as { value: unknown[] }).value.length).toBeLessThanOrEqual(200);
+    }
+    expect(profiles.map((profile) => profile.id)).toEqual(ids);
   });
 });
 
@@ -1055,6 +1205,30 @@ describe("the coverage read a pool is measured with", () => {
 
     expect(found).toEqual([]);
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("chunks the id filter past 200 values, because a 3000-id URL is refused", async () => {
+    // Measured on the hosted gateway: one `.in()` with the merged corpus's 3,000 ids drew a 400.
+    // 250 ids therefore travel as 200 + 50, each chunk paging rows on its own count, and the
+    // stitched rows keep global order for stable failure attribution.
+    const ids = Array.from(
+      { length: 250 },
+      (_, index) => `OD_${String(index + 1).padStart(4, "0")}`,
+    );
+    const fake = createFakeClient();
+    fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[0] }], 1));
+    fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[200] }], 1));
+
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(ids);
+
+    expect(fake.calls).toHaveLength(2);
+    for (const call of fake.calls) {
+      const filter = call.filters.find((entry) => entry.kind === "in");
+      expect(filter).toBeDefined();
+      expect((filter as { value: unknown[] }).value.length).toBeLessThanOrEqual(200);
+      expect(call.options).toEqual({ count: "exact" });
+    }
+    expect(found.map((response) => response.datasetEntryId)).toEqual([ids[0], ids[200]]);
   });
 
   it("returns EVERY stored response, including the ones that do not count toward coverage", async () => {
@@ -1954,6 +2128,9 @@ describe("the operation name each method reports", () => {
     // method, which is the opposite of "reconciled".
     const declared: RepositoryOperation[] = [
       "dataset_entries.list",
+      // Arrived with the merged corpus: the whole pool no longer fits one PostgREST response,
+      // so the paged whole-pool read carries its own operation name under the same contract.
+      "dataset_entries.listAll",
       "dataset_entries.findById",
       "dataset_entries.listByIds",
       "validators.insert",

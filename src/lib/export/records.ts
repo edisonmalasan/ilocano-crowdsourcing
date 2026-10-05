@@ -60,7 +60,9 @@ export interface ExportSource {
  */
 export const EXPORT_RECORD_KEYS = [
   "dataset_entry_id",
+  "source_entry_id",
   "category",
+  "category_name",
   "response_id",
   "attempt_id",
   "self_reported_proficiency",
@@ -106,7 +108,12 @@ function nullableText(value: string | null | undefined): string | null {
 export function buildExportRecords(sources: readonly ExportSourceWithQualifying[]): ExportRecord[] {
   return sources.map(({ entry, response, proficiency, qualifies }) => ({
     dataset_entry_id: entry.id,
+    // Stored as text, like every other cell: the CSV has no typed columns, and a consumer
+    // comparing JSON against CSV compares strings. The value is the source-local id 1..600,
+    // recoverable here without parsing the canonical id.
+    source_entry_id: String(entry.sourceEntryId),
     category: entry.category,
+    category_name: entry.categoryName,
     response_id: response.id,
     attempt_id: response.validatorId,
     self_reported_proficiency: proficiency,

@@ -68,7 +68,7 @@ const ENTRY_ID_COLUMN = "dataset_entry_id";
  * WHY THIS READ PAGES AT ALL, which `findByEntry` does not have to
  * --------------------------------------------------
  * `findByEntry` reads one entry's responses and asserts the read was complete. This method reads
- * the responses of an ENTIRE POOL: 600 entries × 3 validators is 1800 rows before a single entry is
+ * the responses of an ENTIRE POOL: 3,000 entries with several responses each is thousands of rows
  * filtered out, and PostgREST caps a response at the project's configured maximum (1000 by
  * default) while signalling the cap only by returning fewer rows than match.
  *
@@ -84,6 +84,16 @@ const ENTRY_ID_COLUMN = "dataset_entry_id";
  * simply fetches smaller pages than it needs to.
  */
 const RESPONSE_PAGE_SIZE = 1000;
+
+/**
+ * Maximum filter values per `.in()` request.
+ *
+ * The range paging above handles many matching ROWS, but the filter list itself travels in the
+ * URL: 3,000 entry ids in one `.in()` drew a 400 Bad Request from the hosted gateway. 200 ids
+ * keep the URL to a few kilobytes with wide margin, and chunking is semantics-preserving
+ * because each chunk carries its own exact count to page against.
+ */
+const FILTER_VALUE_CHUNK_SIZE = 200;
 
 /**
  * Row ⇄ domain translation, and the NULL ⇄ absent decision.
@@ -306,6 +316,32 @@ export class SupabaseValidationsRepository implements ValidationsRepository {
   async listForEntries(entryIds: readonly DatasetEntryId[]): Promise<ValidationResponse[]> {
     if (entryIds.length === 0) return [];
 
+    // Chunked by FILTER VALUES as well as by rows. The range paging below handles many matching
+    // rows, but `.in("dataset_entry_id", ids)` with 3,000 ids builds a URL PostgREST refuses
+    // (measured: 400 Bad Request on the hosted project against the merged corpus), so the id
+    // list itself is bounded per request. 200 ids keep the URL to a few kilobytes; the per-chunk
+    // count below is independent per chunk, so chunking changes no semantics.
+    const collected: Record<string, unknown>[] = [];
+    for (let start = 0; start < entryIds.length; start += FILTER_VALUE_CHUNK_SIZE) {
+      const chunk = entryIds.slice(start, start + FILTER_VALUE_CHUNK_SIZE);
+      collected.push(...(await this.listForEntriesChunk(chunk)));
+    }
+
+    return collected.map((row, index) =>
+      toDomain(row, `validations.listForEntries row ${index}`, OPS.listForEntries),
+    );
+  }
+
+  /**
+   * One id chunk, fully paged by rows.
+   *
+   * Returns RAW rows rather than domain values so the caller's row indices stay stable across
+   * chunks: mapping per chunk would restart the index at zero and two chunks could then report
+   * the same "row 7" in two different failures.
+   */
+  private async listForEntriesChunk(
+    entryIds: readonly DatasetEntryId[],
+  ): Promise<Record<string, unknown>[]> {
     const collected: Record<string, unknown>[] = [];
 
     for (let from = 0; ; from += RESPONSE_PAGE_SIZE) {
@@ -337,9 +373,7 @@ export class SupabaseValidationsRepository implements ValidationsRepository {
       }
     }
 
-    return collected.map((row, index) =>
-      toDomain(row, `validations.listForEntries row ${index}`, OPS.listForEntries),
-    );
+    return collected;
   }
 
   /**

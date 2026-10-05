@@ -55,7 +55,7 @@ export type ExportDocumentName = (typeof EXPORT_DOCUMENT_NAMES)[number];
  * themselves are the real implementations — no query logic is duplicated here.
  */
 export interface ExportSources {
-  readonly entries: Pick<DatasetEntriesRepository, "listActive">;
+  readonly entries: Pick<DatasetEntriesRepository, "listAllActive">;
   readonly validations: Pick<ValidationsRepository, "listForEntries">;
   readonly validators: Pick<ValidatorsRepository, "listByIds">;
 }
@@ -112,7 +112,7 @@ export async function collectExportSources(
   repositories: ExportSources,
   write: (line: string) => void,
 ): Promise<{ entries: DatasetEntry[]; sources: ExportSourceWithQualifying[] }> {
-  const entries = await repositories.entries.listActive();
+  const entries = await repositories.entries.listAllActive();
   write(`read ${entries.length} active dataset entries`);
 
   const entryById = new Map(entries.map((entry) => [entry.id, entry]));

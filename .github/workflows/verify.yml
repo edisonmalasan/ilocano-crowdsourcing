@@ -104,7 +104,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # AGENTS.md lists data/ilocano-synthetic-data.json under "Boundaries — do not touch".
+      # AGENTS.md lists data/merged-ilocano-synthetic-data.json under "Boundaries — do not touch".
       # This job fails if the file's hash differs from the recorded value, so an accidental
       # rewrite during an import or a normalisation pass cannot merge.
       #

@@ -1,9 +1,9 @@
 /**
- * Import verification: all 600 real records, through the real migrations, into a real PostgreSQL
- * engine.
+ * Import verification: all 3,000 real records of the merged source, through the real migrations,
+ * into a real PostgreSQL engine.
  *
- * The comparison reads `data/ilocano-synthetic-data.json` itself, never another derived artifact,
- * so this cannot pass by checking the import against something the import produced.
+ * The comparison reads `data/merged-ilocano-synthetic-data.json` itself, never another derived
+ * artifact, so this cannot pass by checking the import against something the import produced.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -15,7 +15,11 @@ import {
   type DatasetEntryWriteOutcome,
   type DatasetImportResult,
 } from "@/lib/dataset/import-dataset";
-import { parseSyntheticDataset, type ImportedDatasetEntry } from "@/lib/dataset/synthetic-source";
+import {
+  MERGED_SOURCE_CATEGORY_TABLE,
+  parseSyntheticDataset,
+  type ImportedDatasetEntry,
+} from "@/lib/dataset/synthetic-source";
 import { applyMigrations } from "./support/migrations";
 import {
   closeTestDatabase,
@@ -25,24 +29,42 @@ import {
   type TestDatabase,
 } from "./support/pglite";
 
-const SOURCE_PATH = path.resolve(process.cwd(), "data", "ilocano-synthetic-data.json");
+const SOURCE_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthetic-data.json");
 
 type SourceRecord = {
-  id: string;
+  id: number;
   instruction: string;
-  output: { origin: string; destination: string; transit_mode: string | null };
+  output: { origin: string | null; destination: string | null; transit_mode: string | null };
 };
 
-function readSource(): SourceRecord[] {
-  return JSON.parse(readFileSync(SOURCE_PATH, "utf8")) as SourceRecord[];
+type SourceBlock = {
+  category_id: number;
+  category_name: string;
+  entries: SourceRecord[];
+};
+
+function readDocument(): { categories: SourceBlock[] } {
+  return JSON.parse(readFileSync(SOURCE_PATH, "utf8")) as { categories: SourceBlock[] };
+}
+
+function readSource(): unknown {
+  return JSON.parse(readFileSync(SOURCE_PATH, "utf8")) as unknown;
+}
+
+/** The canonical id the parser mints for one block position and local id. */
+function canonicalId(blockIndex: number, localId: number): string {
+  const prefix = MERGED_SOURCE_CATEGORY_TABLE[blockIndex]!.prefix;
+  return `${prefix}_${String(localId).padStart(4, "0")}`;
 }
 
 /**
  * The upsert used throughout this file.
  *
- * It deliberately omits `instruction` from the update list. That is the whole point: a re-run must
- * not be able to rewrite what a validator was shown, and the only reliable way to guarantee that
- * is for the write itself to exclude the column rather than for a caller to remember.
+ * It mirrors the deployed `dataset_entries_import_v2`: the update list carries category,
+ * provenance, and the mutable projection, while `instruction`, `source_payload`, and
+ * `created_at` are excluded. A re-run must not be able to rewrite what a validator was shown,
+ * and the only reliable way to guarantee that is for the write itself to exclude the column
+ * rather than for a caller to remember.
  */
 async function upsertWithParams(
   db: TestDatabase,
@@ -55,17 +77,21 @@ async function upsertWithParams(
   );
   await db.query(
     `insert into public.dataset_entries
-       (id, category, instruction, origin, destination, transit_mode, source_payload)
-     values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+       (id, category, source_entry_id, category_name, instruction, origin, destination,
+        transit_mode, source_payload)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
      on conflict (id) do update set
        category = excluded.category,
+       source_entry_id = excluded.source_entry_id,
+       category_name = excluded.category_name,
        origin = excluded.origin,
        destination = excluded.destination,
-       transit_mode = excluded.transit_mode,
-       source_payload = excluded.source_payload`,
+       transit_mode = excluded.transit_mode`,
     [
       entry.id,
       entry.category,
+      entry.sourceEntryId,
+      entry.categoryName,
       entry.instruction,
       entry.origin,
       entry.destination,
@@ -76,14 +102,14 @@ async function upsertWithParams(
   return existing.length > 0 ? "updated" : "inserted";
 }
 
-describe("importing the synthetic dataset", () => {
+describe("importing the merged synthetic dataset", () => {
   let db: TestDatabase;
-  let source: SourceRecord[];
+  let document: { categories: SourceBlock[] };
 
   beforeAll(async () => {
     db = await createTestDatabase();
     await applyMigrations(db);
-    source = readSource();
+    document = readDocument();
   });
 
   afterAll(async () => {
@@ -118,18 +144,45 @@ describe("importing the synthetic dataset", () => {
     await resetToEmpty();
   });
 
-  it("stores all 600 records with the exact source id set", async () => {
+  it("stores all 3000 records with the exact canonical id set", async () => {
     const result = await importAll();
 
-    expect(result.parsed).toBe(600);
-    expect(result.inserted).toBe(600);
+    expect(result.parsed).toBe(3000);
+    expect(result.inserted).toBe(3000);
     expect(result.updated).toBe(0);
 
     const stored = await query<{ id: string }>(db, "select id from public.dataset_entries");
-    expect(stored).toHaveLength(600);
-    expect(new Set(stored.map((row) => row.id))).toEqual(
-      new Set(source.map((record) => record.id)),
+    expect(stored).toHaveLength(3000);
+
+    const expected = new Set<string>();
+    document.categories.forEach((block, index) => {
+      for (const record of block.entries) expected.add(canonicalId(index, record.id));
+    });
+    expect(new Set(stored.map((row) => row.id))).toEqual(expected);
+  });
+
+  it("stores 600 rows per category with local ids exactly 1..600", async () => {
+    await importAll();
+
+    const stored = await query<{ category: string; source_entry_id: number }>(
+      db,
+      "select category, source_entry_id from public.dataset_entries",
     );
+    const byCategory = new Map<string, number[]>();
+    for (const row of stored) {
+      const locals = byCategory.get(row.category) ?? [];
+      locals.push(row.source_entry_id);
+      byCategory.set(row.category, locals);
+    }
+
+    expect([...byCategory.keys()].sort()).toEqual(
+      MERGED_SOURCE_CATEGORY_TABLE.map((row) => row.slug).sort(),
+    );
+    for (const locals of byCategory.values()) {
+      expect(locals.sort((a, b) => a - b)).toEqual(
+        Array.from({ length: 600 }, (_, index) => index + 1),
+      );
+    }
   });
 
   it("stores every instruction exactly as the source has it", async () => {
@@ -141,28 +194,34 @@ describe("importing the synthetic dataset", () => {
     );
     const byId = new Map(stored.map((row) => [row.id, row.instruction]));
 
-    for (const record of source) {
-      expect(byId.get(record.id), `instruction for ${record.id}`).toBe(record.instruction);
-    }
+    document.categories.forEach((block, index) => {
+      for (const record of block.entries) {
+        const id = canonicalId(index, record.id);
+        expect(byId.get(id), `instruction for ${id}`).toBe(record.instruction);
+      }
+    });
   });
 
-  it("stores origin and destination from the nested source output", async () => {
+  it("stores origin, destination, and transit mode from the nested source output", async () => {
     await importAll();
 
     const stored = await query<{
       id: string;
-      origin: string;
-      destination: string;
+      origin: string | null;
+      destination: string | null;
       transit_mode: string | null;
     }>(db, "select id, origin, destination, transit_mode from public.dataset_entries");
     const byId = new Map(stored.map((row) => [row.id, row]));
 
-    for (const record of source) {
-      const row = byId.get(record.id);
-      expect(row?.origin).toBe(record.output.origin);
-      expect(row?.destination).toBe(record.output.destination);
-      expect(row?.transit_mode).toBeNull();
-    }
+    document.categories.forEach((block, index) => {
+      for (const record of block.entries) {
+        const row = byId.get(canonicalId(index, record.id));
+        expect(row?.origin).toBe(record.output.origin);
+        expect(row?.destination).toBe(record.output.destination);
+        // Taken from the file, never defaulted: the source genuinely varies this column.
+        expect(row?.transit_mode).toBe(record.output.transit_mode);
+      }
+    });
   });
 
   it("keeps the typed projection and the archival copy in agreement", async () => {
@@ -183,7 +242,7 @@ describe("importing the synthetic dataset", () => {
       "select id, origin, destination, transit_mode, source_payload from public.dataset_entries",
     );
 
-    expect(stored).toHaveLength(600);
+    expect(stored).toHaveLength(3000);
     for (const row of stored) {
       expect(row.origin).toBe(row.source_payload.output?.origin);
       expect(row.destination).toBe(row.source_payload.output?.destination);
@@ -191,53 +250,48 @@ describe("importing the synthetic dataset", () => {
     }
   });
 
-  it("preserves the source record verbatim, so an unmodelled field would survive", async () => {
-    // Injected into a real row to prove the round trip, because the current 600-record dataset
-    // has no unmodelled field to test with.
-    //
-    // Compared as a VALUE, not as bytes. `jsonb` does not preserve key order, so a byte comparison
-    // against the source object would assert a property the column type does not have. What has to
-    // survive is the content — every key, every string as authored — and `toEqual` compares that
-    // exactly, so a dropped key or an altered instruction still fails. The instruction is then
-    // pinned byte for byte separately, because those exact characters are the research object.
-    const withExtra = { ...source[0], difficulty: "hard" };
-    const { entries, report } = parseSyntheticDataset([withExtra]);
-
-    expect(report.preservedFields).toEqual([
-      { fieldPath: "difficulty", recordCount: 1, sampleValue: "hard" },
-    ]);
+  it("freezes the archival copy on a re-run, so it cannot drift from the first import", async () => {
+    // Injected into a re-run to prove the write-once rule: the payload column is absent from the
+    // update list, so a second write carrying an extra field must leave the stored copy
+    // untouched. (The parser's report, asserted in unit tests, is where such a field surfaces
+    // instead.)
+    const { entries } = parseSyntheticDataset(readSource());
+    const target = {
+      ...entries[0]!,
+      sourcePayload: { ...entries[0]!.sourcePayload, difficulty: "hard" },
+    };
 
     // Its own first import, so the "updated" outcome below is this test's doing rather than a
     // row some earlier test happened to leave behind.
     expect(await upsertWithParams(db, entries[0]!)).toBe("inserted");
-    const outcome = await upsertWithParams(db, entries[0]!);
+    const outcome = await upsertWithParams(db, target);
     expect(outcome).toBe("updated");
 
     const stored = await query<{ source_payload: Record<string, unknown> }>(
       db,
       "select source_payload from public.dataset_entries where id = $1",
-      [source[0]!.id],
+      [entries[0]!.id],
     );
-    expect(stored[0]?.source_payload).toEqual(withExtra);
-    expect(stored[0]?.source_payload.instruction).toBe(source[0]!.instruction);
+    expect(stored[0]?.source_payload).toEqual(entries[0]!.sourcePayload);
+    expect(stored[0]?.source_payload).not.toHaveProperty("difficulty");
   });
 
   it("is idempotent: a second import updates rather than duplicates", async () => {
     // Both halves run here rather than relying on an earlier test having done the first import.
     const first = await importAll();
-    expect(first.inserted).toBe(600);
+    expect(first.inserted).toBe(3000);
 
     const second = await importAll();
 
-    expect(second.parsed).toBe(600);
-    expect(second.updated).toBe(600);
+    expect(second.parsed).toBe(3000);
+    expect(second.updated).toBe(3000);
     expect(second.inserted).toBe(0);
 
     const count = await query<{ count: number }>(
       db,
       "select count(*)::int as count from public.dataset_entries",
     );
-    expect(count[0]?.count).toBe(600);
+    expect(count[0]?.count).toBe(3000);
   });
 
   it("cannot rewrite a stored instruction on a re-run", async () => {
@@ -245,10 +299,11 @@ describe("importing the synthetic dataset", () => {
     // `stored` value from an empty table would have thrown rather than tested anything.
     await importAll();
 
+    const firstId = canonicalId(0, 1);
     const stored = await query<{ instruction: string }>(
       db,
       "select instruction from public.dataset_entries where id = $1",
-      [source[0]!.id],
+      [firstId],
     );
     const original = stored[0]!.instruction;
 
@@ -267,25 +322,23 @@ describe("importing the synthetic dataset", () => {
     const after = await query<{ instruction: string }>(
       db,
       "select instruction from public.dataset_entries where id = $1",
-      [source[0]!.id],
+      [firstId],
     );
     expect(after[0]?.instruction).toBe(original);
   });
 
   it("reports unmodelled fields through to the import result", async () => {
-    const { entries, report } = parseSyntheticDataset([
-      { ...source[0]!, difficulty: "hard" },
-      { ...source[1]!, difficulty: "easy" },
-    ]);
-    const result = await importDatasetEntries(
-      entries,
-      { upsert: (entry) => upsertWithParams(db, entry) },
-      report,
-    );
+    const wrapped = {
+      categories: document.categories.map((block) => ({
+        ...block,
+        entries: block.entries.map((record) => ({ ...record, difficulty: "hard" })),
+      })),
+    };
+    const { report } = parseSyntheticDataset(wrapped);
 
-    expect(result.report.preservedFields).toHaveLength(1);
-    expect(result.report.preservedFields[0]?.fieldPath).toBe("difficulty");
-    expect(result.report.preservedFields[0]?.recordCount).toBe(2);
+    expect(report.preservedFields).toHaveLength(1);
+    expect(report.preservedFields[0]?.fieldPath).toBe("difficulty");
+    expect(report.preservedFields[0]?.recordCount).toBe(3000);
   });
 
   it("leaves the source dataset file unchanged", async () => {

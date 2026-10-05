@@ -1,0 +1,60 @@
+{
+  "derivation": {
+    "rule": "pooled-earliest-per-field-by-server-created-at",
+    "tie_break": "smallest-validation-id-arbitrary-carries-no-meaning",
+    "omitted_incomplete_entries": 597
+  },
+  "records": [
+    {
+      "id": "OD_0079",
+      "category": "origin_destination",
+      "validated_ilocano": "Addaak ditoy Tam-Awan Village ita, ket agpapanak koma iti SM City Baguio.",
+      "evaluation": "correct_natural",
+      "self_reported_proficiency": "conversational",
+      "english_translation": "I am here in Tam-Awan Village now, and I was going to go to SM City Baguio.",
+      "filipino_translation": "Nasa Tam-Awan Village ako ngayon, at papunta sana ako sa SM City Baguio.",
+      "output": {
+        "origin": "Tam-Awan Village",
+        "destination": "SM City Baguio",
+        "transit_mode": null
+      },
+      "source_response_id": "RSP_49084278311ec696",
+      "source_attempt_id": "VAL_0071e279",
+      "needs_review": false
+    },
+    {
+      "id": "OD_0416",
+      "category": "origin_destination",
+      "validated_ilocano": "Ti paggapuak ket Baguio City National High School. Mabalin kadi a iturongnak iti Sunshine Park?",
+      "evaluation": "correct_natural",
+      "self_reported_proficiency": "basic",
+      "english_translation": "My starting point is Baguio City National High School. Could you please show me the way to Sunshine Park?",
+      "filipino_translation": "Ang pinanggalingan ko ay Baguio City National High School. Maaari po ba ninyong ituro sa akin ang daan papuntang Sunshine Park?",
+      "output": {
+        "origin": "Baguio City National High School",
+        "destination": "Sunshine Park",
+        "transit_mode": null
+      },
+      "source_response_id": "RSP_cdc6adcb53cc3922",
+      "source_attempt_id": "VAL_2fefc927",
+      "needs_review": false
+    },
+    {
+      "id": "OD_0124",
+      "category": "origin_destination",
+      "validated_ilocano": "Pakiturongannak man iti Lourdes Grotto. Addaak pay laeng iti Mines View Park.",
+      "evaluation": "correct_natural",
+      "self_reported_proficiency": "native",
+      "english_translation": "Please direct me to the Lourdes Grotto. I was still in Mines View Park.",
+      "filipino_translation": "Pakituro naman sa akin ang daan papunta sa Lourdes Grotto. Nasa Mines View Park pa ako noon.",
+      "output": {
+        "origin": "Mines View Park",
+        "destination": "Lourdes Grotto",
+        "transit_mode": null
+      },
+      "source_response_id": "RSP_636ef2c2f3fbca0c",
+      "source_attempt_id": "VAL_06309209",
+      "needs_review": false
+    }
+  ]
+}

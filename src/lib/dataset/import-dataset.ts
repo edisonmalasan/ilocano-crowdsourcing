@@ -14,8 +14,8 @@ import {
  * verification and a future hosted Supabase run execute the SAME parsed records, so a green
  * verification says something about the import that actually ships.
  *
- * The importer never writes the source dataset. `data/ilocano-synthetic-data.json` is read-only
- * research material, and this module has no code path that opens it for writing.
+ * The importer never writes the source dataset. `data/merged-ilocano-synthetic-data.json`
+ * is read-only research material, and this module has no code path that opens it for writing.
  */
 
 /** What an upsert did, so the caller can report honestly rather than counting attempts. */
@@ -55,7 +55,7 @@ export interface DatasetImportResult {
  * Writes every entry through the sink and reports what it did.
  *
  * The report exists so a run that silently did nothing is distinguishable from a run that
- * succeeded. A researcher importing a research dataset needs to be able to say "600 parsed, 600
+ * succeeded. A researcher importing a research dataset needs to be able to say "3000 parsed, 3000
  * inserted" and mean it.
  */
 export async function importDatasetEntries(

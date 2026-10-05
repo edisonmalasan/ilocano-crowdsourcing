@@ -18,7 +18,9 @@ const record = (): ExportRecord =>
 
 const FULL: ExportRecord = {
   dataset_entry_id: "OD_0001",
+  source_entry_id: "1",
   category: "origin_destination",
+  category_name: "Origin + Destination",
   response_id: "res_01",
   attempt_id: "VAL_00000001",
   self_reported_proficiency: "fluent",

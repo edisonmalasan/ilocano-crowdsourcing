@@ -36,6 +36,8 @@ const AT = (day: string, ms = "00:00:00.000Z"): string => `2026-09-${day}T${ms}`
 const entry = (id: string): DatasetEntry => ({
   id,
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: `instruction for ${id}`,
   origin: `origin of ${id}`,
   destination: `destination of ${id}`,
@@ -260,6 +262,7 @@ describe("buildValidatedDataset", () => {
     expect(Object.keys(records[0] ?? {}).sort()).toEqual(
       [
         "category",
+        "category_name",
         "english_translation",
         "evaluation",
         "filipino_translation",
@@ -268,10 +271,31 @@ describe("buildValidatedDataset", () => {
         "output",
         "self_reported_proficiency",
         "source_attempt_id",
+        "source_entry_id",
         "source_response_id",
         "validated_ilocano",
       ].sort(),
     );
+  });
+
+  it("carries the entry's source provenance on every validated record", () => {
+    // The new provenance: source-local id and human-readable category name travel from the
+    // entry, not from any response — so a record is joinable back to the research source
+    // without parsing a canonical id.
+    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+
+    for (const [id, record] of byEntry) {
+      const entry = ENTRIES.find((candidate) => candidate.id === id);
+      expect(record?.source_entry_id).toBe(entry?.sourceEntryId);
+      expect(record?.category_name).toBe(entry?.categoryName);
+    }
+    // And the CSV carries the same leaves: parity is leaves, not structure.
+    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    for (const record of records) {
+      const row = validatedCsvRow(record);
+      expect(row.source_entry_id).toBe(String(record.source_entry_id));
+      expect(row.category_name).toBe(record.category_name);
+    }
   });
 
   it("attributes evaluation and proficiency to the judgment supplier, even pooled", () => {
@@ -342,7 +366,9 @@ describe("validated CSV document", () => {
     // flows through them rather than around them.
     const nasty: ValidatedRecord = {
       id: "E9",
+      source_entry_id: 9,
       category: "origin_destination",
+      category_name: "Origin + Destination",
       validated_ilocano: 'Iti, Baguio — " Athletic Bowl',
       evaluation: "correct_natural",
       self_reported_proficiency: "native",

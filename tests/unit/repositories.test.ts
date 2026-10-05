@@ -18,6 +18,8 @@ import type { BatchRecord } from "@/schemas/batch";
 const ENTRY: DatasetEntry = {
   id: "OD_0001",
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti jeep.",
   origin: "Baguio",
   destination: "Bangko Sentral",
@@ -77,6 +79,9 @@ function createInMemoryRepositories() {
 
   const datasetEntries: DatasetEntriesRepository = {
     async listActive() {
+      return [...entries.values()].filter((entry) => entry.isActive);
+    },
+    async listAllActive() {
       return [...entries.values()].filter((entry) => entry.isActive);
     },
     async findById(id) {
@@ -265,12 +270,14 @@ describe("repository interfaces are satisfiable without a database", () => {
     // The domain type is camelCase and carries no persistence metadata.
     expect(Object.keys(found ?? {}).sort()).toEqual([
       "category",
+      "categoryName",
       "createdAt",
       "destination",
       "id",
       "instruction",
       "isActive",
       "origin",
+      "sourceEntryId",
       "transitMode",
     ]);
 
@@ -376,6 +383,7 @@ describe("failing repository", () => {
         // `async` so each failure surfaces as a rejected promise, which is what a real
         // implementation's rejected network call looks like to a caller.
         listActive: async () => fail("dataset_entries.list", "down"),
+        listAllActive: async () => fail("dataset_entries.listAll", "down"),
         findById: async () => fail("dataset_entries.findById", "down"),
         listByIds: async () => fail("dataset_entries.listByIds", "down"),
       },
@@ -511,12 +519,19 @@ describe("failing repository", () => {
  * method to remove the temptation would trade a documented risk for an undocumented gap.
  */
 describe("coverage stays where it belongs", () => {
-  it("gives the dataset-entries interface exactly its three read methods, and no coverage method", () => {
+  it("gives the dataset-entries interface exactly its four read methods, and no coverage method", () => {
     const { datasetEntries } = createInMemoryRepositories();
 
     // The concrete method names, asserted as a CLOSED set. A `contains` check would pass with a
-    // fourth method added, which is precisely the change this test exists to refuse.
-    expect(Object.keys(datasetEntries).sort()).toEqual(["findById", "listActive", "listByIds"]);
+    // fifth method added, which is precisely the change this test exists to refuse. `listAllActive`
+    // arrived with the merged corpus: the whole pool no longer fits one PostgREST response, so the
+    // paged whole-pool read is a fourth read method — and still no coverage method.
+    expect(Object.keys(datasetEntries).sort()).toEqual([
+      "findById",
+      "listActive",
+      "listAllActive",
+      "listByIds",
+    ]);
     for (const forbidden of [
       "countValidations",
       "countForEntry",

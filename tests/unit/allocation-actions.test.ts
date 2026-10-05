@@ -94,6 +94,23 @@ function createRecordingDependencies(
         return (over.pool ?? []).map((entry) => ({
           id: entry.id,
           category: "origin_destination" as const,
+          sourceEntryId: 1,
+          categoryName: "Origin + Destination",
+          instruction: `Langet an ti ${entry.id}.`,
+          origin: "Bangon",
+          destination: "Kablantayan",
+          transitMode: null,
+          createdAt: "2026-09-30T00:00:00.000Z",
+          isActive: true,
+        }));
+      },
+      async listAllActive() {
+        calls.push("datasetEntries.listAllActive");
+        return (over.pool ?? []).map((entry) => ({
+          id: entry.id,
+          category: "origin_destination" as const,
+          sourceEntryId: 1,
+          categoryName: "Origin + Destination",
           instruction: `Langet an ti ${entry.id}.`,
           origin: "Bangon",
           destination: "Kablantayan",
@@ -494,7 +511,7 @@ describe("continuing after a finished batch, through the action the continue con
     // entry is excluded.
     expect(pool).toHaveLength(5);
     expect(answered).toEqual(pool.map((entry) => entry.id));
-    expect(calls).toContain("datasetEntries.listActive");
+    expect(calls).toContain("datasetEntries.listAllActive");
 
     expect(outcome).toEqual({ status: "exhausted" });
     // THE CLAIM. Counted over the recorded calls, not inferred from the outcome shape: a service that

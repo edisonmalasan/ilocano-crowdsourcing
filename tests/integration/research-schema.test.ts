@@ -109,6 +109,12 @@ const EXPECTED_MIGRATIONS = [
   // the entries above: a migration this list does not name must FAIL here, which is what keeps
   // a CLOSED list closed.
   "20261004150000_translation_choice_allowance.sql",
+  // Arrived with merged-multi-category-dataset: the provenance columns (`source_entry_id`,
+  // `category_name`) with range/blank checks plus the versioned ten-argument import function.
+  // It ADDS columns, checks, and one function and changes nothing else, so it appears here and
+  // in no table list. Same reason as the entries above: a migration this list does not name
+  // must FAIL here.
+  "20261005120000_merged_dataset_provenance.sql",
 ] as const;
 
 /**

@@ -74,6 +74,9 @@ import type {
 export const DATASET_ENTRIES_OPERATIONS = {
   // Divergence 1 of 2: the method says which entries, the union says which call.
   listActive: "dataset_entries.list",
+  // Same table as `listActive`, paged: its own operation name, because the union gives every
+  // method of one interface its own name and the log line should say which read ran.
+  listAllActive: "dataset_entries.listAll",
   findById: "dataset_entries.findById",
   listByIds: "dataset_entries.listByIds",
 } as const satisfies Record<keyof DatasetEntriesRepository, RepositoryOperation>;

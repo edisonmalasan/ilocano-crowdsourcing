@@ -31,8 +31,8 @@ vi.mock("@/lib/admin/env", async (importOriginal) => {
 vi.mock("@/lib/repositories/supabase", () => ({
   createSupabaseRepositories: () => ({
     datasetEntries: {
-      listActive: async () => {
-        h.repositoriesCalls.push("entries.listActive");
+      listAllActive: async () => {
+        h.repositoriesCalls.push("entries.listAllActive");
         return [];
       },
     },
@@ -129,7 +129,7 @@ describe("GET /researcher/export", () => {
           "validated-dataset.csv",
         ].sort(),
       );
-      expect(h.repositoriesCalls).toEqual(["entries.listActive", "validators.listByIds"]);
+      expect(h.repositoriesCalls).toEqual(["entries.listAllActive", "validators.listByIds"]);
     } finally {
       vi.useRealTimers();
     }

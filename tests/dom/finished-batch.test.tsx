@@ -338,9 +338,11 @@ describe("CB-3 — the continued batch's contents never reach the participant", 
     const { join } = await import("node:path");
     const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
     const { entries } = parseSyntheticDataset(
-      JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+      JSON.parse(
+        readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
+      ),
     );
-    expect(entries.length, "this control read a real dataset").toBe(600);
+    expect(entries.length, "this control read a real dataset").toBe(3000);
     const instruction = entries[0].instruction;
     expect(instruction.length).toBeGreaterThan(0);
 

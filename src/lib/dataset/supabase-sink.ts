@@ -34,7 +34,8 @@ import {
  * `upsert` would REPLACE `instruction` — the one write this project must never perform.
  *
  * So the atomic, instruction-preserving statement lives in
- * `supabase/migrations/20261003120000_dataset_entries_import.sql` and is reached through `rpc`. The
+ * `supabase/migrations/20261003120000_dataset_entries_import.sql` and its versioned successor
+ * `supabase/migrations/20261005120000_merged_dataset_provenance.sql`, reached through `rpc`. The
  * immutability guarantee is enforced by the statement's own update list rather than by this file's
  * discipline, which is the stronger of the two claims and the one the research data needs.
  */
@@ -45,15 +46,18 @@ import {
  * Declared as a constant so a rename cannot silently become a different string at the call, and so
  * `tests/unit/dataset-sink.test.ts` can assert the function named here is the one the migration
  * creates.
+ *
+ * v2 carries the provenance arguments (`source_entry_id`, `category_name`) the merged source
+ * requires. v1 (`dataset_entries_import`) stays deployed as history; nothing calls it anymore.
  */
-export const DATASET_ENTRIES_IMPORT_FUNCTION = "dataset_entries_import";
+export const DATASET_ENTRIES_IMPORT_FUNCTION = "dataset_entries_import_v2";
 
 /**
  * A refusal, reported rather than thrown.
  *
  * The database already refuses a diverging instruction by raising
  * `dataset_entries_instruction_diverged`, and that raise is deliberately visible in the error: an
- * import that continued past a divergence would report "600 updated" while meaning something else.
+ * import that continued past a divergence would report "3000 updated" while meaning something else.
  * This sink therefore does NOT catch and convert that refusal into a return value. `design.md` D4
  * requires a re-run that diverges to stop loudly, and the loudest available signal is the database's
  * own named exception reaching the operator's terminal through the command's non-zero exit.
@@ -63,7 +67,7 @@ export const DATASET_ENTRIES_IMPORT_FUNCTION = "dataset_entries_import";
  */
 export interface SupabaseDatasetEntrySinkOptions {
   /**
-   * `dataset_entries_import` when the caller wants the default. Exposed so a test can prove the
+   * `dataset_entries_import_v2` when the caller wants the default. Exposed so a test can prove the
    * default rather than hard-code the string beside its own assertion of the default.
    */
   functionName?: string;
@@ -92,6 +96,8 @@ export class SupabaseDatasetEntrySink implements DatasetEntrySink {
       this.client.rpc(this.functionName, {
         p_id: entry.id,
         p_category: entry.category,
+        p_source_entry_id: entry.sourceEntryId,
+        p_category_name: entry.categoryName,
         p_instruction: entry.instruction,
         p_origin: entry.origin,
         p_destination: entry.destination,

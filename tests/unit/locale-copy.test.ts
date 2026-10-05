@@ -462,20 +462,23 @@ describe("the typing of the research material that must never be localized", () 
     // what catches a catalog string pasted into a dataset record, which is the only route by which
     // interface copy could reach the research data.
     // The project's own loader is used rather than a hand-rolled shape guess. A first draft assumed
-    // the file was `{ records: [...] }` and threw on `.length` of undefined; the file is a top-level
-    // array. `parseSyntheticDataset` already knows that and validates the rest of the shape, so
-    // re-implementing the guess here would have been a second, weaker parser - and a guess that
-    // fails loudly today would fail silently tomorrow if the file were wrapped.
+    // the file was `{ records: [...] }` and threw on `.length` of undefined; the merged file is
+    // `{ categories: [...] }` with five blocks. `parseSyntheticDataset` already knows that and
+    // validates the rest of the shape, so re-implementing the guess here would have been a
+    // second, weaker parser - and a guess that fails loudly today would fail silently tomorrow
+    // if the file were wrapped.
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
 
     const { entries } = parseSyntheticDataset(
-      JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+      JSON.parse(
+        readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
+      ),
     );
     // Asserted rather than assumed: a guard that silently read an empty set would pass every check
     // below, which is the very defect this rewrite exists to remove.
-    expect(entries.length, "the guard read a real dataset, not an empty one").toBe(600);
+    expect(entries.length, "the guard read a real dataset, not an empty one").toBe(3000);
 
     // The distinct place names, computed ONCE rather than inside the per-language loop below. Every
     // one is a proper noun of at least ten characters, so this carries no false-positive risk - the
@@ -485,8 +488,8 @@ describe("the typing of the research material that must never be localized", () 
     const placeNames = new Set<string>();
     for (const entry of entries) {
       // `origin` and `destination` are optional in the domain type, so the narrowing is explicit
-      // rather than assumed - a `null` reaching a `Set<string>` would be a TypeError at runtime,
-      // and every one of the 600 records does carry both.
+      // rather than assumed - a `null` reaching a `Set<string>` would be a TypeError at runtime.
+      // Whole categories of the merged source carry no origin, so nulls are routine here.
       if (entry.origin) placeNames.add(entry.origin);
       if (entry.destination) placeNames.add(entry.destination);
     }
@@ -507,7 +510,7 @@ describe("the typing of the research material that must never be localized", () 
       // ===========================================================================================
       // COLLECTED, NOT ASSERTED ONE CELL AT A TIME. This rewrite is a bug fix, not a style choice.
       // ===========================================================================================
-      // The previous version made 2 catalogs x 85 keys x 600 entries x 2 directions = **204,000
+      // The previous version made 2 catalogs x 85 keys x 3000 entries x 2 directions = **1,020,000
       // individual `expect()` calls**, and every one of them builds an assertion object, records a
       // result, and is counted by the reporter.
       //
@@ -602,9 +605,11 @@ describe("the typing of the research material that must never be localized", () 
     const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
 
     const { entries } = parseSyntheticDataset(
-      JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+      JSON.parse(
+        readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
+      ),
     );
-    expect(entries.length, "this measurement read a real dataset").toBe(600);
+    expect(entries.length, "this measurement read a real dataset").toBe(3000);
 
     const belowFloor: string[] = [];
     const atOrAboveFloor: string[] = [];
@@ -646,7 +651,9 @@ describe("the typing of the research material that must never be localized", () 
     const { join } = await import("node:path");
     const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
     const { entries } = parseSyntheticDataset(
-      JSON.parse(readFileSync(join(process.cwd(), "data", "ilocano-synthetic-data.json"), "utf8")),
+      JSON.parse(
+        readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
+      ),
     );
     const instruction = entries[0].instruction;
 

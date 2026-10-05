@@ -33,6 +33,8 @@ const AT = (day: string): string => `2026-09-${day}T12:00:00.000Z`;
 const entry = (id: string, category = "origin_destination"): DatasetEntry => ({
   id,
   category,
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: `instruction for ${id}`,
   origin: null,
   destination: null,
@@ -148,7 +150,7 @@ const PROFICIENCIES = new Map<string, ValidatorProfile["ilocanoProficiency"]>([
 function dashboardRepositories() {
   return {
     entries: {
-      listActive: async () => ENTRIES,
+      listAllActive: async () => ENTRIES,
       findById: async (id: string) => ENTRIES.find((e) => e.id === id) ?? null,
     },
     validations: {
@@ -373,7 +375,7 @@ describe("the dashboard and the export agree on one corpus", () => {
     // An empty corpus is a real state on the hosted project today. A consistency check that skipped
     // the empty case would leave the one state this project is actually in unverified.
     const overview = await loadDashboardOverview({
-      entries: { listActive: async () => [], findById: async () => null },
+      entries: { listAllActive: async () => [], findById: async () => null },
       validations: { listForEntries: async () => [] },
       validators: { listByIds: async () => [] },
     });

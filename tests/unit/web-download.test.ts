@@ -48,6 +48,8 @@ function signedSession(): string {
 const entry = (id: string): DatasetEntry => ({
   id,
   category: "origin_destination",
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: `instruction for ${id}`,
   origin: `origin of ${id}`,
   destination: `destination of ${id}`,
@@ -80,8 +82,8 @@ const RESPONSES = [response("r01", "VAL_00000001", "E1"), response("r02", "VAL_0
 function sources(calls: string[]): ExportSources {
   return {
     entries: {
-      listActive: async () => {
-        calls.push("entries.listActive");
+      listAllActive: async () => {
+        calls.push("entries.listAllActive");
         return ENTRIES;
       },
     },
@@ -185,7 +187,7 @@ describe("served download", () => {
     if (result.status !== "ready") return;
     expect(result.filename).toBe("sadino-research-export-2026-10-04.zip");
     expect(calls).toEqual([
-      "entries.listActive",
+      "entries.listAllActive",
       "validations.listForEntries",
       "validators.listByIds",
     ]);

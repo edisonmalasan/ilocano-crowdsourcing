@@ -1,11 +1,7 @@
-import {
-  datasetEntryInputSchema,
-  ORIGIN_DESTINATION_CATEGORY,
-  type DatasetEntryInput,
-} from "@/schemas/dataset";
+import { datasetEntryInputSchema, type DatasetEntryInput } from "@/schemas/dataset";
 
 /**
- * Parser for the immutable synthetic source dataset.
+ * Parser for the immutable merged synthetic source dataset.
  *
  * This module is PURE. It reads no file, touches no database, and consults no clock. That is not
  * stylistic: it is what allows the same parsed records to be verified against a real PostgreSQL
@@ -22,9 +18,13 @@ import {
  *      behavior via `normalizeResearchText`.
  *
  *   2. NOTHING IS DROPPED. A source field the current domain type does not model is preserved in
- *      `sourcePayload` and named in the report. The dataset happens to have exactly three
- *      top-level keys today, so a strict parser would pass every test and still be one dataset
- *      revision away from destroying data.
+ *      `sourcePayload` and named in the report.
+ *
+ * The source is five named category blocks of 600 entries each, with source-local ids 1..600
+ * reused per block. Canonical ids are minted deterministically as `{prefix}_{local:04d}` — never
+ * a global 1..3000 renumbering, and the source file's ids are never rewritten. A block with a
+ * duplicated, missing, or out-of-range local id, an unknown category name, or a wrong entry
+ * count fails the whole parse loudly: 2,999 of 3,000 rows is not an import.
  */
 
 /** Top-level keys of a source record that the importer maps onto typed domain fields. */
@@ -36,6 +36,66 @@ export const SYNTHETIC_SOURCE_OUTPUT_KNOWN_KEYS = [
   "destination",
   "transit_mode",
 ] as const;
+
+/** Source-local entries per category block. A block holding any other count is refused. */
+export const MERGED_SOURCE_ENTRIES_PER_CATEGORY = 600;
+
+/** Source-local ids span exactly this range within every block. */
+export const MERGED_SOURCE_LOCAL_ID_MIN = 1;
+export const MERGED_SOURCE_LOCAL_ID_MAX = 600;
+
+/**
+ * One row of the category mapping table: the human-readable source name to its stable slug
+ * and canonical-id prefix.
+ *
+ * A TABLE rather than derived strings, deliberately: slugs and prefixes are research
+ * identifiers downstream (database values, export fields, review URLs), so inventing them by
+ * transforming the display name (`lowercase, underscores, initials`) would let a renamed
+ * category silently re-identify every row. An unknown name fails parsing instead.
+ */
+export interface MergedSourceCategory {
+  /** The source file's `category_id` (1..5). Carried for diagnostics, never as an identifier. */
+  readonly categoryId: number;
+  /** The source file's `category_name`, verbatim. */
+  readonly name: string;
+  /** The stable database/export slug. */
+  readonly slug: string;
+  /** The canonical-id prefix. */
+  readonly prefix: string;
+}
+
+export const MERGED_SOURCE_CATEGORY_TABLE: readonly MergedSourceCategory[] = [
+  { categoryId: 1, name: "Destination Only", slug: "destination_only", prefix: "DO" },
+  {
+    categoryId: 2,
+    name: "Destination + Transit Mode",
+    slug: "destination_transit_mode",
+    prefix: "DT",
+  },
+  { categoryId: 3, name: "Origin + Destination", slug: "origin_destination", prefix: "OD" },
+  {
+    categoryId: 4,
+    name: "Origin + Destination + Transit Mode",
+    slug: "origin_destination_transit_mode",
+    prefix: "ODT",
+  },
+  {
+    categoryId: 5,
+    name: "Complex/Preference Expressions",
+    slug: "complex_preference_expressions",
+    prefix: "CPE",
+  },
+];
+
+/**
+ * The canonical dataset entry id for one source-local id: `{prefix}_{local:04d}`.
+ *
+ * Deterministic by construction — same category and local id, same id, every run — which is
+ * what makes re-imports idempotent and what lets a test assert the mapping without a database.
+ */
+export function canonicalDatasetEntryId(prefix: string, localId: number): string {
+  return `${prefix}_${String(localId).padStart(4, "0")}`;
+}
 
 /**
  * A parsed entry: the validated domain input plus the untouched source record.
@@ -72,7 +132,7 @@ export interface DatasetParseReport {
  *
  * Carries the index and, where it can be recovered, the id of the offending record. An import
  * error that says "invalid input" without saying which record is unusable is not actionable when
- * the input is 600 lines of research data.
+ * the input is 3,000 records of research data.
  */
 export class DatasetParseError extends Error {
   readonly recordIndex: number;
@@ -111,7 +171,9 @@ export interface ParseSyntheticDatasetResult {
 function readRecordId(record: unknown): string | null {
   if (typeof record !== "object" || record === null) return null;
   const id = (record as Record<string, unknown>).id;
-  return typeof id === "string" ? id : null;
+  if (typeof id === "string") return id;
+  if (typeof id === "number" && Number.isInteger(id)) return `#${id}`;
+  return null;
 }
 
 /** Dotted path to a nested value, or `null` when the path does not resolve. */
@@ -150,87 +212,210 @@ function findUnmodelledPaths(record: Record<string, unknown>): string[] {
 }
 
 /**
- * Parses the synthetic source dataset into validated, importable domain records.
+ * Parses the merged synthetic source dataset into validated, importable domain records.
  *
- * Records are returned in source order, which is what makes the report's counts and the
- * verification's comparisons meaningful.
+ * Records are returned in source order — blocks in file order, entries in file order within
+ * each block — which is what makes the report's counts and the verification's comparisons
+ * meaningful.
  *
- * @throws {DatasetParseError} when a record cannot be turned into a valid entry. Records are
- * never skipped, defaulted, or repaired: a source dataset that is subtly wrong must fail loudly
- * rather than import 599 of 600 rows.
+ * @throws {DatasetParseError} when the shape, a block, or a record cannot be turned into valid
+ * entries. Blocks are never skipped and records are never repaired: a source dataset that is
+ * subtly wrong must fail loudly rather than import 2,999 of 3,000 rows.
  */
 export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult {
-  if (!Array.isArray(raw)) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new DatasetParseError({
       recordIndex: -1,
       recordId: null,
       fieldPath: "$",
-      issues: [`expected an array of records, received ${raw === null ? "null" : typeof raw}`],
+      issues: [
+        `expected an object with a categories array, received ${raw === null ? "null" : Array.isArray(raw) ? "array" : typeof raw}`,
+      ],
     });
   }
 
+  const categories = (raw as Record<string, unknown>).categories;
+  if (!Array.isArray(categories)) {
+    throw new DatasetParseError({
+      recordIndex: -1,
+      recordId: null,
+      fieldPath: "$.categories",
+      issues: ["expected exactly 5 category blocks"],
+    });
+  }
+  if (categories.length !== MERGED_SOURCE_CATEGORY_TABLE.length) {
+    throw new DatasetParseError({
+      recordIndex: -1,
+      recordId: null,
+      fieldPath: "$.categories",
+      issues: [
+        `expected ${MERGED_SOURCE_CATEGORY_TABLE.length} category blocks, received ${categories.length}`,
+      ],
+    });
+  }
+
+  const seenNames = new Set<string>();
   const entries: ImportedDatasetEntry[] = [];
   const preserved = new Map<string, { recordCount: number; sampleValue: unknown }>();
   let recordsWithPreservedFields = 0;
+  let recordIndex = 0;
 
-  raw.forEach((record, recordIndex) => {
-    if (typeof record !== "object" || record === null || Array.isArray(record)) {
+  categories.forEach((block, blockIndex) => {
+    const blockPath = `$.categories[${blockIndex}]`;
+    if (typeof block !== "object" || block === null || Array.isArray(block)) {
       throw new DatasetParseError({
         recordIndex,
         recordId: null,
-        fieldPath: `$[${recordIndex}]`,
-        issues: ["expected a record object"],
+        fieldPath: blockPath,
+        issues: ["expected a category block object"],
       });
     }
-
-    const source = record as Record<string, unknown>;
-    const recordId = readRecordId(source);
-
-    // Mapped by name, explicitly, rather than by a generic transform. A renamed or removed
-    // source field must fail here where the mapping is written, not silently produce an entry
-    // with a null field that nobody notices until a validator sees a blank instruction.
-    const candidate = {
-      id: source.id,
-      category: ORIGIN_DESTINATION_CATEGORY,
-      instruction: source.instruction,
-      origin: readPath(source, ["output", "origin"]) ?? null,
-      destination: readPath(source, ["output", "destination"]) ?? null,
-      transitMode: readPath(source, ["output", "transit_mode"]) ?? null,
-    };
-
-    const result = datasetEntryInputSchema.safeParse(candidate);
-    if (!result.success) {
+    const source = block as Record<string, unknown>;
+    const name = source.category_name;
+    if (typeof name !== "string") {
       throw new DatasetParseError({
         recordIndex,
-        recordId,
-        fieldPath: `$[${recordIndex}]`,
-        issues: result.error.issues.map(
-          (issue) => `${issue.path.join(".") || "(record)"}: ${issue.message}`,
-        ),
+        recordId: null,
+        fieldPath: `${blockPath}.category_name`,
+        issues: ["expected the block's human-readable category name"],
+      });
+    }
+    if (seenNames.has(name)) {
+      throw new DatasetParseError({
+        recordIndex,
+        recordId: null,
+        fieldPath: `${blockPath}.category_name`,
+        issues: [`duplicate category block ${JSON.stringify(name)}`],
+      });
+    }
+    seenNames.add(name);
+    const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === name);
+    if (mapping === undefined) {
+      throw new DatasetParseError({
+        recordIndex,
+        recordId: null,
+        fieldPath: `${blockPath}.category_name`,
+        issues: [`unknown category ${JSON.stringify(name)}: no mapping row, and none is invented`],
       });
     }
 
-    const unmodelledPaths = findUnmodelledPaths(source);
-    for (const fieldPath of unmodelledPaths) {
-      const existing = preserved.get(fieldPath);
-      if (existing) {
-        existing.recordCount += 1;
-      } else {
-        preserved.set(fieldPath, {
-          recordCount: 1,
-          sampleValue: readPath(source, fieldPath.split(".")),
+    const blockEntries = source.entries;
+    if (!Array.isArray(blockEntries)) {
+      throw new DatasetParseError({
+        recordIndex,
+        recordId: null,
+        fieldPath: `${blockPath}.entries`,
+        issues: ["expected an entries array"],
+      });
+    }
+    if (blockEntries.length !== MERGED_SOURCE_ENTRIES_PER_CATEGORY) {
+      throw new DatasetParseError({
+        recordIndex,
+        recordId: null,
+        fieldPath: `${blockPath}.entries`,
+        issues: [
+          `expected ${MERGED_SOURCE_ENTRIES_PER_CATEGORY} entries, received ${blockEntries.length}`,
+        ],
+      });
+    }
+
+    // Local ids must be exactly 1..600: no out-of-range values and no duplicates. Checked
+    // as a SET before any record is parsed, so a corrupt block fails naming the id rather than
+    // importing rows and stopping at whatever breaks first. The count check above plus
+    // uniqueness here imply completeness: 600 unique ids in 1..600 can only be exactly 1..600,
+    // so a gap always surfaces as either a short block (count arm) or a duplicate (arm below).
+    const localIds = new Set<number>();
+    for (const candidate of blockEntries) {
+      if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+        throw new DatasetParseError({
+          recordIndex,
+          recordId: null,
+          fieldPath: `${blockPath}.entries`,
+          issues: ["expected a record object"],
         });
       }
+      const localId = (candidate as Record<string, unknown>).id;
+      if (
+        typeof localId !== "number" ||
+        !Number.isInteger(localId) ||
+        localId < MERGED_SOURCE_LOCAL_ID_MIN ||
+        localId > MERGED_SOURCE_LOCAL_ID_MAX
+      ) {
+        throw new DatasetParseError({
+          recordIndex,
+          recordId: null,
+          fieldPath: `${blockPath}.entries`,
+          issues: [
+            `expected a source-local integer id ${MERGED_SOURCE_LOCAL_ID_MIN}..${MERGED_SOURCE_LOCAL_ID_MAX}, received ${JSON.stringify(localId) ?? "a missing id"}`,
+          ],
+        });
+      }
+      if (localIds.has(localId)) {
+        throw new DatasetParseError({
+          recordIndex,
+          recordId: `#${localId}`,
+          fieldPath: `${blockPath}.entries`,
+          issues: [`duplicate source-local id ${localId} in category ${JSON.stringify(name)}`],
+        });
+      }
+      localIds.add(localId);
     }
-    if (unmodelledPaths.length > 0) recordsWithPreservedFields += 1;
 
-    entries.push({ ...result.data, sourcePayload: source });
+    blockEntries.forEach((record) => {
+      const source = record as Record<string, unknown>;
+      const localId = source.id as number;
+      const recordId = readRecordId(source);
+      const entryPath = `${blockPath}.entries[id=${localId}]`;
+
+      // Mapped by name, explicitly, rather than by a generic transform. A renamed or removed
+      // source field must fail here where the mapping is written, not silently produce an entry
+      // with a null field that nobody notices until a validator sees a blank instruction.
+      const candidate = {
+        id: canonicalDatasetEntryId(mapping.prefix, localId),
+        category: mapping.slug,
+        sourceEntryId: localId,
+        categoryName: mapping.name,
+        instruction: source.instruction,
+        origin: readPath(source, ["output", "origin"]) ?? null,
+        destination: readPath(source, ["output", "destination"]) ?? null,
+        transitMode: readPath(source, ["output", "transit_mode"]) ?? null,
+      };
+
+      const result = datasetEntryInputSchema.safeParse(candidate);
+      if (!result.success) {
+        throw new DatasetParseError({
+          recordIndex,
+          recordId,
+          fieldPath: entryPath,
+          issues: result.error.issues.map(
+            (issue) => `${issue.path.join(".") || "(record)"}: ${issue.message}`,
+          ),
+        });
+      }
+
+      const unmodelledPaths = findUnmodelledPaths(source);
+      for (const fieldPath of unmodelledPaths) {
+        const existing = preserved.get(fieldPath);
+        if (existing) {
+          existing.recordCount += 1;
+        } else {
+          preserved.set(fieldPath, {
+            recordCount: 1,
+            sampleValue: readPath(source, fieldPath.split(".")),
+          });
+        }
+      }
+      if (unmodelledPaths.length > 0) recordsWithPreservedFields += 1;
+
+      entries.push({ ...result.data, sourcePayload: source });
+      recordIndex += 1;
+    });
   });
 
   return {
     entries,
     report: {
-      recordCount: raw.length,
+      recordCount: entries.length,
       recordsWithPreservedFields,
       preservedFields: [...preserved.entries()]
         .map(([fieldPath, detail]) => ({ fieldPath, ...detail }))

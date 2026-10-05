@@ -28,6 +28,8 @@ const AT = (day: string): string => `2026-09-${day}T12:00:00.000Z`;
 const entry = (id: string, category = "origin_destination"): DatasetEntry => ({
   id,
   category,
+  sourceEntryId: 1,
+  categoryName: "Origin + Destination",
   instruction: `instruction for ${id}`,
   origin: `origin of ${id}`,
   destination: `destination of ${id}`,
@@ -229,6 +231,28 @@ describe("buildExportRecords", () => {
     }
     expect(records[0]?.response_id).toBe("r01");
     expect(records[0]?.attempt_id).toBe("VAL_00000001");
+  });
+
+  it("carries the entry's source provenance on every raw record", () => {
+    // `source_entry_id` is the source-local id as text (the CSV has no typed columns);
+    // `category_name` is the human-readable source name. Both travel from the entry, so a raw
+    // record is joinable to its source block without parsing a canonical id. Asserted per
+    // record against its own entry — the fixture spans two categories, and a single expected
+    // value would pass while every record silently carried the default.
+    const recordByResponse = new Map(records.map((record) => [record.response_id, record]));
+    for (const item of sources) {
+      const record = recordByResponse.get(item.response.id);
+      if (record === undefined) throw new Error(`no record for response ${item.response.id}`);
+      expect(record.source_entry_id).toBe(String(item.entry.sourceEntryId));
+      expect(record.category).toBe(item.entry.category);
+      expect(record.category_name).toBe(item.entry.categoryName);
+    }
+    // And the CSV carries the same cells under the same names.
+    const csv = buildCsv(records, EXPORT_RECORD_KEYS);
+    const header = (csv.split("\n")[0] ?? "").split(",");
+    for (const key of ["source_entry_id", "category_name"] as const) {
+      expect(header).toContain(key);
+    }
   });
 
   it("carries per-pillar contribution flags so each pillar total is recomputable", () => {

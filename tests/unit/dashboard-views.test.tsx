@@ -69,6 +69,8 @@ const REVIEW: EntryReview = {
   entry: {
     id: "E5",
     category: "origin_destination",
+    sourceEntryId: 5,
+    categoryName: "Origin + Destination",
     instruction: "instruction for E5",
     origin: "origin of E5",
     destination: "destination of E5",

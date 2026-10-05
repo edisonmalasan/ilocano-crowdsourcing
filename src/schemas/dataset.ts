@@ -37,9 +37,11 @@ export const datasetCategorySchema = z
 /**
  * The externally meaningful source ID, for example `OD_0001`..`OD_0600`.
  *
- * It is derived from the immutable research source and must be retained verbatim: it is what
- * allows a validation row, an export row, and the original JSON record to be joined. Internal
- * surrogate keys may be added alongside it, never in place of it.
+ * Canonical ids are minted deterministically as `{prefix}_{local:04d}` from the merged source's
+ * category blocks (`DO_`, `DT_`, `OD_`, `ODT_`, `CPE_`). Each is derived from the immutable
+ * research source and must be retained verbatim: it is what allows a validation row, an export
+ * row, and the original JSON record to be joined. Internal surrogate keys may be added alongside
+ * it, never in place of it.
  */
 export const datasetEntryIdSchema = z
   .string()
@@ -84,6 +86,17 @@ export const isoDateTimeSchema = z
 export const datasetEntryInputSchema = z.object({
   id: datasetEntryIdSchema,
   category: datasetCategorySchema,
+  /**
+   * The source-local id (1..600) within the entry's category block. Explicit rather than derived
+   * from the canonical id, so a researcher never has to parse an identifier to recover it — and
+   * so a future prefix change cannot silently re-identify every row.
+   */
+  sourceEntryId: z.number().int().min(1).max(600),
+  /**
+   * The human-readable source category name, verbatim from the mapping table. Provenance for
+   * researchers; the slug remains the machine key.
+   */
+  categoryName: z.string().trim().min(1, "category name must not be empty"),
   instruction: requiredTextSchema,
   origin: optionalTextSchema,
   destination: optionalTextSchema,

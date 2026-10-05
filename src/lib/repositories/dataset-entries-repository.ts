@@ -23,6 +23,19 @@ export interface DatasetEntriesRepository {
    */
   listActive(options?: ListDatasetEntriesOptions): Promise<DatasetEntry[]>;
 
+  /**
+   * Every active entry, optionally narrowed by category, across as many pages as it takes.
+   *
+   * `listActive` without a limit refuses a truncated response rather than returning it, so it
+   * cannot serve a pool larger than PostgREST's per-request cap (1000 by default; the corpus is
+   * 3,000). This pages with `range` and stitches the pages, refusing rather than returning a
+   * short or shifted result: the exact count must agree on every page (a concurrent operator
+   * import mid-read would move rows between pages), every page must make progress, and the
+   * stitched length must equal the count. Like `listActive`, the result is unordered with
+   * respect to any research meaning.
+   */
+  listAllActive(options?: Pick<ListDatasetEntriesOptions, "category">): Promise<DatasetEntry[]>;
+
   /** The single entry with this source ID, or `null` when no such entry exists. `null` means absent, not failed. */
   findById(id: DatasetEntryId): Promise<DatasetEntry | null>;
 
