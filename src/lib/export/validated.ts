@@ -40,6 +40,11 @@ import {
   isValidJudgment,
   type ValidationEvaluation,
 } from "@/lib/domain/validation-response";
+import {
+  categoryRowForSlug,
+  compareCanonicalEntryIds,
+  DATASET_CATEGORY_TABLE,
+} from "@/lib/domain/categories";
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
@@ -53,10 +58,11 @@ import type { ExportSourceWithQualifying } from "./records";
  * not structure, and says so.
  */
 export const VALIDATED_RECORD_KEYS = [
-  "id",
-  "source_entry_id",
+  "category_id",
   "category",
   "category_name",
+  "id",
+  "source_entry_id",
   "validated_ilocano",
   "evaluation",
   "self_reported_proficiency",
@@ -75,7 +81,7 @@ export type ValidatedRecordKey = (typeof VALIDATED_RECORD_KEYS)[number];
 /** One validated entry, as the JSON document carries it. */
 export interface ValidatedRecord {
   readonly id: string;
-  /** The source-local id 1..600 within the entry's category block. A number here (not text): the
+  /** The source-local id 1..800 within the entry's category block. A number here (not text): the
    * JSON document is typed while the CSV carries the same value as text. */
   readonly source_entry_id: number;
   readonly category: string;
@@ -114,6 +120,20 @@ export interface ValidatedRecord {
 /** One validated entry flattened for CSV, in `VALIDATED_RECORD_KEYS` order. */
 export type ValidatedCsvRow = Readonly<Record<ValidatedRecordKey, string | null>>;
 
+/** One validated entry's group, as the grouped JSON document carries it. */
+export interface ValidatedCategoryGroup {
+  readonly category_id: number | null;
+  readonly category: string;
+  readonly category_name: string | null;
+  /** Records in numeric-suffix order, without the enclosing category triple. */
+  readonly records: GroupedValidatedRecord[];
+}
+
+/** One grouped-JSON validated record: the full record without the enclosing triple. */
+export type GroupedValidatedRecord = Omit<ValidatedRecord, "category" | "category_name"> & {
+  readonly category_id: number | null;
+};
+
 /** The derivation rule, stated in the artifact so no reader mistakes it for adjudication. */
 export interface ValidatedDerivation {
   readonly rule: "pooled-earliest-per-field-by-server-created-at";
@@ -122,10 +142,10 @@ export interface ValidatedDerivation {
   readonly omitted_incomplete_entries: number;
 }
 
-/** The validated document: its rule, then its records. */
+/** The validated document: its rule, then its category groups in `category_id` order. */
 export interface ValidatedDataset {
   readonly derivation: ValidatedDerivation;
-  readonly records: readonly ValidatedRecord[];
+  readonly categories: readonly ValidatedCategoryGroup[];
 }
 
 /**
@@ -222,8 +242,12 @@ function requiredTranslation(
 }
 
 /**
- * One validated record per complete entry, in entry order. Incomplete entries are absent, not
- * zero-filled: nothing is validated for them yet, and inventing a row would fabricate a finding.
+ * One validated record per complete entry, grouped by category in `category_id` order with
+ * records in numeric-suffix order. Incomplete entries are absent, not zero-filled: nothing is
+ * validated for them yet, and inventing a row would fabricate a finding. Categories with no
+ * complete entry still appear with an empty record list, so the document always carries all
+ * five groups — including at pristine zero state, where the alternative is a document that
+ * looks like it forgot its categories.
  */
 export function buildValidatedDataset(
   entries: readonly DatasetEntry[],
@@ -237,7 +261,7 @@ export function buildValidatedDataset(
     groups.get(source.entry.id)?.push(source);
   }
 
-  const records: ValidatedRecord[] = [];
+  const byCategory = new Map<string, ValidatedRecord[]>();
   for (const entry of entries) {
     const rows = groups.get(entry.id) ?? [];
     if (!isEntryComplete(rows.map((row) => row.response))) continue;
@@ -258,7 +282,7 @@ export function buildValidatedDataset(
       "Filipino",
       suppliers.filipino.response.id,
     );
-    records.push({
+    const record: ValidatedRecord = {
       id: entry.id,
       source_entry_id: entry.sourceEntryId,
       category: entry.category,
@@ -279,26 +303,101 @@ export function buildValidatedDataset(
         requiresResearcherReview(rows.map((row) => row.response)) ||
         isMultiSource(suppliers) ||
         hasSupplierTie(rows),
+    };
+    const list = byCategory.get(entry.category);
+    if (list === undefined) byCategory.set(entry.category, [record]);
+    else list.push(record);
+  }
+
+  const categories: ValidatedCategoryGroup[] = [];
+  const seen = new Set<string>();
+  for (const row of DATASET_CATEGORY_TABLE) {
+    seen.add(row.slug);
+    const records = (byCategory.get(row.slug) ?? [])
+      .sort((left, right) => compareCanonicalEntryIds(left.id, right.id))
+      .map((record) => stripCategoryTriple(row.categoryId, record));
+    categories.push({
+      category_id: row.categoryId,
+      category: row.slug,
+      category_name: row.name,
+      records,
+    });
+  }
+  // Slugs outside the canonical table keep their own group after the known ones, in
+  // first-seen order, so the open-category contract holds here too.
+  for (const [slug, records] of byCategory) {
+    if (seen.has(slug)) continue;
+    categories.push({
+      category_id: null,
+      category: slug,
+      category_name: records[0]?.category_name ?? null,
+      records: [...records]
+        .sort((left, right) => compareCanonicalEntryIds(left.id, right.id))
+        .map((record) => stripCategoryTriple(null, record)),
     });
   }
 
+  const complete = categories.reduce((sum, group) => sum + group.records.length, 0);
   return {
     derivation: {
       rule: "pooled-earliest-per-field-by-server-created-at",
       tie_break: "smallest-validation-id-arbitrary-carries-no-meaning",
-      omitted_incomplete_entries: entries.length - records.length,
+      omitted_incomplete_entries: entries.length - complete,
     },
-    records,
+    categories,
   };
+}
+
+/**
+ * The grouped-JSON form of one record: the enclosing triple established once per group, so
+ * the record does not repeat it. The flat CSV row keeps the triple as cells — CSV cannot
+ * nest, so parity there means same information, not same shape.
+ */
+function stripCategoryTriple(
+  category_id: number | null,
+  record: ValidatedRecord,
+): GroupedValidatedRecord {
+  const { category: _droppedCategory, category_name: _droppedName, ...rest } = record;
+  void _droppedCategory;
+  void _droppedName;
+  return { ...rest, category_id };
+}
+
+/**
+ * Every derived record with its group triple reattached, in group order.
+ *
+ * The exact inverse of the grouping strip: the group is each record's own group, never
+ * looked up, so JSON and CSV cannot disagree about which category a record belongs to. Used
+ * by the flat CSV serialization and by tests asserting derivation behavior without caring
+ * about grouping.
+ */
+export function flattenValidatedGroups(dataset: ValidatedDataset): ValidatedRecord[] {
+  return dataset.categories.flatMap((group) => {
+    if (group.records.length === 0) return [];
+    // A group with records always carries the entries' own name when built by
+    // `buildValidatedDataset`. Throwing rather than inventing one, because a fabricated
+    // category name in a flat row would be a research falsehood.
+    if (group.category_name === null) {
+      throw new Error(`validated group ${group.category} carries records but no category name`);
+    }
+    const category_name: string = group.category_name;
+    return group.records.map((record) => {
+      const { category_id: _groupId, ...rest } = record;
+      void _groupId;
+      return { ...rest, category: group.category, category_name };
+    });
+  });
 }
 
 /** One validated record flattened for CSV. `needs_review` travels as "true"/"false". */
 export function validatedCsvRow(record: ValidatedRecord): ValidatedCsvRow {
+  const categoryId = categoryRowForSlug(record.category)?.categoryId;
   return {
-    id: record.id,
-    source_entry_id: String(record.source_entry_id),
+    category_id: categoryId === undefined ? null : String(categoryId),
     category: record.category,
     category_name: record.category_name,
+    id: record.id,
+    source_entry_id: String(record.source_entry_id),
     validated_ilocano: record.validated_ilocano,
     evaluation: record.evaluation,
     self_reported_proficiency: record.self_reported_proficiency,

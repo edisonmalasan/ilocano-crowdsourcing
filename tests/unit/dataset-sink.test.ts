@@ -40,7 +40,7 @@ const stripComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 const ENTRY: ImportedDatasetEntry = {
-  id: "OD_0001",
+  id: "OD_1",
   category: "origin_destination",
   sourceEntryId: 1,
   categoryName: "Origin + Destination",
@@ -49,7 +49,7 @@ const ENTRY: ImportedDatasetEntry = {
   origin: "Baguio Athletic Bowl",
   destination: "Baguio Convention Center",
   transitMode: null,
-  sourcePayload: { id: "OD_0001", instruction: "Iti Baguio Athletic Bowl ti ayanko ita." },
+  sourcePayload: { id: "OD_1", instruction: "Iti Baguio Athletic Bowl ti ayanko ita." },
 };
 
 interface Call {
@@ -190,7 +190,7 @@ describe("SupabaseDatasetEntrySink", () => {
     const { client } = recordingClient({ data: "???", error: null });
 
     const thrown = await failureOf(new SupabaseDatasetEntrySink(client).upsert(ENTRY));
-    expect(thrown.message).toContain("OD_0001");
+    expect(thrown.message).toContain("OD_1");
   });
 
   it("maps a PostgREST error envelope onto RepositoryError rather than reading its data", async () => {
@@ -215,7 +215,7 @@ describe("SupabaseDatasetEntrySink", () => {
     expect(thrown.operation).toBe("dataset_entries.import");
     expect(thrown.message).toContain("before PostgREST returned a response");
     // And the entry, so a 600-entry run identifies which call never got an answer.
-    expect(thrown.message).toContain("OD_0001");
+    expect(thrown.message).toContain("OD_1");
   });
 
   it("carries the database's own refusal name through, and adds no instruction text", async () => {
@@ -223,7 +223,7 @@ describe("SupabaseDatasetEntrySink", () => {
     // requires a re-run that diverges to stop loudly, and the loudest signal available is the
     // database's own exception reaching the operator's terminal through a non-zero exit.
     const DATABASE_MESSAGE =
-      "dataset_entries_instruction_diverged: the stored instruction for entry OD_0001 differs";
+      "dataset_entries_instruction_diverged: the stored instruction for entry OD_1 differs";
     const { client } = recordingClient({
       data: null,
       error: { code: "P0001", message: DATABASE_MESSAGE },

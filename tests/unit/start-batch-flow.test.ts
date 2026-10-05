@@ -35,7 +35,7 @@ const ALLOCATED: AllocationOutcome = {
   batchId: "batch-1",
   entries: [
     allocatedEntrySchema.parse({
-      id: "OD_0001",
+      id: "OD_1",
       category: "origin_destination",
       instruction: "Pumunta iti Baguio Athletic Bowl.",
       origin: "Baguio",

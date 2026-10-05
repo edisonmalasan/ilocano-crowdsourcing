@@ -23,7 +23,7 @@ function readFirstInstruction(): ReturnType<typeof parseSyntheticDataset>["entri
       readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
     ),
   );
-  expect(entries.length, "this helper read a real dataset, not an empty one").toBe(3000);
+  expect(entries.length, "this helper read a real dataset, not an empty one").toBe(4000);
   return entries[0];
 }
 

@@ -964,7 +964,7 @@ describe("persisted validation record", () => {
   const STORED = {
     id: "res_01",
     validatorId: "VAL_a81d92c1",
-    datasetEntryId: "OD_0123",
+    datasetEntryId: "OD_123",
     batchId: "batch_01",
     createdAt: "2026-09-30T00:00:00.000Z",
     updatedAt: "2026-09-30T00:00:05.000Z",

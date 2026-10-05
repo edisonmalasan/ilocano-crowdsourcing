@@ -4,7 +4,7 @@
  * WHY A COMMAND AND NOT A SCRIPT INSIDE THE APP
  * ---------------------------------------------
  * `src/lib/repositories/supabase/dataset-entries.ts` states that its sink is "not allowed to be
- * reachable from a request path". An HTTP route that imports 3,000 records would put an unbounded,
+ * reachable from a request path". An HTTP route that imports 4,000 records would put an unbounded,
  * unauthenticated, credential-holding operation on the public internet, and it would make the
  * import re-runnable by anyone who found the URL. There is no version of this that belongs in the
  * application, so it is an operator command that a person runs deliberately.
@@ -54,7 +54,7 @@ import { RepositoryError } from "@/lib/repositories";
 /** The immutable research source. Its path is a constant so no argument can redirect the import. */
 export const DEFAULT_SOURCE_PATH = "data/merged-ilocano-synthetic-data.json";
 
-/** How often progress is printed. 3,000 round trips take minutes; silence for minutes is a bug report. */
+/** How often progress is printed. 4,000 round trips take minutes; silence for minutes is a bug report. */
 const PROGRESS_EVERY = 50;
 
 export const EXIT_OK = 0;
@@ -253,7 +253,7 @@ export async function importEntries(
     write(formatReport(result));
     return EXIT_OK;
   } catch {
-    // The counts are printed on the failure path too. "3000 parsed, 2412 inserted, then a refusal" is
+    // The counts are printed on the failure path too. "4000 parsed, 3212 inserted, then a refusal" is
     // materially different information from "the import failed", and an operator who only sees the
     // second cannot tell how far the run got.
     write(

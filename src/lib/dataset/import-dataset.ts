@@ -55,7 +55,7 @@ export interface DatasetImportResult {
  * Writes every entry through the sink and reports what it did.
  *
  * The report exists so a run that silently did nothing is distinguishable from a run that
- * succeeded. A researcher importing a research dataset needs to be able to say "3000 parsed, 3000
+ * succeeded. A researcher importing a research dataset needs to be able to say "4000 parsed, 4000
  * inserted" and mean it.
  */
 export async function importDatasetEntries(

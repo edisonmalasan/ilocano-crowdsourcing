@@ -67,9 +67,9 @@ function createRecording(over: ServiceOptions = {}): Recording {
   // that returns the ID where the record belongs is the shape this catches.
   type StoredEntry = NonNullable<Awaited<ReturnType<DatasetEntriesRepository["findById"]>>>;
   const entries: Record<string, StoredEntry> = (over.entries as Record<string, StoredEntry>) ?? {
-    OD_0001: storedEntry("OD_0001", "Pumunta iti Baguio Athletic Bowl."),
-    OD_0002: storedEntry("OD_0002", "Langet iti Wright Park."),
-    OD_0003: storedEntry("OD_0003", "Papanak iti The Mansion."),
+    OD_1: storedEntry("OD_1", "Pumunta iti Baguio Athletic Bowl."),
+    OD_2: storedEntry("OD_2", "Langet iti Wright Park."),
+    OD_3: storedEntry("OD_3", "Papanak iti The Mansion."),
   };
 
   return {
@@ -83,9 +83,9 @@ function createRecording(over: ServiceOptions = {}): Recording {
           id,
           validatorId: VALIDATOR_ID,
           entries: [
-            { datasetEntryId: "OD_0001", position: 1 },
-            { datasetEntryId: "OD_0002", position: 2 },
-            { datasetEntryId: "OD_0003", position: 3 },
+            { datasetEntryId: "OD_1", position: 1 },
+            { datasetEntryId: "OD_2", position: 2 },
+            { datasetEntryId: "OD_3", position: 3 },
           ],
         };
         return batchRecordSchema.parse(record);
@@ -120,6 +120,8 @@ function storedEntry(id: string, instruction: string): Record<string, unknown> {
   return {
     id,
     category: "origin_destination",
+    sourceEntryId: Number(id.split("_").pop()),
+    categoryName: "Origin + Destination",
     instruction,
     origin: "Baguio",
     destination: "Baguio",
@@ -145,7 +147,7 @@ describe("opening a session for a batch that exists", () => {
     expect(outcome.status).toBe("presenting");
     if (outcome.status !== "presenting") throw new Error("unreachable");
     expect(outcome.session.batchId).toBe("batch-1");
-    expect(outcome.session.entry.id).toBe("OD_0001");
+    expect(outcome.session.entry.id).toBe("OD_1");
     expect(outcome.session.position).toBe(1);
     expect(outcome.session.total).toBe(3);
     expect(outcome.session.completedCount).toBe(0);
@@ -164,7 +166,7 @@ describe("opening a session for a batch that exists", () => {
     expect(deps.calls).toEqual([
       "batches.findById:batch-1",
       `validations.listEntryIdsForValidator:${VALIDATOR_ID}`,
-      "datasetEntries.findById:OD_0001",
+      "datasetEntries.findById:OD_1",
     ]);
   });
 
@@ -189,12 +191,12 @@ describe("opening a session for a batch that exists", () => {
     // rendered; it is the completed set the service READS, intersected with the batch's own
     // placements, and the very first entry the batch recorded is skipped because it is already done.
     const { openValidationSession } = await loadService();
-    const deps = createRecording({ completedEntryIds: ["OD_0001"] });
+    const deps = createRecording({ completedEntryIds: ["OD_1"] });
 
     const outcome = await openValidationSession({ batchId: "batch-1" }, deps);
 
     if (outcome.status !== "presenting") throw new Error("unreachable");
-    expect(outcome.session.entry.id).toBe("OD_0002");
+    expect(outcome.session.entry.id).toBe("OD_2");
     expect(outcome.session.position).toBe(2);
     expect(outcome.session.completedCount).toBe(1);
     expect(outcome.session.remainingCount).toBe(2);
@@ -203,9 +205,9 @@ describe("opening a session for a batch that exists", () => {
     expect(deps.calls).toEqual([
       "batches.findById:batch-1",
       `validations.listEntryIdsForValidator:${VALIDATOR_ID}`,
-      "datasetEntries.findById:OD_0002",
+      "datasetEntries.findById:OD_2",
     ]);
-    expect(deps.calls).not.toContain("datasetEntries.findById:OD_0001");
+    expect(deps.calls).not.toContain("datasetEntries.findById:OD_1");
   });
 
   it("reads NO client-supplied completion state, and offers a completed entry only if asked for one", async () => {
@@ -216,15 +218,15 @@ describe("opening a session for a batch that exists", () => {
     // sentence they had already judged, and every response to it would be a duplicate the uniqueness
     // constraint refuses — after the validator had spent the effort.
     const { openValidationSession } = await loadService();
-    const deps = createRecording({ completedEntryIds: ["OD_0002"] });
+    const deps = createRecording({ completedEntryIds: ["OD_2"] });
 
     const outcome = await openValidationSession({ batchId: "batch-1", position: 2 }, deps);
 
     if (outcome.status !== "presenting") throw new Error("unreachable");
-    expect(outcome.session.entry.id).not.toBe("OD_0002");
-    // Measured, not assumed: with OD_0002 done, position 2 resolves FORWARD to OD_0003, because the
+    expect(outcome.session.entry.id).not.toBe("OD_2");
+    // Measured, not assumed: with OD_2 done, position 2 resolves FORWARD to OD_3, because the
     // remaining set is [1, 3] and the first remaining placement at or after 2 is 3.
-    expect(outcome.session.entry.id).toBe("OD_0003");
+    expect(outcome.session.entry.id).toBe("OD_3");
     expect(outcome.session.position).toBe(3);
   });
 
@@ -235,23 +237,23 @@ describe("opening a session for a batch that exists", () => {
     // both skip the completed entry — a second visit is what a refresh, a bookmark, or a back-button
     // looks like from the server.
     const { openValidationSession } = await loadService();
-    const deps = createRecording({ completedEntryIds: ["OD_0001"] });
+    const deps = createRecording({ completedEntryIds: ["OD_1"] });
 
     const first = await openValidationSession({ batchId: "batch-1" }, deps);
     const second = await openValidationSession({ batchId: "batch-1" }, deps);
 
     for (const outcome of [first, second]) {
       if (outcome.status !== "presenting") throw new Error("unreachable");
-      expect(outcome.session.entry.id).toBe("OD_0002");
+      expect(outcome.session.entry.id).toBe("OD_2");
     }
     // And the second visit did not mutate anything: it is a read, twice, with the same answer.
     expect(deps.calls).toEqual([
       "batches.findById:batch-1",
       `validations.listEntryIdsForValidator:${VALIDATOR_ID}`,
-      "datasetEntries.findById:OD_0002",
+      "datasetEntries.findById:OD_2",
       "batches.findById:batch-1",
       `validations.listEntryIdsForValidator:${VALIDATOR_ID}`,
-      "datasetEntries.findById:OD_0002",
+      "datasetEntries.findById:OD_2",
     ]);
   });
 
@@ -282,12 +284,12 @@ describe("opening a session for a batch that exists", () => {
 
   it("resolves a requested position against the completed set", async () => {
     const { openValidationSession } = await loadService();
-    const deps = createRecording({ completedEntryIds: ["OD_0001"] });
+    const deps = createRecording({ completedEntryIds: ["OD_1"] });
 
     const outcome = await openValidationSession({ batchId: "batch-1", position: 1 }, deps);
 
     if (outcome.status !== "presenting") throw new Error("unreachable");
-    expect(outcome.session.entry.id).toBe("OD_0002");
+    expect(outcome.session.entry.id).toBe("OD_2");
     expect(outcome.session.completedCount).toBe(1);
     expect(outcome.session.remainingCount).toBe(2);
   });
@@ -314,7 +316,7 @@ describe("opening a session for a batch that exists", () => {
       { batchId: "" },
       { batchId: "b", position: 0 },
       { batchId: "b", position: "1" },
-      { batchId: "b", entryIds: ["OD_0001"] },
+      { batchId: "b", entryIds: ["OD_1"] },
       null,
       "batch-1",
     ]) {
@@ -349,7 +351,7 @@ describe("every outcome that is NOT an entry", () => {
 
     const outcome = await openValidationSession(
       { batchId: "batch-1" },
-      createRecording({ completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"] }),
+      createRecording({ completedEntryIds: ["OD_1", "OD_2", "OD_3"] }),
     );
 
     expect(outcome).toEqual({
@@ -371,7 +373,7 @@ describe("every outcome that is NOT an entry", () => {
     // read from any configured constant fails here rather than passing
     // unnoticed.
     const { openValidationSession } = await loadService();
-    const ids = Array.from({ length: 9 }, (_, index) => `OD_30${10 + index}`);
+    const ids = Array.from({ length: 9 }, (_, index) => `OD_3${10 + index}`);
 
     const outcome = await openValidationSession(
       { batchId: "batch-9" },
@@ -398,13 +400,15 @@ describe("every outcome that is NOT an entry", () => {
     // The presenting half of the same guarantee: the progress the participant
     // sees mid-batch is the persisted size, not the configured one.
     const { openValidationSession } = await loadService();
-    const ids = Array.from({ length: 9 }, (_, index) => `OD_30${10 + index}`);
+    const ids = Array.from({ length: 9 }, (_, index) => `OD_3${10 + index}`);
     const storedEntries = Object.fromEntries(
       ids.map((id) => [
         id,
         {
           id,
           category: "origin_destination",
+          sourceEntryId: Number(id.split("_").pop()),
+          categoryName: "Origin + Destination",
           instruction: `Sentence for ${id}.`,
           origin: "Baguio",
           destination: "Baguio",
@@ -443,7 +447,7 @@ describe("every outcome that is NOT an entry", () => {
     // batch-scoped, so a lifetime total can only come from a read whose argument is the validator.
     const { openValidationSession } = await loadService();
     const deps = createRecording({
-      completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"],
+      completedEntryIds: ["OD_1", "OD_2", "OD_3"],
       // Deliberately NOT the completed count: a validator who worked through three batches and
       // finished this one has a lifetime figure nothing like this batch's size.
       lifetimeAnsweredCount: 27,
@@ -472,12 +476,12 @@ describe("every outcome that is NOT an entry", () => {
     const { openValidationSession } = await loadService();
     const finished = await openValidationSession(
       { batchId: "batch-1" },
-      createRecording({ completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"] }),
+      createRecording({ completedEntryIds: ["OD_1", "OD_2", "OD_3"] }),
     );
     const presenting = await openValidationSession({ batchId: "batch-1" }, createRecording());
     const resumed = await openValidationSession(
       { batchId: "batch-1", position: 2 },
-      createRecording({ completedEntryIds: ["OD_0001"] }),
+      createRecording({ completedEntryIds: ["OD_1"] }),
     );
 
     const count = (outcome: unknown) =>
@@ -498,7 +502,7 @@ describe("every outcome that is NOT an entry", () => {
     // `failed`/`persistence` the completed-set read already produces for the same reason.
     const { openValidationSession } = await loadService();
     const deps = createRecording({
-      completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"],
+      completedEntryIds: ["OD_1", "OD_2", "OD_3"],
       countFailure: new RepositoryError("validations.countForValidator", "unreachable"),
     });
 
@@ -529,7 +533,7 @@ describe("every outcome that is NOT an entry", () => {
     const outcome = await openValidationSession(
       { batchId: "batch-1" },
       createRecording({
-        completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"],
+        completedEntryIds: ["OD_1", "OD_2", "OD_3"],
         lifetimeAnsweredCount: 27,
       }),
     );
@@ -615,7 +619,7 @@ describe("every outcome that is NOT an entry", () => {
 
     const outcome = await openValidationSession(
       { batchId: "b" },
-      createRecording({ missingEntryIds: ["OD_0001"] }),
+      createRecording({ missingEntryIds: ["OD_1"] }),
     );
 
     expect(outcome).toEqual({ status: "failed", reason: "persistence" });
@@ -627,7 +631,7 @@ describe("every outcome that is NOT an entry", () => {
     // in the route, where nothing checks it.
     const { openValidationSession } = await loadService();
     const deps = createRecording({
-      unprojectableEntry: { ...storedEntry("OD_0001", "Pumonta iti Baguio."), category: "  " },
+      unprojectableEntry: { ...storedEntry("OD_1", "Pumonta iti Baguio."), category: "  " },
     });
 
     expect(await openValidationSession({ batchId: "b" }, deps)).toEqual({
@@ -656,7 +660,7 @@ describe("every outcome that is NOT an entry", () => {
       await openValidationSession({ batchId: "b" }, createRecording({ batch: null })),
       await openValidationSession(
         { batchId: "b" },
-        createRecording({ completedEntryIds: ["OD_0001", "OD_0002", "OD_0003"] }),
+        createRecording({ completedEntryIds: ["OD_1", "OD_2", "OD_3"] }),
       ),
       await openValidationSession(
         { batchId: "b" },

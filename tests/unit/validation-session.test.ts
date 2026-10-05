@@ -40,7 +40,7 @@ function placement(datasetEntryId: string, position: number): BatchEntryPlacemen
 
 /** A ten-entry batch, the real batch size, in the order allocation would have recorded it. */
 function tenEntryBatch(): BatchEntryPlacement[] {
-  return Array.from({ length: 10 }, (_, index) => placement(`OD_${1000 + index}`, index + 1));
+  return Array.from({ length: 10 }, (_, index) => placement(`OD_${100 + index}`, index + 1));
 }
 
 describe("a validation session request carries a batch and a position, and nothing else", () => {
@@ -62,10 +62,10 @@ describe("a validation session request carries a batch and a position, and nothi
     // the moment somebody adds an `entryIds` the service really does read and no request looks
     // different. So this asserts the REFUSAL, not the absence of an effect.
     for (const attempt of [
-      { batchId: "batch-1", entryIds: ["OD_0001", "OD_0002"] },
-      { batchId: "batch-1", entries: ["OD_0001"] },
+      { batchId: "batch-1", entryIds: ["OD_1", "OD_2"] },
+      { batchId: "batch-1", entries: ["OD_1"] },
       { batchId: "batch-1", clientOrder: [3, 1, 2] },
-      { batchId: "batch-1", position: 1, skip: ["OD_0002"] },
+      { batchId: "batch-1", position: 1, skip: ["OD_2"] },
       { batchId: "batch-1", order: "reverse" },
     ]) {
       const parsed = validationSessionRequestSchema.safeParse(attempt);
@@ -223,7 +223,7 @@ describe("which entry a session presents", () => {
     const choice = resolveSessionEntry(entries, new Set(), undefined);
 
     expect(choice).not.toBeNull();
-    expect(choice?.placement.datasetEntryId).toBe("OD_1000");
+    expect(choice?.placement.datasetEntryId).toBe("OD_100");
     expect(choice?.placement.position).toBe(1);
     expect(choice?.completedCount).toBe(0);
     expect(choice?.remainingCount).toBe(10);
@@ -232,10 +232,10 @@ describe("which entry a session presents", () => {
 
   it("SKIPS an entry this validator already completed, and counts it", () => {
     const entries = tenEntryBatch();
-    const completed = new Set(["OD_1000", "OD_1001"]);
+    const completed = new Set(["OD_100", "OD_101"]);
     const choice = resolveSessionEntry(entries, completed, undefined);
 
-    expect(choice?.placement.datasetEntryId).toBe("OD_1002");
+    expect(choice?.placement.datasetEntryId).toBe("OD_102");
     expect(choice?.completedCount).toBe(2);
     expect(choice?.remainingCount).toBe(8);
   });
@@ -245,12 +245,12 @@ describe("which entry a session presents", () => {
     // against this batch would report a batch as further along than it is, which is the visible form
     // of a coverage error.
     const entries = tenEntryBatch();
-    const completed = new Set(["OD_9999", "OD_9998"]);
+    const completed = new Set(["OD_799", "OD_798"]);
     const choice = resolveSessionEntry(entries, completed, undefined);
 
     expect(choice?.completedCount).toBe(0);
     expect(choice?.remainingCount).toBe(10);
-    expect(choice?.placement.datasetEntryId).toBe("OD_1000");
+    expect(choice?.placement.datasetEntryId).toBe("OD_100");
   });
 
   it("honours a requested position into the server's order", () => {
@@ -258,16 +258,16 @@ describe("which entry a session presents", () => {
     const choice = resolveSessionEntry(entries, new Set(), 5);
 
     expect(choice?.placement.position).toBe(5);
-    expect(choice?.placement.datasetEntryId).toBe("OD_1004");
+    expect(choice?.placement.datasetEntryId).toBe("OD_104");
   });
 
   it("SKIPS past a completed entry when the requested position points at one", () => {
     // This is the property that makes a stale bookmarked link safe: the link says position 3, that
     // entry is answered, and the validator lands on the next one that is not rather than on nothing.
     const entries = tenEntryBatch();
-    const choice = resolveSessionEntry(entries, new Set(["OD_1002"]), 3);
+    const choice = resolveSessionEntry(entries, new Set(["OD_102"]), 3);
 
-    expect(choice?.placement.datasetEntryId).toBe("OD_1003");
+    expect(choice?.placement.datasetEntryId).toBe("OD_103");
   });
 
   it("falls back to the first remaining entry when the position is past the end", () => {
@@ -278,7 +278,7 @@ describe("which entry a session presents", () => {
     const choice = resolveSessionEntry(entries, new Set(), 999);
 
     expect(choice).not.toBeNull();
-    expect(choice?.placement.datasetEntryId).toBe("OD_1000");
+    expect(choice?.placement.datasetEntryId).toBe("OD_100");
     expect(choice?.remainingCount).toBe(10);
   });
 
@@ -327,10 +327,10 @@ describe("which entry a session presents", () => {
     // and worth keeping, because the caller is the session service and a mutation here would quietly
     // change its view of what is done.
     const entries = tenEntryBatch();
-    const completed = new Set<string>(["OD_1000"]);
+    const completed = new Set<string>(["OD_100"]);
     resolveSessionEntry(entries, completed, undefined);
 
-    expect([...completed]).toEqual(["OD_1000"]);
+    expect([...completed]).toEqual(["OD_100"]);
   });
 });
 
@@ -342,7 +342,7 @@ describe("a contention-short batch presents its actual persisted size", () => {
    * a completed set in one suite cannot leak meaning into another.
    */
   function nineEntryBatch(): BatchEntryPlacement[] {
-    return Array.from({ length: 9 }, (_, index) => placement(`OD_${2000 + index}`, index + 1));
+    return Array.from({ length: 9 }, (_, index) => placement(`OD_${200 + index}`, index + 1));
   }
 
   it("reports a total of 9 derived from the persisted placements", () => {
@@ -354,7 +354,7 @@ describe("a contention-short batch presents its actual persisted size", () => {
     expect(choice).not.toBeNull();
     expect(choice?.total).toBe(9);
     expect(choice?.placement.position).toBe(1);
-    expect(choice?.placement.datasetEntryId).toBe("OD_2000");
+    expect(choice?.placement.datasetEntryId).toBe("OD_200");
     expect(choice?.completedCount).toBe(0);
     expect(choice?.remainingCount).toBe(9);
   });
@@ -371,7 +371,7 @@ describe("a contention-short batch presents its actual persisted size", () => {
 
   it("counts completion against the actual size of 9", () => {
     const entries = nineEntryBatch();
-    const completed = new Set(["OD_2000", "OD_2001", "OD_2002"]);
+    const completed = new Set(["OD_200", "OD_201", "OD_202"]);
 
     const choice = resolveSessionEntry(entries, completed, undefined);
 
@@ -388,13 +388,13 @@ describe("a contention-short batch presents its actual persisted size", () => {
   });
 
   it("never re-presents a completed entry in the short batch", () => {
-    // Requested position 5 names OD_2004, which is answered: the session lands
+    // Requested position 5 names OD_204, which is answered: the session lands
     // on the next remaining entry rather than offering the completed one again.
     const entries = nineEntryBatch();
 
-    const choice = resolveSessionEntry(entries, new Set(["OD_2004"]), 5);
+    const choice = resolveSessionEntry(entries, new Set(["OD_204"]), 5);
 
-    expect(choice?.placement.datasetEntryId).toBe("OD_2005");
+    expect(choice?.placement.datasetEntryId).toBe("OD_205");
     expect(choice?.placement.position).toBe(6);
   });
 
@@ -418,7 +418,7 @@ describe("a contention-short batch presents its actual persisted size", () => {
 
     expect(choice).not.toBeNull();
     expect(choice?.placement.position).toBe(1);
-    expect(choice?.placement.datasetEntryId).toBe("OD_2000");
+    expect(choice?.placement.datasetEntryId).toBe("OD_200");
     expect(choice?.total).toBe(9);
   });
 });

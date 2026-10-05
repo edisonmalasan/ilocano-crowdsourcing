@@ -16,13 +16,21 @@ import {
   buildExportRecords,
   buildExportSummary,
   EXPORT_RECORD_KEYS,
+  groupExportRecordsByCategory,
   isQualifyingValidation,
+  sortExportRecords,
+  toJsonGroup,
+  withEmptyCategoryGroups,
+  type ExportCategoryJsonGroup,
   type ExportSourceWithQualifying,
 } from "@/lib/export/records";
 import {
   buildValidatedDataset,
+  flattenValidatedGroups,
   VALIDATED_RECORD_KEYS,
   validatedCsvRow,
+  type ValidatedCategoryGroup,
+  type ValidatedDerivation,
 } from "@/lib/export/validated";
 import type { DatasetEntriesRepository } from "@/lib/repositories/dataset-entries-repository";
 import type { ValidationsRepository } from "@/lib/repositories/validations-repository";
@@ -79,25 +87,41 @@ export interface ExportDocuments {
   readonly result: Omit<ExportResult, "files">;
 }
 
+/** The grouped raw document: five category groups in `category_id` order, always. */
+export interface GroupedValidationsDocument {
+  readonly categories: readonly ExportCategoryJsonGroup[];
+}
+
+/** The grouped validated document: derivation, then the five groups. */
+export interface GroupedValidatedDocument {
+  readonly derivation: ValidatedDerivation;
+  readonly categories: readonly ValidatedCategoryGroup[];
+}
+
 export function renderDocuments(
   sources: readonly ExportSourceWithQualifying[],
   entries: readonly DatasetEntry[],
 ): ExportDocuments {
-  const records = buildExportRecords(sources);
+  const records = sortExportRecords(buildExportRecords(sources));
   const summary = buildExportSummary(entries, sources);
   const validated = buildValidatedDataset(entries, sources);
 
+  const groupedResponses: GroupedValidationsDocument = {
+    categories: withEmptyCategoryGroups(groupExportRecordsByCategory(records)).map(toJsonGroup),
+  };
+  const validatedRecords = flattenValidatedGroups(validated);
+
   return {
-    validationsJson: `${JSON.stringify(records, null, 2)}\n`,
+    validationsJson: `${JSON.stringify(groupedResponses, null, 2)}\n`,
     validationsCsv: buildCsv(records, EXPORT_RECORD_KEYS),
     summaryJson: `${JSON.stringify(summary, null, 2)}\n`,
-    validatedJson: `${JSON.stringify(validated, null, 2)}\n`,
-    validatedCsv: buildCsv(validated.records.map(validatedCsvRow), VALIDATED_RECORD_KEYS),
+    validatedJson: `${JSON.stringify(validated satisfies GroupedValidatedDocument, null, 2)}\n`,
+    validatedCsv: buildCsv(validatedRecords.map(validatedCsvRow), VALIDATED_RECORD_KEYS),
     result: {
       entries: entries.length,
       responses: records.length,
       qualifying: summary.totals.qualifying_validations,
-      validated: validated.records.length,
+      validated: validatedRecords.length,
     },
   };
 }

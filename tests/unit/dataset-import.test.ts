@@ -1,9 +1,9 @@
 /**
- * Parser verification against the REAL merged synthetic dataset file.
+ * Parser verification against the REAL revised synthetic dataset file.
  *
  * These tests read `data/merged-ilocano-synthetic-data.json` itself rather than a hand-written
  * fixture, because a fixture would only prove the parser handles whatever the fixture happens to
- * contain. The research question is whether all 3,000 real records survive the trip, so that is
+ * contain. The research question is whether all 4,000 real records survive the trip, so that is
  * what is asserted.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -12,17 +12,20 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  canonicalDatasetEntryId,
   DatasetParseError,
-  MERGED_SOURCE_CATEGORY_TABLE,
   parseSyntheticDataset,
   type ImportedDatasetEntry,
 } from "@/lib/dataset/synthetic-source";
+import {
+  compareCanonicalEntryIds,
+  DATASET_CATEGORY_TABLE,
+  parseCanonicalEntryId,
+} from "@/lib/domain/categories";
 
 const SOURCE_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthetic-data.json");
 
 interface RawRecord {
-  id: number;
+  id: string;
   instruction: string;
   output: { origin: string | null; destination: string | null; transit_mode: string | null };
 }
@@ -66,54 +69,66 @@ function projectionOf(entry: ImportedDatasetEntry | undefined) {
 function expectedIdsInSourceOrder(): string[] {
   const ids: string[] = [];
   for (const block of readDocument().categories) {
-    const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === block.category_name);
-    if (!mapping) throw new Error(`no mapping for ${block.category_name}`);
-    for (const record of block.entries) {
-      ids.push(canonicalDatasetEntryId(mapping.prefix, record.id));
-    }
+    for (const record of block.entries) ids.push(record.id);
   }
   return ids;
 }
 
-describe("parseSyntheticDataset against the real merged dataset", () => {
-  it("produces 3,000 entries, 600 per category, in source order", () => {
+describe("parseSyntheticDataset against the real revised dataset", () => {
+  it("produces 4,000 entries, 800 per category, in source order", () => {
     const { entries, report } = parseSyntheticDataset(readSource());
 
-    expect(entries).toHaveLength(3000);
-    expect(report.recordCount).toBe(3000);
+    expect(entries).toHaveLength(4000);
+    expect(report.recordCount).toBe(4000);
     expect(entries.map((entry) => entry.id)).toEqual(expectedIdsInSourceOrder());
   });
 
-  it("mints globally unique canonical ids with the documented prefixes", () => {
+  it("preserves every canonical id verbatim with no duplicates", () => {
     const { entries } = parseSyntheticDataset(readSource());
     const ids = entries.map((entry) => entry.id);
 
-    expect(new Set(ids).size).toBe(3000);
-    for (const mapping of MERGED_SOURCE_CATEGORY_TABLE) {
-      const expected = Array.from(
-        { length: 600 },
-        (_, index) => `${mapping.prefix}_${String(index + 1).padStart(4, "0")}`,
-      );
-      expect(ids.filter((id) => id.startsWith(`${mapping.prefix}_`)).sort()).toEqual(expected);
-    }
+    expect(new Set(ids).size).toBe(4000);
+    // Verbatim, not reminted: the parsed id IS the filed id, byte for byte.
+    const filed = new Set(expectedIdsInSourceOrder());
+    for (const id of ids) expect(filed.has(id), `${id} was not in the source`).toBe(true);
   });
 
-  it("recovers the source-local id and category on every entry", () => {
+  it("derives the source-local id from the numeric suffix in every category", () => {
     const { entries } = parseSyntheticDataset(readSource());
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
     const document = readDocument();
 
     expect(new Set(entries.map((entry) => entry.category)).size).toBe(5);
     for (const block of document.categories) {
-      const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === block.category_name);
+      const mapping = DATASET_CATEGORY_TABLE.find((row) => row.name === block.category_name);
       if (!mapping) throw new Error(`no mapping for ${block.category_name}`);
       for (const record of block.entries) {
-        const entry = byId.get(canonicalDatasetEntryId(mapping.prefix, record.id));
-        expect(entry, `missing entry for ${mapping.prefix}#${record.id}`).toBeDefined();
-        expect(entry?.sourceEntryId).toBe(record.id);
+        const parsed = parseCanonicalEntryId(record.id);
+        expect(parsed?.prefix).toBe(mapping.prefix);
+        const entry = byId.get(record.id);
+        expect(entry, `missing entry for ${record.id}`).toBeDefined();
+        expect(entry?.sourceEntryId).toBe(parsed?.suffix);
         expect(entry?.category).toBe(mapping.slug);
         expect(entry?.categoryName).toBe(block.category_name);
       }
+    }
+  });
+
+  it("holds source-local ids exactly 1..800 per category", () => {
+    const { entries } = parseSyntheticDataset(readSource());
+    const byCategory = new Map<string, number[]>();
+    for (const entry of entries) {
+      const locals = byCategory.get(entry.category) ?? [];
+      locals.push(entry.sourceEntryId);
+      byCategory.set(entry.category, locals);
+    }
+    expect([...byCategory.keys()].sort()).toEqual(
+      DATASET_CATEGORY_TABLE.map((row) => row.slug).sort(),
+    );
+    for (const locals of byCategory.values()) {
+      expect([...locals].sort((a, b) => a - b)).toEqual(
+        Array.from({ length: 800 }, (_, index) => index + 1),
+      );
     }
   });
 
@@ -123,10 +138,8 @@ describe("parseSyntheticDataset against the real merged dataset", () => {
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
 
     for (const block of document.categories) {
-      const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === block.category_name);
-      if (!mapping) throw new Error(`no mapping for ${block.category_name}`);
       for (const record of block.entries) {
-        const entry = byId.get(canonicalDatasetEntryId(mapping.prefix, record.id));
+        const entry = byId.get(record.id);
         // Byte equality, not a trimmed or case-folded comparison: Ilocano capitalization and
         // punctuation are what validators are judging.
         expect(entry?.instruction).toBe(record.instruction);
@@ -134,24 +147,35 @@ describe("parseSyntheticDataset against the real merged dataset", () => {
     }
   });
 
-  it("takes transit mode from the file rather than inventing or defaulting it", () => {
-    const document = readDocument();
+  it("takes transit mode from the file with the exact intended distribution", () => {
     const { entries } = parseSyntheticDataset(readSource());
-    const byId = new Map(entries.map((entry) => [entry.id, entry]));
-    const seen = new Set<string | null>();
-
-    for (const block of document.categories) {
-      const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === block.category_name);
-      if (!mapping) throw new Error(`no mapping for ${block.category_name}`);
-      for (const record of block.entries) {
-        const stored = byId.get(canonicalDatasetEntryId(mapping.prefix, record.id))?.transitMode;
-        expect(stored).toBe(record.output.transit_mode);
-        seen.add(stored ?? null);
-      }
+    const counts = new Map<string, Map<string, number>>();
+    for (const entry of entries) {
+      const modes = counts.get(entry.category) ?? new Map<string, number>();
+      const key = entry.transitMode ?? "null";
+      modes.set(key, (modes.get(key) ?? 0) + 1);
+      counts.set(entry.category, modes);
     }
-    // The file genuinely varies the value, so this assertion would catch a parser that defaulted
-    // the column: a constant output over 3,000 varying inputs is the signature of a default.
-    expect(seen.size).toBeGreaterThan(1);
+    const expected: Record<string, Record<string, number>> = {
+      destination_only: { null: 800 },
+      destination_transit_mode: { walking: 200, jeepney: 200, taxi: 200, private_vehicle: 200 },
+      origin_destination: { null: 800 },
+      origin_destination_transit_mode: {
+        walking: 200,
+        jeepney: 200,
+        taxi: 200,
+        private_vehicle: 200,
+      },
+      complex_preference_expressions: {
+        walking: 200,
+        jeepney: 200,
+        taxi: 200,
+        private_vehicle: 200,
+      },
+    };
+    for (const [category, modes] of Object.entries(expected)) {
+      expect(Object.fromEntries(counts.get(category) ?? new Map()), category).toEqual(modes);
+    }
   });
 
   it("maps origin and destination from the nested output object", () => {
@@ -160,10 +184,8 @@ describe("parseSyntheticDataset against the real merged dataset", () => {
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
 
     for (const block of document.categories) {
-      const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === block.category_name);
-      if (!mapping) throw new Error(`no mapping for ${block.category_name}`);
       for (const record of block.entries) {
-        const entry = byId.get(canonicalDatasetEntryId(mapping.prefix, record.id));
+        const entry = byId.get(record.id);
         expect(entry?.origin).toBe(record.output.origin);
         expect(entry?.destination).toBe(record.output.destination);
       }
@@ -185,47 +207,69 @@ describe("parseSyntheticDataset against the real merged dataset", () => {
 
     let index = 0;
     for (const block of document.categories) {
-      const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === block.category_name);
-      if (!mapping) throw new Error(`no mapping for ${block.category_name}`);
       for (const record of block.entries) {
         const entry = entries[index];
-        // The archival copy must be the record as authored, not the mapped candidate object:
-        // local numeric id, no canonical id, no category slug.
+        // The archival copy must be the record as authored: the filed string id, no derived
+        // slug, no suffix split.
         expect(entry?.sourcePayload).toEqual(record);
-        expect(entry?.id).toBe(canonicalDatasetEntryId(mapping.prefix, record.id));
+        expect(entry?.id).toBe(record.id);
         index += 1;
       }
     }
   });
+
+  it("sorts research-facing output numerically, never lexically", () => {
+    const { entries } = parseSyntheticDataset(readSource());
+    const sorted = [...entries.map((entry) => entry.id)].sort(compareCanonicalEntryIds);
+    // Lexical order would put D_10 before D_2; numeric order must not.
+    expect(sorted.indexOf("D_2")).toBeLessThan(sorted.indexOf("D_10"));
+    expect(sorted.slice(0, 3)).toEqual(["D_1", "D_2", "D_3"]);
+    expect(sorted.slice(800, 802)).toEqual(["DT_1", "DT_2"]);
+  });
 });
 
-describe("merged-shape validation", () => {
+describe("revised-shape validation", () => {
   /** One full valid block, so failure tests can break exactly one thing. */
-  function block(
-    name: string,
-    ids: readonly number[] = Array.from({ length: 600 }, (_, index) => index + 1),
-  ) {
+  function block(prefix: string, name: string, ids: readonly string[]) {
+    // Shape-correct per category: null-mode blocks carry no origin and no mode, mode-bearing
+    // blocks carry both. A helper that built an invalid block would fail every test that uses
+    // it for the wrong reason.
+    const modeBearing = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
+    const withOrigin = prefix === "OD" || prefix === "ODT" || prefix === "CPE";
     return {
       category_id: 1,
       category_name: name,
       entries: ids.map((id) => ({
         id,
         instruction: `Instruction ${id}.`,
-        output: { origin: null, destination: `Place ${id}`, transit_mode: null },
+        output: {
+          origin: withOrigin ? `Origin ${id}` : null,
+          destination: `Place ${id}`,
+          transit_mode: modeBearing ? "walking" : null,
+        },
       })),
     };
   }
 
-  function documentOf(names: readonly string[]) {
-    return { categories: names.map((name) => block(name)) };
+  function fullIds(prefix: string): string[] {
+    return Array.from({ length: 800 }, (_, index) => `${prefix}_${index + 1}`);
   }
 
-  const NAMES = MERGED_SOURCE_CATEGORY_TABLE.map((row) => row.name);
+  function documentOf(blocks: { prefix: string; name: string }[]) {
+    return {
+      categories: blocks.map((row, index) => ({
+        ...block(row.prefix, row.name, fullIds(row.prefix)),
+        category_id: index + 1,
+      })),
+    };
+  }
+
+  const NAMES = DATASET_CATEGORY_TABLE.map((row) => ({ prefix: row.prefix, name: row.name }));
 
   it("accepts the five documented categories and nothing else", () => {
     // Hardcoded, not derived from the table: deriving the expectation from the implementation
     // would pass with any five names, including five wrong ones.
-    expect(MERGED_SOURCE_CATEGORY_TABLE.map((row) => row.name)).toEqual([
+    expect(DATASET_CATEGORY_TABLE.map((row) => row.name)).toEqual([
       "Destination Only",
       "Destination + Transit Mode",
       "Origin + Destination",
@@ -233,95 +277,165 @@ describe("merged-shape validation", () => {
       "Complex/Preference Expressions",
     ]);
     const { entries } = parseSyntheticDataset(documentOf(NAMES));
-    expect(entries).toHaveLength(3000);
+    expect(entries).toHaveLength(4000);
   });
 
   it("rejects a sixth block and a missing block", () => {
-    expect(() => parseSyntheticDataset(documentOf([...NAMES, NAMES[0] as string]))).toThrow(
-      DatasetParseError,
-    );
+    expect(() =>
+      parseSyntheticDataset(documentOf([...NAMES, NAMES[0] as (typeof NAMES)[number]])),
+    ).toThrow(DatasetParseError);
     expect(() => parseSyntheticDataset(documentOf(NAMES.slice(0, 4)))).toThrow(DatasetParseError);
   });
 
   it("rejects a duplicated category block", () => {
-    const names = [
-      NAMES[0] as string,
-      NAMES[1] as string,
-      NAMES[1] as string,
-      NAMES[2] as string,
-      NAMES[3] as string,
-    ];
+    const names = [NAMES[0], NAMES[1], NAMES[1], NAMES[2], NAMES[3]] as typeof NAMES;
     expect(() => parseSyntheticDataset(documentOf(names))).toThrow(/duplicate category block/);
   });
 
   it("rejects an unknown category name rather than inventing a mapping", () => {
     const names = [
-      NAMES[0] as string,
-      "Harbor + Ferry",
-      NAMES[2] as string,
-      NAMES[3] as string,
-      NAMES[4] as string,
-    ];
+      NAMES[0],
+      { prefix: "HF", name: "Harbor + Ferry" },
+      NAMES[2],
+      NAMES[3],
+      NAMES[4],
+    ] as typeof NAMES;
     expect(() => parseSyntheticDataset(documentOf(names))).toThrow(/unknown category/);
   });
 
-  it("rejects a duplicated local id, naming the block and the id", () => {
-    const ids = Array.from({ length: 600 }, (_, index) => (index < 599 ? index + 1 : 599));
+  it("rejects a duplicated canonical id, naming the block and the id", () => {
+    const ids = fullIds("OD");
+    ids[799] = "OD_599";
     const document = documentOf(NAMES);
-    document.categories[2] = block(NAMES[2] as string, ids);
+    document.categories[2] = { ...block("OD", NAMES[2]?.name as string, ids), category_id: 3 };
     try {
       parseSyntheticDataset(document);
-      expect.unreachable("a duplicated local id was accepted");
+      expect.unreachable("a duplicated canonical id was accepted");
     } catch (cause) {
       const error = cause as DatasetParseError;
-      expect(error.message).toContain("duplicate source-local id 599");
-      expect(error.message).toContain(NAMES[2] as string);
+      expect(error.message).toContain("duplicate canonical id OD_599");
+      expect(error.message).toContain(NAMES[2]?.name as string);
     }
   });
 
   it("rejects a gap disguised as a duplicate, naming the id", () => {
-    // 600 entries with id 1 missing and id 2 doubled: the count arm cannot see it (600 entries)
+    // 800 entries with suffix 1 missing and suffix 2 doubled: the count arm cannot see it
     // but the set arm fails loudly, naming the duplicated id. A gap can never slip through
     // silently — it always surfaces as a short block or a duplicate.
-    const ids = Array.from({ length: 600 }, (_, index) => (index === 0 ? 2 : index + 1));
+    const ids = fullIds("D");
+    ids[0] = "D_2";
     const document = documentOf(NAMES);
-    document.categories[0] = block(NAMES[0] as string, ids);
+    document.categories[0] = { ...block("D", NAMES[0]?.name as string, ids), category_id: 1 };
     try {
       parseSyntheticDataset(document);
       expect.unreachable("a block with a gap was accepted");
     } catch (cause) {
       const error = cause as DatasetParseError;
-      expect(error.message).toContain("duplicate source-local id 2");
-      expect(error.message).toContain(NAMES[0] as string);
+      expect(error.message).toContain("duplicate canonical id D_2");
+      expect(error.message).toContain(NAMES[0]?.name as string);
     }
+  });
+
+  it("rejects a misplaced prefix, naming the id and the block", () => {
+    // A Destination + Transit Mode id filed inside Destination Only: same suffix range, wrong
+    // family. Suffix checks alone would pass it; only the prefix/block agreement sees it.
+    const ids = fullIds("D");
+    ids[11] = "DT_12";
+    const document = documentOf(NAMES);
+    document.categories[0] = { ...block("D", NAMES[0]?.name as string, ids), category_id: 1 };
+    try {
+      parseSyntheticDataset(document);
+      expect.unreachable("a misplaced prefix was accepted");
+    } catch (cause) {
+      const error = cause as DatasetParseError;
+      expect(error.message).toContain("DT_12");
+      expect(error.message).toContain(NAMES[0]?.name as string);
+    }
+  });
+
+  it("rejects a zero-padded id rather than reminting it", () => {
+    const ids = fullIds("OD");
+    ids[0] = "OD_0001";
+    const document = documentOf(NAMES);
+    document.categories[2] = { ...block("OD", NAMES[2]?.name as string, ids), category_id: 3 };
+    expect(() => parseSyntheticDataset(document)).toThrow(DatasetParseError);
+  });
+
+  it("rejects an out-of-range suffix", () => {
+    const ids = fullIds("CPE");
+    ids[799] = "CPE_801";
+    const document = documentOf(NAMES);
+    document.categories[4] = { ...block("CPE", NAMES[4]?.name as string, ids), category_id: 5 };
+    expect(() => parseSyntheticDataset(document)).toThrow(DatasetParseError);
   });
 
   it("rejects a short block rather than importing it partially", () => {
     const document = documentOf(NAMES);
-    document.categories[4] = block(NAMES[4] as string, [1, 2, 3]);
-    expect(() => parseSyntheticDataset(document)).toThrow(/expected 600 entries, received 3/);
+    document.categories[4] = {
+      ...block("CPE", NAMES[4]?.name as string, ["CPE_1", "CPE_2", "CPE_3"]),
+      category_id: 5,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(/expected 800 entries, received 3/);
+  });
+
+  it("rejects a transit mode in a null-mode category", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("D").map((id) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: { origin: null, destination: `Place ${id}`, transit_mode: "walking" },
+    }));
+    document.categories[0] = {
+      category_id: 1,
+      category_name: NAMES[0]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(/must be null in null-mode category/);
+  });
+
+  it("rejects a missing transit mode in a mode-bearing category", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DT").map((id) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: { origin: null, destination: `Place ${id}`, transit_mode: null },
+    }));
+    document.categories[1] = {
+      category_id: 2,
+      category_name: NAMES[1]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(/must be one of/);
+  });
+
+  it("rejects an unknown transit-mode label rather than storing it", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DT").map((id, index) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: {
+        origin: null,
+        destination: `Place ${id}`,
+        transit_mode: index === 0 ? "car" : "walking",
+      },
+    }));
+    document.categories[1] = {
+      category_id: 2,
+      category_name: NAMES[1]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(/must be one of/);
   });
 
   it("rejects a non-object document and a missing categories array", () => {
-    expect(() => parseSyntheticDataset([{ id: 1 }])).toThrow(DatasetParseError);
+    expect(() => parseSyntheticDataset([{ id: "D_1" }])).toThrow(DatasetParseError);
     expect(() => parseSyntheticDataset({})).toThrow(DatasetParseError);
     expect(() => parseSyntheticDataset(null)).toThrow(DatasetParseError);
-  });
-
-  it("mints canonical ids deterministically across runs", () => {
-    const first = parseSyntheticDataset(documentOf(NAMES));
-    const second = parseSyntheticDataset(documentOf(NAMES));
-    expect(first.entries.map((entry) => entry.id)).toEqual(second.entries.map((entry) => entry.id));
-    expect(first.entries[0]?.id).toBe("DO_0001");
-    expect(first.entries[600]?.id).toBe("DT_0001");
-    expect(first.entries[1200]?.id).toBe("OD_0001");
-    expect(first.entries[1800]?.id).toBe("ODT_0001");
-    expect(first.entries[2400]?.id).toBe("CPE_0001");
   });
 });
 
 describe("parseSyntheticDataset preserves unmodelled source fields", () => {
-  function validRecord(id: number): Record<string, unknown> {
+  function validRecord(id: string): Record<string, unknown> {
     return {
       id,
       instruction: `Instruction ${id}.`,
@@ -329,31 +443,43 @@ describe("parseSyntheticDataset preserves unmodelled source fields", () => {
     };
   }
 
-  function fullBlock(category_id: number, category_name: string) {
+  function fullBlock(category_id: number, prefix: string, category_name: string) {
+    const modeBearing = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
+    const withOrigin = prefix === "OD" || prefix === "ODT" || prefix === "CPE";
     return {
       category_id,
       category_name,
-      entries: Array.from({ length: 600 }, (_, index) => validRecord(index + 1)),
+      entries: Array.from({ length: 800 }, (_, index) => {
+        const id = `${prefix}_${index + 1}`;
+        return {
+          ...validRecord(id),
+          output: {
+            origin: withOrigin ? `Origin ${id}` : null,
+            destination: `Place ${id}`,
+            transit_mode: modeBearing ? "walking" : null,
+          },
+        };
+      }),
     };
   }
 
   function wrapped(firstRecord: Record<string, unknown>) {
-    const entries = Array.from({ length: 600 }, (_, index) => validRecord(index + 1));
+    const entries = Array.from({ length: 800 }, (_, index) => validRecord(`OD_${index + 1}`));
     entries[0] = firstRecord;
     return {
       categories: [
         { category_id: 3, category_name: "Origin + Destination", entries },
-        fullBlock(1, "Destination Only"),
-        fullBlock(2, "Destination + Transit Mode"),
-        fullBlock(4, "Origin + Destination + Transit Mode"),
-        fullBlock(5, "Complex/Preference Expressions"),
+        fullBlock(1, "D", "Destination Only"),
+        fullBlock(2, "DT", "Destination + Transit Mode"),
+        fullBlock(4, "ODT", "Origin + Destination + Transit Mode"),
+        fullBlock(5, "CPE", "Complex/Preference Expressions"),
       ],
     };
   }
 
   it("retains an unknown top-level field and names it in the report", () => {
     const { entries, report } = parseSyntheticDataset(
-      wrapped({ ...validRecord(1), difficulty: "hard" }),
+      wrapped({ ...validRecord("OD_1"), difficulty: "hard" }),
     );
 
     // The whole point of the rule: a field the domain type does not model survives in the stored
@@ -369,7 +495,7 @@ describe("parseSyntheticDataset preserves unmodelled source fields", () => {
   it("retains an unknown nested output field under a dotted path", () => {
     const { entries, report } = parseSyntheticDataset(
       wrapped({
-        ...validRecord(1),
+        ...validRecord("OD_1"),
         output: {
           origin: null,
           destination: "X",
@@ -386,8 +512,8 @@ describe("parseSyntheticDataset preserves unmodelled source fields", () => {
   });
 });
 
-describe("parseSyntheticDataset rejects rather than repairs — merged shape", () => {
-  function validRecord(id: number): Record<string, unknown> {
+describe("parseSyntheticDataset rejects rather than repairs — revised shape", () => {
+  function validRecord(id: string): Record<string, unknown> {
     return {
       id,
       instruction: "Iti Baguio Athletic Bowl ti ayanko ita.",
@@ -395,24 +521,36 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
     };
   }
 
-  function fullBlock(category_id: number, category_name: string) {
+  function fullBlock(category_id: number, prefix: string, category_name: string) {
+    const modeBearing = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
+    const withOrigin = prefix === "OD" || prefix === "ODT" || prefix === "CPE";
     return {
       category_id,
       category_name,
-      entries: Array.from({ length: 600 }, (_, index) => validRecord(index + 1)),
+      entries: Array.from({ length: 800 }, (_, index) => {
+        const id = `${prefix}_${index + 1}`;
+        return {
+          ...validRecord(id),
+          output: {
+            origin: withOrigin ? "A" : null,
+            destination: "B",
+            transit_mode: modeBearing ? "walking" : null,
+          },
+        };
+      }),
     };
   }
 
   function wrapped(firstRecord: Record<string, unknown>) {
-    const entries = Array.from({ length: 600 }, (_, index) => validRecord(index + 1));
+    const entries = Array.from({ length: 800 }, (_, index) => validRecord(`OD_${index + 1}`));
     entries[0] = firstRecord;
     return {
       categories: [
         { category_id: 3, category_name: "Origin + Destination", entries },
-        fullBlock(1, "Destination Only"),
-        fullBlock(2, "Destination + Transit Mode"),
-        fullBlock(4, "Origin + Destination + Transit Mode"),
-        fullBlock(5, "Complex/Preference Expressions"),
+        fullBlock(1, "D", "Destination Only"),
+        fullBlock(2, "DT", "Destination + Transit Mode"),
+        fullBlock(4, "ODT", "Origin + Destination + Transit Mode"),
+        fullBlock(5, "CPE", "Complex/Preference Expressions"),
       ],
     };
   }
@@ -420,14 +558,14 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
   it("rejects a blank instruction rather than importing an entry with nothing to judge", () => {
     // A dataset entry with no instruction gives a validator nothing to evaluate. Defaulting it
     // would manufacture a research record that never existed.
-    expect(() => parseSyntheticDataset(wrapped({ ...validRecord(1), instruction: "   " }))).toThrow(
-      DatasetParseError,
-    );
+    expect(() =>
+      parseSyntheticDataset(wrapped({ ...validRecord("OD_1"), instruction: "   " })),
+    ).toThrow(DatasetParseError);
   });
 
   it("rejects a missing instruction and identifies the block", () => {
     const rest: Record<string, unknown> = {
-      id: 1,
+      id: "OD_1",
       output: { origin: "A", destination: "B", transit_mode: null },
     };
     try {
@@ -441,8 +579,8 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
 
   it("identifies the offending record when the id itself is unusable", () => {
     try {
-      parseSyntheticDataset(wrapped({ ...validRecord(1), id: 42.5 }));
-      expect.unreachable("a record with a non-integer id was accepted");
+      parseSyntheticDataset(wrapped({ ...validRecord("OD_1"), id: "OD_1.5" }));
+      expect.unreachable("a record with a non-canonical id was accepted");
     } catch (cause) {
       const error = cause as DatasetParseError;
       expect(error.fieldPath).toContain("$.categories[0]");
@@ -451,13 +589,13 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
   });
 
   it("rejects the whole file rather than importing the records that happened to parse", () => {
-    // Importing 2,999 of 3,000 records would leave the dataset quietly incomplete, and a coverage
+    // Importing 3,999 of 4,000 records would leave the dataset quietly incomplete, and a coverage
     // count computed over a partial import is worse than no import at all.
-    const broken = wrapped(validRecord(1));
+    const broken = wrapped(validRecord("OD_1"));
     const lastBlock = broken.categories[4];
     if (lastBlock === undefined) throw new Error("expected five blocks");
-    lastBlock.entries[599] = {
-      id: 600,
+    lastBlock.entries[799] = {
+      id: "CPE_800",
       instruction: "",
       output: { origin: null, destination: "B", transit_mode: null },
     };
@@ -465,16 +603,25 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
   });
 
   it("treats an omitted optional field and an explicit null identically", () => {
-    const omitted = parseSyntheticDataset(wrapped({ ...validRecord(1), output: {} })).entries[0];
+    // A null-mode category is the honest venue: omitting `transit_mode` and sending it as
+    // `null` must produce the same stored record. Origin/destination stay present because the
+    // category-purpose check requires them — omitting a REQUIRED field is a different test
+    // (the blank-instruction refusal above), not an equivalence.
+    const omitted = parseSyntheticDataset(
+      wrapped({
+        ...validRecord("OD_1"),
+        output: { origin: "A", destination: "B" },
+      }),
+    ).entries[0];
     const explicitNull = parseSyntheticDataset(
       wrapped({
-        ...validRecord(1),
-        output: { origin: null, destination: null, transit_mode: null },
+        ...validRecord("OD_1"),
+        output: { origin: "A", destination: "B", transit_mode: null },
       }),
     ).entries[0];
 
-    expect(omitted?.origin).toBeNull();
-    expect(omitted?.destination).toBeNull();
+    expect(omitted?.origin).toBe("A");
+    expect(omitted?.destination).toBe("B");
     expect(omitted?.transitMode).toBeNull();
     // One importer that leaves a field out and one that sends an explicit null must produce the
     // same stored record, which is what lets a category without a concept be represented without
@@ -482,9 +629,9 @@ describe("parseSyntheticDataset rejects rather than repairs — merged shape", (
     // differs, because it records each source record exactly as it was authored.
     expect(projectionOf(omitted)).toEqual(projectionOf(explicitNull));
     expect(omitted?.sourcePayload).toEqual({
-      id: 1,
+      id: "OD_1",
       instruction: "Iti Baguio Athletic Bowl ti ayanko ita.",
-      output: {},
+      output: { origin: "A", destination: "B" },
     });
   });
 });
@@ -550,8 +697,8 @@ describe("the source dataset is never opened for writing", () => {
     const { readAndParseDatasetFile } = await import("@/lib/dataset/import-dataset");
     const { entries, report } = await readAndParseDatasetFile(SOURCE_PATH);
 
-    expect(report.recordCount).toBe(3000);
-    expect(entries).toHaveLength(3000);
+    expect(report.recordCount).toBe(4000);
+    expect(entries).toHaveLength(4000);
     expect(readFileSync(SOURCE_PATH, "utf8")).toBe(readFileSync(SOURCE_PATH, "utf8"));
   });
 });
@@ -565,7 +712,7 @@ describe("the parser is pure", () => {
           category_name: "Origin + Destination",
           entries: [
             {
-              id: 1,
+              id: "OD_1",
               instruction: "Iti Baguio Athletic Bowl ti ayanko ita.",
               output: { origin: "A", destination: "B", transit_mode: null },
               difficulty: "hard",

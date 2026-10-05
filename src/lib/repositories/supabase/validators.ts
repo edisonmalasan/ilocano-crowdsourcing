@@ -171,7 +171,7 @@ export class SupabaseValidatorsRepository implements ValidatorsRepository {
    * dashboard over an entry nobody has touched — into a server error.
    *
    * Chunked at 200 ids per request: the filter list travels in the URL, and a study with
-   * thousands of attempts would otherwise draw the same 400 the validations read drew at 3,000
+   * thousands of attempts would otherwise draw the same 400 the validations read drew at 4,000
    * entry ids. Each chunk returns at most 200 rows, so no chunk can hit the response cap either.
    */
   async listByIds(ids: readonly AnonymousValidatorId[]): Promise<ValidatorProfile[]> {

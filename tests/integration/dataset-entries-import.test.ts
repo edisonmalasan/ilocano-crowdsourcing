@@ -4,7 +4,7 @@
  *
  * WHY THIS FILE IS NOT A RESTATEMENT OF `dataset-import.test.ts`
  * -------------------------------------------------------------
- * That file already proves the importer writes all 600 records correctly, but it proves it through a
+ * That file already proves the importer writes all 800 records correctly, but it proves it through a
  * TEST-LOCAL `upsertWithParams` function written in TypeScript. This file proves the thing that
  * actually ships: the `public.dataset_entries_import` function created by
  * `20261003120000_dataset_entries_import.sql`, driven through the PRODUCTION
@@ -353,12 +353,12 @@ describe("the dataset_entries_import function", () => {
   // All 3,000 records through the PRODUCTION sink.
   // ---------------------------------------------------------------------------------------------
 
-  it("imports all 3000 records through the production sink with every instruction byte-identical", async () => {
+  it("imports all 4000 records through the production sink with every instruction byte-identical", async () => {
     const { entries, report } = parsedEntries();
-    expect(entries.length).toBe(3000);
+    expect(entries.length).toBe(4000);
 
     const result = await importDatasetEntries(entries, sinkFor(), report);
-    expect(result).toMatchObject({ parsed: 3000, inserted: 3000, updated: 0 });
+    expect(result).toMatchObject({ parsed: 4000, inserted: 4000, updated: 0 });
 
     const stored = await query<{ id: string; instruction: string }>(
       db,
@@ -366,29 +366,26 @@ describe("the dataset_entries_import function", () => {
     );
 
     // Read the SOURCE, not the parse, so this cannot pass by checking the import against
-    // something the import produced. Canonical ids are derived here by the same documented
-    // rule (`{prefix}_{local:04d}`), spelled out per block rather than imported from the
-    // parser — deriving the expectation from the implementation would pass with any rule.
+    // something the import produced. Canonical ids are read verbatim here — the expectation
+    // is the filed id itself, so a parser that reminted ids would fail against the source.
     const document = JSON.parse(readFileSync(SOURCE_PATH, "utf8")) as {
-      categories: { category_name: string; entries: { id: number; instruction: string }[] }[];
+      categories: { category_name: string; entries: { id: string; instruction: string }[] }[];
     };
-    const prefixes = ["DO", "DT", "OD", "ODT", "CPE"];
     const expected = new Map<string, string>();
-    document.categories.forEach((block, index) => {
-      const prefix = prefixes[index] as string;
+    document.categories.forEach((block) => {
       for (const record of block.entries) {
-        expected.set(`${prefix}_${String(record.id).padStart(4, "0")}`, record.instruction);
+        expected.set(record.id, record.instruction);
       }
     });
 
-    expect(stored).toHaveLength(3000);
+    expect(stored).toHaveLength(4000);
     expect(new Set(stored.map((row) => row.id))).toEqual(new Set(expected.keys()));
     for (const row of stored) {
       expect(row.instruction, `instruction for ${row.id}`).toBe(expected.get(row.id));
     }
   });
 
-  it("stores provenance on every row: 600 per category, local ids 1..600, payloads verbatim", async () => {
+  it("stores provenance on every row: 800 per category, local ids 1..800, payloads verbatim", async () => {
     const { entries, report } = parsedEntries();
     await importDatasetEntries(entries, sinkFor(), report);
 
@@ -403,11 +400,12 @@ describe("the dataset_entries_import function", () => {
       "select id, category, source_entry_id, category_name, source_payload from public.dataset_entries",
     );
 
-    expect(stored).toHaveLength(3000);
+    expect(stored).toHaveLength(4000);
     const byCategory = new Map<string, { locals: number[]; names: Set<string> }>();
     for (const row of stored) {
-      // The payload preserves the ORIGINAL source record: numeric local id, no canonical id.
-      expect(row.source_payload.id).toBe(row.source_entry_id);
+      // The payload preserves the ORIGINAL source record: the filed string id, identical to
+      // the stored canonical id — verbatim, not reminted.
+      expect(row.source_payload.id).toBe(row.id);
       const group = byCategory.get(row.category) ?? { locals: [], names: new Set<string>() };
       group.locals.push(row.source_entry_id);
       group.names.add(row.category_name);
@@ -424,13 +422,13 @@ describe("the dataset_entries_import function", () => {
     );
     for (const [category, group] of byCategory) {
       expect(group.locals.sort((a, b) => a - b)).toEqual(
-        Array.from({ length: 600 }, (_, index) => index + 1),
+        Array.from({ length: 800 }, (_, index) => index + 1),
       );
       expect(group.names.size, `category names for ${category}`).toBe(1);
     }
   });
 
-  it("leaves all 3000 rows byte-identical on a second run, reporting 0 inserted / 3000 updated", async () => {
+  it("leaves all 4000 rows byte-identical on a second run, reporting 0 inserted / 4000 updated", async () => {
     const { entries, report } = parsedEntries();
 
     await importDatasetEntries(entries, sinkFor(), report);
@@ -441,7 +439,7 @@ describe("the dataset_entries_import function", () => {
     );
 
     const second = await importDatasetEntries(entries, sinkFor(), report);
-    expect(second).toMatchObject({ parsed: 3000, inserted: 0, updated: 3000 });
+    expect(second).toMatchObject({ parsed: 4000, inserted: 0, updated: 4000 });
 
     const after = await query<{ id: string; instruction: string; created_at: string }>(
       db,
@@ -828,10 +826,10 @@ describe("the dataset_entries_import function", () => {
       expect(new Set(columns.map((column) => column.is_nullable))).toEqual(new Set(["YES"]));
     });
 
-    it("rejects a source-local id outside 1..600 and a blank category name", async () => {
+    it("rejects a source-local id outside 1..800 and a blank category name", async () => {
       for (const [column, value, check] of [
         ["source_entry_id", 0, "dataset_entries_source_entry_id_range"],
-        ["source_entry_id", 601, "dataset_entries_source_entry_id_range"],
+        ["source_entry_id", 801, "dataset_entries_source_entry_id_range"],
         ["category_name", "   ", "dataset_entries_category_name_not_blank"],
       ] as const) {
         const failure = await rawFailure(
@@ -841,6 +839,22 @@ describe("the dataset_entries_import function", () => {
         );
         expect(failure, `${column} = ${JSON.stringify(value)}`).toContain(check);
       }
+    });
+
+    it("accepts the full revised suffix range at both ends", async () => {
+      for (const value of [1, 600, 800]) {
+        const failure = await rawFailure(
+          db,
+          `insert into public.dataset_entries (id, category, source_entry_id, instruction, source_payload) values ('PROV_edge_${value}', 'origin_destination', $1, 'Provenance check.', '{}'::jsonb)`,
+          [value] as never[],
+        );
+        expect(failure, `source_entry_id = ${value}`).toBe("");
+      }
+      await applySql(
+        db,
+        "delete from public.dataset_entries where id like 'PROV_edge_%'",
+        "clean edges",
+      );
     });
 
     it("applies cleanly to a correct schema, so its precondition is a CONDITION", async () => {
@@ -863,6 +877,67 @@ describe("the dataset_entries_import function", () => {
 
         const failure = await execFailure(bare, sql);
         expect(failure).toContain("merged_dataset_provenance precondition failed");
+        expect(failure).toContain("does not exist");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // The range-800 migration: the same constraint name, widened to the revised corpus.
+  // ---------------------------------------------------------------------------------------------
+
+  describe("the source_entry_id range-800 migration", () => {
+    const RANGE_MIGRATION = "20261006120000_source_entry_id_range_800.sql";
+
+    it("replaces the expression while keeping the constraint name", async () => {
+      const rows = await query<{ check: string }>(
+        db,
+        `select pg_get_constraintdef(oid) as check from pg_constraint where conname = 'dataset_entries_source_entry_id_range'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.check).toContain("800");
+      expect(rows[0]!.check).not.toContain("600");
+    });
+
+    it("creates no v3 function and changes no other function", async () => {
+      const rows = await query<{ name: string }>(
+        db,
+        `select p.proname as name from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname like 'dataset_entries_import%'
+          order by p.proname`,
+      );
+      expect(rows.map((row) => row.name)).toEqual([
+        "dataset_entries_import",
+        "dataset_entries_import_v2",
+      ]);
+    });
+
+    it("applies cleanly to a correct schema and converges on re-run", async () => {
+      const bare = await createTestDatabase();
+      try {
+        await applyMigrationsUntil(bare, RANGE_MIGRATION);
+        const sql = (await readMigrations()).find((m) => m.filename === RANGE_MIGRATION)!.sql;
+        // First application: replaces the 1..600 expression.
+        expect(await execFailure(bare, sql)).toBe("");
+        // Second application: converges rather than erroring on its own constraint.
+        expect(await execFailure(bare, sql)).toBe("");
+      } finally {
+        await closeTestDatabase(bare);
+      }
+    });
+
+    it("refuses against a database with no `dataset_entries`", async () => {
+      const bare = await createTestDatabase();
+      try {
+        await applyMigrationsUntil(bare, RANGE_MIGRATION);
+        await applySql(bare, "drop table public.dataset_entries cascade", "drop dataset_entries");
+        const sql = (await readMigrations()).find((m) => m.filename === RANGE_MIGRATION)!.sql;
+
+        const failure = await execFailure(bare, sql);
+        expect(failure).toContain("source_entry_id_range_800 precondition failed");
         expect(failure).toContain("does not exist");
       } finally {
         await closeTestDatabase(bare);

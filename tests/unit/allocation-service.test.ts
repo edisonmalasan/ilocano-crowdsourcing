@@ -394,8 +394,8 @@ describe("an entry whose stored responses are all non-qualifying stays in the po
     // The scenario the whole completion rule exists for. Three rows, three distinct validators, and
     // NONE of them a qualifying completed validation — so the entry is incomplete and still in the
     // pool, however many rows it holds.
-    const judged = entry("OD_0001");
-    const other = entry("OD_0002");
+    const judged = entry("OD_1");
+    const other = entry("OD_2");
     const fakes = createFakes({
       pool: [other, judged],
       responses: cannotEvaluateOnly(judged.id),
@@ -411,8 +411,8 @@ describe("an entry whose stored responses are all non-qualifying stays in the po
     // The assertion that distinguishes the two implementations. `countForEntry` returns 3 here and
     // `listForEntries` returns the three rows; only the second can be reduced to 0.
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002")],
-      responses: cannotEvaluateOnly("OD_0001"),
+      pool: [entry("OD_1"), entry("OD_2")],
+      responses: cannotEvaluateOnly("OD_1"),
     });
 
     await allocateBatch(request, dependenciesFor(fakes));
@@ -426,8 +426,8 @@ describe("an entry whose stored responses are all non-qualifying stays in the po
     // second row — so it is exercised here to pin what the reduce does if the constraint is ever
     // dropped. Two qualifying rows mean a validating package exists, so the entry is complete and
     // leaves the pool even though only one validator ever judged it.
-    const twice = entry("OD_0001");
-    const untouched = entry("OD_0002");
+    const twice = entry("OD_1");
+    const untouched = entry("OD_2");
     const fakes = createFakes({
       pool: [twice, untouched],
       responses: [
@@ -445,8 +445,8 @@ describe("an entry whose stored responses are all non-qualifying stays in the po
     // The count of rows has no part in the decision: five non-qualifying rows are still no
     // validating package. If the reduce ever degenerated into a row count, this entry would read
     // as judged five times over and leave the pool.
-    const judged = entry("OD_0001");
-    const other = entry("OD_0002");
+    const judged = entry("OD_1");
+    const other = entry("OD_2");
     const validators = [
       "VAL_0000bbb1",
       "VAL_0000bbb2",
@@ -471,8 +471,8 @@ describe("completion retires the entry", () => {
   it("does not offer an entry that holds a validating package", async () => {
     // ONE qualifying response is enough: the entry is complete and leaves the pool for everyone,
     // not just for the validator who supplied it.
-    const retired = entry("OD_0001");
-    const live = entry("OD_0002");
+    const retired = entry("OD_1");
+    const live = entry("OD_2");
     const fakes = createFakes({
       pool: [retired, live],
       responses: [response({ datasetEntryId: retired.id, validatorId: "VAL_0000ccc1" })],
@@ -487,8 +487,8 @@ describe("completion retires the entry", () => {
   it("keeps a complete entry out of the pool when further qualifying responses arrive", async () => {
     // A second and third validating package do not bring a retired entry back. The entry stays
     // complete and stays out, however many qualifying responses accumulate behind it.
-    const retired = entry("OD_0001");
-    const live = entry("OD_0002");
+    const retired = entry("OD_1");
+    const live = entry("OD_2");
     const fakes = createFakes({
       pool: [retired, live],
       responses: ["VAL_0000ccc1", "VAL_0000ccc2", "VAL_0000ccc3"].map((validatorId) =>
@@ -504,23 +504,17 @@ describe("completion retires the entry", () => {
   it("serves the whole requested size from the incomplete pool", async () => {
     // Five incomplete entries and a requested size of five: the batch is full, with no tier to
     // fill past and no target to consult.
-    const pool = [
-      entry("OD_0001"),
-      entry("OD_0002"),
-      entry("OD_0003"),
-      entry("OD_0004"),
-      entry("OD_0005"),
-    ];
+    const pool = [entry("OD_1"), entry("OD_2"), entry("OD_3"), entry("OD_4"), entry("OD_5")];
     const fakes = createFakes({
       pool,
       responses: [
         response({
-          datasetEntryId: "OD_0003",
+          datasetEntryId: "OD_3",
           validatorId: "VAL_0000ddd1",
           evaluation: "cannot_evaluate",
         }),
         response({
-          datasetEntryId: "OD_0004",
+          datasetEntryId: "OD_4",
           validatorId: "VAL_0000ddd2",
           evaluation: "cannot_evaluate",
         }),
@@ -536,7 +530,7 @@ describe("completion retires the entry", () => {
   });
 
   it("shortens the batch only when fewer eligible entries exist than were requested", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001"), entry("OD_0002")] });
+    const fakes = createFakes({ pool: [entry("OD_1"), entry("OD_2")] });
 
     const outcome = await allocateBatch(
       request,
@@ -548,53 +542,73 @@ describe("completion retires the entry", () => {
 });
 
 describe("entries sharing a source-local id across categories", () => {
-  // The merged source reuses ids 1..600 inside every category block, so `OD_0042` and
-  // `ODT_0042` are two distinct canonical entries that happen to share a local id. The pool,
-  // the answered rule, and the reservation claim must all key on the canonical id — anything
-  // keying on the local id would confuse or collapse them.
-  const od = () => entry("OD_0042", { sourceEntryId: 42, categoryName: "Origin + Destination" });
-  const odt = () =>
-    entry("ODT_0042", {
+  // The revised source restarts numeric suffixes at 1 in every category block, so `D_42`,
+  // `DT_42`, `OD_42`, `ODT_42`, and `CPE_42` are five distinct canonical entries that happen
+  // to share a local id. The pool, the answered rule, and the reservation claim must all key
+  // on the canonical id — anything keying on the local id would confuse or collapse them.
+  const family42 = () => [
+    entry("D_42", {
+      category: "destination_only",
+      sourceEntryId: 42,
+      categoryName: "Destination Only",
+    }),
+    entry("DT_42", {
+      category: "destination_transit_mode",
+      sourceEntryId: 42,
+      categoryName: "Destination + Transit Mode",
+    }),
+    entry("OD_42", { sourceEntryId: 42, categoryName: "Origin + Destination" }),
+    entry("ODT_42", {
       category: "origin_destination_transit_mode",
       sourceEntryId: 42,
       categoryName: "Origin + Destination + Transit Mode",
-    });
+    }),
+    entry("CPE_42", {
+      category: "complex_preference_expressions",
+      sourceEntryId: 42,
+      categoryName: "Complex/Preference Expressions",
+    }),
+  ];
 
-  it("treats the same local id in two categories as two distinct allocatable entries", async () => {
-    const fakes = createFakes({ pool: [od(), odt()] });
+  it("treats the same local id in five categories as five distinct allocatable entries", async () => {
+    const fakes = createFakes({ pool: family42() });
 
     const outcome = await allocateBatch(
       request,
-      dependenciesFor(fakes, { config: config({ batchSize: 2 }) }),
+      dependenciesFor(fakes, { config: config({ batchSize: 5 }) }),
     );
 
     expect(
       allocated(outcome)
         .entries.map((candidate) => candidate.id)
         .sort(),
-    ).toEqual(["ODT_0042", "OD_0042"]);
+    ).toEqual(["CPE_42", "DT_42", "D_42", "ODT_42", "OD_42"]);
   });
 
-  it("excludes only the answered canonical entry, never its same-local-id sibling", async () => {
+  it("excludes only the answered canonical entry, never its same-local-id siblings", async () => {
     const fakes = createFakes({
-      pool: [od(), odt()],
-      responses: [response({ datasetEntryId: "OD_0042", validatorId: VALIDATOR })],
+      pool: family42(),
+      responses: [response({ datasetEntryId: "OD_42", validatorId: VALIDATOR })],
     });
 
     const outcome = await allocateBatch(
       request,
-      dependenciesFor(fakes, { config: config({ batchSize: 2 }) }),
+      dependenciesFor(fakes, { config: config({ batchSize: 5 }) }),
     );
 
-    // Honest short batch: one entry answered, one still eligible — the sibling is unaffected.
-    expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual(["ODT_0042"]);
+    // Honest short batch: one entry answered, four still eligible — the siblings are unaffected.
+    expect(
+      allocated(outcome)
+        .entries.map((candidate) => candidate.id)
+        .sort(),
+    ).toEqual(["CPE_42", "DT_42", "D_42", "ODT_42"]);
   });
 });
 
 describe("an entry the validator already answered", () => {
   it("is excluded from the batch offered to that validator", async () => {
-    const mine = entry("OD_0001");
-    const theirs = entry("OD_0002");
+    const mine = entry("OD_1");
+    const theirs = entry("OD_2");
     const fakes = createFakes({
       pool: [mine, theirs],
       responses: [response({ datasetEntryId: mine.id, validatorId: VALIDATOR })],
@@ -612,8 +626,8 @@ describe("an entry the validator already answered", () => {
     // so it would not retire it on its own — but the validator who submitted it must still never
     // be asked again, because one attempt never answers one entry twice. Reading exclusion off the
     // completion figure would get this wrong.
-    const mine = entry("OD_0001");
-    const theirs = entry("OD_0002");
+    const mine = entry("OD_1");
+    const theirs = entry("OD_2");
     const fakes = createFakes({
       pool: [mine, theirs],
       responses: [
@@ -631,11 +645,11 @@ describe("an entry the validator already answered", () => {
   });
 
   it("excludes an entry that is already complete, by the answered rule rather than the completion rule", async () => {
-    // The two rules again, at the boundary: OD_0001 holds a validating package, so it is complete
+    // The two rules again, at the boundary: OD_1 holds a validating package, so it is complete
     // and out of the pool for everyone — and still excluded for this validator by the answered
     // rule independently, which is what this test witnesses.
-    const mine = entry("OD_0001");
-    const theirs = entry("OD_0002");
+    const mine = entry("OD_1");
+    const theirs = entry("OD_2");
     const fakes = createFakes({
       pool: [mine, theirs],
       responses: [response({ datasetEntryId: mine.id, validatorId: VALIDATOR })],
@@ -649,12 +663,12 @@ describe("an entry the validator already answered", () => {
 
 describe("entries assigned to the attempt's own batches", () => {
   it("are excluded from a new batch while unassigned entries are served", async () => {
-    // The second-Continue case: OD_0001 and OD_0002 sit unanswered in the attempt's earlier
+    // The second-Continue case: OD_1 and OD_2 sit unanswered in the attempt's earlier
     // batch. Without the assigned-exclusion they would be re-offered and the refusal would
     // arrive only at submit time, as `already_recorded` confusion rather than prevention.
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002"), entry("OD_0003"), entry("OD_0004")],
-      assignedBatches: [{ validatorId: VALIDATOR, entryIds: ["OD_0001", "OD_0002"] }],
+      pool: [entry("OD_1"), entry("OD_2"), entry("OD_3"), entry("OD_4")],
+      assignedBatches: [{ validatorId: VALIDATOR, entryIds: ["OD_1", "OD_2"] }],
     });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
@@ -663,15 +677,15 @@ describe("entries assigned to the attempt's own batches", () => {
       allocated(outcome)
         .entries.map((candidate) => candidate.id)
         .sort(),
-    ).toEqual(["OD_0003", "OD_0004"]);
+    ).toEqual(["OD_3", "OD_4"]);
   });
 
   it("do not exclude anything for another attempt", async () => {
     // Cross-attempt overlap is expected collection, never prevented: assignments belonging to a
     // different attempt are invisible to the requester's exclusion.
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002")],
-      assignedBatches: [{ validatorId: "VAL_0000fff1", entryIds: ["OD_0001", "OD_0002"] }],
+      pool: [entry("OD_1"), entry("OD_2")],
+      assignedBatches: [{ validatorId: "VAL_0000fff1", entryIds: ["OD_1", "OD_2"] }],
     });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
@@ -683,8 +697,8 @@ describe("entries assigned to the attempt's own batches", () => {
     // Remainders-only pool: the honest outcome is exhaustion with the earlier batch resumable,
     // not a fresh batch of duplicates — and no batch row is persisted for it.
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002")],
-      assignedBatches: [{ validatorId: VALIDATOR, entryIds: ["OD_0001", "OD_0002"] }],
+      pool: [entry("OD_1"), entry("OD_2")],
+      assignedBatches: [{ validatorId: VALIDATOR, entryIds: ["OD_1", "OD_2"] }],
     });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
@@ -699,7 +713,7 @@ describe("entries assigned to the attempt's own batches", () => {
     // the same rows the recovery lookup reads for the same id, so the two paths cannot disagree
     // about what was assigned. A second recognition implementation would be the drift the
     // recovery rule's header forbids.
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     await allocateBatch(request, dependenciesFor(fakes));
 
@@ -713,17 +727,11 @@ describe("entries assigned to the attempt's own batches", () => {
 describe("reservation claims", () => {
   it("backfills a denied entry from remaining candidates instead of serving short", async () => {
     // `() => 1` keeps the shuffled order identical to the pool order (pinned by the clamp
-    // test), so round one deterministically selects the first three and the denied OD_0002 is
-    // replaced by OD_0004 in round two — order included, because positions derive from it.
+    // test), so round one deterministically selects the first three and the denied OD_2 is
+    // replaced by OD_4 in round two — order included, because positions derive from it.
     const fakes = createFakes({
-      pool: [
-        entry("OD_0001"),
-        entry("OD_0002"),
-        entry("OD_0003"),
-        entry("OD_0004"),
-        entry("OD_0005"),
-      ],
-      claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_0002"),
+      pool: [entry("OD_1"), entry("OD_2"), entry("OD_3"), entry("OD_4"), entry("OD_5")],
+      claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_2"),
     });
 
     const outcome = await allocateBatch(
@@ -732,9 +740,9 @@ describe("reservation claims", () => {
     );
 
     expect(allocated(outcome).entries.map((candidate) => candidate.id)).toEqual([
-      "OD_0001",
-      "OD_0003",
-      "OD_0004",
+      "OD_1",
+      "OD_3",
+      "OD_4",
     ]);
     // The configured lease travels with every claim; a default silently substituted here would
     // be a second source of truth for the TTL.
@@ -776,7 +784,7 @@ describe("reservation claims", () => {
       grantedTo[validatorId]?.push(...won);
       return won;
     };
-    const pool = [entry("OD_0001"), entry("OD_0002"), entry("OD_0003"), entry("OD_0004")];
+    const pool = [entry("OD_1"), entry("OD_2"), entry("OD_3"), entry("OD_4")];
     const fakesA = createFakes({ pool, knownValidatorIds: [RACER_A], claim });
     const fakesB = createFakes({ pool, knownValidatorIds: [RACER_B], claim });
 
@@ -801,7 +809,7 @@ describe("reservation claims", () => {
     // Total contention is not pool exhaustion, but no batch CAN be reported — an empty batch is
     // forbidden — so exhaustion is the honest outcome, with no batch row persisted for it.
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002")],
+      pool: [entry("OD_1"), entry("OD_2")],
       claim: async () => [],
     });
 
@@ -818,14 +826,12 @@ describe("a contention-short batch persists its actual size", () => {
     // The live shape: 10 requested, 9 granted after backfill finds nothing new
     // to backfill with, because the pool itself holds only 10 eligible entries
     // and the denied id stays excluded. `() => 1` keeps selection in pool
-    // order, so the denied OD_0010 is the last selected and nothing replaces
+    // order, so the denied OD_10 is the last selected and nothing replaces
     // it — positions included, because positions derive from the granted order.
-    const pool = Array.from({ length: 10 }, (_, index) =>
-      entry(`OD_${String(index + 1).padStart(4, "0")}`),
-    );
+    const pool = Array.from({ length: 10 }, (_, index) => entry(`OD_${index + 1}`));
     const fakes = createFakes({
       pool,
-      claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_0010"),
+      claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_10"),
     });
 
     const outcome = await allocateBatch(
@@ -837,7 +843,7 @@ describe("a contention-short batch persists its actual size", () => {
     expect(entries).toHaveLength(9);
     const ids = entries.map((candidate) => candidate.id);
     expect(new Set(ids).size).toBe(9);
-    expect(ids).not.toContain("OD_0010");
+    expect(ids).not.toContain("OD_10");
 
     // The persisted rows are the guarantee, not the returned projection: 9
     // rows, contiguous 1-based positions, no duplicate, no tenth row padded
@@ -860,15 +866,13 @@ describe("a contention-short batch persists its actual size", () => {
     // The exclusion half of the same guarantee: every id the arbiter denies
     // stays out of later rounds within the request, so backfill can only add
     // NEW ids and can never duplicate one to reach 10.
-    const pool = Array.from({ length: 11 }, (_, index) =>
-      entry(`OD_${String(index + 1).padStart(4, "0")}`),
-    );
+    const pool = Array.from({ length: 11 }, (_, index) => entry(`OD_${index + 1}`));
     const seenRounds: string[][] = [];
     const fakes = createFakes({
       pool,
       claim: async (_validatorId, entryIds) => {
         seenRounds.push([...entryIds]);
-        return entryIds.filter((id) => id !== "OD_0002");
+        return entryIds.filter((id) => id !== "OD_2");
       },
     });
 
@@ -880,10 +884,10 @@ describe("a contention-short batch persists its actual size", () => {
     const ids = allocated(outcome).entries.map((candidate) => candidate.id);
     expect(ids).toHaveLength(10);
     expect(new Set(ids).size).toBe(10);
-    expect(ids).not.toContain("OD_0002");
+    expect(ids).not.toContain("OD_2");
     for (const [index, round] of seenRounds.entries()) {
       if (index === 0) continue;
-      expect(round).not.toContain("OD_0002");
+      expect(round).not.toContain("OD_2");
     }
   });
 });
@@ -895,7 +899,7 @@ describe("a requester with no recorded proficiency answer", () => {
     // profile read — no pool read, no batch persisted, no reservation claimed —
     // so a refused request leaves no trace but the read that refused it.
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002")],
+      pool: [entry("OD_1"), entry("OD_2")],
       profileProficiency: null,
     });
 
@@ -919,7 +923,7 @@ describe("a requester with no recorded proficiency answer", () => {
       "not_confident",
     ] as const) {
       const fakes = createFakes({
-        pool: [entry("OD_0001"), entry("OD_0002")],
+        pool: [entry("OD_1"), entry("OD_2")],
         profileProficiency: proficiency,
       });
 
@@ -929,14 +933,14 @@ describe("a requester with no recorded proficiency answer", () => {
         allocated(outcome)
           .entries.map((candidate) => candidate.id)
           .sort(),
-      ).toEqual(["OD_0001", "OD_0002"]);
+      ).toEqual(["OD_1", "OD_2"]);
     }
   });
 });
 
 describe("an unknown validator", () => {
   it("is reported as unknown_validator rather than as a database fault", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     const outcome = await allocateBatch({ validatorId: "VAL_deadbeef" }, dependenciesFor(fakes));
 
@@ -947,7 +951,7 @@ describe("an unknown validator", () => {
   });
 
   it("performs no write of any kind", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     await allocateBatch({ validatorId: "VAL_deadbeef" }, dependenciesFor(fakes));
 
@@ -959,7 +963,7 @@ describe("an unknown validator", () => {
   });
 
   it("does not read the pool either, so an unknown identifier costs one query", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     await allocateBatch({ validatorId: "VAL_deadbeef" }, dependenciesFor(fakes));
 
@@ -972,10 +976,10 @@ describe("an unknown validator", () => {
 describe("an exhausted pool", () => {
   it("reports exhausted when every remaining entry was already answered", async () => {
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002")],
+      pool: [entry("OD_1"), entry("OD_2")],
       responses: [
-        response({ datasetEntryId: "OD_0001", validatorId: VALIDATOR }),
-        response({ datasetEntryId: "OD_0002", validatorId: VALIDATOR }),
+        response({ datasetEntryId: "OD_1", validatorId: VALIDATOR }),
+        response({ datasetEntryId: "OD_2", validatorId: VALIDATOR }),
       ],
     });
 
@@ -988,9 +992,9 @@ describe("an exhausted pool", () => {
     // Three qualifying responses behind one complete entry: further packages do not bring it back,
     // so there is nothing left to offer.
     const fakes = createFakes({
-      pool: [entry("OD_0001")],
+      pool: [entry("OD_1")],
       responses: ["VAL_0000eee1", "VAL_0000eee2", "VAL_0000eee3"].map((validatorId) =>
-        response({ datasetEntryId: "OD_0001", validatorId }),
+        response({ datasetEntryId: "OD_1", validatorId }),
       ),
     });
 
@@ -1010,8 +1014,8 @@ describe("an exhausted pool", () => {
 
   it("carries no batch and no batch id", async () => {
     const fakes = createFakes({
-      pool: [entry("OD_0001")],
-      responses: [response({ datasetEntryId: "OD_0001", validatorId: VALIDATOR })],
+      pool: [entry("OD_1")],
+      responses: [response({ datasetEntryId: "OD_1", validatorId: VALIDATOR })],
     });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
@@ -1024,10 +1028,10 @@ describe("an exhausted pool", () => {
     // Collapsing them would tell a validator who has finished the study that something is broken, and
     // would make the coverage-monitoring figure uncomputable.
     const exhaustedFakes = createFakes({
-      pool: [entry("OD_0001")],
-      responses: [response({ datasetEntryId: "OD_0001", validatorId: VALIDATOR })],
+      pool: [entry("OD_1")],
+      responses: [response({ datasetEntryId: "OD_1", validatorId: VALIDATOR })],
     });
-    const failingFakes = createFakes({ pool: [entry("OD_0001")] });
+    const failingFakes = createFakes({ pool: [entry("OD_1")] });
     failingFakes.failOn(
       "validations.listForEntries",
       new RepositoryError("validations.listForEntries", "select failed"),
@@ -1043,7 +1047,7 @@ describe("an exhausted pool", () => {
 
 describe("a successful allocation", () => {
   it("never reports a batch with no entries", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001"), entry("OD_0002")] });
+    const fakes = createFakes({ pool: [entry("OD_1"), entry("OD_2")] });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
@@ -1051,7 +1055,7 @@ describe("a successful allocation", () => {
   });
 
   it("persists the batch against the requesting validator", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
@@ -1077,7 +1081,7 @@ describe("a successful allocation", () => {
     // Asserted against the **injected** clock rather than `expect.any(Date)`, because a service that
     // called `new Date()` itself would satisfy the weaker check and the point of the injection is that
     // the instant is the server's and is testable.
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     await allocateBatch(request, dependenciesFor(fakes));
 
@@ -1095,7 +1099,7 @@ describe("a successful allocation", () => {
   });
 
   it("records each entry at the 1-based position it occupies in the server-selected order", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001"), entry("OD_0002"), entry("OD_0003")] });
+    const fakes = createFakes({ pool: [entry("OD_1"), entry("OD_2"), entry("OD_3")] });
 
     await allocateBatch(request, dependenciesFor(fakes, { config: config({ batchSize: 3 }) }));
 
@@ -1130,7 +1134,7 @@ describe("a successful allocation", () => {
     // The two layers together cover the scenario: that the field does not EXIST (type layer, here
     // referenced), that an extra key is REFUSED at the boundary (`allocation-actions.test.ts`), and
     // that positions are DERIVED from the selected order (the test above).
-    const smuggledOrder = ["OD_0003", "OD_0002", "OD_0001"];
+    const smuggledOrder = ["OD_3", "OD_2", "OD_1"];
 
     // The cast is the point rather than a shortcut. A real client-supplied order arrives exactly like
     // this: an extra key on a payload the server never declared. Building it as a variable keeps the
@@ -1140,9 +1144,9 @@ describe("a successful allocation", () => {
       validatorId: VALIDATOR,
       order: smuggledOrder,
       positions: [
-        { datasetEntryId: "OD_0003", position: 1 },
-        { datasetEntryId: "OD_0002", position: 2 },
-        { datasetEntryId: "OD_0001", position: 3 },
+        { datasetEntryId: "OD_3", position: 1 },
+        { datasetEntryId: "OD_2", position: 2 },
+        { datasetEntryId: "OD_1", position: 3 },
       ],
     } as unknown as { readonly validatorId: AnonymousValidatorId };
 
@@ -1150,7 +1154,7 @@ describe("a successful allocation", () => {
       payload: Parameters<typeof allocateBatch>[0],
     ): Promise<string[]> => {
       const fakes = createFakes({
-        pool: [entry("OD_0001"), entry("OD_0002"), entry("OD_0003")],
+        pool: [entry("OD_1"), entry("OD_2"), entry("OD_3")],
       });
       await allocateBatch(payload, dependenciesFor(fakes, { config: config({ batchSize: 3 }) }));
       const created = fakes.calls.find((call) => call.method === "batches.create");
@@ -1173,7 +1177,7 @@ describe("a successful allocation", () => {
   });
 
   it("records no entry twice within one batch", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001"), entry("OD_0002"), entry("OD_0003")] });
+    const fakes = createFakes({ pool: [entry("OD_1"), entry("OD_2"), entry("OD_3")] });
 
     await allocateBatch(request, dependenciesFor(fakes, { config: config({ batchSize: 3 }) }));
 
@@ -1188,7 +1192,7 @@ describe("a successful allocation", () => {
     // The reason the batch is read back rather than echoed: a repository that stored a different order
     // must be reported as it is, because the persisted order is the research record. Echoing the
     // argument would let a storage bug be papered over by the service that built the request.
-    const fakes = createFakes({ pool: [entry("OD_0001"), entry("OD_0002")] });
+    const fakes = createFakes({ pool: [entry("OD_1"), entry("OD_2")] });
     const original = fakes.dependencies.batches.create;
     fakes.dependencies.batches = {
       ...fakes.dependencies.batches,
@@ -1215,9 +1219,7 @@ describe("a successful allocation", () => {
   });
 
   it("honours a SMALLER requested size and refuses a larger one", async () => {
-    const pool = Array.from({ length: 12 }, (_, index) =>
-      entry(`OD_${String(index + 1).padStart(4, "0")}`),
-    );
+    const pool = Array.from({ length: 12 }, (_, index) => entry(`OD_${index + 1}`));
     const small = createFakes({ pool });
     const large = createFakes({ pool });
 
@@ -1236,7 +1238,7 @@ describe("a successful allocation", () => {
   });
 
   it("produces the same order for the same inputs and the same supplied randomness", async () => {
-    const pool = [entry("OD_0001"), entry("OD_0002"), entry("OD_0003")];
+    const pool = [entry("OD_1"), entry("OD_2"), entry("OD_3")];
     const first = createFakes({ pool });
     const second = createFakes({ pool });
 
@@ -1255,7 +1257,7 @@ describe("a successful allocation", () => {
   });
 
   it("derives the batch id from the validator's own identifier and the injected clock", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
@@ -1267,7 +1269,7 @@ describe("a successful allocation", () => {
 
 describe("what the requesting validator is shown", () => {
   it("carries only the fields needed to render an entry", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
@@ -1289,7 +1291,7 @@ describe("what the requesting validator is shown", () => {
     const fakes = createFakes({
       pool: [
         {
-          ...entry("OD_0001"),
+          ...entry("OD_1"),
           sourcePayload: { origin: "Bangon", transit_mode: null, something_unmodelled: 42 },
         } as unknown as DatasetEntry,
       ],
@@ -1304,10 +1306,10 @@ describe("what the requesting validator is shown", () => {
 
   it("carries no coverage figure, no other validator's response, and no screening answer", async () => {
     const fakes = createFakes({
-      pool: [entry("OD_0001"), entry("OD_0002")],
+      pool: [entry("OD_1"), entry("OD_2")],
       responses: [
         response({
-          datasetEntryId: "OD_0001",
+          datasetEntryId: "OD_1",
           validatorId: "VAL_0000fff1",
           evaluation: "incorrect",
         }),
@@ -1328,7 +1330,7 @@ describe("what the requesting validator is shown", () => {
   });
 
   it("carries no ingestion timestamp or active flag", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     const outcome = await allocateBatch(request, dependenciesFor(fakes));
 
@@ -1340,7 +1342,7 @@ describe("what the requesting validator is shown", () => {
 
 describe("a failed write", () => {
   it("reports persistence rather than an empty successful batch", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
     fakes.failOn(
       "batches.create",
       new RepositoryError("validation_batches.insert", "insert rejected", { detail: "23505" }),
@@ -1353,7 +1355,7 @@ describe("a failed write", () => {
 
   it("reports no batch id on a failed write", async () => {
     // A client that can read a batch id out of a failed response will treat it as stored.
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
     fakes.failOn(
       "batches.create",
       new RepositoryError("validation_batches.insert", "insert rejected"),
@@ -1365,7 +1367,7 @@ describe("a failed write", () => {
   });
 
   it("propagates a non-repository error instead of reporting it as a persistence failure", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
     fakes.failOn(
       "validations.listForEntries",
       new TypeError("a programming error, not a query failure"),
@@ -1379,9 +1381,7 @@ describe("a failed write", () => {
 
 describe("the read pattern", () => {
   it("reads the pool's responses ONCE for the whole pool", async () => {
-    const pool = Array.from({ length: 25 }, (_, index) =>
-      entry(`OD_${String(index + 1).padStart(4, "0")}`),
-    );
+    const pool = Array.from({ length: 25 }, (_, index) => entry(`OD_${index + 1}`));
     const fakes = createFakes({ pool });
 
     await allocateBatch(request, dependenciesFor(fakes));
@@ -1393,7 +1393,7 @@ describe("the read pattern", () => {
   });
 
   it("requests the whole pool without a category filter", async () => {
-    const fakes = createFakes({ pool: [entry("OD_0001")] });
+    const fakes = createFakes({ pool: [entry("OD_1")] });
 
     await allocateBatch(request, dependenciesFor(fakes));
 
@@ -1407,9 +1407,7 @@ describe("the read pattern", () => {
   });
 
   it("derives the effective size from configuration, not from the request alone", async () => {
-    const pool = Array.from({ length: 8 }, (_, index) =>
-      entry(`OD_${String(index + 1).padStart(4, "0")}`),
-    );
+    const pool = Array.from({ length: 8 }, (_, index) => entry(`OD_${index + 1}`));
     const fakes = createFakes({ pool });
 
     const outcome = await allocateBatch(

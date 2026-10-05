@@ -171,8 +171,14 @@ describe("renderDocuments", () => {
     const { entries, sources: rows } = await collectExportSources(sources(), () => {});
     const documents = renderDocuments(rows, entries);
 
-    const records = JSON.parse(documents.validationsJson) as unknown[];
-    expect(records).toHaveLength(2);
+    const grouped = JSON.parse(documents.validationsJson) as {
+      categories: { category_id: number; responses: unknown[] }[];
+    };
+    // All five groups travel even when only one holds records; both fixture responses
+    // belong to E1, in the origin_destination group.
+    expect(grouped.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    const answered = grouped.categories.find((group) => group.category_id === 3);
+    expect(answered?.responses).toHaveLength(2);
     expect(documents.validationsCsv.trimEnd().split("\n")).toHaveLength(3);
     expect(JSON.parse(documents.summaryJson)).toMatchObject({
       totals: { stored_responses: 2, qualifying_validations: 2 },
@@ -180,10 +186,10 @@ describe("renderDocuments", () => {
     // Both fixture responses qualify, but both belong to E1 — E2 holds nothing and is
     // omitted rather than zero-filled. The command-level witness of the omission rule.
     const validated = JSON.parse(documents.validatedJson) as {
-      records: unknown[];
+      categories: { records: unknown[] }[];
       derivation: { omitted_incomplete_entries: number };
     };
-    expect(validated.records).toHaveLength(1);
+    expect(validated.categories.map((group) => group.records).flat()).toHaveLength(1);
     expect(validated.derivation.omitted_incomplete_entries).toBe(1);
     expect(documents.validatedCsv.trimEnd().split("\n")).toHaveLength(2);
     expect(documents.result).toEqual({ entries: 2, responses: 2, qualifying: 2, validated: 1 });
@@ -196,9 +202,16 @@ describe("renderDocuments", () => {
 
     expect(documents.validationsJson.endsWith("\n")).toBe(true);
     expect(documents.summaryJson.endsWith("\n")).toBe(true);
-    expect(JSON.parse(documents.validationsJson)).toEqual([]);
+    const empty = JSON.parse(documents.validationsJson) as {
+      categories: { category_id: number; responses: unknown[] }[];
+    };
+    expect(empty.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    for (const group of empty.categories) expect(group.responses).toEqual([]);
     expect(documents.validatedJson.endsWith("\n")).toBe(true);
-    expect(JSON.parse(documents.validatedJson)).toMatchObject({ records: [] });
+    expect(JSON.parse(documents.validatedJson)).toMatchObject({
+      categories: [{}, {}, {}, {}, {}],
+      derivation: { omitted_incomplete_entries: 2 },
+    });
   });
 });
 

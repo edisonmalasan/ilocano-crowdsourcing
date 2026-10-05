@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildValidatedDataset,
+  flattenValidatedGroups,
   validatedCsvRow,
   validatedIlocanoFor,
   VALIDATED_RECORD_KEYS,
@@ -164,7 +165,7 @@ const byId = (records: readonly ValidatedRecord[]): Map<string, ValidatedRecord>
 
 describe("buildValidatedDataset", () => {
   it("derives one record per complete entry from the earliest covering suppliers", () => {
-    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    const records = flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES));
 
     expect(records.map((record) => record.id)).toEqual(["E1", "E2", "E3", "E5", "E6"]);
     const byEntry = byId(records);
@@ -176,7 +177,7 @@ describe("buildValidatedDataset", () => {
   });
 
   it("takes the correction where one was required and the instruction otherwise", () => {
-    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+    const byEntry = byId(flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES)));
 
     // E2's supplying response is incorrect with a correction: the validated sentence is the
     // correction, and its translations are that response's own translations of it.
@@ -190,7 +191,7 @@ describe("buildValidatedDataset", () => {
   it("lets a later qualifying response neither displace nor dilute the earliest", () => {
     // E1's later package differs in wording; E2's later package differs in evaluation. Both stay
     // in the raw document and neither moves the validated record off the earliest package.
-    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+    const byEntry = byId(flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES)));
 
     expect(byEntry.get("E1")?.source_response_id).toBe("rv01");
     expect(byEntry.get("E1")?.needs_review).toBe(false);
@@ -201,7 +202,7 @@ describe("buildValidatedDataset", () => {
     // E3's packages agree on evaluation and need no correction: the review rule alone would NOT
     // flag it. The shared instant is the only reason the flag is forced, and the smallest id
     // wins a tie the clock cannot break.
-    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+    const byEntry = byId(flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES)));
 
     expect(byEntry.get("E3")?.needs_review).toBe(true);
     expect(byEntry.get("E3")?.source_response_id).toBe("rv05");
@@ -211,7 +212,7 @@ describe("buildValidatedDataset", () => {
     // E6's three suppliers each hold one pillar. The record takes the validated Ilocano from the
     // judgment, English from its earliest supplier, Filipino from its own — and flags, because
     // three attempts' work assembled into one record is exactly what a human must review.
-    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+    const byEntry = byId(flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES)));
 
     expect(byEntry.get("E6")?.validated_ilocano).toBe("instruction for E6");
     expect(byEntry.get("E6")?.english_translation).toBe("Pooled English rendering.");
@@ -222,7 +223,7 @@ describe("buildValidatedDataset", () => {
   it("omits incomplete entries and states the omission count", () => {
     const dataset = buildValidatedDataset(ENTRIES, SOURCES);
 
-    expect(byId(dataset.records).has("E4")).toBe(false);
+    expect(byId(flattenValidatedGroups(dataset)).has("E4")).toBe(false);
     expect(dataset.derivation.omitted_incomplete_entries).toBe(1);
     expect(dataset.derivation.rule).toBe("pooled-earliest-per-field-by-server-created-at");
     expect(dataset.derivation.tie_break).toBe(
@@ -235,7 +236,7 @@ describe("buildValidatedDataset", () => {
     // and attempt — but ONLY there. An attempt id anywhere else (a bare endorsement, a second
     // author field) would invite reading persons into a pooled record, so the text outside those
     // two fields must be free of attempt ids.
-    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    const records = flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES));
 
     for (const record of records) {
       expect(record.source_response_id).toMatch(/^rv\d+$/);
@@ -282,7 +283,7 @@ describe("buildValidatedDataset", () => {
     // The new provenance: source-local id and human-readable category name travel from the
     // entry, not from any response — so a record is joinable back to the research source
     // without parsing a canonical id.
-    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+    const byEntry = byId(flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES)));
 
     for (const [id, record] of byEntry) {
       const entry = ENTRIES.find((candidate) => candidate.id === id);
@@ -290,7 +291,7 @@ describe("buildValidatedDataset", () => {
       expect(record?.category_name).toBe(entry?.categoryName);
     }
     // And the CSV carries the same leaves: parity is leaves, not structure.
-    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    const records = flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES));
     for (const record of records) {
       const row = validatedCsvRow(record);
       expect(row.source_entry_id).toBe(String(record.source_entry_id));
@@ -303,7 +304,7 @@ describe("buildValidatedDataset", () => {
     // (correct_natural, conversational attempt VAL_00000004) while its translations come from
     // rv10 and rv11 — so the record's evaluation and proficiency describe rv09's attempt
     // alone, and say nothing about who supplied the translations.
-    const byEntry = byId(buildValidatedDataset(ENTRIES, SOURCES).records);
+    const byEntry = byId(flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES)));
 
     expect(byEntry.get("E2")).toMatchObject({
       category: "origin_destination",
@@ -322,7 +323,7 @@ describe("buildValidatedDataset", () => {
   });
 
   it("links every record back to a row of the raw document", () => {
-    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    const records = flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES));
     const rawIds = new Set(buildExportRecords(SOURCES).map((record) => record.response_id));
 
     expect(records.length).toBeGreaterThan(0);
@@ -332,7 +333,7 @@ describe("buildValidatedDataset", () => {
   });
 
   it("flattens to CSV rows with the same leaf values", () => {
-    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    const records = flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES));
 
     for (const record of records) {
       const row = validatedCsvRow(record);
@@ -349,11 +350,151 @@ describe("buildValidatedDataset", () => {
       expect(row.needs_review).toBe(record.needs_review ? "true" : "false");
     }
   });
+
+  it("carries the numeric category id on every CSV row", () => {
+    const records = flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES));
+
+    // All fixture entries are origin_destination, the third category.
+    for (const record of records) {
+      expect(validatedCsvRow(record).category_id).toBe("3");
+    }
+  });
+});
+
+describe("grouped validated document", () => {
+  const bilingualComplete = {
+    englishTranslation: "Go north past the market.",
+    filipinoTranslation: "Dumiretso ka sa hilaga lagpas ng palengke.",
+  };
+
+  function completeEntry(
+    id: string,
+    category: DatasetEntry["category"],
+    sourceEntryId: number,
+    categoryName: string,
+  ): DatasetEntry {
+    return {
+      id,
+      category,
+      sourceEntryId,
+      categoryName,
+      instruction: `instruction for ${id}`,
+      origin: `origin of ${id}`,
+      destination: `destination of ${id}`,
+      transitMode: null,
+      createdAt: AT("01"),
+      isActive: true,
+    };
+  }
+
+  function completeSource(
+    entry: DatasetEntry,
+    responseId: string,
+    validatorId: string,
+  ): ExportSourceWithQualifying {
+    return {
+      entry,
+      response: {
+        id: responseId,
+        validatorId: validatorId as AnonymousValidatorId,
+        datasetEntryId: entry.id,
+        batchId: "batch_01",
+        evaluation: "correct_natural",
+        createdAt: AT("02"),
+        updatedAt: AT("02"),
+        ...bilingualComplete,
+      } as ValidationResponse,
+      proficiency: "fluent",
+      qualifies: true,
+    };
+  }
+
+  it("groups records by category in category_id order with numeric suffix order", () => {
+    const entries = [
+      completeEntry("OD_10", "origin_destination", 10, "Origin + Destination"),
+      completeEntry("D_2", "destination_only", 2, "Destination Only"),
+      completeEntry("D_1", "destination_only", 1, "Destination Only"),
+      completeEntry("CPE_3", "complex_preference_expressions", 3, "Complex/Preference Expressions"),
+    ];
+    const sources = entries.map((entry, index) =>
+      completeSource(entry, `rv${index}`, `VAL_0000000${index}`),
+    );
+
+    const dataset = buildValidatedDataset(entries, sources);
+
+    // All five groups always travel, empty or not; only three hold records here.
+    expect(dataset.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    const nonEmpty = dataset.categories.filter((group) => group.records.length > 0);
+    expect(nonEmpty.map((group) => group.category)).toEqual([
+      "destination_only",
+      "origin_destination",
+      "complex_preference_expressions",
+    ]);
+    // Numeric suffix order within the group, even though D_2 was supplied before D_1.
+    const destinationOnly = nonEmpty[0];
+    expect(destinationOnly?.records.map((record) => record.id)).toEqual(["D_1", "D_2"]);
+    expect(dataset.derivation.omitted_incomplete_entries).toBe(0);
+  });
+
+  it("establishes the category triple once per group and strips it from member records", () => {
+    const entries = [
+      completeEntry("DT_7", "destination_transit_mode", 7, "Destination + Transit Mode"),
+    ];
+    const sources = [completeSource(entries[0] as DatasetEntry, "rv0", "VAL_00000000")];
+
+    const dataset = buildValidatedDataset(entries, sources);
+    const group = dataset.categories.find(
+      (candidate) => candidate.category === "destination_transit_mode",
+    );
+
+    expect(group?.category_id).toBe(2);
+    expect(group?.category).toBe("destination_transit_mode");
+    expect(group?.category_name).toBe("Destination + Transit Mode");
+    expect(group?.records).toHaveLength(1);
+    expect(group?.records[0]).not.toHaveProperty("category");
+    expect(group?.records[0]).not.toHaveProperty("category_name");
+    expect(group?.records[0]).toMatchObject({ category_id: 2, id: "DT_7", source_entry_id: 7 });
+    // And flattening restores exactly the full record the CSV serializes.
+    expect(flattenValidatedGroups(dataset)).toHaveLength(1);
+    expect(flattenValidatedGroups(dataset)[0]).toMatchObject({
+      id: "DT_7",
+      category: "destination_transit_mode",
+      category_name: "Destination + Transit Mode",
+    });
+  });
+
+  it("carries all five groups empty at pristine zero state", () => {
+    const dataset = buildValidatedDataset(ENTRIES, []);
+
+    expect(dataset.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    for (const group of dataset.categories) expect(group.records).toEqual([]);
+    expect(dataset.derivation.omitted_incomplete_entries).toBe(ENTRIES.length);
+  });
+
+  it("serializes a private_vehicle record with the exact label in both forms", () => {
+    const privateEntry: DatasetEntry = {
+      ...completeEntry(
+        "ODT_63",
+        "origin_destination_transit_mode",
+        63,
+        "Origin + Destination + Transit Mode",
+      ),
+      transitMode: "private_vehicle",
+    };
+    const sources = [completeSource(privateEntry, "rv0", "VAL_00000000")];
+
+    const dataset = buildValidatedDataset([privateEntry], sources);
+    const record = flattenValidatedGroups(dataset)[0];
+
+    expect(record?.output.transit_mode).toBe("private_vehicle");
+    expect(validatedCsvRow(record as ValidatedRecord).transit_mode).toBe("private_vehicle");
+    expect(JSON.stringify(dataset)).toContain('"transit_mode":"private_vehicle"');
+  });
 });
 
 describe("validated CSV document", () => {
   it("carries the same records under the validated key set", () => {
-    const { records } = buildValidatedDataset(ENTRIES, SOURCES);
+    const records = flattenValidatedGroups(buildValidatedDataset(ENTRIES, SOURCES));
     const csv = buildCsv(records.map(validatedCsvRow), VALIDATED_RECORD_KEYS);
     const lines = csv.trimEnd().split("\n");
 

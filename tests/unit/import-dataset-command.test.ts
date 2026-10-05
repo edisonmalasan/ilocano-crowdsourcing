@@ -3,7 +3,7 @@
  *
  * ── WHY THE TWO CLAIMS ARE SEPARATE FILES' WORTH OF CARE ───────────────────────────────────────
  * "The dataset is immutable" is the repository's hardest research constraint, and this command is the
- * one place in the product that opens all 600 records. An immutability check that compares SHA-256
+ * one place in the product that opens all 4000 records. An immutability check that compares SHA-256
  * before and after a run proves the CONTENT survived; it cannot see a write that opens, truncates,
  * and restores, nor a write that writes somewhere else entirely. So the claim tested here is
  * stronger and different: **there is no code path in `scripts/` capable of writing a file at all.**
@@ -156,7 +156,7 @@ function writesFound(source: string): string[] {
   return WRITE_APIS.filter((pattern) => pattern.test(stripComments(source))).map(String);
 }
 
-/** A parse report with nothing unmapped, which is what the real 600-record parse produces. */
+/** A parse report with nothing unmapped, which is what the real 4000-record parse produces. */
 const cleanReport = {
   recordCount: 1,
   recordsWithPreservedFields: 0,
@@ -361,7 +361,7 @@ describe("the operator command never prints a credential", () => {
     // output is captured, and the instruction must be absent from every line while the id is
     // present — so a future change that "helpfully" showed the text being imported fails here.
     const lines: string[] = [];
-    const entries = [entry("OD_0001"), entry("OD_0002")];
+    const entries = [entry("OD_1"), entry("OD_2")];
 
     await importEntries(entries, cleanReport, { upsert: async () => "inserted" as const }, (line) =>
       lines.push(line),
@@ -371,7 +371,7 @@ describe("the operator command never prints a credential", () => {
     // Non-empty, or the absence below would prove nothing: an output that said nothing contains
     // no instruction either.
     expect(output).toContain("parsed:");
-    expect(output).not.toContain("instruction for OD_0001");
+    expect(output).not.toContain("instruction for OD_1");
     expect(output).not.toContain("instruction for OD_0002");
   });
 
@@ -400,7 +400,7 @@ describe("the operator command's exit codes are a report, not a hope", () => {
 
   it("exits 0 and prints every figure it counted on a clean run", async () => {
     const { lines, write } = capture();
-    const entries = [entry("OD_0001"), entry("OD_0002")];
+    const entries = [entry("OD_1"), entry("OD_2")];
 
     const code = await importEntries(entries, cleanReport, allInserted, write);
 
@@ -416,7 +416,7 @@ describe("the operator command's exit codes are a report, not a hope", () => {
     const { lines, write } = capture();
 
     await importEntries(
-      [entry("OD_0001")],
+      [entry("OD_1")],
       {
         recordCount: 1,
         recordsWithPreservedFields: 1,
@@ -443,15 +443,15 @@ describe("the operator command's exit codes are a report, not a hope", () => {
     const refusing = {
       upsert: async (candidate: { id: string }) => {
         seen.push(candidate.id);
-        if (candidate.id === "OD_0002") {
-          throw new Error("dataset_entries_instruction_diverged for OD_0002");
+        if (candidate.id === "OD_2") {
+          throw new Error("dataset_entries_instruction_diverged for OD_2");
         }
         return "inserted" as const;
       },
     };
 
     const code = await importEntries(
-      [entry("OD_0001"), entry("OD_0002"), entry("OD_0003")],
+      [entry("OD_1"), entry("OD_2"), entry("OD_3")],
       cleanReport,
       refusing,
       write,
@@ -462,11 +462,11 @@ describe("the operator command's exit codes are a report, not a hope", () => {
 
     const output = lines.join("\n");
     // The record is NAMED — "the import failed" would not tell an operator what to look at.
-    expect(output).toContain("refused OD_0002");
+    expect(output).toContain("refused OD_2");
     expect(output).toContain("dataset_entries_instruction_diverged");
 
-    // Fail-fast, and the counts say how far it got: OD_0003 was never attempted.
-    expect(seen).toEqual(["OD_0001", "OD_0002"]);
+    // Fail-fast, and the counts say how far it got: OD_3 was never attempted.
+    expect(seen).toEqual(["OD_1", "OD_2"]);
     expect(output).toContain("1/3");
     expect(output).toContain("1 inserted");
 

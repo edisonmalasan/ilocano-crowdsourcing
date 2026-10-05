@@ -273,7 +273,7 @@ const TIMESTAMPTZ = "2026-09-30T08:00:00+08:00";
 const ISO_UTC = "2026-09-30T00:00:00.000Z";
 
 const SOURCE_PAYLOAD = {
-  id: "OD_0001",
+  id: "OD_1",
   instruction: "Gemahen nga agpangide ti jeep.",
   output: { origin: "Baguio", destination: "Bangco Sentral", transit_mode: null },
   // A field the domain does not model. It exists only in the archival copy.
@@ -281,7 +281,7 @@ const SOURCE_PAYLOAD = {
 };
 
 const ENTRY_ROW = {
-  id: "OD_0001",
+  id: "OD_1",
   category: "origin_destination",
   source_entry_id: 1,
   category_name: "Origin + Destination",
@@ -295,7 +295,7 @@ const ENTRY_ROW = {
 };
 
 const ENTRY: DatasetEntry = {
-  id: "OD_0001",
+  id: "OD_1",
   category: "origin_destination",
   sourceEntryId: 1,
   categoryName: "Origin + Destination",
@@ -332,7 +332,7 @@ const PROFILE: ValidatorProfile = {
 const VALIDATION_ROW = {
   id: "res_01",
   validator_id: "VAL_a81d92c1",
-  dataset_entry_id: "OD_0001",
+  dataset_entry_id: "OD_1",
   batch_id: "batch_01",
   evaluation: "correct_natural",
   corrected_instruction: null,
@@ -354,7 +354,7 @@ const CANNOT_EVALUATE_ROW = {
 const RESPONSE: ValidationResponse = {
   id: "res_01",
   validatorId: "VAL_a81d92c1",
-  datasetEntryId: "OD_0001",
+  datasetEntryId: "OD_1",
   batchId: "batch_01",
   evaluation: "correct_natural",
   englishTranslation: "Ride the jeep.",
@@ -369,7 +369,7 @@ const RESPONSE: ValidationResponse = {
 const CANNOT_EVALUATE_RESPONSE: ValidationResponse = {
   id: "res_02",
   validatorId: "VAL_a81d92c1",
-  datasetEntryId: "OD_0001",
+  datasetEntryId: "OD_1",
   batchId: "batch_01",
   evaluation: "cannot_evaluate",
   createdAt: ISO_UTC,
@@ -451,18 +451,18 @@ const BATCH_ROW_CREATED_AT = "2026-10-01T01:15:00.000Z";
  * indistinguishable from it.
  */
 const BATCH_ENTRY_ROWS_SHUFFLED = [
-  { batch_id: "batch_01", dataset_entry_id: "OD_0003", position: 3 },
-  { batch_id: "batch_01", dataset_entry_id: "OD_0001", position: 1 },
-  { batch_id: "batch_01", dataset_entry_id: "OD_0002", position: 2 },
+  { batch_id: "batch_01", dataset_entry_id: "OD_3", position: 3 },
+  { batch_id: "batch_01", dataset_entry_id: "OD_1", position: 1 },
+  { batch_id: "batch_01", dataset_entry_id: "OD_2", position: 2 },
 ];
 
 const BATCH_RECORD = {
   id: "batch_01",
   validatorId: "VAL_a81d92c1",
   entries: [
-    { datasetEntryId: "OD_0001", position: 1 },
-    { datasetEntryId: "OD_0002", position: 2 },
-    { datasetEntryId: "OD_0003", position: 3 },
+    { datasetEntryId: "OD_1", position: 1 },
+    { datasetEntryId: "OD_2", position: 2 },
+    { datasetEntryId: "OD_3", position: 3 },
   ],
 };
 
@@ -502,7 +502,7 @@ describe("SupabaseDatasetEntriesRepository", () => {
     const fake = createFakeClient();
     fake.enqueue({ data: ENTRY_ROW, error: null, count: null });
 
-    const entry = await new SupabaseDatasetEntriesRepository(fake.client).findById("OD_0001");
+    const entry = await new SupabaseDatasetEntriesRepository(fake.client).findById("OD_1");
 
     expect(entry?.createdAt).toBe(ISO_UTC);
     expect(entry?.createdAt).not.toBe(TIMESTAMPTZ);
@@ -591,27 +591,27 @@ describe("SupabaseDatasetEntriesRepository", () => {
     const fake = createFakeClient();
     fake.enqueue({ data: null, error: null, count: null });
 
-    const found = await new SupabaseDatasetEntriesRepository(fake.client).findById("OD_9999");
+    const found = await new SupabaseDatasetEntriesRepository(fake.client).findById("OD_799");
 
     expect(found).toBeNull();
     expect(fake.lastCall().terminal).toBe("maybeSingle");
-    expect(fake.lastCall().filters).toEqual([{ kind: "eq", column: "id", value: "OD_9999" }]);
+    expect(fake.lastCall().filters).toEqual([{ kind: "eq", column: "id", value: "OD_799" }]);
   });
 
   it("returns listByIds in the order the caller asked for, omitting the ids that do not exist", async () => {
     const fake = createFakeClient();
     // Deliberately out of request order, which is what a database is free to do.
-    fake.enqueue(rows([{ ...ENTRY_ROW, id: "OD_0003" }, ENTRY_ROW]));
+    fake.enqueue(rows([{ ...ENTRY_ROW, id: "OD_3" }, ENTRY_ROW]));
 
     const entries = await new SupabaseDatasetEntriesRepository(fake.client).listByIds([
-      "OD_0001",
-      "OD_9999",
-      "OD_0003",
+      "OD_1",
+      "OD_799",
+      "OD_3",
     ]);
 
-    expect(entries.map((entry) => entry.id)).toEqual(["OD_0001", "OD_0003"]);
+    expect(entries.map((entry) => entry.id)).toEqual(["OD_1", "OD_3"]);
     expect(fake.lastCall().filters).toEqual([
-      { kind: "in", column: "id", value: ["OD_0001", "OD_9999", "OD_0003"] },
+      { kind: "in", column: "id", value: ["OD_1", "OD_799", "OD_3"] },
     ]);
   });
 
@@ -688,9 +688,9 @@ describe("SupabaseDatasetEntriesRepository.listAllActive", () => {
   // asserted on the recorded calls while the stitched CONTENT is asserted on the result.
   // Ids cycle the five real prefixes, so every row satisfies the domain schema: a row the
   // schema rejects would fail here on mapping rather than on paging, testing the wrong thing.
-  const PREFIXES = ["DO", "DT", "OD", "ODT", "CPE"] as const;
+  const PREFIXES = ["D", "DT", "OD", "ODT", "CPE"] as const;
   const canonicalId = (index: number): string =>
-    `${PREFIXES[Math.floor(index / 600) % PREFIXES.length]}_${String((index % 600) + 1).padStart(4, "0")}`;
+    `${PREFIXES[Math.floor(index / 800) % PREFIXES.length]}_${(index % 800) + 1}`;
   const page = (from: number, to: number, total: number) =>
     rows(
       Array.from({ length: to - from + 1 }, (_, offset) => {
@@ -698,7 +698,7 @@ describe("SupabaseDatasetEntriesRepository.listAllActive", () => {
         return {
           ...ENTRY_ROW,
           id: canonicalId(index),
-          source_entry_id: (index % 600) + 1,
+          source_entry_id: (index % 800) + 1,
         };
       }),
       total,
@@ -938,7 +938,7 @@ describe("SupabaseValidationsRepository", () => {
     expect(fake.lastCall().write).toEqual({
       id: "res_02",
       validator_id: "VAL_a81d92c1",
-      dataset_entry_id: "OD_0001",
+      dataset_entry_id: "OD_1",
       batch_id: "batch_01",
       evaluation: "cannot_evaluate",
       corrected_instruction: null,
@@ -1087,7 +1087,7 @@ describe("SupabaseValidationsRepository", () => {
     const fake = createFakeClient();
     fake.enqueue(rows([CANNOT_EVALUATE_ROW], 1));
 
-    const [found] = await new SupabaseValidationsRepository(fake.client).findByEntry("OD_0001");
+    const [found] = await new SupabaseValidationsRepository(fake.client).findByEntry("OD_1");
 
     expect(found).toEqual(CANNOT_EVALUATE_RESPONSE);
     const keys = Object.keys(found ?? {});
@@ -1158,11 +1158,11 @@ describe("SupabaseValidationsRepository", () => {
     const fake = createFakeClient();
     fake.enqueue(rows([VALIDATION_ROW], 1));
 
-    await new SupabaseValidationsRepository(fake.client).findByEntry("OD_0001");
+    await new SupabaseValidationsRepository(fake.client).findByEntry("OD_1");
 
     const call = fake.lastCall();
     expect(call.filters).toEqual([
-      { kind: "eq", column: "dataset_entry_id", value: "OD_0001" },
+      { kind: "eq", column: "dataset_entry_id", value: "OD_1" },
       { kind: "order", column: "created_at", ascending: true },
     ]);
     expect(call.options).toEqual({ count: "exact" });
@@ -1173,7 +1173,7 @@ describe("SupabaseValidationsRepository", () => {
     fake.enqueue(rows([VALIDATION_ROW], 1000));
 
     await expect(
-      new SupabaseValidationsRepository(fake.client).findByEntry("OD_0001"),
+      new SupabaseValidationsRepository(fake.client).findByEntry("OD_1"),
     ).rejects.toMatchObject({ name: "RepositoryError", operation: "validations.findByEntry" });
   });
 });
@@ -1187,12 +1187,12 @@ describe("the coverage read a pool is measured with", () => {
     const fake = createFakeClient();
     fake.enqueue(rows([VALIDATION_ROW], 1));
 
-    await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001", "OD_0002"]);
+    await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1", "OD_2"]);
 
     const call = fake.lastCall();
     expect(call.table).toBe("validations");
     expect(call.filters).toEqual([
-      { kind: "in", column: "dataset_entry_id", value: ["OD_0001", "OD_0002"] },
+      { kind: "in", column: "dataset_entry_id", value: ["OD_1", "OD_2"] },
       { kind: "range", from: 0, to: 999 },
     ]);
     expect(call.options).toEqual({ count: "exact" });
@@ -1207,14 +1207,11 @@ describe("the coverage read a pool is measured with", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it("chunks the id filter past 200 values, because a 3000-id URL is refused", async () => {
-    // Measured on the hosted gateway: one `.in()` with the merged corpus's 3,000 ids drew a 400.
+  it("chunks the id filter past 200 values, because a 4000-id URL is refused", async () => {
+    // Measured on the hosted gateway: one `.in()` with the corpus's thousands of ids drew a 400.
     // 250 ids therefore travel as 200 + 50, each chunk paging rows on its own count, and the
     // stitched rows keep global order for stable failure attribution.
-    const ids = Array.from(
-      { length: 250 },
-      (_, index) => `OD_${String(index + 1).padStart(4, "0")}`,
-    );
+    const ids = Array.from({ length: 250 }, (_, index) => `OD_${index + 1}`);
     const fake = createFakeClient();
     fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[0] }], 1));
     fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[200] }], 1));
@@ -1240,7 +1237,7 @@ describe("the coverage read a pool is measured with", () => {
     const fake = createFakeClient();
     fake.enqueue(rows([VALIDATION_ROW, CANNOT_EVALUATE_ROW], 2));
 
-    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1"]);
 
     expect(found.map((response) => response.evaluation).sort()).toEqual([
       "cannot_evaluate",
@@ -1265,7 +1262,7 @@ describe("the coverage read a pool is measured with", () => {
     fake.enqueue(rows(responseRows(0, 1000), 1500));
     fake.enqueue(rows(responseRows(1000, 500), 1500));
 
-    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1"]);
 
     expect(found).toHaveLength(1500);
     expect(fake.calls).toHaveLength(2);
@@ -1285,7 +1282,7 @@ describe("the coverage read a pool is measured with", () => {
     const fake = createFakeClient();
     fake.enqueue(rows([VALIDATION_ROW], 1));
 
-    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1"]);
 
     expect(found).toHaveLength(1);
     expect(fake.calls).toHaveLength(1);
@@ -1301,7 +1298,7 @@ describe("the coverage read a pool is measured with", () => {
     fake.enqueue(rows([], 1500));
 
     const error = await catchError(
-      new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]),
+      new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1"]),
     );
 
     expect(isRepositoryError(error)).toBe(true);
@@ -1318,7 +1315,7 @@ describe("the coverage read a pool is measured with", () => {
     fake.enqueue(rows([VALIDATION_ROW], null));
 
     await expect(
-      new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]),
+      new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1"]),
     ).rejects.toMatchObject({ name: "RepositoryError", operation: "validations.listForEntries" });
   });
 
@@ -1331,7 +1328,7 @@ describe("the coverage read a pool is measured with", () => {
     const fake = createFakeClient();
     fake.enqueue(rows([VALIDATION_ROW], 1));
 
-    await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_0001"]);
+    await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1"]);
 
     expect(fake.lastCall().columns?.split(",").sort()).toEqual(VALIDATION_COLUMN_SET);
   });
@@ -1344,13 +1341,13 @@ describe("the exclusion read", () => {
     // fetched full responses for the pool, and a method that exists to keep the exclusion rule from
     // reading anything about a response is the wrong place to start handing them out.
     const fake = createFakeClient();
-    fake.enqueue(rows([{ dataset_entry_id: "OD_0001" }, { dataset_entry_id: "OD_0002" }]));
+    fake.enqueue(rows([{ dataset_entry_id: "OD_1" }, { dataset_entry_id: "OD_2" }]));
 
     const ids = await new SupabaseValidationsRepository(fake.client).listEntryIdsForValidator(
       "VAL_a81d92c1",
     );
 
-    expect(ids).toEqual(["OD_0001", "OD_0002"]);
+    expect(ids).toEqual(["OD_1", "OD_2"]);
     const call = fake.lastCall();
     expect(call.columns).toBe("dataset_entry_id");
     expect(call.filters).toEqual([{ kind: "eq", column: "validator_id", value: "VAL_a81d92c1" }]);
@@ -1431,9 +1428,9 @@ describe("SupabaseBatchesRepository", () => {
     // three-entry batch and still pass every content assertion below; asserting on the COUNT of
     // writes is what distinguishes "one request" from "N requests that happen to agree".
     expect(writtenRows(fake.calls[1]!)).toEqual([
-      { batch_id: "batch_01", dataset_entry_id: "OD_0001", position: 1 },
-      { batch_id: "batch_01", dataset_entry_id: "OD_0002", position: 2 },
-      { batch_id: "batch_01", dataset_entry_id: "OD_0003", position: 3 },
+      { batch_id: "batch_01", dataset_entry_id: "OD_1", position: 1 },
+      { batch_id: "batch_01", dataset_entry_id: "OD_2", position: 2 },
+      { batch_id: "batch_01", dataset_entry_id: "OD_3", position: 3 },
     ]);
   });
 
@@ -1481,11 +1478,7 @@ describe("SupabaseBatchesRepository", () => {
     );
 
     expect(stored).toEqual(BATCH_RECORD);
-    expect(stored.entries.map((entry) => entry.datasetEntryId)).toEqual([
-      "OD_0001",
-      "OD_0002",
-      "OD_0003",
-    ]);
+    expect(stored.entries.map((entry) => entry.datasetEntryId)).toEqual(["OD_1", "OD_2", "OD_3"]);
     // The read-back went through `findById` rather than being reconstructed from what was sent.
     expect(fake.calls[2]?.table).toBe("validation_batches");
     expect(fake.calls[3]?.filters).toContainEqual({
@@ -1733,9 +1726,9 @@ describe("SupabaseBatchesRepository.listForRecovery", () => {
     fake.enqueue({ data: RECOVERY_ROWS, error: null, count: null });
     fake.enqueue({
       data: [
-        { batch_id: "batch_02", dataset_entry_id: "OD_0003" },
-        { batch_id: "batch_01", dataset_entry_id: "OD_0001" },
-        { batch_id: "batch_01", dataset_entry_id: "OD_0002" },
+        { batch_id: "batch_02", dataset_entry_id: "OD_3" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_1" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_2" },
       ],
       error: null,
       count: null,
@@ -1780,9 +1773,9 @@ describe("SupabaseBatchesRepository.listForRecovery", () => {
     fake.enqueue({ data: RECOVERY_ROWS, error: null, count: null });
     fake.enqueue({
       data: [
-        { batch_id: "batch_02", dataset_entry_id: "OD_0003" },
-        { batch_id: "batch_01", dataset_entry_id: "OD_0001" },
-        { batch_id: "batch_01", dataset_entry_id: "OD_0002" },
+        { batch_id: "batch_02", dataset_entry_id: "OD_3" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_1" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_2" },
       ],
       error: null,
       count: null,
@@ -1805,7 +1798,7 @@ describe("SupabaseBatchesRepository.listForRecovery", () => {
     const fake = createFakeClient();
     fake.enqueue({ data: [BATCH_ROW], error: null, count: null });
     fake.enqueue({
-      data: [{ batch_id: "batch_01", dataset_entry_id: "OD_0001" }],
+      data: [{ batch_id: "batch_01", dataset_entry_id: "OD_1" }],
       error: null,
       count: null,
     });
@@ -1852,9 +1845,9 @@ describe("SupabaseBatchesRepository.listForRecovery", () => {
     fake.enqueue({ data: RECOVERY_ROWS, error: null, count: null });
     fake.enqueue({
       data: [
-        { batch_id: "batch_01", dataset_entry_id: "OD_0002" },
-        { batch_id: "batch_02", dataset_entry_id: "OD_0003" },
-        { batch_id: "batch_01", dataset_entry_id: "OD_0001" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_2" },
+        { batch_id: "batch_02", dataset_entry_id: "OD_3" },
+        { batch_id: "batch_01", dataset_entry_id: "OD_1" },
       ],
       error: null,
       count: null,
@@ -1864,13 +1857,13 @@ describe("SupabaseBatchesRepository.listForRecovery", () => {
       "VAL_a81d92c1",
     );
 
-    // The DATABASE's order for batch_01 is OD_0002 then OD_0001, and that is what must come back.
+    // The DATABASE's order for batch_01 is OD_2 then OD_1, and that is what must come back.
     // Sorting them would assert an order this read has no reason to establish — and the batch's real
     // order is `position`, which is not even selected here.
     //
     // In BATCH order, which is the database's own: batch_02 first, because that is the row order the
     // batch read returned.
-    expect(batches.map((batch) => batch.entryIds)).toEqual([["OD_0003"], ["OD_0002", "OD_0001"]]);
+    expect(batches.map((batch) => batch.entryIds)).toEqual([["OD_3"], ["OD_2", "OD_1"]]);
     expect(batches.map((batch) => batch.id)).toEqual(["batch_02", "batch_01"]);
   });
 
@@ -1935,13 +1928,13 @@ describe("coverage counting", () => {
     const fake = createFakeClient();
     fake.enqueue(countOnly(3));
 
-    const count = await new SupabaseValidationsRepository(fake.client).countForEntry("OD_0001");
+    const count = await new SupabaseValidationsRepository(fake.client).countForEntry("OD_1");
 
     expect(count).toBe(3);
     const call = fake.lastCall();
     expect(call.columns).toBe("validator_id");
     expect(call.options).toEqual({ count: "exact", head: true });
-    expect(call.filters).toEqual([{ kind: "eq", column: "dataset_entry_id", value: "OD_0001" }]);
+    expect(call.filters).toEqual([{ kind: "eq", column: "dataset_entry_id", value: "OD_1" }]);
   });
 
   it("counts a validator's own completions the same way", async () => {
@@ -1964,7 +1957,7 @@ describe("coverage counting", () => {
     fake.enqueue(countOnly(null));
 
     await expect(
-      new SupabaseValidationsRepository(fake.client).countForEntry("OD_0001"),
+      new SupabaseValidationsRepository(fake.client).countForEntry("OD_1"),
     ).rejects.toMatchObject({ name: "RepositoryError", operation: "validations.countForEntry" });
   });
 
@@ -2031,7 +2024,7 @@ describe("failures never become an empty result", () => {
     fake.enqueue({ throws: new Error("ETIMEDOUT") });
 
     await expect(
-      new SupabaseValidationsRepository(fake.client).countForEntry("OD_0001"),
+      new SupabaseValidationsRepository(fake.client).countForEntry("OD_1"),
     ).rejects.toMatchObject({ operation: "validations.countForEntry" });
   });
 
@@ -2056,9 +2049,9 @@ describe("the query shape these implementations depend on", () => {
     fake.enqueue(rows([ENTRY_ROW], 1));
     await repository.listActive();
     fake.enqueue({ data: ENTRY_ROW, error: null, count: null });
-    await repository.findById("OD_0001");
+    await repository.findById("OD_1");
     fake.enqueue(rows([ENTRY_ROW], 1));
-    await repository.listByIds(["OD_0001"]);
+    await repository.listByIds(["OD_1"]);
 
     expect(fake.calls.length).toBeGreaterThan(0);
     for (const call of fake.calls) {
@@ -2078,7 +2071,7 @@ describe("the query shape these implementations depend on", () => {
     });
 
     const error = await catchError(
-      new SupabaseDatasetEntriesRepository(fake.client).findById("OD_0001"),
+      new SupabaseDatasetEntriesRepository(fake.client).findById("OD_1"),
     );
 
     expect(isRepositoryError(error)).toBe(true);
@@ -2238,7 +2231,7 @@ describe("the privileged boundary of this directory", () => {
     // A type-only sanity check that the fixtures really are domain values, so a test that compares
     // against them cannot pass because both sides were built from the same wrong assumption.
     const entryId: DatasetEntryId = ENTRY.id;
-    expect(entryId).toBe("OD_0001");
+    expect(entryId).toBe("OD_1");
     expect(ENTRY.category).toBe("origin_destination");
     expect(PROFILE.totalValidations).toBe(3);
   });
