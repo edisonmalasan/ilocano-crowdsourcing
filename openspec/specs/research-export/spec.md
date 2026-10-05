@@ -102,23 +102,38 @@ against which a consumer is invited to compare the complete flag.
 
 ### Requirement: Dataset categories are preserved
 
-The export SHALL record the category of every dataset entry it includes, and the summary SHALL be
-grouped by category, so that a consumer can select one category's data without inferring it. The
-export SHALL NOT assume a single category, and SHALL NOT treat a category's absent optional fields as
-a defect.
+The export SHALL record the category of every dataset entry it includes, and
+the summary SHALL be grouped by category, so that a consumer can select one
+category's data without inferring it. Every category reference SHALL carry the
+numeric `category_id` (1..5 in file order) alongside the slug and the
+human-readable name. Research-facing record order SHALL be numeric: by
+`category_id`, then by the canonical id's numeric suffix — never lexical, so
+`D_2` precedes `D_10`. The export SHALL NOT assume a single category, and
+SHALL NOT treat a category's absent optional fields as a defect.
 
 #### Scenario: Records carry their category
 
 - **WHEN** entries from more than one category are exported
-- **THEN** every record names its category and the summary reports per-category totals
+- **THEN** every record names its category triple and the summary reports per-category totals
+
+#### Scenario: Records sort numerically within their category
+
+- **WHEN** a category's records are listed in JSON or CSV
+- **THEN** they appear ordered by numeric suffix, so `D_2` precedes `D_10`
 
 ### Requirement: JSON and CSV forms are both produced and both round-trip
 
-The export SHALL produce a JSON document and a CSV rendering of the validations. The CSV SHALL quote
-any field containing a comma, a double quote, or a newline, and escape an embedded double quote, so
-that a translation containing punctuation or a line break survives the round trip unchanged. The two
-forms SHALL describe the same records, and no field SHALL be dropped from the CSV to make quoting
-easier.
+The export SHALL produce JSON documents grouped by category and flat CSV
+renderings. `validations.json` SHALL group responses under their five
+categories in `category_id` order; `validated-dataset.json` SHALL group
+validated records the same way beneath its derivation block. Grouped JSON
+records SHALL NOT repeat the enclosing category triple. The CSV SHALL quote
+any field containing a comma, a double quote, or a newline, and escape an
+embedded double quote, so that a translation containing punctuation or a line
+break survives the round trip unchanged. The grouped and flat forms SHALL
+carry equivalent research information: every JSON record's fields appear as
+CSV cells under the same names plus the enclosing group's category triple,
+and no field SHALL be dropped from the CSV to make quoting easier.
 
 #### Scenario: A translation containing commas and quotes round-trips
 
@@ -129,7 +144,14 @@ easier.
 #### Scenario: Both forms describe the same records
 
 - **WHEN** the JSON and CSV exports are compared
-- **THEN** they contain the same number of records and the same per-record values
+- **THEN** they contain the same number of records and the same per-record values, with the
+  category triple recovered from the enclosing JSON group
+
+#### Scenario: All five categories appear even when empty
+
+- **WHEN** the export runs over a corpus with no responses
+- **THEN** both JSON documents still carry all five category groups in `category_id` order,
+  with empty record arrays
 
 ### Requirement: The export runs as an operator command and as one authenticated download, and performs no research-data write
 
@@ -161,10 +183,13 @@ than silently producing a partial artifact.
 ### Requirement: The export run produces the raw and validated documents
 
 One operator run SHALL write five files into the operator's destination: `validations.json` and
-`validations.csv` (every stored response as its own record, unchanged shape), `summary.json`
-(per-entry and aggregate counts, unchanged shape), plus `validated-dataset.json` and
-`validated-dataset.csv` (one record per complete entry, derived). Incomplete entries appear in
-the raw documents and are absent from the validated ones. The run SHALL refuse an unwritable
+`validations.csv` (every stored response as its own record, grouped shape in JSON and flat
+rows in CSV), `summary.json` (per-entry and aggregate counts, unchanged shape, now over
+4,000 entries), plus `validated-dataset.json` and `validated-dataset.csv` (one record per
+complete entry, derived, grouped in JSON and flat in CSV). Incomplete entries appear in
+the raw documents and are absent from the validated ones; at pristine zero state the summary
+SHALL report 4,000 entries, 0 responses, 0 complete, 4,000 incomplete, and
+`omitted_incomplete_entries` SHALL be 4,000. The run SHALL refuse an unwritable
 destination rather than producing a partial set, and SHALL report all five file names on success
 so a missing document is noticed rather than assumed.
 
@@ -185,6 +210,11 @@ as redundant, and no consumer SHALL be told the validated document is adjudicate
 - **THEN** no record for it appears in either validated file, and the summary states how many
   entries were omitted for that reason
 
+#### Scenario: Zero state reports 4000 omitted, not 0
+
+- **WHEN** the export runs over a corpus with no responses at all
+- **THEN** `omitted_incomplete_entries` is 4,000 and both validated files carry no records
+
 #### Scenario: A partial write is refused, not completed
 
 - **WHEN** the destination cannot receive all five files
@@ -193,18 +223,21 @@ as redundant, and no consumer SHALL be told the validated document is adjudicate
 ### Requirement: A validated record carries its judgment metadata under response/attempt terminology
 
 For each complete entry the export SHALL derive exactly one validated record with exactly these
-fields: `id` (the source entry id), `category` (the entry's dataset category), `validated_ilocano`
-(the correction from the earliest valid judgment that required one, otherwise the source
-instruction), `evaluation` (that same judgment's evaluation), `self_reported_proficiency` (the
-self-reported proficiency attached to that judgment's attempt, or null when unrecorded),
-`english_translation` (the earliest non-blank English translation on the entry's responses),
-`filipino_translation` (the earliest non-blank Filipino translation on the entry's responses),
-`output` (the entry's `origin`, `destination`, and `transit_mode`), `source_response_id` (the
-response id that supplied `validated_ilocano` and `evaluation`, the provenance link back to the
-raw record), `source_attempt_id` (the anonymous attempt that submitted that judgment response),
-and `needs_review` (the shared review flag for the entry, additionally true whenever the record's
-fields come from more than one response). Earliest SHALL mean by server-minted `createdAt`, ties
-broken by smallest response id and stated as arbitrary and carrying no meaning.
+fields: `id` (the verbatim canonical id, e.g. `ODT_63`), `source_entry_id` (the numeric
+suffix), `validated_ilocano` (the correction from the earliest valid judgment that required one,
+otherwise the source instruction), `evaluation` (that same judgment's evaluation),
+`self_reported_proficiency` (the self-reported proficiency attached to that judgment's attempt,
+or null when unrecorded), `english_translation` (the earliest non-blank English translation on
+the entry's responses), `filipino_translation` (the earliest non-blank Filipino translation on
+the entry's responses), `output` (the entry's `origin`, `destination`, and `transit_mode`,
+including `private_vehicle` where supplied), `source_response_id` (the response id that
+supplied `validated_ilocano` and `evaluation`, the provenance link back to the raw record),
+`source_attempt_id` (the anonymous attempt that submitted that judgment response), and
+`needs_review` (the shared review flag for the entry, additionally true whenever the record's
+fields come from more than one response). The enclosing JSON category group establishes
+`category_id`, `category`, and `category_name`; the flat CSV row repeats them as cells.
+Earliest SHALL mean by server-minted `createdAt`, ties broken by smallest response id and
+stated as arbitrary and carrying no meaning.
 
 `evaluation`, `self_reported_proficiency`, `source_response_id`, and `source_attempt_id` SHALL
 describe the judgment supplier only: on a multi-source record they MUST NOT be read as authoring
@@ -274,6 +307,12 @@ and a supplied correction is already represented by `validated_ilocano`.
   (`response_id` terminology in prose, `source_response_id` / `source_attempt_id` as fields),
   quoted so that translations containing commas, quotes, or newlines round-trip unchanged
 
+#### Scenario: A private_vehicle record survives both serializations
+
+- **WHEN** a complete entry's output carries `transit_mode` `private_vehicle`
+- **THEN** both the JSON record and the CSV row carry the exact label `private_vehicle`,
+  never `private`, `car`, or another invented synonym
+
 ### Requirement: Raw export identifiers use response/attempt terminology
 
 Raw validation records SHALL name their response `response_id` and their attempt `attempt_id`
@@ -298,20 +337,23 @@ or stored value SHALL change for this rename; it is an export-label change only.
 
 Raw validation records SHALL use `response_id` for the stored response and `attempt_id` for the
 submitting anonymous attempt, with values and prefixes unchanged. Each raw record SHALL also
-carry `source_entry_id` (the source-local id 1..600), `category` (the stable slug), and
-`category_name` (the human-readable source category name) of its dataset entry, in both JSON
-and CSV with equivalent information. Response diagnostic flags stay raw-only.
+carry `dataset_entry_id` (the verbatim canonical id), `source_entry_id` (the source-local id
+1..800), and the enclosing group's `category_id`, `category`, and `category_name` in CSV rows;
+grouped JSON responses SHALL carry the entry and response fields with the category triple
+established by the enclosing group. JSON and CSV SHALL carry equivalent information. Response
+diagnostic flags stay raw-only.
 
 #### Scenario: Raw records name response, attempt, and provenance together
 
 - **WHEN** a stored response is exported
-- **THEN** its record carries `response_id`, `attempt_id`, `dataset_entry_id`, `source_entry_id`,
-  `category`, and `category_name` with values identical to the stored rows
+- **THEN** its record carries `response_id`, `attempt_id`, `dataset_entry_id`, and
+  `source_entry_id` with values identical to the stored rows, inside the correct category group
 
 #### Scenario: JSON and CSV carry equivalent provenance
 
 - **WHEN** the raw JSON and CSV documents are compared
-- **THEN** they contain the same records with the same provenance values under the same names
+- **THEN** they contain the same records with the same provenance values under the same names,
+  the JSON group supplying what the CSV row repeats
 
 ### Requirement: Validated records carry judgment metadata and source provenance
 
