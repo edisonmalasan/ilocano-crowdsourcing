@@ -416,6 +416,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `fresh-entry-form-and-export-terms`, the THIRTY-THIRD archived change, so this coupling has now
       // been paid SEVENTEEN times. Same one-line edit, same reason.
       33: "Thirty-three",
+      // Added for `merged-multi-category-dataset`, the THIRTY-FOURTH archived change, so this coupling has now
+      // been paid EIGHTEEN times. Same one-line edit, same reason.
+      34: "Thirty-four",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
