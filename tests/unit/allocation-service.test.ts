@@ -543,9 +543,9 @@ describe("completion retires the entry", () => {
 
 describe("entries sharing a source-local id across categories", () => {
   // The revised source restarts numeric suffixes at 1 in every category block, so `D_42`,
-  // `DT_42`, `OD_42`, `ODT_42`, and `CPE_42` are five distinct canonical entries that happen
-  // to share a local id. The pool, the answered rule, and the reservation claim must all key
-  // on the canonical id — anything keying on the local id would confuse or collapse them.
+  // `DT_42`, `OD_42`, `ODT_42`, `CPE_42`, and `DTM_42` are six distinct canonical entries that
+  // happen to share a local id. The pool, the answered rule, and the reservation claim must all
+  // key on the canonical id — anything keying on the local id would confuse or collapse them.
   const family42 = () => [
     entry("D_42", {
       category: "destination_only",
@@ -568,21 +568,29 @@ describe("entries sharing a source-local id across categories", () => {
       sourceEntryId: 42,
       categoryName: "Complex/Preference Expressions",
     }),
+    entry("DTM_42", {
+      category: "double_transit_mode",
+      sourceEntryId: 42,
+      categoryName: "Double Transit Mode",
+      origin: null,
+      destination: "Abanao Square",
+      transitMode: ["jeepney", "walking"],
+    }),
   ];
 
-  it("treats the same local id in five categories as five distinct allocatable entries", async () => {
+  it("treats the same local id in six categories as six distinct allocatable entries", async () => {
     const fakes = createFakes({ pool: family42() });
 
     const outcome = await allocateBatch(
       request,
-      dependenciesFor(fakes, { config: config({ batchSize: 5 }) }),
+      dependenciesFor(fakes, { config: config({ batchSize: 6 }) }),
     );
 
     expect(
       allocated(outcome)
         .entries.map((candidate) => candidate.id)
         .sort(),
-    ).toEqual(["CPE_42", "DT_42", "D_42", "ODT_42", "OD_42"]);
+    ).toEqual(["CPE_42", "DTM_42", "DT_42", "D_42", "ODT_42", "OD_42"]);
   });
 
   it("excludes only the answered canonical entry, never its same-local-id siblings", async () => {
@@ -593,15 +601,15 @@ describe("entries sharing a source-local id across categories", () => {
 
     const outcome = await allocateBatch(
       request,
-      dependenciesFor(fakes, { config: config({ batchSize: 5 }) }),
+      dependenciesFor(fakes, { config: config({ batchSize: 6 }) }),
     );
 
-    // Honest short batch: one entry answered, four still eligible — the siblings are unaffected.
+    // Honest short batch: one entry answered, five still eligible — the siblings are unaffected.
     expect(
       allocated(outcome)
         .entries.map((candidate) => candidate.id)
         .sort(),
-    ).toEqual(["CPE_42", "DT_42", "D_42", "ODT_42"]);
+    ).toEqual(["CPE_42", "DTM_42", "DT_42", "D_42", "ODT_42"]);
   });
 });
 

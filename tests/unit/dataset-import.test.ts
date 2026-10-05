@@ -3,7 +3,7 @@
  *
  * These tests read `data/merged-ilocano-synthetic-data.json` itself rather than a hand-written
  * fixture, because a fixture would only prove the parser handles whatever the fixture happens to
- * contain. The research question is whether all 4,000 real records survive the trip, so that is
+ * contain. The research question is whether all 4,800 real records survive the trip, so that is
  * what is asserted.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -27,7 +27,11 @@ const SOURCE_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-syntheti
 interface RawRecord {
   id: string;
   instruction: string;
-  output: { origin: string | null; destination: string | null; transit_mode: string | null };
+  output: {
+    origin: string | null;
+    destination: string | null;
+    transit_mode: string | string[] | null;
+  };
 }
 
 interface RawBlock {
@@ -75,11 +79,11 @@ function expectedIdsInSourceOrder(): string[] {
 }
 
 describe("parseSyntheticDataset against the real revised dataset", () => {
-  it("produces 4,000 entries, 800 per category, in source order", () => {
+  it("produces 4,800 entries, 800 per category, in source order", () => {
     const { entries, report } = parseSyntheticDataset(readSource());
 
-    expect(entries).toHaveLength(4000);
-    expect(report.recordCount).toBe(4000);
+    expect(entries).toHaveLength(4800);
+    expect(report.recordCount).toBe(4800);
     expect(entries.map((entry) => entry.id)).toEqual(expectedIdsInSourceOrder());
   });
 
@@ -87,7 +91,7 @@ describe("parseSyntheticDataset against the real revised dataset", () => {
     const { entries } = parseSyntheticDataset(readSource());
     const ids = entries.map((entry) => entry.id);
 
-    expect(new Set(ids).size).toBe(4000);
+    expect(new Set(ids).size).toBe(4800);
     // Verbatim, not reminted: the parsed id IS the filed id, byte for byte.
     const filed = new Set(expectedIdsInSourceOrder());
     for (const id of ids) expect(filed.has(id), `${id} was not in the source`).toBe(true);
@@ -98,7 +102,7 @@ describe("parseSyntheticDataset against the real revised dataset", () => {
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
     const document = readDocument();
 
-    expect(new Set(entries.map((entry) => entry.category)).size).toBe(5);
+    expect(new Set(entries.map((entry) => entry.category)).size).toBe(6);
     for (const block of document.categories) {
       const mapping = DATASET_CATEGORY_TABLE.find((row) => row.name === block.category_name);
       if (!mapping) throw new Error(`no mapping for ${block.category_name}`);
@@ -152,7 +156,12 @@ describe("parseSyntheticDataset against the real revised dataset", () => {
     const counts = new Map<string, Map<string, number>>();
     for (const entry of entries) {
       const modes = counts.get(entry.category) ?? new Map<string, number>();
-      const key = entry.transitMode ?? "null";
+      const key =
+        entry.transitMode === null
+          ? "null"
+          : typeof entry.transitMode === "string"
+            ? entry.transitMode
+            : `pair:${entry.transitMode[0]}+${entry.transitMode[1]}`;
       modes.set(key, (modes.get(key) ?? 0) + 1);
       counts.set(entry.category, modes);
     }
@@ -171,6 +180,20 @@ describe("parseSyntheticDataset against the real revised dataset", () => {
         jeepney: 200,
         taxi: 200,
         private_vehicle: 200,
+      },
+      double_transit_mode: {
+        "pair:jeepney+walking": 50,
+        "pair:jeepney+taxi": 100,
+        "pair:jeepney+private_vehicle": 50,
+        "pair:walking+jeepney": 100,
+        "pair:walking+taxi": 50,
+        "pair:walking+private_vehicle": 50,
+        "pair:taxi+walking": 50,
+        "pair:taxi+jeepney": 50,
+        "pair:taxi+private_vehicle": 100,
+        "pair:private_vehicle+walking": 100,
+        "pair:private_vehicle+jeepney": 50,
+        "pair:private_vehicle+taxi": 50,
       },
     };
     for (const [category, modes] of Object.entries(expected)) {
@@ -231,10 +254,11 @@ describe("parseSyntheticDataset against the real revised dataset", () => {
 describe("revised-shape validation", () => {
   /** One full valid block, so failure tests can break exactly one thing. */
   function block(prefix: string, name: string, ids: readonly string[]) {
-    // Shape-correct per category: null-mode blocks carry no origin and no mode, mode-bearing
-    // blocks carry both. A helper that built an invalid block would fail every test that uses
+    // Shape-correct per category: null-mode blocks carry no origin and no mode, single-mode
+    // blocks carry a scalar mode, and Double Transit Mode carries an ordered pair with no
+    // origin. A helper that built an invalid block would fail every test that uses
     // it for the wrong reason.
-    const modeBearing = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
+    const singleMode = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
     const withOrigin = prefix === "OD" || prefix === "ODT" || prefix === "CPE";
     return {
       category_id: 1,
@@ -245,7 +269,7 @@ describe("revised-shape validation", () => {
         output: {
           origin: withOrigin ? `Origin ${id}` : null,
           destination: `Place ${id}`,
-          transit_mode: modeBearing ? "walking" : null,
+          transit_mode: prefix === "DTM" ? ["jeepney", "walking"] : singleMode ? "walking" : null,
         },
       })),
     };
@@ -266,21 +290,22 @@ describe("revised-shape validation", () => {
 
   const NAMES = DATASET_CATEGORY_TABLE.map((row) => ({ prefix: row.prefix, name: row.name }));
 
-  it("accepts the five documented categories and nothing else", () => {
+  it("accepts the six documented categories and nothing else", () => {
     // Hardcoded, not derived from the table: deriving the expectation from the implementation
-    // would pass with any five names, including five wrong ones.
+    // would pass with any six names, including six wrong ones.
     expect(DATASET_CATEGORY_TABLE.map((row) => row.name)).toEqual([
       "Destination Only",
       "Destination + Transit Mode",
       "Origin + Destination",
       "Origin + Destination + Transit Mode",
       "Complex/Preference Expressions",
+      "Double Transit Mode",
     ]);
     const { entries } = parseSyntheticDataset(documentOf(NAMES));
-    expect(entries).toHaveLength(4000);
+    expect(entries).toHaveLength(4800);
   });
 
-  it("rejects a sixth block and a missing block", () => {
+  it("rejects a seventh block and a missing block", () => {
     expect(() =>
       parseSyntheticDataset(documentOf([...NAMES, NAMES[0] as (typeof NAMES)[number]])),
     ).toThrow(DatasetParseError);
@@ -288,7 +313,7 @@ describe("revised-shape validation", () => {
   });
 
   it("rejects a duplicated category block", () => {
-    const names = [NAMES[0], NAMES[1], NAMES[1], NAMES[2], NAMES[3]] as typeof NAMES;
+    const names = [NAMES[0], NAMES[1], NAMES[1], NAMES[2], NAMES[3], NAMES[5]] as typeof NAMES;
     expect(() => parseSyntheticDataset(documentOf(names))).toThrow(/duplicate category block/);
   });
 
@@ -299,6 +324,7 @@ describe("revised-shape validation", () => {
       NAMES[2],
       NAMES[3],
       NAMES[4],
+      NAMES[5],
     ] as typeof NAMES;
     expect(() => parseSyntheticDataset(documentOf(names))).toThrow(/unknown category/);
   });
@@ -427,6 +453,124 @@ describe("revised-shape validation", () => {
     expect(() => parseSyntheticDataset(document)).toThrow(/must be one of/);
   });
 
+  it("accepts a Double Transit Mode pair with order preserved", () => {
+    const { entries } = parseSyntheticDataset(documentOf(NAMES));
+    const dtm = entries.filter((entry) => entry.category === "double_transit_mode");
+    expect(dtm).toHaveLength(800);
+    for (const entry of dtm) {
+      expect(entry.origin).toBeNull();
+      expect(entry.destination).not.toBeNull();
+      expect(Array.isArray(entry.transitMode)).toBe(true);
+      expect(entry.transitMode).toHaveLength(2);
+    }
+    // Order preserved, not sorted: the first DTM record's pair is the source order.
+    const first = dtm[0];
+    expect(first?.id).toBe("DTM_1");
+    expect(first?.transitMode).toEqual(["jeepney", "walking"]);
+  });
+
+  it("rejects a Double Transit Mode row carrying an origin", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DTM").map((id) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: {
+        origin: `Origin ${id}`,
+        destination: `Place ${id}`,
+        transit_mode: ["jeepney", "walking"],
+      },
+    }));
+    document.categories[5] = {
+      category_id: 6,
+      category_name: NAMES[5]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(/origin must be null/);
+  });
+
+  it("rejects a one-mode Double Transit Mode array", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DTM").map((id) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: { origin: null, destination: `Place ${id}`, transit_mode: ["walking"] },
+    }));
+    document.categories[5] = {
+      category_id: 6,
+      category_name: NAMES[5]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(DatasetParseError);
+  });
+
+  it("rejects a three-mode Double Transit Mode array", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DTM").map((id) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: {
+        origin: null,
+        destination: `Place ${id}`,
+        transit_mode: ["walking", "jeepney", "taxi"],
+      },
+    }));
+    document.categories[5] = {
+      category_id: 6,
+      category_name: NAMES[5]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(DatasetParseError);
+  });
+
+  it("rejects a duplicated Double Transit Mode pair", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DTM").map((id) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: { origin: null, destination: `Place ${id}`, transit_mode: ["walking", "walking"] },
+    }));
+    document.categories[5] = {
+      category_id: 6,
+      category_name: NAMES[5]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(DatasetParseError);
+  });
+
+  it("rejects an out-of-vocabulary Double Transit Mode pair", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DTM").map((id, index) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: {
+        origin: null,
+        destination: `Place ${id}`,
+        transit_mode: index === 0 ? ["bus", "taxi"] : ["jeepney", "walking"],
+      },
+    }));
+    document.categories[5] = {
+      category_id: 6,
+      category_name: NAMES[5]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(DatasetParseError);
+  });
+
+  it("rejects a scalar transit mode in Double Transit Mode", () => {
+    const document = documentOf(NAMES);
+    const entries = fullIds("DTM").map((id) => ({
+      id,
+      instruction: `Instruction ${id}.`,
+      output: { origin: null, destination: `Place ${id}`, transit_mode: "walking" },
+    }));
+    document.categories[5] = {
+      category_id: 6,
+      category_name: NAMES[5]?.name as string,
+      entries,
+    };
+    expect(() => parseSyntheticDataset(document)).toThrow(DatasetParseError);
+  });
+
   it("rejects a non-object document and a missing categories array", () => {
     expect(() => parseSyntheticDataset([{ id: "D_1" }])).toThrow(DatasetParseError);
     expect(() => parseSyntheticDataset({})).toThrow(DatasetParseError);
@@ -444,7 +588,7 @@ describe("parseSyntheticDataset preserves unmodelled source fields", () => {
   }
 
   function fullBlock(category_id: number, prefix: string, category_name: string) {
-    const modeBearing = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
+    const singleMode = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
     const withOrigin = prefix === "OD" || prefix === "ODT" || prefix === "CPE";
     return {
       category_id,
@@ -456,7 +600,7 @@ describe("parseSyntheticDataset preserves unmodelled source fields", () => {
           output: {
             origin: withOrigin ? `Origin ${id}` : null,
             destination: `Place ${id}`,
-            transit_mode: modeBearing ? "walking" : null,
+            transit_mode: prefix === "DTM" ? ["jeepney", "walking"] : singleMode ? "walking" : null,
           },
         };
       }),
@@ -473,6 +617,7 @@ describe("parseSyntheticDataset preserves unmodelled source fields", () => {
         fullBlock(2, "DT", "Destination + Transit Mode"),
         fullBlock(4, "ODT", "Origin + Destination + Transit Mode"),
         fullBlock(5, "CPE", "Complex/Preference Expressions"),
+        fullBlock(6, "DTM", "Double Transit Mode"),
       ],
     };
   }
@@ -522,7 +667,7 @@ describe("parseSyntheticDataset rejects rather than repairs — revised shape", 
   }
 
   function fullBlock(category_id: number, prefix: string, category_name: string) {
-    const modeBearing = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
+    const singleMode = prefix === "DT" || prefix === "ODT" || prefix === "CPE";
     const withOrigin = prefix === "OD" || prefix === "ODT" || prefix === "CPE";
     return {
       category_id,
@@ -534,7 +679,7 @@ describe("parseSyntheticDataset rejects rather than repairs — revised shape", 
           output: {
             origin: withOrigin ? "A" : null,
             destination: "B",
-            transit_mode: modeBearing ? "walking" : null,
+            transit_mode: prefix === "DTM" ? ["jeepney", "walking"] : singleMode ? "walking" : null,
           },
         };
       }),
@@ -551,6 +696,7 @@ describe("parseSyntheticDataset rejects rather than repairs — revised shape", 
         fullBlock(2, "DT", "Destination + Transit Mode"),
         fullBlock(4, "ODT", "Origin + Destination + Transit Mode"),
         fullBlock(5, "CPE", "Complex/Preference Expressions"),
+        fullBlock(6, "DTM", "Double Transit Mode"),
       ],
     };
   }
@@ -589,11 +735,11 @@ describe("parseSyntheticDataset rejects rather than repairs — revised shape", 
   });
 
   it("rejects the whole file rather than importing the records that happened to parse", () => {
-    // Importing 3,999 of 4,000 records would leave the dataset quietly incomplete, and a coverage
+    // Importing 4,799 of 4,800 records would leave the dataset quietly incomplete, and a coverage
     // count computed over a partial import is worse than no import at all.
     const broken = wrapped(validRecord("OD_1"));
-    const lastBlock = broken.categories[4];
-    if (lastBlock === undefined) throw new Error("expected five blocks");
+    const lastBlock = broken.categories[5];
+    if (lastBlock === undefined) throw new Error("expected six blocks");
     lastBlock.entries[799] = {
       id: "CPE_800",
       instruction: "",
@@ -697,8 +843,8 @@ describe("the source dataset is never opened for writing", () => {
     const { readAndParseDatasetFile } = await import("@/lib/dataset/import-dataset");
     const { entries, report } = await readAndParseDatasetFile(SOURCE_PATH);
 
-    expect(report.recordCount).toBe(4000);
-    expect(entries).toHaveLength(4000);
+    expect(report.recordCount).toBe(4800);
+    expect(entries).toHaveLength(4800);
     expect(readFileSync(SOURCE_PATH, "utf8")).toBe(readFileSync(SOURCE_PATH, "utf8"));
   });
 });

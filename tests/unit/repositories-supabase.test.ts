@@ -508,6 +508,38 @@ describe("SupabaseDatasetEntriesRepository", () => {
     expect(entry?.createdAt).not.toBe(TIMESTAMPTZ);
   });
 
+  it("maps a Double Transit Mode pair row to the ordered pair domain value", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: {
+        ...ENTRY_ROW,
+        id: "DTM_1",
+        category: "double_transit_mode",
+        category_name: "Double Transit Mode",
+        origin: null,
+        destination: "Abanao Square",
+        transit_mode: null,
+        transit_modes: ["jeepney", "walking"],
+      },
+      error: null,
+      count: null,
+    });
+
+    const entry = await new SupabaseDatasetEntriesRepository(fake.client).findById("DTM_1");
+
+    expect(entry?.transitMode).toEqual(["jeepney", "walking"]);
+  });
+
+  it("fetches the pair column, because a select without it would drop every DTM pair", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(rows([ENTRY_ROW], 1));
+    await new SupabaseDatasetEntriesRepository(fake.client).listActive();
+
+    const call = fake.lastCall();
+    expect(call.method).toBe("select");
+    expect((call.columns ?? "").split(",")).toContain("transit_modes");
+  });
+
   it("reads only active entries, of a category when one is given, and asks for an exact count", async () => {
     const fake = createFakeClient();
     fake.enqueue(rows([ENTRY_ROW], 1));
@@ -1207,7 +1239,7 @@ describe("the coverage read a pool is measured with", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it("chunks the id filter past 200 values, because a 4000-id URL is refused", async () => {
+  it("chunks the id filter past 200 values, because a 4800-id URL is refused", async () => {
     // Measured on the hosted gateway: one `.in()` with the corpus's thousands of ids drew a 400.
     // 250 ids therefore travel as 200 + 50, each chunk paging rows on its own count, and the
     // stitched rows keep global order for stable failure attribution.

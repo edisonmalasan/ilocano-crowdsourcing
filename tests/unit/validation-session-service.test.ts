@@ -154,6 +154,41 @@ describe("opening a session for a batch that exists", () => {
     expect(outcome.session.remainingCount).toBe(3);
   });
 
+  it("projects a Double Transit Mode pair through the session without reducing it", async () => {
+    // The session projection is opaque: it copies `transitMode` through the pair-accepting
+    // schema rather than interpreting it. A projection that picked one mode would present a
+    // validator with a different entry than the one allocated.
+    const { openValidationSession } = await loadService();
+    const deps = createRecording({
+      batch: {
+        id: "batch-pair",
+        validatorId: VALIDATOR_ID,
+        entries: [{ datasetEntryId: "DTM_1", position: 1 }],
+      },
+      entries: {
+        DTM_1: {
+          id: "DTM_1",
+          category: "double_transit_mode",
+          sourceEntryId: 1,
+          categoryName: "Double Transit Mode",
+          instruction: "Kayatko a mapan idiay Abanao Square.",
+          origin: null,
+          destination: "Abanao Square",
+          transitMode: ["jeepney", "walking"],
+          createdAt: NOW,
+          isActive: true,
+        },
+      },
+    });
+
+    const outcome = await openValidationSession({ batchId: "batch-pair" }, deps);
+
+    expect(outcome.status).toBe("presenting");
+    if (outcome.status !== "presenting") throw new Error("unreachable");
+    expect(outcome.session.entry.id).toBe("DTM_1");
+    expect(outcome.session.entry.transitMode).toEqual(["jeepney", "walking"]);
+  });
+
   it("reads the batch, THEN the completed set, THEN the entry — and no entry before the choice", async () => {
     // The ORDER is load-bearing, not incidental. `listEntryIdsForValidator` needs `batch.validatorId`,
     // so it cannot come first; and reading an entry before the placement decision would fetch every

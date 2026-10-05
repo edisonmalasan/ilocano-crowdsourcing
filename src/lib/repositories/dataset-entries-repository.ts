@@ -28,7 +28,7 @@ export interface DatasetEntriesRepository {
    *
    * `listActive` without a limit refuses a truncated response rather than returning it, so it
    * cannot serve a pool larger than PostgREST's per-request cap (1000 by default; the corpus is
-   * 4,000). This pages with `range` and stitches the pages, refusing rather than returning a
+   * 4,800). This pages with `range` and stitches the pages, refusing rather than returning a
    * short or shifted result: the exact count must agree on every page (a concurrent operator
    * import mid-read would move rows between pages), every page must make progress, and the
    * stitched length must equal the count. Like `listActive`, the result is unordered with

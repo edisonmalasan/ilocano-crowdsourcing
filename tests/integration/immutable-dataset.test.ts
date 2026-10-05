@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 /**
  * Immutable research-source guard.
  *
- * `data/merged-ilocano-synthetic-data.json` is the research artifact for the thesis: five
+ * `data/merged-ilocano-synthetic-data.json` is the research artifact for the thesis: six
  * category blocks of 800 entries each, the *input* to the platform, not a working file. A
  * validator's corrections are stored as separate response data and must never be written back
  * into it. `AGENTS.md` lists the `data/` source under "Boundaries — do not touch", and the
@@ -20,9 +20,11 @@ import { describe, expect, it } from "vitest";
  * It lives in the `integration` project because it reads the real repository file, not a fixture.
  *
  * (History, recorded rather than deleted: this guard previously pinned the 3,000-entry source
- * at SHA-256 `f7015b1b…` with 600 `DO_0001`-style records per block. The pre-study revision
- * replaced that file with the 4,000-entry verbatim-ID source below; the old constant described
- * a file that no longer exists, so it was replaced rather than kept.)
+ * at SHA-256 `f7015b1b…` with 600 `DO_0001`-style records per block, then the 4,000-entry
+ * verbatim-ID source at SHA-256 `0fc905d5…` with five blocks of 800. The pre-study revision
+ * replaced that file with the 4,800-entry six-category source below, adding Double Transit
+ * Mode (`DTM_1..DTM_800` with ordered transit-mode pairs); the old constants described
+ * a file that no longer exists, so they were replaced rather than kept.)
  */
 
 const DATASET_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthetic-data.json");
@@ -34,7 +36,7 @@ const DATASET_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthet
  * that the immutable research source changed. It must not be updated casually to silence a
  * failure.
  */
-const EXPECTED_SHA256 = "0fc905d59af703bd9e876fe50d50667c15f499de351b9680434bbd0541927989";
+const EXPECTED_SHA256 = "57fbe5ae686523ad8529a98147c7b027a9d2b16e0f669e70f3783bd27e59649b";
 
 const EXPECTED_CATEGORIES = [
   "Destination Only",
@@ -42,6 +44,7 @@ const EXPECTED_CATEGORIES = [
   "Origin + Destination",
   "Origin + Destination + Transit Mode",
   "Complex/Preference Expressions",
+  "Double Transit Mode",
 ] as const;
 
 const EXPECTED_ENTRIES_PER_CATEGORY = 800;
@@ -49,7 +52,11 @@ const EXPECTED_ENTRIES_PER_CATEGORY = 800;
 interface RawDatasetRecord {
   id: string;
   instruction: string;
-  output: { origin: string | null; destination: string | null; transit_mode: string | null };
+  output: {
+    origin: string | null;
+    destination: string | null;
+    transit_mode: string | string[] | null;
+  };
 }
 
 interface RawDatasetBlock {
@@ -79,7 +86,7 @@ describe("immutable research source", () => {
     expect(sha256(bytes)).toBe(EXPECTED_SHA256);
   });
 
-  it("contains exactly five category blocks of 800 entries", async () => {
+  it("contains exactly six category blocks of 800 entries", async () => {
     const blocks = await readBlocks();
     expect(blocks.map((block) => block.category_name)).toEqual([...EXPECTED_CATEGORIES]);
     for (const block of blocks) {
@@ -90,7 +97,7 @@ describe("immutable research source", () => {
   it("holds the exact canonical id set with no gaps or duplicates per block", async () => {
     // Canonical ids carry their category prefix, so the per-block check also proves no id from
     // one category leaked into another.
-    const expectedPrefixes = ["D_", "DT_", "OD_", "ODT_", "CPE_"];
+    const expectedPrefixes = ["D_", "DT_", "OD_", "ODT_", "CPE_", "DTM_"];
     const blocks = await readBlocks();
     for (const [index, block] of blocks.entries()) {
       const ids = block.entries.map((record) => record.id);
@@ -147,7 +154,7 @@ describe("the guard actually detects tampering", () => {
     document.categories[0]?.entries.push({ ...first });
 
     const total = document.categories.reduce((sum, block) => sum + block.entries.length, 0);
-    expect(total).toBe(5 * EXPECTED_ENTRIES_PER_CATEGORY + 1);
+    expect(total).toBe(6 * EXPECTED_ENTRIES_PER_CATEGORY + 1);
     expect(sha256(Buffer.from(JSON.stringify(document), "utf8"))).not.toBe(EXPECTED_SHA256);
   });
 

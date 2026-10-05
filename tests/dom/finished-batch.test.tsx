@@ -342,7 +342,7 @@ describe("CB-3 — the continued batch's contents never reach the participant", 
         readFileSync(join(process.cwd(), "data", "merged-ilocano-synthetic-data.json"), "utf8"),
       ),
     );
-    expect(entries.length, "this control read a real dataset").toBe(4000);
+    expect(entries.length, "this control read a real dataset").toBe(4800);
     const instruction = entries[0].instruction;
     expect(instruction.length).toBeGreaterThan(0);
 

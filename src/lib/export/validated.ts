@@ -45,6 +45,7 @@ import {
   compareCanonicalEntryIds,
   DATASET_CATEGORY_TABLE,
 } from "@/lib/domain/categories";
+import { serializeTransitModeCsvCell, type TransitModeValue } from "@/lib/domain/transit-mode";
 import { requiresResearcherReview } from "@/lib/domain/review-flags";
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
@@ -104,7 +105,8 @@ export interface ValidatedRecord {
   readonly output: {
     readonly origin: string | null;
     readonly destination: string | null;
-    readonly transit_mode: string | null;
+    /** Scalar label, ordered two-element array for Double Transit Mode, or null. */
+    readonly transit_mode: TransitModeValue;
   };
   /** The validated-Ilocano supplier's response id: provenance back to the raw record. */
   readonly source_response_id: string;
@@ -246,7 +248,7 @@ function requiredTranslation(
  * records in numeric-suffix order. Incomplete entries are absent, not zero-filled: nothing is
  * validated for them yet, and inventing a row would fabricate a finding. Categories with no
  * complete entry still appear with an empty record list, so the document always carries all
- * five groups — including at pristine zero state, where the alternative is a document that
+ * six groups — including at pristine zero state, where the alternative is a document that
  * looks like it forgot its categories.
  */
 export function buildValidatedDataset(
@@ -405,7 +407,9 @@ export function validatedCsvRow(record: ValidatedRecord): ValidatedCsvRow {
     filipino_translation: record.filipino_translation,
     origin: record.output.origin,
     destination: record.output.destination,
-    transit_mode: record.output.transit_mode,
+    // Scalars travel bare; a Double Transit Mode pair travels as compact JSON
+    // (`["jeepney","walking"]`), never as an ambiguous joined string.
+    transit_mode: serializeTransitModeCsvCell(record.output.transit_mode),
     source_response_id: record.source_response_id,
     source_attempt_id: record.source_attempt_id,
     needs_review: record.needs_review ? "true" : "false",

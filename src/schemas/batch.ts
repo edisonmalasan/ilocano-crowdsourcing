@@ -5,6 +5,7 @@ import {
   datasetEntryIdSchema,
   optionalTextSchema,
   requiredTextSchema,
+  transitModeValueInputSchema,
 } from "./dataset";
 import { anonymousValidatorIdSchema } from "./validator";
 
@@ -246,7 +247,7 @@ export const allocatedEntrySchema = z.strictObject({
   instruction: requiredTextSchema,
   origin: optionalTextSchema,
   destination: optionalTextSchema,
-  transitMode: optionalTextSchema,
+  transitMode: transitModeValueInputSchema,
 });
 
 export type AllocatedEntry = z.infer<typeof allocatedEntrySchema>;

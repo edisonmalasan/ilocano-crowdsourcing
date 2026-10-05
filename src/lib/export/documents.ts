@@ -87,12 +87,12 @@ export interface ExportDocuments {
   readonly result: Omit<ExportResult, "files">;
 }
 
-/** The grouped raw document: five category groups in `category_id` order, always. */
+/** The grouped raw document: six category groups in `category_id` order, always. */
 export interface GroupedValidationsDocument {
   readonly categories: readonly ExportCategoryJsonGroup[];
 }
 
-/** The grouped validated document: derivation, then the five groups. */
+/** The grouped validated document: derivation, then the six groups. */
 export interface GroupedValidatedDocument {
   readonly derivation: ValidatedDerivation;
   readonly categories: readonly ValidatedCategoryGroup[];

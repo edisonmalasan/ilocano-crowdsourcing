@@ -43,7 +43,7 @@ import {
 
 /**
  * Upper bound on the ZIP response body. Refused, never truncated: a partial archive that
- * presents as complete would be a fabricated dataset. The corpus today (4,000 entries and a
+ * presents as complete would be a fabricated dataset. The corpus today (4,800 entries and a
  * handful of validations) zips to kilobytes; streaming is the recorded follow-up if growth
  * ever approaches this bound.
  */

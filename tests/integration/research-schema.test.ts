@@ -120,6 +120,12 @@ const EXPECTED_MIGRATIONS = [
   // changes no column, no function, and no policy, so it appears here and in no table list.
   // Same reason as the entries above.
   "20261006120000_source_entry_id_range_800.sql",
+  // Arrived with double-transit-mode-category: the nullable `transit_modes text[]` pair column
+  // with its three CHECKs plus the versioned eleven-argument import function v3. It ADDS one
+  // column, three checks, and one function and changes nothing else, so it appears here and
+  // in no table list. Same reason as the entries above: a migration this list does not name
+  // must FAIL here.
+  "20261007120000_double_transit_mode.sql",
 ] as const;
 
 /**

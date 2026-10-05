@@ -333,7 +333,7 @@ export async function allocateBatch(
     // No category filter: the pool is every active entry, because category-conditional allocation
     // would let a category with no under-covered entries starve while another category had them, and
     // that is a coverage-reporting question rather than an allocation one. `listAllActive`, not
-    // `listActive`: the pool is 3,000 rows across five categories and a single PostgREST response
+    // `listActive`: the pool is 4,800 rows across six categories and a single PostgREST response
     // is capped, so an uncapped read would refuse rather than serve.
     const pool = await dependencies.datasetEntries.listAllActive();
     if (pool.length === 0) return { status: "exhausted" };
@@ -353,7 +353,7 @@ export async function allocateBatch(
       for (const entryId of batch.entryIds) answered.add(entryId);
     }
 
-    // One read for the WHOLE pool. Per-entry reads would be up to 3,000 round trips for one batch
+    // One read for the WHOLE pool. Per-entry reads would be up to 4,800 round trips for one batch
     // request, and each would be a separate chance to observe a different snapshot of coverage.
     const responses = await dependencies.validations.listForEntries(pool.map((entry) => entry.id));
 

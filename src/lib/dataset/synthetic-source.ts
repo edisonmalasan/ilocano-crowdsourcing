@@ -6,6 +6,7 @@ import {
   DATASET_CATEGORY_TABLE,
   parseCanonicalEntryId,
 } from "@/lib/domain/categories";
+import { isTransitMode, isTransitModePair, type TransitModeValue } from "@/lib/domain/transit-mode";
 
 /**
  * Parser for the immutable revised synthetic source dataset.
@@ -27,12 +28,12 @@ import {
  *   2. NOTHING IS DROPPED. A source field the current domain type does not model is preserved in
  *      `sourcePayload` and named in the report.
  *
- * The source is five named category blocks of 800 entries each. Record ids are READ VERBATIM
+ * The source is six named category blocks of 800 entries each. Record ids are READ VERBATIM
  * from the file — never reminted, never zero-padded: `D_1`, `DT_800`, `OD_124`, `ODT_63`,
- * `CPE_700`. The numeric suffix restarts at 1 in every category; the globally unique identity
+ * `CPE_700`, `DTM_1`. The numeric suffix restarts at 1 in every category; the globally unique identity
  * is the whole prefixed id. A block with a duplicated, missing, or out-of-range suffix, a
  * misplaced prefix, an unknown category name, or a wrong entry count fails the whole parse
- * loudly: 3,999 of 4,000 rows is not an import.
+ * loudly: 4,799 of 4,800 rows is not an import.
  */
 
 /** Top-level keys of a source record that the importer maps onto typed domain fields. */
@@ -63,6 +64,13 @@ export const MODE_BEARING_TRANSIT_MODES = [
 
 /** Category slugs whose rows must carry no transit mode. */
 const NULL_MODE_CATEGORIES = new Set(["destination_only", "origin_destination"]);
+
+/** Category slugs whose rows must carry exactly one approved transit mode. */
+const SINGLE_MODE_CATEGORIES = new Set([
+  "destination_transit_mode",
+  "origin_destination_transit_mode",
+  "complex_preference_expressions",
+]);
 
 /**
  * A parsed entry: the validated domain input plus the untouched source record.
@@ -99,7 +107,7 @@ export interface DatasetParseReport {
  *
  * Carries the index and, where it can be recovered, the id of the offending record. An import
  * error that says "invalid input" without saying which record is unusable is not actionable when
- * the input is 4,000 records of research data.
+ * the input is 4,800 records of research data.
  */
 export class DatasetParseError extends Error {
   readonly recordIndex: number;
@@ -183,14 +191,15 @@ function findUnmodelledPaths(record: Record<string, unknown>): string[] {
  *
  * A destination is required in every category — an entry with nowhere to go gives a validator
  * nothing to judge. Beyond that each category states its shape: null-mode categories refuse a
- * transit mode rather than importing a row that violates their purpose, mode-bearing categories
- * require exactly the four-word vocabulary, and origin follows the category (required for
- * OD/ODT, forbidden for D/DT, free for CPE). Throws a `DatasetParseError` naming the entry on
- * any violation.
+ * transit mode rather than importing a row that violates their purpose, single-mode categories
+ * require exactly one of the four-word vocabulary, Double Transit Mode requires an ordered pair
+ * of two distinct vocabulary modes with no origin, and origin follows the category (required
+ * for OD/ODT, forbidden for D/DT/DTM, free for CPE). Throws a `DatasetParseError` naming the
+ * entry on any violation.
  */
 function assertCategoryPurpose(
   slug: string,
-  data: { origin: string | null; destination: string | null; transitMode: string | null },
+  data: { origin: string | null; destination: string | null; transitMode: TransitModeValue },
   entryPath: string,
   recordIndex: number,
   recordId: string | null,
@@ -209,7 +218,28 @@ function assertCategoryPurpose(
     }
     return;
   }
-  if (!(MODE_BEARING_TRANSIT_MODES as readonly string[]).includes(data.transitMode ?? "")) {
+  if (slug === "double_transit_mode") {
+    if (!isTransitModePair(data.transitMode)) {
+      refuse(
+        `transit_mode must be an ordered pair of two distinct modes (${MODE_BEARING_TRANSIT_MODES.join(", ")}) in category ${slug}, received ${JSON.stringify(data.transitMode)}`,
+      );
+    }
+    if (data.origin !== null) {
+      refuse(`origin must be null in category ${slug}, received ${JSON.stringify(data.origin)}`);
+    }
+    return;
+  }
+  if (SINGLE_MODE_CATEGORIES.has(slug)) {
+    if (!isTransitMode(data.transitMode)) {
+      refuse(
+        `transit_mode must be one of ${MODE_BEARING_TRANSIT_MODES.join(", ")} in category ${slug}, received ${JSON.stringify(data.transitMode)}`,
+      );
+    }
+  } else if (
+    !(MODE_BEARING_TRANSIT_MODES as readonly string[]).includes(
+      typeof data.transitMode === "string" ? data.transitMode : "",
+    )
+  ) {
     refuse(
       `transit_mode must be one of ${MODE_BEARING_TRANSIT_MODES.join(", ")} in category ${slug}, received ${JSON.stringify(data.transitMode)}`,
     );
@@ -237,7 +267,7 @@ function assertCategoryPurpose(
  *
  * @throws {DatasetParseError} when the shape, a block, or a record cannot be turned into valid
  * entries. Blocks are never skipped and records are never repaired: a source dataset that is
- * subtly wrong must fail loudly rather than import 3,999 of 4,000 rows.
+ * subtly wrong must fail loudly rather than import 4,799 of 4,800 rows.
  */
 export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -257,7 +287,7 @@ export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult
       recordIndex: -1,
       recordId: null,
       fieldPath: "$.categories",
-      issues: ["expected exactly 5 category blocks"],
+      issues: ["expected exactly 6 category blocks"],
     });
   }
   if (categories.length !== DATASET_CATEGORY_TABLE.length) {

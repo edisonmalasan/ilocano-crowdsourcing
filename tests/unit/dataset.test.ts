@@ -32,6 +32,8 @@ describe("dataset entry ID", () => {
       "ODT_800",
       "CPE_1",
       "CPE_800",
+      "DTM_1",
+      "DTM_800",
       "OD_124",
       "ODT_63",
     ]) {
@@ -48,6 +50,7 @@ describe("dataset entry ID", () => {
       ["OD", 124],
       ["ODT", 63],
       ["CPE", 800],
+      ["DTM", 1],
     ] as const) {
       const id = `${prefix}_${local}`;
       expect(datasetEntryIdSchema.parse(id)).toBe(id);
@@ -68,6 +71,9 @@ describe("dataset entry ID", () => {
       "ODT_9999",
       "XYZ_12",
       "CPE_-1",
+      "DTM_0",
+      "DTM_801",
+      "DTM_0001",
       "OD_0001a",
       " OD_1",
       "",
@@ -171,6 +177,39 @@ describe("dataset entry input", () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.transitMode).toBeNull();
+  });
+
+  it("accepts a scalar transit mode from the approved vocabulary", () => {
+    const result = datasetEntryInputSchema.safeParse({ ...OD_RECORD, transitMode: "jeepney" });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.transitMode).toBe("jeepney");
+  });
+
+  it("accepts an ordered Double Transit Mode pair and preserves its order", () => {
+    const result = datasetEntryInputSchema.safeParse({
+      ...OD_RECORD,
+      id: "DTM_1",
+      transitMode: ["jeepney", "walking"],
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.transitMode).toEqual(["jeepney", "walking"]);
+  });
+
+  it("rejects a one-mode, three-mode, duplicated, or out-of-vocabulary pair", () => {
+    for (const transitMode of [
+      ["walking"],
+      ["walking", "jeepney", "taxi"],
+      ["walking", "walking"],
+      ["bus", "taxi"],
+      "bus",
+    ]) {
+      const result = datasetEntryInputSchema.safeParse({ ...OD_RECORD, transitMode });
+      expect(result.success, JSON.stringify(transitMode)).toBe(false);
+    }
   });
 
   it("accepts an explicit null origin and destination for a category that has neither", () => {

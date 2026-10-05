@@ -276,6 +276,29 @@ describe("EntryReviewView", () => {
     }
   });
 
+  it("renders a Double Transit Mode pair as both modes, discarding neither", () => {
+    const html = renderToStaticMarkup(
+      <EntryReviewView
+        review={{
+          ...REVIEW,
+          entry: {
+            ...REVIEW.entry,
+            id: "DTM_1",
+            category: "double_transit_mode",
+            sourceEntryId: 1,
+            categoryName: "Double Transit Mode",
+            origin: null,
+            destination: "Abanao Square",
+            transitMode: ["jeepney", "walking"],
+          },
+        }}
+      />,
+    );
+
+    expect(html).toContain("jeepney + walking");
+    expect(html).not.toContain("[object Object]");
+  });
+
   it("states Incomplete rather than a fraction when the entry holds no validating package", () => {
     const html = renderToStaticMarkup(
       <EntryReviewView review={{ ...REVIEW, isComplete: false, qualifyingCount: 0 }} />,

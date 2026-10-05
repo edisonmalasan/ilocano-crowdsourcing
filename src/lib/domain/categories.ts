@@ -8,7 +8,7 @@
  * rather than defaulting.
  *
  * Canonical ids have the strict form `{prefix}_{suffix}` with an UNPADDED integer suffix:
- * `D_1`, `DT_800`, `OD_124`, `ODT_63`, `CPE_700`. The previous revision's zero-padded minted
+ * `D_1`, `DT_800`, `OD_124`, `ODT_63`, `CPE_700`, `DTM_1`. The previous revision's zero-padded minted
  * form (`OD_0001`) is not valid here, and the suffix restarts at 1 in every category — the
  * globally unique research identity is the whole prefixed id, never the bare number.
  *
@@ -18,7 +18,7 @@
 
 /** One row of the canonical category table, in `category_id` file order. */
 export interface DatasetCategoryRow {
-  /** The source file's numeric `category_id` (1..5). The research-facing order. */
+  /** The source file's numeric `category_id` (1..6). The research-facing order. */
   readonly categoryId: number;
   /** The source file's `category_name`, verbatim. */
   readonly name: string;
@@ -48,6 +48,12 @@ export const DATASET_CATEGORY_TABLE: readonly DatasetCategoryRow[] = [
     name: "Complex/Preference Expressions",
     slug: "complex_preference_expressions",
     prefix: "CPE",
+  },
+  {
+    categoryId: 6,
+    name: "Double Transit Mode",
+    slug: "double_transit_mode",
+    prefix: "DTM",
   },
 ];
 

@@ -174,9 +174,9 @@ describe("renderDocuments", () => {
     const grouped = JSON.parse(documents.validationsJson) as {
       categories: { category_id: number; responses: unknown[] }[];
     };
-    // All five groups travel even when only one holds records; both fixture responses
+    // All six groups travel even when only one holds records; both fixture responses
     // belong to E1, in the origin_destination group.
-    expect(grouped.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    expect(grouped.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5, 6]);
     const answered = grouped.categories.find((group) => group.category_id === 3);
     expect(answered?.responses).toHaveLength(2);
     expect(documents.validationsCsv.trimEnd().split("\n")).toHaveLength(3);
@@ -205,11 +205,11 @@ describe("renderDocuments", () => {
     const empty = JSON.parse(documents.validationsJson) as {
       categories: { category_id: number; responses: unknown[] }[];
     };
-    expect(empty.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5]);
+    expect(empty.categories.map((group) => group.category_id)).toEqual([1, 2, 3, 4, 5, 6]);
     for (const group of empty.categories) expect(group.responses).toEqual([]);
     expect(documents.validatedJson.endsWith("\n")).toBe(true);
     expect(JSON.parse(documents.validatedJson)).toMatchObject({
-      categories: [{}, {}, {}, {}, {}],
+      categories: [{}, {}, {}, {}, {}, {}],
       derivation: { omitted_incomplete_entries: 2 },
     });
   });

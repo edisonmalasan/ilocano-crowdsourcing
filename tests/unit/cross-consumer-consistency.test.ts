@@ -387,7 +387,7 @@ describe("the dashboard and the export agree on one corpus", () => {
     expect(overview.buckets).toEqual(exportBuckets(summary));
     expect(overview.reviewEntryIds).toEqual([]);
     expect(summary.by_entry).toEqual([]);
-    expect(validated.categories.map((group) => group.records)).toEqual([[], [], [], [], []]);
+    expect(validated.categories.map((group) => group.records)).toEqual([[], [], [], [], [], []]);
     expect(validated.derivation.omitted_incomplete_entries).toBe(0);
   });
 

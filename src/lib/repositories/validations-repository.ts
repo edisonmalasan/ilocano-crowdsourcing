@@ -47,7 +47,7 @@ export interface ValidationsRepository {
    *
    * So this returns what is STORED and the domain predicate decides what counts. The cost is
    * honest and named in `design.md` D1: response rows travel to the server to be counted there.
-   * At the current scale (4,000 entries × 3 validators, and fewer in practice because only
+   * At the current scale (4,800 entries × 3 validators, and fewer in practice because only
    * under-covered entries are queried) that is small. The revisit, if a future dataset reaches six
    * figures, is a projection of only the columns the predicate reads — not a second copy of the
    * predicate.
