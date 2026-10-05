@@ -18,7 +18,7 @@ import type { EntryReview } from "@/lib/admin/dashboard";
  */
 
 const REASON_COPY: Record<DisqualifyReason, string> = {
-  unevaluable: "Marked cannot confidently evaluate — abstentions never count toward coverage.",
+  unevaluable: "Marked cannot confidently evaluate. Abstentions never count toward coverage.",
   "missing-correction": "A correction was required for this evaluation but none was supplied.",
   "missing-english": "The English translation is missing or blank.",
   "missing-filipino": "The Filipino translation is missing or blank.",
@@ -48,11 +48,11 @@ export function EntryReviewView({ review }: { review: EntryReview }) {
           <CardBody>
             <div className="space-y-4">
               <Field label="Original Ilocano instruction" value={review.entry.instruction} />
-              <Field label="Origin" value={review.entry.origin ?? "—"} />
-              <Field label="Destination" value={review.entry.destination ?? "—"} />
+              <Field label="Origin" value={review.entry.origin ?? "None"} />
+              <Field label="Destination" value={review.entry.destination ?? "None"} />
               <Field
                 label="Transit mode"
-                value={formatTransitModeValue(review.entry.transitMode) ?? "—"}
+                value={formatTransitModeValue(review.entry.transitMode) ?? "None"}
               />
               <p className="text-small text-ink-muted">
                 {review.isComplete ? "Complete" : "Incomplete"} · {review.qualifyingCount}{" "}
@@ -85,7 +85,7 @@ export function EntryReviewView({ review }: { review: EntryReview }) {
                       ) : (
                         <span>
                           Does not count
-                          {disqualifyReason !== null && ` — ${REASON_COPY[disqualifyReason]}`}
+                          {disqualifyReason !== null && `: ${REASON_COPY[disqualifyReason]}`}
                         </span>
                       )}
                     </p>

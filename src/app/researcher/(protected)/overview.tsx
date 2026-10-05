@@ -125,7 +125,7 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           </CardHeader>
           <CardBody>
             <p className="text-small text-ink-muted">
-              Stored responses by evaluation value. Every stored row counts here — including ones
+              Stored responses by evaluation value. Every stored row counts here, including ones
               that do not qualify toward coverage.
             </p>
             <dl className="mt-4 space-y-2">
@@ -159,7 +159,7 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           <CardBody>
             <p className="text-small text-ink-muted">
               Validators who answered, grouped by the proficiency they reported. Metadata, not a
-              score — nothing here ranks or weights anyone.
+              score. Nothing here ranks or weights anyone.
             </p>
             <dl className="mt-4 space-y-2">
               {(
@@ -199,7 +199,7 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
               <p className="text-body text-ink">
                 No entries currently meet the review rule. One lands here when its qualifying
                 validators disagree on evaluation, or when more than one distinct correction was
-                submitted — never over translation wording alone.
+                submitted, never over translation wording alone.
               </p>
             ) : (
               <ul className="space-y-2">
