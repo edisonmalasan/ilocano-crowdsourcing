@@ -1,7 +1,14 @@
 import { datasetEntryInputSchema, type DatasetEntryInput } from "@/schemas/dataset";
+import {
+  CANONICAL_SUFFIX_MAX,
+  CANONICAL_SUFFIX_MIN,
+  categoryRowForName,
+  DATASET_CATEGORY_TABLE,
+  parseCanonicalEntryId,
+} from "@/lib/domain/categories";
 
 /**
- * Parser for the immutable merged synthetic source dataset.
+ * Parser for the immutable revised synthetic source dataset.
  *
  * This module is PURE. It reads no file, touches no database, and consults no clock. That is not
  * stylistic: it is what allows the same parsed records to be verified against a real PostgreSQL
@@ -20,11 +27,12 @@ import { datasetEntryInputSchema, type DatasetEntryInput } from "@/schemas/datas
  *   2. NOTHING IS DROPPED. A source field the current domain type does not model is preserved in
  *      `sourcePayload` and named in the report.
  *
- * The source is five named category blocks of 600 entries each, with source-local ids 1..600
- * reused per block. Canonical ids are minted deterministically as `{prefix}_{local:04d}` — never
- * a global 1..3000 renumbering, and the source file's ids are never rewritten. A block with a
- * duplicated, missing, or out-of-range local id, an unknown category name, or a wrong entry
- * count fails the whole parse loudly: 2,999 of 3,000 rows is not an import.
+ * The source is five named category blocks of 800 entries each. Record ids are READ VERBATIM
+ * from the file — never reminted, never zero-padded: `D_1`, `DT_800`, `OD_124`, `ODT_63`,
+ * `CPE_700`. The numeric suffix restarts at 1 in every category; the globally unique identity
+ * is the whole prefixed id. A block with a duplicated, missing, or out-of-range suffix, a
+ * misplaced prefix, an unknown category name, or a wrong entry count fails the whole parse
+ * loudly: 3,999 of 4,000 rows is not an import.
  */
 
 /** Top-level keys of a source record that the importer maps onto typed domain fields. */
@@ -38,64 +46,18 @@ export const SYNTHETIC_SOURCE_OUTPUT_KNOWN_KEYS = [
 ] as const;
 
 /** Source-local entries per category block. A block holding any other count is refused. */
-export const MERGED_SOURCE_ENTRIES_PER_CATEGORY = 600;
-
-/** Source-local ids span exactly this range within every block. */
-export const MERGED_SOURCE_LOCAL_ID_MIN = 1;
-export const MERGED_SOURCE_LOCAL_ID_MAX = 600;
+export const MERGED_SOURCE_ENTRIES_PER_CATEGORY = 800;
 
 /**
- * One row of the category mapping table: the human-readable source name to its stable slug
- * and canonical-id prefix.
- *
- * A TABLE rather than derived strings, deliberately: slugs and prefixes are research
- * identifiers downstream (database values, export fields, review URLs), so inventing them by
- * transforming the display name (`lowercase, underscores, initials`) would let a renamed
- * category silently re-identify every row. An unknown name fails parsing instead.
+ * The transit-mode vocabulary for mode-bearing categories, stated once so the parser and its
+ * tests cannot disagree about it. Null-mode categories (Destination Only, Origin +
+ * Destination) carry no transit mode at all — `null` means unspecified transport, never a
+ * default.
  */
-export interface MergedSourceCategory {
-  /** The source file's `category_id` (1..5). Carried for diagnostics, never as an identifier. */
-  readonly categoryId: number;
-  /** The source file's `category_name`, verbatim. */
-  readonly name: string;
-  /** The stable database/export slug. */
-  readonly slug: string;
-  /** The canonical-id prefix. */
-  readonly prefix: string;
-}
+export const MODE_BEARING_TRANSIT_MODES = ["walking", "jeepney", "taxi", "private_vehicle"] as const;
 
-export const MERGED_SOURCE_CATEGORY_TABLE: readonly MergedSourceCategory[] = [
-  { categoryId: 1, name: "Destination Only", slug: "destination_only", prefix: "DO" },
-  {
-    categoryId: 2,
-    name: "Destination + Transit Mode",
-    slug: "destination_transit_mode",
-    prefix: "DT",
-  },
-  { categoryId: 3, name: "Origin + Destination", slug: "origin_destination", prefix: "OD" },
-  {
-    categoryId: 4,
-    name: "Origin + Destination + Transit Mode",
-    slug: "origin_destination_transit_mode",
-    prefix: "ODT",
-  },
-  {
-    categoryId: 5,
-    name: "Complex/Preference Expressions",
-    slug: "complex_preference_expressions",
-    prefix: "CPE",
-  },
-];
-
-/**
- * The canonical dataset entry id for one source-local id: `{prefix}_{local:04d}`.
- *
- * Deterministic by construction — same category and local id, same id, every run — which is
- * what makes re-imports idempotent and what lets a test assert the mapping without a database.
- */
-export function canonicalDatasetEntryId(prefix: string, localId: number): string {
-  return `${prefix}_${String(localId).padStart(4, "0")}`;
-}
+/** Category slugs whose rows must carry no transit mode. */
+const NULL_MODE_CATEGORIES = new Set(["destination_only", "origin_destination"]);
 
 /**
  * A parsed entry: the validated domain input plus the untouched source record.
@@ -132,7 +94,7 @@ export interface DatasetParseReport {
  *
  * Carries the index and, where it can be recovered, the id of the offending record. An import
  * error that says "invalid input" without saying which record is unusable is not actionable when
- * the input is 3,000 records of research data.
+ * the input is 4,000 records of research data.
  */
 export class DatasetParseError extends Error {
   readonly recordIndex: number;
@@ -212,7 +174,54 @@ function findUnmodelledPaths(record: Record<string, unknown>): string[] {
 }
 
 /**
- * Parses the merged synthetic source dataset into validated, importable domain records.
+ * Category-purpose structure for one parsed entry.
+ *
+ * A destination is required in every category — an entry with nowhere to go gives a validator
+ * nothing to judge. Beyond that each category states its shape: null-mode categories refuse a
+ * transit mode rather than importing a row that violates their purpose, mode-bearing categories
+ * require exactly the four-word vocabulary, and origin follows the category (required for
+ * OD/ODT, forbidden for D/DT, free for CPE). Throws a `DatasetParseError` naming the entry on
+ * any violation.
+ */
+function assertCategoryPurpose(
+  slug: string,
+  data: { origin: string | null; destination: string | null; transitMode: string | null },
+  entryPath: string,
+  recordIndex: number,
+  recordId: string | null,
+): void {
+  const refuse = (issue: string): never => {
+    throw new DatasetParseError({ recordIndex, recordId, fieldPath: entryPath, issues: [issue] });
+  };
+  if (data.destination === null) {
+    refuse(`destination is required in category ${slug}, received null`);
+  }
+  if (NULL_MODE_CATEGORIES.has(slug)) {
+    if (data.transitMode !== null) {
+      refuse(
+        `transit_mode must be null in null-mode category ${slug}, received ${JSON.stringify(data.transitMode)}`,
+      );
+    }
+    return;
+  }
+  if (!(MODE_BEARING_TRANSIT_MODES as readonly string[]).includes(data.transitMode ?? "")) {
+    refuse(
+      `transit_mode must be one of ${MODE_BEARING_TRANSIT_MODES.join(", ")} in category ${slug}, received ${JSON.stringify(data.transitMode)}`,
+    );
+  }
+  if ((slug === "origin_destination" || slug === "origin_destination_transit_mode") && data.origin === null) {
+    refuse(`origin is required in category ${slug}, received null`);
+  }
+  if (
+    (slug === "destination_only" || slug === "destination_transit_mode") &&
+    data.origin !== null
+  ) {
+    refuse(`origin must be null in category ${slug}, received ${JSON.stringify(data.origin)}`);
+  }
+}
+
+/**
+ * Parses the revised synthetic source dataset into validated, importable domain records.
  *
  * Records are returned in source order — blocks in file order, entries in file order within
  * each block — which is what makes the report's counts and the verification's comparisons
@@ -220,7 +229,7 @@ function findUnmodelledPaths(record: Record<string, unknown>): string[] {
  *
  * @throws {DatasetParseError} when the shape, a block, or a record cannot be turned into valid
  * entries. Blocks are never skipped and records are never repaired: a source dataset that is
- * subtly wrong must fail loudly rather than import 2,999 of 3,000 rows.
+ * subtly wrong must fail loudly rather than import 3,999 of 4,000 rows.
  */
 export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -243,13 +252,13 @@ export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult
       issues: ["expected exactly 5 category blocks"],
     });
   }
-  if (categories.length !== MERGED_SOURCE_CATEGORY_TABLE.length) {
+  if (categories.length !== DATASET_CATEGORY_TABLE.length) {
     throw new DatasetParseError({
       recordIndex: -1,
       recordId: null,
       fieldPath: "$.categories",
       issues: [
-        `expected ${MERGED_SOURCE_CATEGORY_TABLE.length} category blocks, received ${categories.length}`,
+        `expected ${DATASET_CATEGORY_TABLE.length} category blocks, received ${categories.length}`,
       ],
     });
   }
@@ -289,7 +298,7 @@ export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult
       });
     }
     seenNames.add(name);
-    const mapping = MERGED_SOURCE_CATEGORY_TABLE.find((row) => row.name === name);
+    const mapping = categoryRowForName(name);
     if (mapping === undefined) {
       throw new DatasetParseError({
         recordIndex,
@@ -319,12 +328,14 @@ export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult
       });
     }
 
-    // Local ids must be exactly 1..600: no out-of-range values and no duplicates. Checked
-    // as a SET before any record is parsed, so a corrupt block fails naming the id rather than
+    // Canonical ids are read verbatim and must form exactly the block's set: no gaps, no
+    // duplicates, no out-of-range suffixes, and no prefix from another category. Checked as a
+    // SET before any record is parsed, so a corrupt block fails naming the id rather than
     // importing rows and stopping at whatever breaks first. The count check above plus
-    // uniqueness here imply completeness: 600 unique ids in 1..600 can only be exactly 1..600,
-    // so a gap always surfaces as either a short block (count arm) or a duplicate (arm below).
-    const localIds = new Set<number>();
+    // uniqueness here imply completeness: 800 unique in-range suffixes under one prefix can
+    // only be exactly 1..800, so a gap always surfaces as either a short block (count arm)
+    // or a duplicate (arm below).
+    const seenSuffixes = new Set<number>();
     for (const candidate of blockEntries) {
       if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
         throw new DatasetParseError({
@@ -334,44 +345,63 @@ export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult
           issues: ["expected a record object"],
         });
       }
-      const localId = (candidate as Record<string, unknown>).id;
-      if (
-        typeof localId !== "number" ||
-        !Number.isInteger(localId) ||
-        localId < MERGED_SOURCE_LOCAL_ID_MIN ||
-        localId > MERGED_SOURCE_LOCAL_ID_MAX
-      ) {
+      const rawId = (candidate as Record<string, unknown>).id;
+      const parsed = parseCanonicalEntryId(rawId);
+      if (parsed === null) {
         throw new DatasetParseError({
           recordIndex,
-          recordId: null,
+          recordId: typeof rawId === "string" ? rawId : null,
           fieldPath: `${blockPath}.entries`,
           issues: [
-            `expected a source-local integer id ${MERGED_SOURCE_LOCAL_ID_MIN}..${MERGED_SOURCE_LOCAL_ID_MAX}, received ${JSON.stringify(localId) ?? "a missing id"}`,
+            `expected a canonical id with prefix ${mapping.prefix} and suffix ${CANONICAL_SUFFIX_MIN}..${CANONICAL_SUFFIX_MAX}, received ${JSON.stringify(rawId) ?? "a missing id"}`,
           ],
         });
       }
-      if (localIds.has(localId)) {
+      if (parsed.prefix !== mapping.prefix) {
         throw new DatasetParseError({
           recordIndex,
-          recordId: `#${localId}`,
+          recordId: `${parsed.prefix}_${parsed.suffix}`,
           fieldPath: `${blockPath}.entries`,
-          issues: [`duplicate source-local id ${localId} in category ${JSON.stringify(name)}`],
+          issues: [
+            `id prefix ${parsed.prefix} disagrees with enclosing category ${JSON.stringify(name)} (expected ${mapping.prefix})`,
+          ],
         });
       }
-      localIds.add(localId);
+      if (seenSuffixes.has(parsed.suffix)) {
+        throw new DatasetParseError({
+          recordIndex,
+          recordId: `${parsed.prefix}_${parsed.suffix}`,
+          fieldPath: `${blockPath}.entries`,
+          issues: [`duplicate canonical id ${parsed.prefix}_${parsed.suffix} in category ${JSON.stringify(name)}`],
+        });
+      }
+      seenSuffixes.add(parsed.suffix);
     }
 
     blockEntries.forEach((record) => {
       const source = record as Record<string, unknown>;
-      const localId = source.id as number;
+      const parsed = parseCanonicalEntryId(source.id);
+      // Reachable only for ids the set check above accepted: the prefix agrees with the block
+      // and the suffix is in range. Unreachable states throw rather than defaulting, because a
+      // second implementation of the rule here is exactly the drift the shared helper exists
+      // to prevent.
+      if (parsed === null || parsed.prefix !== mapping.prefix) {
+        throw new DatasetParseError({
+          recordIndex,
+          recordId: readRecordId(source),
+          fieldPath: `${blockPath}.entries`,
+          issues: ["id rejected on re-read after passing the block's id set check"],
+        });
+      }
+      const localId = parsed.suffix;
       const recordId = readRecordId(source);
-      const entryPath = `${blockPath}.entries[id=${localId}]`;
+      const entryPath = `${blockPath}.entries[id=${source.id}]`;
 
       // Mapped by name, explicitly, rather than by a generic transform. A renamed or removed
       // source field must fail here where the mapping is written, not silently produce an entry
       // with a null field that nobody notices until a validator sees a blank instruction.
       const candidate = {
-        id: canonicalDatasetEntryId(mapping.prefix, localId),
+        id: source.id,
         category: mapping.slug,
         sourceEntryId: localId,
         categoryName: mapping.name,
@@ -392,6 +422,11 @@ export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult
           ),
         });
       }
+
+      // Category purpose, structurally: a mode where none belongs, or none where one is
+      // required, is a corrupt row, not a judgment call. Sentence-level agreement beyond this
+      // is audit evidence, not a parse rule — keyword scans cannot prove Ilocano.
+      assertCategoryPurpose(mapping.slug, result.data, entryPath, recordIndex, recordId);
 
       const unmodelledPaths = findUnmodelledPaths(source);
       for (const fieldPath of unmodelledPaths) {

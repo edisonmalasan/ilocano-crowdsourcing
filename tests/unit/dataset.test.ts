@@ -9,9 +9,9 @@ import {
 } from "@/schemas/dataset";
 
 const OD_RECORD = {
-  id: "OD_0001",
+  id: "OD_124",
   category: ORIGIN_DESTINATION_CATEGORY,
-  sourceEntryId: 1,
+  sourceEntryId: 124,
   categoryName: "Origin + Destination",
   instruction: "Gemahen nga agpangide ti Bangko Sentral ti Baguio tije mangimed ti jeep.",
   origin: "Baguio",
@@ -20,28 +20,45 @@ const OD_RECORD = {
 } as const;
 
 describe("dataset entry ID", () => {
-  it("accepts the real source IDs used by the immutable synthetic dataset", () => {
-    expect(datasetEntryIdSchema.parse("OD_0001")).toBe("OD_0001");
-    expect(datasetEntryIdSchema.parse("OD_0600")).toBe("OD_0600");
-  });
-
-  it("accepts every merged category prefix", () => {
-    // One per block of the merged source, read from the mapping rather than retyped, so a
-    // prefix added to the table without updating this list still fails loudly below.
-    for (const [prefix, local] of [
-      ["DO", 1],
-      ["DT", 600],
-      ["OD", 124],
-      ["ODT", 42],
-      ["CPE", 600],
-    ] as const) {
-      const id = `${prefix}_${String(local).padStart(4, "0")}`;
+  it("accepts the real canonical IDs used by the revised synthetic dataset", () => {
+    for (const id of ["D_1", "D_800", "DT_1", "DT_800", "OD_1", "OD_800", "ODT_1", "ODT_800", "CPE_1", "CPE_800", "OD_124", "ODT_63"]) {
       expect(datasetEntryIdSchema.parse(id)).toBe(id);
     }
   });
 
-  it("rejects an ID that is not a source-shaped ID", () => {
-    for (const badId of ["od_0001", "OD-0001", "OD_1", "OD_0001a", " OD_0001", ""]) {
+  it("accepts every category prefix at its boundaries", () => {
+    // One per block of the revised source, read from the mapping rather than retyped, so a
+    // prefix added to the table without updating this list still fails loudly below.
+    for (const [prefix, local] of [
+      ["D", 1],
+      ["DT", 800],
+      ["OD", 124],
+      ["ODT", 63],
+      ["CPE", 800],
+    ] as const) {
+      const id = `${prefix}_${local}`;
+      expect(datasetEntryIdSchema.parse(id)).toBe(id);
+    }
+  });
+
+  it("rejects an ID that is not a canonical ID", () => {
+    for (const badId of [
+      "od_0001",
+      "OD-0001",
+      "OD_0001",
+      "D_0001",
+      "DO_0001",
+      "DO_1",
+      "D_0",
+      "D_801",
+      "DT_900",
+      "ODT_9999",
+      "XYZ_12",
+      "CPE_-1",
+      "OD_0001a",
+      " OD_1",
+      "",
+    ]) {
       expect(
         datasetEntryIdSchema.safeParse(badId).success,
         `expected ${badId} to be rejected`,
@@ -55,8 +72,8 @@ describe("dataset entry input", () => {
     const parsed = datasetEntryInputSchema.parse(OD_RECORD);
 
     // The source ID is the join key back to data/merged-ilocano-synthetic-data.json, so it must survive
-    // byte-for-byte: no case folding, no re-numbering, no prefix rewrite.
-    expect(parsed.id).toBe("OD_0001");
+    // byte-for-byte: no case folding, no re-numbering, no prefix rewrite, no zero-padding.
+    expect(parsed.id).toBe("OD_124");
     expect(parsed.category).toBe("origin_destination");
     expect(parsed.instruction).toBe(OD_RECORD.instruction);
     expect(parsed.origin).toBe("Baguio");
@@ -73,9 +90,14 @@ describe("dataset entry input", () => {
       expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(field);
     }
 
-    for (const sourceEntryId of [0, 601, -3, 1.5]) {
+    for (const sourceEntryId of [0, 801, 900, -3, 1.5]) {
       const result = datasetEntryInputSchema.safeParse({ ...OD_RECORD, sourceEntryId });
       expect(result.success, `expected sourceEntryId ${sourceEntryId} to be refused`).toBe(false);
+    }
+    // Both ends of the revised range are accepted.
+    for (const sourceEntryId of [1, 800]) {
+      const result = datasetEntryInputSchema.safeParse({ ...OD_RECORD, sourceEntryId });
+      expect(result.success, `expected sourceEntryId ${sourceEntryId} to be accepted`).toBe(true);
     }
 
     const blankName = datasetEntryInputSchema.safeParse({ ...OD_RECORD, categoryName: "   " });

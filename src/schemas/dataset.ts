@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { normalizeResearchText } from "@/lib/domain/text";
+import { CANONICAL_SUFFIX_MAX, CANONICAL_SUFFIX_MIN, parseCanonicalEntryId } from "@/lib/domain/categories";
 
 /**
  * Dataset entry contract.
@@ -35,18 +36,21 @@ export const datasetCategorySchema = z
   );
 
 /**
- * The externally meaningful source ID, for example `OD_0001`..`OD_0600`.
+ * The externally meaningful canonical dataset entry ID, for example `ODT_63` or `D_800`.
  *
- * Canonical ids are minted deterministically as `{prefix}_{local:04d}` from the merged source's
- * category blocks (`DO_`, `DT_`, `OD_`, `ODT_`, `CPE_`). Each is derived from the immutable
- * research source and must be retained verbatim: it is what allows a validation row, an export
- * row, and the original JSON record to be joined. Internal surrogate keys may be added alongside
- * it, never in place of it.
+ * Canonical ids are READ from the immutable research source and preserved verbatim — never
+ * reminted, never zero-padded: each is what allows a validation row, an export row, and the
+ * original JSON record to be joined. Internal surrogate keys may be added alongside it, never
+ * in place of it. The shape rule lives in `@/lib/domain/categories` and is shared with the
+ * parser and research-facing ordering, so there is exactly one definition of canonical.
  */
 export const datasetEntryIdSchema = z
   .string()
   .min(1, "id must not be empty")
-  .regex(/^[A-Z]{2,4}_\d{4,}$/, "id must look like a source dataset id (for example OD_0001)");
+  .refine((value) => parseCanonicalEntryId(value) !== null, {
+    message:
+      "id must be a canonical dataset id (prefix D, DT, OD, ODT, or CPE with an unpadded suffix 1..800, for example ODT_63)",
+  });
 
 /**
  * Normalizes a text field without deciding whether the value is required.
@@ -87,11 +91,12 @@ export const datasetEntryInputSchema = z.object({
   id: datasetEntryIdSchema,
   category: datasetCategorySchema,
   /**
-   * The source-local id (1..600) within the entry's category block. Explicit rather than derived
-   * from the canonical id, so a researcher never has to parse an identifier to recover it — and
-   * so a future prefix change cannot silently re-identify every row.
+   * The source-local id within the entry's category block, derived from the canonical id's
+   * numeric suffix (1..800 per category). Explicit rather than derived at read time, so a
+   * researcher never has to parse an identifier to recover it — and so a future prefix change
+   * cannot silently re-identify every row.
    */
-  sourceEntryId: z.number().int().min(1).max(600),
+  sourceEntryId: z.number().int().min(CANONICAL_SUFFIX_MIN).max(CANONICAL_SUFFIX_MAX),
   /**
    * The human-readable source category name, verbatim from the mapping table. Provenance for
    * researchers; the slug remains the machine key.

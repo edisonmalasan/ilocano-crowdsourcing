@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * Immutable research-source guard.
  *
  * `data/merged-ilocano-synthetic-data.json` is the research artifact for the thesis: five
- * category blocks of 600 entries each, the *input* to the platform, not a working file. A
+ * category blocks of 800 entries each, the *input* to the platform, not a working file. A
  * validator's corrections are stored as separate response data and must never be written back
  * into it. `AGENTS.md` lists the `data/` source under "Boundaries — do not touch", and the
  * roadmap requires the source dataset to stay immutable.
@@ -19,10 +19,10 @@ import { describe, expect, it } from "vitest";
  *
  * It lives in the `integration` project because it reads the real repository file, not a fixture.
  *
- * (History, recorded rather than deleted: this guard previously pinned the single-category
- * `data/ilocano-synthetic-data.json` at SHA-256 `39f757e6…` with 600 `OD_*` records. The
- * pre-study dataset reset replaced that file with the merged source below; the old constant
- * described a file that no longer exists, so it was replaced rather than kept.)
+ * (History, recorded rather than deleted: this guard previously pinned the 3,000-entry source
+ * at SHA-256 `f7015b1b…` with 600 `DO_0001`-style records per block. The pre-study revision
+ * replaced that file with the 4,000-entry verbatim-ID source below; the old constant described
+ * a file that no longer exists, so it was replaced rather than kept.)
  */
 
 const DATASET_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthetic-data.json");
@@ -34,7 +34,7 @@ const DATASET_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthet
  * that the immutable research source changed. It must not be updated casually to silence a
  * failure.
  */
-const EXPECTED_SHA256 = "f7015b1bbf7859b4d7305484776e29506a9ecb5454952df6f06b9caba2a79292";
+const EXPECTED_SHA256 = "0fc905d59af703bd9e876fe50d50667c15f499de351b9680434bbd0541927989";
 
 const EXPECTED_CATEGORIES = [
   "Destination Only",
@@ -44,10 +44,10 @@ const EXPECTED_CATEGORIES = [
   "Complex/Preference Expressions",
 ] as const;
 
-const EXPECTED_ENTRIES_PER_CATEGORY = 600;
+const EXPECTED_ENTRIES_PER_CATEGORY = 800;
 
 interface RawDatasetRecord {
-  id: number;
+  id: string;
   instruction: string;
   output: { origin: string | null; destination: string | null; transit_mode: string | null };
 }
@@ -79,7 +79,7 @@ describe("immutable research source", () => {
     expect(sha256(bytes)).toBe(EXPECTED_SHA256);
   });
 
-  it("contains exactly five category blocks of 600 entries", async () => {
+  it("contains exactly five category blocks of 800 entries", async () => {
     const blocks = await readBlocks();
     expect(blocks.map((block) => block.category_name)).toEqual([...EXPECTED_CATEGORIES]);
     for (const block of blocks) {
@@ -87,14 +87,18 @@ describe("immutable research source", () => {
     }
   });
 
-  it("holds source-local ids exactly 1..600 with no gaps or duplicates per block", async () => {
+  it("holds the exact canonical id set with no gaps or duplicates per block", async () => {
+    // Canonical ids carry their category prefix, so the per-block check also proves no id from
+    // one category leaked into another.
+    const expectedPrefixes = ["D_", "DT_", "OD_", "ODT_", "CPE_"];
     const blocks = await readBlocks();
-    for (const block of blocks) {
+    for (const [index, block] of blocks.entries()) {
       const ids = block.entries.map((record) => record.id);
       expect(new Set(ids).size).toBe(EXPECTED_ENTRIES_PER_CATEGORY);
-      expect([...ids].sort((a, b) => a - b)).toEqual(
-        Array.from({ length: EXPECTED_ENTRIES_PER_CATEGORY }, (_, index) => index + 1),
+      const expected = new Set(
+        Array.from({ length: EXPECTED_ENTRIES_PER_CATEGORY }, (_, n) => `${expectedPrefixes[index]}${n + 1}`),
       );
+      expect(new Set(ids)).toEqual(expected);
     }
   });
 
@@ -151,7 +155,7 @@ describe("the guard actually detects tampering", () => {
     };
     const first = document.categories[0]?.entries[0];
     if (first === undefined) throw new Error("expected at least one entry");
-    first.id = 601;
+    first.id = "D_801";
 
     expect(sha256(Buffer.from(JSON.stringify(document), "utf8"))).not.toBe(EXPECTED_SHA256);
   });

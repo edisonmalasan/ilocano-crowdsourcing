@@ -115,6 +115,11 @@ const EXPECTED_MIGRATIONS = [
   // in no table list. Same reason as the entries above: a migration this list does not name
   // must FAIL here.
   "20261005120000_merged_dataset_provenance.sql",
+  // Arrived with expanded-4000-private-vehicle-dataset: widens the `source_entry_id` range
+  // CHECK from 1..600 to 1..800 under the same constraint name, preserving nullability. It
+  // changes no column, no function, and no policy, so it appears here and in no table list.
+  // Same reason as the entries above.
+  "20261006120000_source_entry_id_range_800.sql",
 ] as const;
 
 /**

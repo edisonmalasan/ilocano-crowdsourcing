@@ -1,5 +1,5 @@
 /**
- * Import verification: all 3,000 real records of the merged source, through the real migrations,
+ * Import verification: all 4,000 real records of the revised source, through the real migrations,
  * into a real PostgreSQL engine.
  *
  * The comparison reads `data/merged-ilocano-synthetic-data.json` itself, never another derived
@@ -16,10 +16,10 @@ import {
   type DatasetImportResult,
 } from "@/lib/dataset/import-dataset";
 import {
-  MERGED_SOURCE_CATEGORY_TABLE,
   parseSyntheticDataset,
   type ImportedDatasetEntry,
 } from "@/lib/dataset/synthetic-source";
+import { DATASET_CATEGORY_TABLE } from "@/lib/domain/categories";
 import { applyMigrations } from "./support/migrations";
 import {
   closeTestDatabase,
@@ -32,7 +32,7 @@ import {
 const SOURCE_PATH = path.resolve(process.cwd(), "data", "merged-ilocano-synthetic-data.json");
 
 type SourceRecord = {
-  id: number;
+  id: string;
   instruction: string;
   output: { origin: string | null; destination: string | null; transit_mode: string | null };
 };
@@ -49,12 +49,6 @@ function readDocument(): { categories: SourceBlock[] } {
 
 function readSource(): unknown {
   return JSON.parse(readFileSync(SOURCE_PATH, "utf8")) as unknown;
-}
-
-/** The canonical id the parser mints for one block position and local id. */
-function canonicalId(blockIndex: number, localId: number): string {
-  const prefix = MERGED_SOURCE_CATEGORY_TABLE[blockIndex]!.prefix;
-  return `${prefix}_${String(localId).padStart(4, "0")}`;
 }
 
 /**
@@ -144,24 +138,24 @@ describe("importing the merged synthetic dataset", () => {
     await resetToEmpty();
   });
 
-  it("stores all 3000 records with the exact canonical id set", async () => {
+  it("stores all 4000 records with the exact canonical id set", async () => {
     const result = await importAll();
 
-    expect(result.parsed).toBe(3000);
-    expect(result.inserted).toBe(3000);
+    expect(result.parsed).toBe(4000);
+    expect(result.inserted).toBe(4000);
     expect(result.updated).toBe(0);
 
     const stored = await query<{ id: string }>(db, "select id from public.dataset_entries");
-    expect(stored).toHaveLength(3000);
+    expect(stored).toHaveLength(4000);
 
     const expected = new Set<string>();
-    document.categories.forEach((block, index) => {
-      for (const record of block.entries) expected.add(canonicalId(index, record.id));
+    document.categories.forEach((block) => {
+      for (const record of block.entries) expected.add(record.id);
     });
     expect(new Set(stored.map((row) => row.id))).toEqual(expected);
   });
 
-  it("stores 600 rows per category with local ids exactly 1..600", async () => {
+  it("stores 800 rows per category with local ids exactly 1..800", async () => {
     await importAll();
 
     const stored = await query<{ category: string; source_entry_id: number }>(
@@ -176,12 +170,51 @@ describe("importing the merged synthetic dataset", () => {
     }
 
     expect([...byCategory.keys()].sort()).toEqual(
-      MERGED_SOURCE_CATEGORY_TABLE.map((row) => row.slug).sort(),
+      DATASET_CATEGORY_TABLE.map((row) => row.slug).sort(),
     );
     for (const locals of byCategory.values()) {
       expect(locals.sort((a, b) => a - b)).toEqual(
-        Array.from({ length: 600 }, (_, index) => index + 1),
+        Array.from({ length: 800 }, (_, index) => index + 1),
       );
+    }
+  });
+
+  it("stores the exact intended transit-mode distribution", async () => {
+    // The distribution is a research property of the source revision, not an accident of
+    // random assignment: null-mode categories carry no mode at all, and each mode-bearing
+    // category carries 200 of each of the four modes.
+    await importAll();
+
+    const stored = await query<{ category: string; transit_mode: string | null }>(
+      db,
+      "select category, transit_mode from public.dataset_entries",
+    );
+    const counts = new Map<string, Map<string, number>>();
+    for (const row of stored) {
+      const modes = counts.get(row.category) ?? new Map<string, number>();
+      const key = row.transit_mode ?? "null";
+      modes.set(key, (modes.get(key) ?? 0) + 1);
+      counts.set(row.category, modes);
+    }
+    const expected: Record<string, Record<string, number>> = {
+      destination_only: { null: 800 },
+      destination_transit_mode: { walking: 200, jeepney: 200, taxi: 200, private_vehicle: 200 },
+      origin_destination: { null: 800 },
+      origin_destination_transit_mode: {
+        walking: 200,
+        jeepney: 200,
+        taxi: 200,
+        private_vehicle: 200,
+      },
+      complex_preference_expressions: {
+        walking: 200,
+        jeepney: 200,
+        taxi: 200,
+        private_vehicle: 200,
+      },
+    };
+    for (const [category, modes] of Object.entries(expected)) {
+      expect(Object.fromEntries(counts.get(category) ?? new Map()), category).toEqual(modes);
     }
   });
 
@@ -194,9 +227,9 @@ describe("importing the merged synthetic dataset", () => {
     );
     const byId = new Map(stored.map((row) => [row.id, row.instruction]));
 
-    document.categories.forEach((block, index) => {
+    document.categories.forEach((block) => {
       for (const record of block.entries) {
-        const id = canonicalId(index, record.id);
+        const id = record.id;
         expect(byId.get(id), `instruction for ${id}`).toBe(record.instruction);
       }
     });
@@ -213,9 +246,9 @@ describe("importing the merged synthetic dataset", () => {
     }>(db, "select id, origin, destination, transit_mode from public.dataset_entries");
     const byId = new Map(stored.map((row) => [row.id, row]));
 
-    document.categories.forEach((block, index) => {
+    document.categories.forEach((block) => {
       for (const record of block.entries) {
-        const row = byId.get(canonicalId(index, record.id));
+        const row = byId.get(record.id);
         expect(row?.origin).toBe(record.output.origin);
         expect(row?.destination).toBe(record.output.destination);
         // Taken from the file, never defaulted: the source genuinely varies this column.
@@ -242,7 +275,7 @@ describe("importing the merged synthetic dataset", () => {
       "select id, origin, destination, transit_mode, source_payload from public.dataset_entries",
     );
 
-    expect(stored).toHaveLength(3000);
+    expect(stored).toHaveLength(4000);
     for (const row of stored) {
       expect(row.origin).toBe(row.source_payload.output?.origin);
       expect(row.destination).toBe(row.source_payload.output?.destination);
@@ -279,19 +312,19 @@ describe("importing the merged synthetic dataset", () => {
   it("is idempotent: a second import updates rather than duplicates", async () => {
     // Both halves run here rather than relying on an earlier test having done the first import.
     const first = await importAll();
-    expect(first.inserted).toBe(3000);
+    expect(first.inserted).toBe(4000);
 
     const second = await importAll();
 
-    expect(second.parsed).toBe(3000);
-    expect(second.updated).toBe(3000);
+    expect(second.parsed).toBe(4000);
+    expect(second.updated).toBe(4000);
     expect(second.inserted).toBe(0);
 
     const count = await query<{ count: number }>(
       db,
       "select count(*)::int as count from public.dataset_entries",
     );
-    expect(count[0]?.count).toBe(3000);
+    expect(count[0]?.count).toBe(4000);
   });
 
   it("cannot rewrite a stored instruction on a re-run", async () => {
@@ -299,7 +332,7 @@ describe("importing the merged synthetic dataset", () => {
     // `stored` value from an empty table would have thrown rather than tested anything.
     await importAll();
 
-    const firstId = canonicalId(0, 1);
+    const firstId = "D_1";
     const stored = await query<{ instruction: string }>(
       db,
       "select instruction from public.dataset_entries where id = $1",
@@ -338,7 +371,7 @@ describe("importing the merged synthetic dataset", () => {
 
     expect(report.preservedFields).toHaveLength(1);
     expect(report.preservedFields[0]?.fieldPath).toBe("difficulty");
-    expect(report.preservedFields[0]?.recordCount).toBe(3000);
+    expect(report.preservedFields[0]?.recordCount).toBe(4000);
   });
 
   it("leaves the source dataset file unchanged", async () => {
