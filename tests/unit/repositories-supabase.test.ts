@@ -896,6 +896,25 @@ describe("SupabaseValidatorsRepository", () => {
     expect(profiles).toEqual([]);
     expect(fake.calls).toHaveLength(0);
   });
+
+  it("chunks the id filter past 200 values and keeps caller order across chunks", async () => {
+    // Same URL-length wall as the validations read: a study with thousands of attempts would
+    // otherwise put every id in one `.in()`. Each chunk returns at most 200 rows, so no chunk
+    // can hit the response cap either.
+    const ids = Array.from({ length: 250 }, (_, index) => `VAL_${String(index).padStart(8, "0")}`);
+    const fake = createFakeClient();
+    fake.enqueue(rows(ids.slice(0, 200).map((id) => ({ ...VALIDATOR_ROW, id }))));
+    fake.enqueue(rows(ids.slice(200).map((id) => ({ ...VALIDATOR_ROW, id }))));
+
+    const profiles = await new SupabaseValidatorsRepository(fake.client).listByIds(ids);
+
+    expect(fake.calls).toHaveLength(2);
+    for (const call of fake.calls) {
+      const filter = call.filters.find((entry) => entry.kind === "in");
+      expect((filter as { value: unknown[] }).value.length).toBeLessThanOrEqual(200);
+    }
+    expect(profiles.map((profile) => profile.id)).toEqual(ids);
+  });
 });
 
 describe("SupabaseValidationsRepository", () => {
@@ -1177,6 +1196,27 @@ describe("the coverage read a pool is measured with", () => {
 
     expect(found).toEqual([]);
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("chunks the id filter past 200 values, because a 3000-id URL is refused", async () => {
+    // Measured on the hosted gateway: one `.in()` with the merged corpus's 3,000 ids drew a 400.
+    // 250 ids therefore travel as 200 + 50, each chunk paging rows on its own count, and the
+    // stitched rows keep global order for stable failure attribution.
+    const ids = Array.from({ length: 250 }, (_, index) => `OD_${String(index + 1).padStart(4, "0")}`);
+    const fake = createFakeClient();
+    fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[0] }], 1));
+    fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[200] }], 1));
+
+    const found = await new SupabaseValidationsRepository(fake.client).listForEntries(ids);
+
+    expect(fake.calls).toHaveLength(2);
+    for (const call of fake.calls) {
+      const filter = call.filters.find((entry) => entry.kind === "in");
+      expect(filter).toBeDefined();
+      expect((filter as { value: unknown[] }).value.length).toBeLessThanOrEqual(200);
+      expect(call.options).toEqual({ count: "exact" });
+    }
+    expect(found.map((response) => response.datasetEntryId)).toEqual([ids[0], ids[200]]);
   });
 
   it("returns EVERY stored response, including the ones that do not count toward coverage", async () => {

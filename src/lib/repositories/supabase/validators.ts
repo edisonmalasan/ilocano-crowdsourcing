@@ -169,14 +169,24 @@ export class SupabaseValidatorsRepository implements ValidatorsRepository {
    * An empty `ids` list short-circuits to `[]` without a query. `.in("id", [])` is not an empty
    * filter, it is a malformed one, so issuing it would turn a legitimately empty request — a
    * dashboard over an entry nobody has touched — into a server error.
+   *
+   * Chunked at 200 ids per request: the filter list travels in the URL, and a study with
+   * thousands of attempts would otherwise draw the same 400 the validations read drew at 3,000
+   * entry ids. Each chunk returns at most 200 rows, so no chunk can hit the response cap either.
    */
   async listByIds(ids: readonly AnonymousValidatorId[]): Promise<ValidatorProfile[]> {
     if (ids.length === 0) return [];
 
-    const result = await awaitQuery(OPS.listByIds, "validators.listByIds", () =>
-      this.client.from("validators").select(VALIDATOR_COLUMNS.join(",")).in("id", ids),
-    );
-    const rows = readRows(result, OPS.listByIds, "validators.listByIds");
+    const rows: Record<string, unknown>[] = [];
+    for (let start = 0; start < ids.length; start += 200) {
+      const result = await awaitQuery(OPS.listByIds, "validators.listByIds", () =>
+        this.client
+          .from("validators")
+          .select(VALIDATOR_COLUMNS.join(","))
+          .in("id", ids.slice(start, start + 200)),
+      );
+      rows.push(...readRows(result, OPS.listByIds, "validators.listByIds"));
+    }
 
     const byId = new Map(
       rows.map((row) => [String(row.id), toDomain(row, "validators.listByIds", OPS.listByIds)]),
