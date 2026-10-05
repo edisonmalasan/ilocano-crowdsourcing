@@ -407,6 +407,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `researcher-export-download`, the THIRTIETH archived change, so this coupling has now
       // been paid FOURTEEN times. Same one-line edit, same reason.
       30: "Thirty",
+      // Added for `signin-refusal-diagnostics`, the THIRTY-FIRST archived change, so this coupling has now
+      // been paid FIFTEEN times. Same one-line edit, same reason.
+      31: "Thirty-one",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
