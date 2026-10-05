@@ -425,6 +425,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `humanize-interface-copy`, the THIRTY-SIXTH archived change, so this coupling has now
       // been paid TWENTY-ONE times. Same one-line edit, same reason.
       36: "Thirty-six",
+      // Added for `double-transit-mode-category`, the THIRTY-SEVENTH archived change, so this coupling has now
+      // been paid TWENTY-TWO times. Same one-line edit, same reason.
+      37: "Thirty-seven",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
