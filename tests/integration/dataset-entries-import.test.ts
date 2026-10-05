@@ -918,6 +918,7 @@ describe("the dataset_entries_import function", () => {
       );
       expect(rows.map((row) => row.name)).toEqual([
         "dataset_entries_transit_mode_pair_absent",
+        "dataset_entries_transit_modes_pair_required",
         "dataset_entries_transit_modes_pair_shape",
         "dataset_entries_transit_modes_scalar_absent",
       ]);
@@ -959,6 +960,19 @@ describe("the dataset_entries_import function", () => {
         db,
         "delete from public.dataset_entries where id like 'PROV_pair_%'",
         "clean pairs",
+      );
+    });
+
+    it("refuses a Double Transit Mode row with no pair at all", async () => {
+      const failure = await rawFailure(
+        db,
+        `insert into public.dataset_entries (id, category, instruction, source_payload) values ('PROV_pair_missing', 'double_transit_mode', 'Pair required check.', '{}'::jsonb)`,
+      );
+      expect(failure).toContain("dataset_entries_transit_modes_pair_required");
+      await applySql(
+        db,
+        "delete from public.dataset_entries where id = 'PROV_pair_missing'",
+        "clean missing",
       );
     });
 

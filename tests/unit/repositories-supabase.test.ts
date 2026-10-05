@@ -1239,7 +1239,7 @@ describe("the coverage read a pool is measured with", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it("chunks the id filter past 200 values, because a 4000-id URL is refused", async () => {
+  it("chunks the id filter past 200 values, because a 4800-id URL is refused", async () => {
     // Measured on the hosted gateway: one `.in()` with the corpus's thousands of ids drew a 400.
     // 250 ids therefore travel as 200 + 50, each chunk paging rows on its own count, and the
     // stitched rows keep global order for stable failure attribution.

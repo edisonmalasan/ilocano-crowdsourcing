@@ -139,6 +139,17 @@ begin
         or category <> 'double_transit_mode'
       );
   end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'dataset_entries_transit_modes_pair_required'
+  ) then
+    alter table public.dataset_entries
+      add constraint dataset_entries_transit_modes_pair_required
+      check (
+        category <> 'double_transit_mode'
+        or transit_modes is not null
+      );
+  end if;
 end
 $constraints$;
 

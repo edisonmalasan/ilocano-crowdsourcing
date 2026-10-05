@@ -76,8 +76,10 @@ const ENTRY_COLUMNS = [
  * `transit_mode` becomes the domain's `null`, which is how a category without a transit mode is
  * represented honestly instead of with a placeholder string. Double Transit Mode rows carry
  * their ordered pair in `transit_modes` with a null scalar; every other row carries the scalar
- * (or null) with a null pair. The domain schema validates the result, so a row that mixes both
- * columns is reported rather than guessed about.
+ * (or null) with a null pair. The domain schema validates the result, and the database CHECKs
+ * refuse a row that mixes both columns or omits the pair where one belongs — so by the time a
+ * row reaches this mapping the choice is already made, and this function reports rather than
+ * guesses.
  */
 function toDomain(
   row: Record<string, unknown>,
