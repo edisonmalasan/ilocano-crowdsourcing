@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({
-    get: (_name: string) => (h.cookieValue === undefined ? undefined : { value: h.cookieValue }),
+    get: () => (h.cookieValue === undefined ? undefined : { value: h.cookieValue }),
   }),
 }));
 

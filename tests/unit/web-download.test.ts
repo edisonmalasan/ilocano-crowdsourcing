@@ -7,7 +7,7 @@
  * documents over the same fakes.
  */
 import { describe, expect, it, vi } from "vitest";
-import { strToU8, unzipSync } from "fflate";
+import { unzipSync } from "fflate";
 
 vi.mock("server-only", () => ({}));
 

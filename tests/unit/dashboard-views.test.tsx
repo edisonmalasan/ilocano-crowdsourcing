@@ -160,7 +160,7 @@ describe("OverviewView", () => {
     const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
 
     expect(html).toContain('href="/researcher/export"');
-    expect(html).toContain("Export research data");
+    expect(html).toContain("Export data");
   });
 
   it("names the entries behind the overlap and late-arrival figures", () => {
