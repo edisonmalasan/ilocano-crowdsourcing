@@ -11,8 +11,8 @@
 
 - [x] 2.1 Write one forward migration: nullable `source_entry_id`/`category_name` with CHECKs plus versioned import function with identical grants/posture, never modifying applied files. Verify: PGlite applies the full set; old rows and old test inserts still apply; new columns accept valid provenance and refuse bad values.
 - [x] 2.2 Prove 3,000-row round-trip through PostgreSQL with per-category counts, id sets, and byte-identical fields. Verify: integration tests over the real engine.
-- [ ] 2.3 Back up the hosted corpus, FK-order delete the approved tables plus old `dataset_entries`, verify zeros, import 3,000 rows, and read back every verification in section 6 (counts, id sets, field equality, payloads, actives). Verify: measured hosted numbers recorded, never claimed.
-- [ ] 2.4 Prove zero-state dashboard and empty export after reset/import, plus category-aware figures and cross-category allocation with same-local-id coexistence. Verify: dashboard/export/allocation tests; production smoke with zero fake responses.
+- [x] 2.3 Back up the hosted corpus, FK-order delete the approved tables plus old `dataset_entries`, verify zeros, import 3,000 rows, and read back every verification in section 6 (counts, id sets, field equality, payloads, actives). Verify: measured hosted numbers recorded, never claimed.
+- [x] 2.4 Prove zero-state dashboard and empty export after reset/import, plus category-aware figures and cross-category allocation with same-local-id coexistence. Verify: dashboard/export/allocation tests; production smoke with zero fake responses.
 
 ## 3. Exports, ledger, and full verification
 

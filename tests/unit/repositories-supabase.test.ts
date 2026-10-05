@@ -714,9 +714,18 @@ describe("SupabaseDatasetEntriesRepository.listAllActive", () => {
     expect(new Set(entries.map((entry) => entry.id)).size).toBe(2500);
     expect(fake.calls).toHaveLength(3);
     expect(fake.calls.map((call) => call.filters)).toEqual([
-      [{ kind: "eq", column: "is_active", value: true }, { kind: "range", from: 0, to: 999 }],
-      [{ kind: "eq", column: "is_active", value: true }, { kind: "range", from: 1000, to: 1999 }],
-      [{ kind: "eq", column: "is_active", value: true }, { kind: "range", from: 2000, to: 2999 }],
+      [
+        { kind: "eq", column: "is_active", value: true },
+        { kind: "range", from: 0, to: 999 },
+      ],
+      [
+        { kind: "eq", column: "is_active", value: true },
+        { kind: "range", from: 1000, to: 1999 },
+      ],
+      [
+        { kind: "eq", column: "is_active", value: true },
+        { kind: "range", from: 2000, to: 2999 },
+      ],
     ]);
     for (const call of fake.calls) {
       expect(call.options).toEqual({ count: "exact" });
@@ -740,18 +749,18 @@ describe("SupabaseDatasetEntriesRepository.listAllActive", () => {
     const fake = createFakeClient();
     fake.enqueue(page(0, 999, 2500), page(1000, 1999, 2501));
 
-    await expect(
-      new SupabaseDatasetEntriesRepository(fake.client).listAllActive(),
-    ).rejects.toThrow(/changed mid-read/);
+    await expect(new SupabaseDatasetEntriesRepository(fake.client).listAllActive()).rejects.toThrow(
+      /changed mid-read/,
+    );
   });
 
   it("refuses an empty page that makes no progress rather than looping forever", async () => {
     const fake = createFakeClient();
     fake.enqueue(page(0, 999, 2500), rows([], 2500));
 
-    await expect(
-      new SupabaseDatasetEntriesRepository(fake.client).listAllActive(),
-    ).rejects.toThrow(/no progress/);
+    await expect(new SupabaseDatasetEntriesRepository(fake.client).listAllActive()).rejects.toThrow(
+      /no progress/,
+    );
   });
 
   it("narrows by category when one is given", async () => {
@@ -1202,7 +1211,10 @@ describe("the coverage read a pool is measured with", () => {
     // Measured on the hosted gateway: one `.in()` with the merged corpus's 3,000 ids drew a 400.
     // 250 ids therefore travel as 200 + 50, each chunk paging rows on its own count, and the
     // stitched rows keep global order for stable failure attribution.
-    const ids = Array.from({ length: 250 }, (_, index) => `OD_${String(index + 1).padStart(4, "0")}`);
+    const ids = Array.from(
+      { length: 250 },
+      (_, index) => `OD_${String(index + 1).padStart(4, "0")}`,
+    );
     const fake = createFakeClient();
     fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[0] }], 1));
     fake.enqueue(rows([{ ...VALIDATION_ROW, dataset_entry_id: ids[200] }], 1));
