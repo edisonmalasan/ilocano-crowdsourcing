@@ -21,7 +21,20 @@ const OD_RECORD = {
 
 describe("dataset entry ID", () => {
   it("accepts the real canonical IDs used by the revised synthetic dataset", () => {
-    for (const id of ["D_1", "D_800", "DT_1", "DT_800", "OD_1", "OD_800", "ODT_1", "ODT_800", "CPE_1", "CPE_800", "OD_124", "ODT_63"]) {
+    for (const id of [
+      "D_1",
+      "D_800",
+      "DT_1",
+      "DT_800",
+      "OD_1",
+      "OD_800",
+      "ODT_1",
+      "ODT_800",
+      "CPE_1",
+      "CPE_800",
+      "OD_124",
+      "ODT_63",
+    ]) {
       expect(datasetEntryIdSchema.parse(id)).toBe(id);
     }
   });

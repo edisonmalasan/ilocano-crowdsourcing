@@ -1478,11 +1478,7 @@ describe("SupabaseBatchesRepository", () => {
     );
 
     expect(stored).toEqual(BATCH_RECORD);
-    expect(stored.entries.map((entry) => entry.datasetEntryId)).toEqual([
-      "OD_1",
-      "OD_2",
-      "OD_3",
-    ]);
+    expect(stored.entries.map((entry) => entry.datasetEntryId)).toEqual(["OD_1", "OD_2", "OD_3"]);
     // The read-back went through `findById` rather than being reconstructed from what was sent.
     expect(fake.calls[2]?.table).toBe("validation_batches");
     expect(fake.calls[3]?.filters).toContainEqual({

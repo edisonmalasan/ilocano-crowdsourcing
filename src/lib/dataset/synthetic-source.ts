@@ -54,7 +54,12 @@ export const MERGED_SOURCE_ENTRIES_PER_CATEGORY = 800;
  * Destination) carry no transit mode at all — `null` means unspecified transport, never a
  * default.
  */
-export const MODE_BEARING_TRANSIT_MODES = ["walking", "jeepney", "taxi", "private_vehicle"] as const;
+export const MODE_BEARING_TRANSIT_MODES = [
+  "walking",
+  "jeepney",
+  "taxi",
+  "private_vehicle",
+] as const;
 
 /** Category slugs whose rows must carry no transit mode. */
 const NULL_MODE_CATEGORIES = new Set(["destination_only", "origin_destination"]);
@@ -209,7 +214,10 @@ function assertCategoryPurpose(
       `transit_mode must be one of ${MODE_BEARING_TRANSIT_MODES.join(", ")} in category ${slug}, received ${JSON.stringify(data.transitMode)}`,
     );
   }
-  if ((slug === "origin_destination" || slug === "origin_destination_transit_mode") && data.origin === null) {
+  if (
+    (slug === "origin_destination" || slug === "origin_destination_transit_mode") &&
+    data.origin === null
+  ) {
     refuse(`origin is required in category ${slug}, received null`);
   }
   if (
@@ -372,7 +380,9 @@ export function parseSyntheticDataset(raw: unknown): ParseSyntheticDatasetResult
           recordIndex,
           recordId: `${parsed.prefix}_${parsed.suffix}`,
           fieldPath: `${blockPath}.entries`,
-          issues: [`duplicate canonical id ${parsed.prefix}_${parsed.suffix} in category ${JSON.stringify(name)}`],
+          issues: [
+            `duplicate canonical id ${parsed.prefix}_${parsed.suffix} in category ${JSON.stringify(name)}`,
+          ],
         });
       }
       seenSuffixes.add(parsed.suffix);

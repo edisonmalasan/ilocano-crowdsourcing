@@ -31,7 +31,6 @@ import {
   validatedCsvRow,
   type ValidatedCategoryGroup,
   type ValidatedDerivation,
-  type ValidatedRecord,
 } from "@/lib/export/validated";
 import type { DatasetEntriesRepository } from "@/lib/repositories/dataset-entries-repository";
 import type { ValidationsRepository } from "@/lib/repositories/validations-repository";

@@ -142,7 +142,7 @@ export class SupabaseDatasetEntriesRepository implements DatasetEntriesRepositor
    * whole active pool, so a silent cap would look like a smaller dataset and would quietly reduce
    * coverage. The exact count is therefore requested in the same round trip and a short read
    * raises `RepositoryError` rather than returning the truncated list. The merged corpus is
-   * 3,000 active entries across five categories — past the default cap — so this guard is live
+   * 4,000 active entries across five categories — past the default cap — so this guard is live
    * rather than hypothetical.
    *
    * ORDER. No `order()` is applied, following the interface: the result carries no research

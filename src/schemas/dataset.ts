@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { normalizeResearchText } from "@/lib/domain/text";
-import { CANONICAL_SUFFIX_MAX, CANONICAL_SUFFIX_MIN, parseCanonicalEntryId } from "@/lib/domain/categories";
+import {
+  CANONICAL_SUFFIX_MAX,
+  CANONICAL_SUFFIX_MIN,
+  parseCanonicalEntryId,
+} from "@/lib/domain/categories";
 
 /**
  * Dataset entry contract.

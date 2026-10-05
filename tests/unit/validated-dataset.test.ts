@@ -367,7 +367,12 @@ describe("grouped validated document", () => {
     filipinoTranslation: "Dumiretso ka sa hilaga lagpas ng palengke.",
   };
 
-  function completeEntry(id: string, category: DatasetEntry["category"], sourceEntryId: number, categoryName: string): DatasetEntry {
+  function completeEntry(
+    id: string,
+    category: DatasetEntry["category"],
+    sourceEntryId: number,
+    categoryName: string,
+  ): DatasetEntry {
     return {
       id,
       category,
@@ -382,7 +387,11 @@ describe("grouped validated document", () => {
     };
   }
 
-  function completeSource(entry: DatasetEntry, responseId: string, validatorId: string): ExportSourceWithQualifying {
+  function completeSource(
+    entry: DatasetEntry,
+    responseId: string,
+    validatorId: string,
+  ): ExportSourceWithQualifying {
     return {
       entry,
       response: {
@@ -428,11 +437,15 @@ describe("grouped validated document", () => {
   });
 
   it("establishes the category triple once per group and strips it from member records", () => {
-    const entries = [completeEntry("DT_7", "destination_transit_mode", 7, "Destination + Transit Mode")];
+    const entries = [
+      completeEntry("DT_7", "destination_transit_mode", 7, "Destination + Transit Mode"),
+    ];
     const sources = [completeSource(entries[0] as DatasetEntry, "rv0", "VAL_00000000")];
 
     const dataset = buildValidatedDataset(entries, sources);
-    const group = dataset.categories.find((candidate) => candidate.category === "destination_transit_mode");
+    const group = dataset.categories.find(
+      (candidate) => candidate.category === "destination_transit_mode",
+    );
 
     expect(group?.category_id).toBe(2);
     expect(group?.category).toBe("destination_transit_mode");
@@ -460,7 +473,12 @@ describe("grouped validated document", () => {
 
   it("serializes a private_vehicle record with the exact label in both forms", () => {
     const privateEntry: DatasetEntry = {
-      ...completeEntry("ODT_63", "origin_destination_transit_mode", 63, "Origin + Destination + Transit Mode"),
+      ...completeEntry(
+        "ODT_63",
+        "origin_destination_transit_mode",
+        63,
+        "Origin + Destination + Transit Mode",
+      ),
       transitMode: "private_vehicle",
     };
     const sources = [completeSource(privateEntry, "rv0", "VAL_00000000")];

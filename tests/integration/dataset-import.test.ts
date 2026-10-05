@@ -15,10 +15,7 @@ import {
   type DatasetEntryWriteOutcome,
   type DatasetImportResult,
 } from "@/lib/dataset/import-dataset";
-import {
-  parseSyntheticDataset,
-  type ImportedDatasetEntry,
-} from "@/lib/dataset/synthetic-source";
+import { parseSyntheticDataset, type ImportedDatasetEntry } from "@/lib/dataset/synthetic-source";
 import { DATASET_CATEGORY_TABLE } from "@/lib/domain/categories";
 import { applyMigrations } from "./support/migrations";
 import {

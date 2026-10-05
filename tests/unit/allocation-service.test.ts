@@ -504,13 +504,7 @@ describe("completion retires the entry", () => {
   it("serves the whole requested size from the incomplete pool", async () => {
     // Five incomplete entries and a requested size of five: the batch is full, with no tier to
     // fill past and no target to consult.
-    const pool = [
-      entry("OD_1"),
-      entry("OD_2"),
-      entry("OD_3"),
-      entry("OD_4"),
-      entry("OD_5"),
-    ];
+    const pool = [entry("OD_1"), entry("OD_2"), entry("OD_3"), entry("OD_4"), entry("OD_5")];
     const fakes = createFakes({
       pool,
       responses: [
@@ -585,7 +579,9 @@ describe("entries sharing a source-local id across categories", () => {
     );
 
     expect(
-      allocated(outcome).entries.map((candidate) => candidate.id).sort(),
+      allocated(outcome)
+        .entries.map((candidate) => candidate.id)
+        .sort(),
     ).toEqual(["CPE_42", "DT_42", "D_42", "ODT_42", "OD_42"]);
   });
 
@@ -601,12 +597,11 @@ describe("entries sharing a source-local id across categories", () => {
     );
 
     // Honest short batch: one entry answered, four still eligible — the siblings are unaffected.
-    expect(allocated(outcome).entries.map((candidate) => candidate.id).sort()).toEqual([
-      "CPE_42",
-      "DT_42",
-      "D_42",
-      "ODT_42",
-    ]);
+    expect(
+      allocated(outcome)
+        .entries.map((candidate) => candidate.id)
+        .sort(),
+    ).toEqual(["CPE_42", "DT_42", "D_42", "ODT_42"]);
   });
 });
 
@@ -735,13 +730,7 @@ describe("reservation claims", () => {
     // test), so round one deterministically selects the first three and the denied OD_2 is
     // replaced by OD_4 in round two — order included, because positions derive from it.
     const fakes = createFakes({
-      pool: [
-        entry("OD_1"),
-        entry("OD_2"),
-        entry("OD_3"),
-        entry("OD_4"),
-        entry("OD_5"),
-      ],
+      pool: [entry("OD_1"), entry("OD_2"), entry("OD_3"), entry("OD_4"), entry("OD_5")],
       claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_2"),
     });
 
@@ -839,9 +828,7 @@ describe("a contention-short batch persists its actual size", () => {
     // and the denied id stays excluded. `() => 1` keeps selection in pool
     // order, so the denied OD_10 is the last selected and nothing replaces
     // it — positions included, because positions derive from the granted order.
-    const pool = Array.from({ length: 10 }, (_, index) =>
-      entry(`OD_${index + 1}`),
-    );
+    const pool = Array.from({ length: 10 }, (_, index) => entry(`OD_${index + 1}`));
     const fakes = createFakes({
       pool,
       claim: async (_validatorId, entryIds) => entryIds.filter((id) => id !== "OD_10"),
@@ -879,9 +866,7 @@ describe("a contention-short batch persists its actual size", () => {
     // The exclusion half of the same guarantee: every id the arbiter denies
     // stays out of later rounds within the request, so backfill can only add
     // NEW ids and can never duplicate one to reach 10.
-    const pool = Array.from({ length: 11 }, (_, index) =>
-      entry(`OD_${index + 1}`),
-    );
+    const pool = Array.from({ length: 11 }, (_, index) => entry(`OD_${index + 1}`));
     const seenRounds: string[][] = [];
     const fakes = createFakes({
       pool,
@@ -1234,9 +1219,7 @@ describe("a successful allocation", () => {
   });
 
   it("honours a SMALLER requested size and refuses a larger one", async () => {
-    const pool = Array.from({ length: 12 }, (_, index) =>
-      entry(`OD_${index + 1}`),
-    );
+    const pool = Array.from({ length: 12 }, (_, index) => entry(`OD_${index + 1}`));
     const small = createFakes({ pool });
     const large = createFakes({ pool });
 
@@ -1398,9 +1381,7 @@ describe("a failed write", () => {
 
 describe("the read pattern", () => {
   it("reads the pool's responses ONCE for the whole pool", async () => {
-    const pool = Array.from({ length: 25 }, (_, index) =>
-      entry(`OD_${index + 1}`),
-    );
+    const pool = Array.from({ length: 25 }, (_, index) => entry(`OD_${index + 1}`));
     const fakes = createFakes({ pool });
 
     await allocateBatch(request, dependenciesFor(fakes));
@@ -1426,9 +1407,7 @@ describe("the read pattern", () => {
   });
 
   it("derives the effective size from configuration, not from the request alone", async () => {
-    const pool = Array.from({ length: 8 }, (_, index) =>
-      entry(`OD_${index + 1}`),
-    );
+    const pool = Array.from({ length: 8 }, (_, index) => entry(`OD_${index + 1}`));
     const fakes = createFakes({ pool });
 
     const outcome = await allocateBatch(

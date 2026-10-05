@@ -96,7 +96,10 @@ describe("immutable research source", () => {
       const ids = block.entries.map((record) => record.id);
       expect(new Set(ids).size).toBe(EXPECTED_ENTRIES_PER_CATEGORY);
       const expected = new Set(
-        Array.from({ length: EXPECTED_ENTRIES_PER_CATEGORY }, (_, n) => `${expectedPrefixes[index]}${n + 1}`),
+        Array.from(
+          { length: EXPECTED_ENTRIES_PER_CATEGORY },
+          (_, n) => `${expectedPrefixes[index]}${n + 1}`,
+        ),
       );
       expect(new Set(ids)).toEqual(expected);
     }

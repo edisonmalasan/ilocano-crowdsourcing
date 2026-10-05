@@ -81,7 +81,7 @@ export type ValidatedRecordKey = (typeof VALIDATED_RECORD_KEYS)[number];
 /** One validated entry, as the JSON document carries it. */
 export interface ValidatedRecord {
   readonly id: string;
-  /** The source-local id 1..600 within the entry's category block. A number here (not text): the
+  /** The source-local id 1..800 within the entry's category block. A number here (not text): the
    * JSON document is typed while the CSV carries the same value as text. */
   readonly source_entry_id: number;
   readonly category: string;

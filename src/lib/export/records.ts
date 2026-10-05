@@ -126,18 +126,18 @@ export function buildExportRecords(sources: readonly ExportSourceWithQualifying[
       // comparing JSON against CSV compares strings. The value is the source-local id 1..800,
       // recoverable here without parsing the canonical id.
       source_entry_id: String(entry.sourceEntryId),
-    response_id: response.id,
-    attempt_id: response.validatorId,
-    self_reported_proficiency: proficiency,
-    evaluation: response.evaluation,
-    corrected_instruction: nullableText(response.correctedInstruction),
-    english_translation: nullableText(response.englishTranslation),
-    filipino_translation: nullableText(response.filipinoTranslation),
-    qualifies_toward_completion: qualifies ? "true" : "false",
-    contributes_judgment: isValidJudgment(response) ? "true" : "false",
-    covers_english: coversEnglishTranslation(response) ? "true" : "false",
-    covers_filipino: coversFilipinoTranslation(response) ? "true" : "false",
-    submitted_at: response.createdAt,
+      response_id: response.id,
+      attempt_id: response.validatorId,
+      self_reported_proficiency: proficiency,
+      evaluation: response.evaluation,
+      corrected_instruction: nullableText(response.correctedInstruction),
+      english_translation: nullableText(response.englishTranslation),
+      filipino_translation: nullableText(response.filipinoTranslation),
+      qualifies_toward_completion: qualifies ? "true" : "false",
+      contributes_judgment: isValidJudgment(response) ? "true" : "false",
+      covers_english: coversEnglishTranslation(response) ? "true" : "false",
+      covers_filipino: coversFilipinoTranslation(response) ? "true" : "false",
+      submitted_at: response.createdAt,
     };
   });
 }
@@ -166,7 +166,10 @@ export interface ExportCategoryGroup {
 }
 
 /** One grouped-JSON response: the record without the enclosing category triple. */
-export type GroupedExportResponse = Omit<ExportRecord, "category_id" | "category" | "category_name">;
+export type GroupedExportResponse = Omit<
+  ExportRecord,
+  "category_id" | "category" | "category_name"
+>;
 
 /** One category group for JSON: triple established once, responses without it. */
 export interface ExportCategoryJsonGroup {
@@ -225,16 +228,27 @@ export function groupExportRecordsByCategory(
  * groups in `category_id` order — including at pristine zero state, where the alternative is
  * a document that looks like it forgot its categories.
  */
-export function withEmptyCategoryGroups(groups: readonly ExportCategoryGroup[]): ExportCategoryGroup[] {
+export function withEmptyCategoryGroups(
+  groups: readonly ExportCategoryGroup[],
+): ExportCategoryGroup[] {
   const present = new Set(groups.map((group) => group.category));
   const full: ExportCategoryGroup[] = [...groups];
   for (const row of DATASET_CATEGORY_TABLE) {
     if (!present.has(row.slug)) {
-      full.push({ category_id: row.categoryId, category: row.slug, category_name: row.name, responses: [] });
+      full.push({
+        category_id: row.categoryId,
+        category: row.slug,
+        category_name: row.name,
+        responses: [],
+      });
     }
   }
-  const order = new Map<string, number>(DATASET_CATEGORY_TABLE.map((row) => [row.slug, row.categoryId] as const));
-  return full.sort((left, right) => (order.get(left.category) ?? 999) - (order.get(right.category) ?? 999));
+  const order = new Map<string, number>(
+    DATASET_CATEGORY_TABLE.map((row) => [row.slug, row.categoryId] as const),
+  );
+  return full.sort(
+    (left, right) => (order.get(left.category) ?? 999) - (order.get(right.category) ?? 999),
+  );
 }
 
 /** The JSON form of one group: the triple once, then responses without it. */
@@ -244,7 +258,12 @@ export function toJsonGroup(group: ExportCategoryGroup): ExportCategoryJsonGroup
     category: group.category,
     category_name: group.category_name,
     responses: group.responses.map((record) => {
-      const { category_id: _droppedId, category: _droppedCategory, category_name: _droppedName, ...rest } = record;
+      const {
+        category_id: _droppedId,
+        category: _droppedCategory,
+        category_name: _droppedName,
+        ...rest
+      } = record;
       void _droppedId;
       void _droppedCategory;
       void _droppedName;

@@ -83,7 +83,11 @@ export function parseCanonicalEntryId(id: unknown): ParsedCanonicalEntryId | nul
   // nothing and `D_1` is the only spelling of suffix 1.
   if (digits.length > 1 && digits.startsWith("0")) return null;
   const suffix = Number(digits);
-  if (!Number.isSafeInteger(suffix) || suffix < CANONICAL_SUFFIX_MIN || suffix > CANONICAL_SUFFIX_MAX) {
+  if (
+    !Number.isSafeInteger(suffix) ||
+    suffix < CANONICAL_SUFFIX_MIN ||
+    suffix > CANONICAL_SUFFIX_MAX
+  ) {
     return null;
   }
   const category = DATASET_CATEGORY_TABLE.find((row) => row.prefix === prefix);

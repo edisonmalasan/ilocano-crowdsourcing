@@ -281,9 +281,9 @@ describe("revised-shape validation", () => {
   });
 
   it("rejects a sixth block and a missing block", () => {
-    expect(() => parseSyntheticDataset(documentOf([...NAMES, NAMES[0] as (typeof NAMES)[number]]))).toThrow(
-      DatasetParseError,
-    );
+    expect(() =>
+      parseSyntheticDataset(documentOf([...NAMES, NAMES[0] as (typeof NAMES)[number]])),
+    ).toThrow(DatasetParseError);
     expect(() => parseSyntheticDataset(documentOf(NAMES.slice(0, 4)))).toThrow(DatasetParseError);
   });
 
@@ -371,7 +371,10 @@ describe("revised-shape validation", () => {
 
   it("rejects a short block rather than importing it partially", () => {
     const document = documentOf(NAMES);
-    document.categories[4] = { ...block("CPE", NAMES[4]?.name as string, ["CPE_1", "CPE_2", "CPE_3"]), category_id: 5 };
+    document.categories[4] = {
+      ...block("CPE", NAMES[4]?.name as string, ["CPE_1", "CPE_2", "CPE_3"]),
+      category_id: 5,
+    };
     expect(() => parseSyntheticDataset(document)).toThrow(/expected 800 entries, received 3/);
   });
 

@@ -850,7 +850,11 @@ describe("the dataset_entries_import function", () => {
         );
         expect(failure, `source_entry_id = ${value}`).toBe("");
       }
-      await applySql(db, "delete from public.dataset_entries where id like 'PROV_edge_%'", "clean edges");
+      await applySql(
+        db,
+        "delete from public.dataset_entries where id like 'PROV_edge_%'",
+        "clean edges",
+      );
     });
 
     it("applies cleanly to a correct schema, so its precondition is a CONDITION", async () => {
