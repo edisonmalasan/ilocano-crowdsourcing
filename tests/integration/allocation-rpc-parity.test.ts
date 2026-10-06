@@ -567,23 +567,25 @@ describe("allocation through the versioned function", () => {
 });
 
 describe("randomization across calls", () => {
-  it("spreads grants across the pool with varying first positions", async () => {
-    // Probabilistic by nature, and stated as such: with 30 eligible entries and 6 draws of
-    // 10, a uniform random order covers nearly everything and rarely repeats the same
-    // first entry. The bounds below (≈83% coverage, >1 distinct first) fail only on extreme
-    // concentration — which is exactly the systematic-first defect this guards against
-    // (always-lowest-ids would cover exactly 10 entries with one first position, every run).
+  it("spreads grants across the pool rather than serving a fixed set", async () => {
+    // Probabilistic by nature, and bounded so the flake risk is negligible rather than merely
+    // small: with 30 eligible entries and 6 draws of 10, a uniform random order covers ~27
+    // distinct entries, while a fixed deterministic order (e.g. always-lowest-ids) covers
+    // exactly 10 every run. The threshold sits between those worlds: reaching it by chance
+    // under a fixed order is impossible (the same 10 recur), and missing it under uniform
+    // randomness needs 16+ entries to dodge 60 draws, which is vanishingly unlikely — and, if
+    // it ever happens, re-running distinguishes a flake from a defect the way no assertion
+    // wording can. The mechanism itself is pinned structurally below (`ORDER BY random()` in
+    // the deployed body, no id ordering), so this test is the behavior half, not the whole.
     const ids = Array.from({ length: 30 }, (_, n) => `W_${n + 1}`);
     await seedEntries(ids.map((id) => ({ id })));
 
-    const firsts: string[] = [];
     const covered = new Set<string>();
     for (let n = 0; n < 6; n += 1) {
       const validatorId = `VAL_dist${n}`;
       await seedValidator(validatorId);
       const granted = await allocate(validatorId, `B_dist${n}`, 10);
       expect(granted).toHaveLength(10);
-      firsts.push(granted[0]?.entry_id ?? "");
       for (const row of granted) covered.add(row.entry_id);
       // Reservations would otherwise accumulate across iterations and starve the later ones:
       // expiry is time comparison, so backdate every lease and the next draw sees the pool
@@ -595,8 +597,30 @@ describe("randomization across calls", () => {
       );
     }
 
-    expect(covered.size).toBeGreaterThanOrEqual(25);
-    expect(new Set(firsts).size).toBeGreaterThan(1);
+    expect(covered.size).toBeGreaterThanOrEqual(15);
+  });
+
+  it("orders by randomness in the deployed body, never by entry id", async () => {
+    // The structural half of the distribution guarantee: read from the catalogue, never from
+    // the migration file, so it describes the function that actually exists. Comments are
+    // stripped first (both syntaxes), because a bare-substring anchor is satisfied by a
+    // comment quoting the statement — and the body under test is full of comments explaining
+    // exactly this choice. An `ORDER BY` over the entry id (or any id-ordered draw) would
+    // serve a fixed set every call, and the behavioral test above is what would catch it in
+    // the grants.
+    const rows = await query<{ prosrc: string }>(
+      db,
+      `select p.prosrc as prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = 'allocate_validation_batch_v1'`,
+    );
+    const code = (rows[0]?.prosrc ?? "")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .split("\n")
+      .map((line) => line.replace(/--.*$/, ""))
+      .join("\n")
+      .toLowerCase();
+    expect(code).toMatch(/order\s+by\s+random\s*\(\s*\)/);
+    expect(code).not.toMatch(/order\s+by\s+(e\.id|id|entry_id)/);
   });
 });
 

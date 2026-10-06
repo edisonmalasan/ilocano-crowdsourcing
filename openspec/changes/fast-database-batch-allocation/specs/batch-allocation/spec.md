@@ -185,8 +185,8 @@ retained, because that part was doing real work independently of the superseded 
 #### Scenario: Randomization shows no systematic preference
 
 - **WHEN** repeated allocations draw from the same eligible pool
-- **THEN** grants spread across the pool with varying first positions, rather than always
-  serving the lowest ids first
+- **THEN** grants spread across the pool rather than serving one fixed set, and the
+  deployed function body orders by randomness rather than by entry id
 
 #### Scenario: The batch is short only when the eligible pool is exhausted
 
