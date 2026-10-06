@@ -325,13 +325,19 @@ describe("every site that builds a batch address goes through the one definition
     ).toEqual([]);
   });
 
-  it("accounts for the five producers the requirement names", () => {
-    // FOUR sites across three files. The requirement names five producers
+  it("accounts for the producers the requirement names, by file", () => {
+    // FOUR sites across three files historically. The requirement names five producers
     // (resume, allocation, post-submit, continue, auto-orchestration), while
     // the auto-orchestrator builds BOTH the resume and the allocation addresses
     // in one island — so "five producers" and "four call sites" are different
     // true statements and only the first is what the requirement says. Both
     // are listed rather than reconciled by loosening the count.
+    //
+    // `optimistic-entry-progression` moved the post-submit navigation out of the form and into
+    // the session runner, which builds three addresses through the same contract: the in-place
+    // advance's address-bar record, the fallback/finish navigation, and the way back to a
+    // refused entry. Same module, same rule — one more file in the enumeration, not a new
+    // pattern.
     const byFile = new Map<string, number>();
     for (const site of producers()) {
       byFile.set(site.file, (byFile.get(site.file) ?? 0) + 1);
@@ -339,7 +345,7 @@ describe("every site that builds a batch address goes through the one definition
 
     expect([...byFile.entries()].sort()).toEqual([
       ["src/app/validate/[batchId]/finished-batch.tsx", 1],
-      ["src/app/validate/[batchId]/validation-form.tsx", 1],
+      ["src/app/validate/[batchId]/validation-session.tsx", 3],
       ["src/app/validate/start-batch.tsx", 2],
     ]);
   });

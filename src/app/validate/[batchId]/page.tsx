@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
-import { BatchProgress } from "@/components/ui/progress";
-import { EntryCard } from "@/components/validation/entry-card";
 import type { InterfaceLocale } from "@/lib/domain/locale";
 import { ServerEnvError } from "@/lib/env/server";
 import { translatorFor } from "@/lib/i18n/copy";
@@ -13,7 +11,7 @@ import type { ValidationSessionOutcome } from "@/lib/validation/session";
 import { openValidationSession, sessionDependencies } from "@/lib/validation/session-service";
 
 import { FinishedBatch } from "./finished-batch";
-import { ValidationForm } from "./validation-form";
+import { ValidationSessionRunner } from "./validation-session";
 
 /**
  * ============================================================================
@@ -162,34 +160,21 @@ function SessionBody({ outcome, locale }: SessionBodyProps) {
 
   if (outcome.status === "presenting") {
     const { session } = outcome;
+    // One server render opens the session; every later transition happens inside the runner,
+    // in place, against the prefetched next entry and the background save queue. The route
+    // still owns the finished/absent/failed branches below, and the runner navigates back
+    // here — rather than rendering those itself — whenever only the server can decide.
     return (
-      <>
-        <BatchProgress
-          index={session.position}
-          total={session.total}
-          completed={session.completedCount}
-          labels={{
-            progress: t("validate.progress.label"),
-            item: `${t("validate.progress.sentence")} ${session.position} ${t("validate.progress.of")} ${session.total}`,
-            saved: `${session.completedCount} ${t("validate.progress.saved")}`,
-          }}
-        />
-
-        <EntryCard
-          entry={session.entry}
-          label={t("validate.entry.label")}
-          instructionLabel={t("validate.entry.instructionLabel")}
-        />
-
-        <Card as="section" padding="lg">
-          <ValidationForm
-            locale={locale}
-            batchId={session.batchId}
-            datasetEntryId={session.entry.id}
-            position={session.position}
-          />
-        </Card>
-      </>
+      <ValidationSessionRunner
+        locale={locale}
+        initial={{
+          batchId: session.batchId,
+          entry: session.entry,
+          position: session.position,
+          total: session.total,
+          completedCount: session.completedCount,
+        }}
+      />
     );
   }
 

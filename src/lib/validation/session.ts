@@ -252,4 +252,12 @@ export function resolveSessionEntry(
  * is what leaves the advance as a navigation, and therefore leaves this function with nowhere to live.
  * The guarantee is asserted where it is real — three links, all in production, in
  * `validation-routes.test.tsx` and `tests/dom/validation-form.test.tsx`.
+ *
+ * SUPERSEDED by `optimistic-entry-progression`, by explicit product decision: the thesis methodology
+ * does not require the next sentence to stay hidden until the current response finishes saving.
+ * The prefetch (`next-entry-actions-core.ts`) resolves the next entry through THIS module's
+ * `resolveSessionEntry` — the same decider, the same order — while the current save is still in
+ * flight. What the rejection protected — one sentence presented at a time — is preserved
+ * elsewhere: the prefetched entry is held but never presented alongside the current one, and the
+ * paragraph above is kept so a reader of an earlier commit is not left believing the old rule.
  */

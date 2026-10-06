@@ -277,8 +277,6 @@ export function ScreeningForm({ locale }: ScreeningFormProps) {
           {submitState.label}
         </Button>
       </div>
-
-      <p className="text-small text-ink-faint">{t("screening.resumeNote")}</p>
     </form>
   );
 }

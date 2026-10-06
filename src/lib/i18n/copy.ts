@@ -179,7 +179,6 @@ export const ENGLISH_COPY = {
   "screening.proficiency.not_confident": ILOCANO_PROFICIENCY_CHOICES[4].label,
   "screening.submit": "Continue",
   "screening.submitting": "Saving…",
-  "screening.resumeNote": "",
   "screening.resumed": "Picking up where this browser's validator left off.",
 
   // -- Failure copy. Keyed by outcome reason AND by subject, because a single shared string
@@ -342,11 +341,21 @@ export const ENGLISH_COPY = {
   "validation.translation.choice.required": "Say whether you will translate, or skip.",
   "validation.submit": "Save and continue",
   "validation.submitting": "Saving…",
+  // Save-queue status: what the participant reads while a response persists in the background.
+  // Plain operational sentences, and deliberately NOTHING that hurries: no timers, no streaks,
+  // no "keep going". `retrying` names the wait rather than alarming about it, and `unsaved`
+  // carries the same "nothing was saved / nothing is lost" honesty as the failure sentences.
+  "validation.save.saving": "Saving…",
+  "validation.save.saved": "Saved",
+  "validation.save.retrying": "Could not save yet. Retrying…",
+  "validation.save.backlog": "Saving your recent responses…",
   "validation.failure.invalid":
     "That answer did not go through, and nothing was saved. Check the highlighted inputs.",
   "validation.failure.notConfigured": "The study is closed at the moment, and nothing was saved.",
   "validation.failure.persistence":
     "That answer wouldn't save. Nothing was saved, so nothing is lost. Try again in a " + "moment.",
+  "validation.failure.retry": "Try again",
+  "validation.failure.backToEntry": "Back to that sentence",
 
   // -- Session states --------------------------------------------------------
   "validate.finished.label": "This batch is finished",
@@ -570,9 +579,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "screening.proficiency.not_confident": "Hindi komportable",
   "screening.submit": "Magpatuloy",
   "screening.submitting": "Ini-save…",
-  "screening.resumeNote":
-    "Kung may hawak nang pagkakakilanlan ng validator ang browser na ito, itutuloy nito iyon " +
-    "sa halip na gumawa ng bago, at hindi mapapatungan ang orihinal ng sagot mo sa itaas.",
   "screening.resumed": "Itutuloy ang validator na hawak na ng browser na ito.",
 
   // -- Failure copy. Per subject as well as per reason: see the English block for why.
@@ -737,6 +743,12 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validation.translation.choice.required": "Sabihin kung magsasalin ka o lalaktawan.",
   "validation.submit": "I-save at magpatuloy",
   "validation.submitting": "Ini-save…",
+  // Katayuan ng save-queue: kaparehong kahulugan ng mga pangungusap sa itaas, hindi mas maikli
+  // o mas maluwag na salin. Walang nagmamadali, walang streak, walang papuri sa dami.
+  "validation.save.saving": "Ini-save…",
+  "validation.save.saved": "Naka-save",
+  "validation.save.retrying": "Hindi pa na-save. Sinusubukang muli…",
+  "validation.save.backlog": "Ini-save ang mga huli mong sagot…",
   "validation.failure.invalid":
     "Hindi umubra ang sagot na iyon, at walang nase-save. Pakitsek ang mga naka-highlight na " +
     "input.",
@@ -744,6 +756,8 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validation.failure.persistence":
     "Ayaw ma-save ang sagot na iyon. Walang nase-save, kaya walang nawala. Subukan mong " +
     "muli maya-maya.",
+  "validation.failure.retry": "Subukan muli",
+  "validation.failure.backToEntry": "Tingnan ang pangungusap na iyon",
 
   // -- Mga kalagayan ng session -------------------------------------------------
   "validate.finished.label": "Tapos na ang batch na ito",

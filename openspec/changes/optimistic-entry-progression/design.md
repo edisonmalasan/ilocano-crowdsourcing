@@ -47,15 +47,16 @@ not require it.
 
 - Pure queue module (`src/lib/validation/save-queue.ts`): enqueue validated
   payload → states `saving` → `saved` (on `recorded`/`already_recorded`) or
-  `retrying` (transient: `persistence`, `not_configured`-as-transient? no —
-  see below) with bounded retries (3 attempts, 500ms/1s/2s backoff) then
-  `failed` (sticky, blocking further advancement until resolved by retry
-  control; response retained).
-- `invalid` is never enqueued (client check first, and a server `invalid`
-  returns to the form as a field error, never retried). `unknown_batch` /
-  `not_in_batch` are permanent: surfaced, never retried.
-- Single-flight per entry (existing latch retained); queue drains strictly in
-  order so progress counts stay truthful.
+  `retrying` (both `persistence` and `not_configured` are transient: the payload
+  was acceptable and the world was not) with bounded retries (3 attempts,
+  500ms/1s/2s backoff) then
+  `unsaved` (parked with the complete payload
+  retained and retryable; blocking further advancement until resolved).
+- `invalid` is never enqueued (client check first). A server `invalid`,
+  `unknown_batch`, or `not_in_batch` parks after one attempt: surfaced, never
+  retried, payload retained.
+- Single-flight per entry (existing latch retained, plus per-key idempotency in
+  the queue).
 - Race pin: Entry N's save resolving after Entry N+1 rendered must mark N saved
   without touching N+1's form — covered by delayed-fake tests.
 
@@ -77,6 +78,11 @@ not require it.
   non-empty (waits for drain first, then clears + navigates). Continue/new
   batch likewise waits for the current batch's drain.
 - `beforeunload` warning while the queue is non-empty; removed when drained.
+- A submit held by a parked failure is remembered, not lost: when the parked
+  save later confirms while the view is still on its entry, the held advance
+  completes through the normal branch. Without this the session would sit on an
+  answered, latched entry no control advances (found by independent
+  verification, fixed before merge).
 
 ### D5: No page navigation per transition
 
@@ -100,10 +106,13 @@ not require it.
 ### D7: Copy additions (both catalogs, parity-tested)
 
 - `validation.save.saving` ("Saving…"), `validation.save.saved` ("Saved"),
-  `validation.save.retrying` ("Could not save. Retrying…"),
+  `validation.save.retrying` ("Could not save yet. Retrying…"),
   `validation.save.backlog` ("Saving your recent responses…"),
-  `validation.save.unsavedWarning` (before-unload sentence). No timers, no
-  streaks, no speed pressure; retrying copy is non-alarming.
+  plus `validation.failure.retry` / `validation.failure.backToEntry` for the
+  unsaved panel. No timers, no streaks, no speed pressure; retrying copy is
+  non-alarming. Parked failures reuse the reason-specific `failureMessageFor`
+  sentences rather than a generic string, and `beforeunload` carries no custom
+  text (modern browsers ignore it) — so neither has a catalog key, deliberately.
 
 ## Risks / trade-offs
 
@@ -118,7 +127,22 @@ not require it.
   each is the same cheap indexed read, and the eliminated full re-read per
   transition nets out.
 
+## Measured baseline (before → after)
+
+- Before (hosted project, service-role REST, read-only, medians of 5): the three
+  session reads cost ~211ms + ~189ms + ~205ms sequentially (~600ms), and the
+  write path adds a batch read plus the INSERT plus reservation release before
+  navigation even starts — old entry-to-entry latency on the order of 1.5–2.5s
+  of blocked waiting per transition.
+- After: the prefetch performs the same three reads (re-measured medians
+  ~256ms + ~195ms + ~169ms — same code path, unchanged cost) but off the
+  critical path. With the next entry prefetched, Save and continue swaps the
+  entry synchronously without awaiting any write round trip; the ~1–2s save
+  confirms in the background. Verified structurally by the S-3/S-4 DOM tests
+  (advance observed with the save deferred, Saved only on confirmation), not by
+  a stopwatch in a synthetic DOM.
+- No migration; no hosted writes for this change (all hosted access read-only).
+
 ## Open questions
 
-- None blocking. Post-Apply comparison re-measures the three hosted reads
-  (unchanged code path) and asserts the transition no longer awaits them.
+- None blocking. Real-browser timing remains a human step (see final report).

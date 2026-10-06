@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -8,16 +7,14 @@ import { Field, controlClasses } from "@/components/ui/field";
 import { AnswerGroup } from "@/components/validation/answer-option";
 import type { InterfaceLocale } from "@/lib/domain/locale";
 import { EVALUATION_DESCRIPTION_KEYS, EVALUATION_LABEL_KEYS, translatorFor } from "@/lib/i18n/copy";
-import { submitValidationAction } from "@/lib/validation/actions";
-import { batchRouteHref } from "@/lib/validation/batch-route";
 import {
   EMPTY_ENTRY_FORM_INPUT,
   checkEntryForm,
   entryFormFields,
-  failureMessageFor,
   submitControlState,
   type EntryFormInput,
 } from "@/lib/validation/entry-form-flow";
+import type { ValidationResponseInput } from "@/schemas/validation";
 import { EVALUATION_CHOICES, evaluationSchema } from "@/schemas/validation";
 
 /**
@@ -55,34 +52,48 @@ import { EVALUATION_CHOICES, evaluationSchema } from "@/schemas/validation";
  * refused anyway.
  *
  * ============================================================================
- * WHY THE NEXT SENTENCE IS FETCHED ONLY AFTER THIS ONE IS STORED
+ * WHY THE NEXT SENTENCE MAY ALREADY BE WAITING WHEN THIS ONE IS STORED
  * ============================================================================
- * On success the form navigates to the NEXT POSITION in the server-allocated order, and the server
- * renders whatever it decides belongs there. It does not pre-load the next sentence into this
- * component.
+ * On a valid submit the form hands the payload to the session runner, which
+ * enqueues it for background persistence and advances to the already-prefetched
+ * next entry in the same task. It does not await the write and does not
+ * navigate: the runner owns advancing, the queue owns confirming, and this
+ * component owns the judgement being formed right now.
  *
- * The obvious alternative — returning the next entry in the write's response, so advancing needs no
- * navigation — was rejected for a reason that is about the data rather than about code. A validator
- * who is holding the next sentence while still forming a judgement on the current one can see it
- * before they have committed to an answer, and a data set collected under that condition is a
- * different data set. Fetching it after the response is stored costs one navigation and keeps every
- * judgement made on one sentence at a time.
+ * The earlier design — fetch the next sentence only after the current response
+ * is stored — is SUPERSEDED by product decision (`optimistic-entry-progression`):
+ * the methodology does not require it. What is preserved is the property that
+ * mattered: exactly one sentence is ever PRESENTED at a time. The prefetched
+ * entry is held by the runner, never rendered here, and nothing of it reaches
+ * this component before the advance.
  */
 export interface ValidationFormProps {
   readonly locale: InterfaceLocale;
-  readonly batchId: string;
   readonly datasetEntryId: string;
-  /** 1-based position within the batch, from `batch_entries.position`. */
-  readonly position: number;
+  /**
+   * Receives a locally-validated payload. The runner enqueues it and advances;
+   * nothing here awaits the server, so this callback is synchronous by contract
+   * and the form never reports a response as saved.
+   */
+  readonly onValidSubmit: (payload: ValidationResponseInput) => void;
 }
 
-export function ValidationForm({ locale, batchId, datasetEntryId, position }: ValidationFormProps) {
+export function ValidationForm({ locale, datasetEntryId, onValidSubmit }: ValidationFormProps) {
   const t = translatorFor(locale);
-  const router = useRouter();
   const [input, setInput] = useState<EntryFormInput>(EMPTY_ENTRY_FORM_INPUT);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
-  const [failure, setFailure] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  /**
+   * The single-flight latch.
+   *
+   * `isPending` alone is not sufficient, and the reason is specific: it becomes true only when
+   * React re-renders, so two clicks dispatched in the same task both see `false` and both would
+   * enqueue. A ref is updated synchronously, so the second click finds the latch already closed.
+   * `disabled` is still set from `isPending` — that is what the participant sees — but the latch
+   * is what makes the guarantee. It releases when the entry changes, and the queue's per-key
+   * idempotency holds even if the latch is ever bypassed.
+   */
+  const inFlight = useRef(false);
 
   /**
    * The entry this state was built for. Compared against the prop during render, below.
@@ -92,8 +103,8 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
   /**
    * Entry-scoped reset, decided DURING RENDER rather than in an effect.
    *
-   * Advancing navigates within one route, so React reuses this component instance for the next
-   * entry and `useState` initializers do not run again. Resetting in a `useEffect` would paint
+   * The runner remounts this form per entry (`key={entry.id}`), so initializers usually run
+   * fresh; this covers the prop-change path as well. Resetting in a `useEffect` would paint
    * one frame of the previous entry's answers first; adjusting here means the frame committed
    * for a new entry never held the old one. Only entry-scoped fields reset, and only when the
    * entry actually changed — re-rendering the same entry (locale switch, parent update) keeps
@@ -103,19 +114,10 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
     setEntryId(datasetEntryId);
     setInput(EMPTY_ENTRY_FORM_INPUT);
     setFieldErrors({});
-    setFailure(null);
+    // The latch needs no reset here: the runner remounts this form per entry, so a new entry
+    // is a new latch. (Writing a ref during render is forbidden, and the remount makes it
+    // unnecessary.)
   }
-
-  /**
-   * The single-flight latch.
-   *
-   * `isPending` alone is not sufficient, and the reason is specific: it becomes true only when
-   * React re-renders, so two clicks dispatched in the same task both see `false` and both would
-   * reach the action. A ref is updated synchronously, before the first `await`, so the second click
-   * finds the latch already closed. `disabled` is still set from `isPending` — that is what the
-   * participant sees — but the latch is what makes the guarantee.
-   */
-  const inFlight = useRef(false);
 
   const fields = entryFormFields(input.evaluation);
 
@@ -130,9 +132,7 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
     });
   }
 
-  async function submit(): Promise<void> {
-    setFailure(null);
-
+  function submit(): void {
     const check = checkEntryForm(input);
     if (!check.complete) {
       setFieldErrors(check.fieldErrors);
@@ -142,30 +142,23 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
     setFieldErrors({});
     inFlight.current = true;
 
-    const result = await submitValidationAction({
-      batchId,
-      datasetEntryId,
-      response: check.payload,
-    });
-
-    inFlight.current = false;
-
-    if (result.status === "recorded" || result.status === "already_recorded") {
-      // Both outcomes mean the entry is complete, and in both cases the next entry is the server's
-      // to choose. A `?position` one past the current one cannot itself decide what is next — the
-      // server intersects it with the completed set — so a stale or hand-edited value lands on the
-      // first entry that still needs an answer rather than on nothing.
-      // The next sentence is the NEXT ONE AFTER THIS ONE, expressed as a position the route
-      // resolves against the order the server chose — never as "which id comes next" from here,
-      // which would put the batch order in the client. The address itself comes from the one route
-      // contract, so this site holds no encoding knowledge of its own.
-      router.push(batchRouteHref(batchId, position + 1));
-      return;
-    }
-
-    setFailure(failureMessageFor(result.reason, t));
+    // Enqueue and advance synchronously: the runner persists in the background and shows the
+    // next entry immediately. Nothing is awaited here, so nothing here can report the response
+    // as saved — the queue's confirmation is the only thing that does, through the runner's
+    // save status. The latch releases when the entry changes (above) or, if the runner holds
+    // this entry for a backlog drain, on the next submit attempt path below.
+    //
+    // The runner remounts this form per entry (`key={entry.id}`), which is the primary reset;
+    // the render-time reset above covers the prop-change path. Either way a second click for
+    // the same entry finds the latch closed, and the queue's per-key idempotency holds even
+    // if the latch is ever bypassed.
+    onValidSubmit(check.payload);
   }
 
+  // The transition covers the synchronous advance the submit triggers. There is no awaited
+  // write anymore, so `isPending` is brief by construction rather than by network — the
+  // control still reports its own in-progress state per `design-system`, and the latch above
+  // is still what makes the single-flight guarantee.
   const submitState = submitControlState(isPending, t);
 
   return (
@@ -175,8 +168,8 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
       onSubmit={(event) => {
         event.preventDefault();
         if (inFlight.current) return;
-        startTransition(async () => {
-          await submit();
+        startTransition(() => {
+          submit();
         });
       }}
     >
@@ -311,16 +304,12 @@ export function ValidationForm({ locale, batchId, datasetEntryId, position }: Va
         A failure is an `alert`: it appears in response to something the participant did and must be
         announced. A pending notice is a `status` instead, because `role="alert"` would interrupt for
         a routine state change.
+
+        Server-side refusals no longer render here: the runner owns persistence and reports it
+        through the save status beside the entry, so a refusal for entry N is still visible after
+        the session has advanced past it. What stays here are the field errors above, which point
+        at the input the validator can fix before anything is sent.
       */}
-      {failure ? (
-        <p
-          role="alert"
-          className="text-small text-status-alert flex items-start gap-2 font-semibold"
-        >
-          <span aria-hidden="true">△</span>
-          <span>{failure}</span>
-        </p>
-      ) : null}
 
       {/*
         The ONLY control that starts a write. There is deliberately no "later" control: the

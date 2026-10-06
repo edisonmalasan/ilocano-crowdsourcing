@@ -400,12 +400,15 @@ describe("the screening screen, in both languages", () => {
     },
   );
 
-  it("localizes the submit control and the resume note beneath it, with no skip control", async () => {
+  it("localizes the submit control, with no skip control and no resume note", async () => {
+    // The resume note was removed by owner decision (main `5372074`): the Filipino sentence is
+    // gone with the English one, so this asserts the submit control's localization and the
+    // note's ABSENCE rather than its rendering.
     const { ScreeningForm } = await import("@/app/start/screening-form");
     const filipino = renderToStaticMarkup(<ScreeningForm locale="fil" />);
 
     expect(filipino).toContain("Magpatuloy");
-    expect(filipino).toContain("hindi mapapatungan ang orihinal");
+    expect(filipino).not.toContain("hindi mapapatungan ang orihinal");
     // And not the English, which is the half that actually matters: a localized button label
     // beside an English sentence is the half-localized page D3 forbids.
     expect(filipino).not.toContain("Continue");

@@ -1277,7 +1277,10 @@ describe("the copy that described a returning person, and now describes one sess
     // their required address rather than going quiet about them.
     const found = mentionsRecognition();
 
-    expect(found.length).toBe(23);
+    // 22, not 23: `en:screening.resumeNote` was removed by owner decision (main `5372074`),
+    // so it no longer contributes its recognition vocabulary. Recorded here so a future
+    // reader does not "repair" the count back.
+    expect(found.length).toBe(22);
     expect(found).toEqual([
       "en:common.beforeYouStart",
       "en:ready.next.body1",
@@ -1285,7 +1288,6 @@ describe("the copy that described a returning person, and now describes one sess
       "en:ready.starting.item2",
       "en:ready.title",
       "en:resume.unknown",
-      "en:screening.resumeNote",
       "en:start.beforeAnswer.label",
       "en:start.lead",
       "en:validate.finished.failure.invalid",

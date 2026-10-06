@@ -134,8 +134,6 @@ export const GUARD_WEAKNESS: Readonly<Record<string, Readonly<Record<string, str
       "an empty or wrong `aria-labelledby` alongside a correct `aria-label` — only one of the two labelling mechanisms is inspected, and precedence goes to the one not checked.",
     "screening form neutrality > offers no way to continue without answering":
       "a second submit path added client-side after hydration — static markup counts one submit control, so a hydrated duplicate would pass; the refusal behaviour is pinned in `tests/dom/screening-form.test.tsx`.",
-    "screening form neutrality > tells the participant an existing identity will be resumed, not duplicated":
-      "the guarantee being false — this asserts two sentences exist, which is the opposite of the attestation test on `/ready` and is knowingly weaker.",
     "the submit control while a Server Action is in flight > disables and marks the control busy while pending":
       "the control NOT BINDING this value — `submitControlState` is pure, so `submitState.disabled` could have been replaced with a literal `false` and every test here stays green. That was site SF-2, measured unguarded and closed by `tests/dom`.",
     "the submit control while a Server Action is in flight > leaves the control enabled and ready when idle":
