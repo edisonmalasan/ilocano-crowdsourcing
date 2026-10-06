@@ -13,8 +13,11 @@ import { anonymousValidatorIdSchema } from "./validator";
  * Batch request and allocation-configuration contract.
  *
  * The one research parameter here is CONFIGURATION, not a settled fact: `batchSize` defaults to
- * 10, matching the approved participant experience, but the thesis team and adviser have not
+ * 5, matching the approved participant experience, but the thesis team and adviser have not
  * signed off a final value.
+ *
+ * The batch size of 10 is SUPERSEDED by the `five-entry-concurrent-persistence` change, recorded
+ * here rather than silently edited: the earlier default was 10, and only the number moved.
  *
  * That is precisely why it lives in a validated configuration object with a hard upper bound
  * rather than as a constant baked into the allocation query. When the approved number arrives it
@@ -32,10 +35,10 @@ import { anonymousValidatorIdSchema } from "./validator";
  */
 
 /** Approved participant batch size. */
-export const BATCH_SIZE_DEFAULT = 10;
+export const BATCH_SIZE_DEFAULT = 5;
 
 /**
- * Hard upper bound on a single batch, 50 entries. Five times the approved size: generous enough
+ * Hard upper bound on a single batch, 50 entries. Ten times the approved size: generous enough
  * that any realistic research adjustment stays inside it, small enough that a misconfigured
  * request cannot ask one validator to judge more entries than a single sitting could plausibly
  * produce. This is a safety bound, not a research decision — raising it requires no data change.
@@ -54,7 +57,7 @@ export const RESERVATION_TTL_SECONDS_HARD_MAX = 86400;
 /**
  * `strictObject` so a misspelled or unrecognised setting is rejected at the boundary instead of
  * being stripped and silently replaced by a default — a typo in a research parameter must not
- * quietly mean "10 entries". The object holds exactly two keys, asserted by an exact
+ * quietly mean "5 entries". The object holds exactly two keys, asserted by an exact
  * `Object.keys` set in `tests/unit/batch.test.ts`, so a removed or re-added key fails the test
  * rather than going unnoticed.
  */
