@@ -43,6 +43,10 @@ function createRecordingValidators() {
       calls.push({ method: "listByIds", argument: ids });
       return [];
     }),
+    listAllIds: vi.fn(async () => {
+      calls.push({ method: "listAllIds", argument: undefined });
+      return [];
+    }),
     touchLastActive: vi.fn(async (id) => {
       calls.push({ method: "touchLastActive", argument: id });
     }),

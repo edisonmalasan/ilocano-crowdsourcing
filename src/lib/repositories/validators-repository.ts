@@ -30,6 +30,17 @@ export interface ValidatorsRepository {
   listByIds(ids: readonly AnonymousValidatorId[]): Promise<ValidatorProfile[]>;
 
   /**
+   * Every enrolled attempt ID in the table.
+   *
+   * The dashboard needs the enrolled SET, not just profiles behind responses: an attempt that
+   * enrolled and never answered is invisible to `listByIds`. IDs only, because counts need no
+   * profiles and profiles would widen the privacy surface for nothing. Paged deterministically
+   * past the response cap (same pattern as `DatasetEntriesRepository.listAllActive`), so a large
+   * attempt population is never truncated.
+   */
+  listAllIds(): Promise<AnonymousValidatorId[]>;
+
+  /**
    * Records activity. `at` is supplied by the caller rather than read from the database clock so
    * the service controls the authoritative timestamp instead of trusting a client.
    */

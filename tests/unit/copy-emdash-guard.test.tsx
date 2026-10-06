@@ -86,7 +86,9 @@ describe("product copy carries no em dash except the site title", () => {
         overview={{
           totalEntries: 0,
           totalQualifyingValidations: 0,
-          totalValidators: 0,
+          attemptsWithResponses: 0,
+          enrolledAttempts: 0,
+          zeroResponseAttempts: 0,
           totalResponses: 0,
           cannotEvaluateCount: 0,
           buckets: { incomplete: 0, complete: 0 },

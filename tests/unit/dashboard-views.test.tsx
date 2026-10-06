@@ -23,7 +23,9 @@ import type { DashboardOverview, EntryReview } from "@/lib/admin/dashboard";
 const OVERVIEW: DashboardOverview = {
   totalEntries: 6,
   totalQualifyingValidations: 12,
-  totalValidators: 5,
+  attemptsWithResponses: 5,
+  enrolledAttempts: 8,
+  zeroResponseAttempts: 3,
   totalResponses: 13,
   cannotEvaluateCount: 1,
   buckets: { incomplete: 3, complete: 3 },
@@ -142,7 +144,7 @@ describe("OverviewView", () => {
     expect(pairs).toEqual([
       ["Dataset entries", "6"],
       ["Qualifying validations", "12"],
-      ["Validators who submitted responses", "5"],
+      ["Attempts with responses", "5"],
       ["Overall completion", "50%"],
       ["Complete entries", "3"],
       ["Incomplete entries", "3"],
@@ -152,6 +154,39 @@ describe("OverviewView", () => {
       ["Late-arrival responses", "2"],
       ["Needs researcher review", "2"],
     ]);
+  });
+
+  it("renders the participation attempt figures with attempt terminology and no person claims", () => {
+    const html = renderToStaticMarkup(<OverviewView overview={OVERVIEW} />);
+
+    const section =
+      html.split('aria-label="Participation attempts"')[1]?.split("</section>")[0] ?? "";
+    expect(section.length, "the participation section must render").toBeGreaterThan(0);
+    for (const text of [
+      "Enrolled attempts",
+      "Attempts with responses",
+      "Zero-response attempts",
+      ">8<",
+      ">5<",
+      ">3<",
+      "Attempts are anonymous study sessions, not unique people.",
+    ]) {
+      expect(section).toContain(text);
+    }
+    // Never a headcount of humans, and never an error state for the silent bucket.
+    // (The pinned note itself says "not unique people", so the bans below name longer
+    // person-count claims rather than the word "people" alone.)
+    for (const banned of [
+      "Unique validators",
+      "unique humans",
+      "distinct humans",
+      "Enrolled people",
+      "Participants",
+      "how many people",
+    ]) {
+      expect(section).not.toContain(banned);
+    }
+    expect(section).not.toContain("error");
   });
 
   it("offers the research export download from the protected overview", () => {

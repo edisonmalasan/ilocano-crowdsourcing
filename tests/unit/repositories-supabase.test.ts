@@ -958,6 +958,96 @@ describe("SupabaseValidatorsRepository", () => {
   });
 });
 
+describe("SupabaseValidatorsRepository.listAllIds", () => {
+  // One attempt population larger than a single PostgREST response, stitched from scripted
+  // pages. The fake does not slice by range — it returns what was enqueued — so the page
+  // BOUNDARIES are asserted on the recorded calls while the stitched CONTENT is asserted on
+  // the result. Ids are zero-padded hex so every row satisfies the anonymous-identifier
+  // schema: a row the schema rejects would fail here on mapping rather than on paging.
+  const idAt = (index: number): string => `VAL_${index.toString(16).padStart(8, "0")}`;
+  const page = (from: number, to: number, total: number) =>
+    rows(
+      Array.from({ length: to - from + 1 }, (_, offset) => ({ id: idAt(from + offset) })),
+      total,
+    );
+
+  it("stitches pages in id order and asks for the exact count on every page", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), page(1000, 1999, 2500), page(2000, 2499, 2500));
+
+    const ids = await new SupabaseValidatorsRepository(fake.client).listAllIds();
+
+    expect(ids).toHaveLength(2500);
+    expect(new Set(ids).size).toBe(2500);
+    expect(ids).toEqual(ids.slice().sort());
+    expect(fake.calls).toHaveLength(3);
+    expect(fake.calls.map((call) => call.filters)).toEqual([
+      [
+        { kind: "order", column: "id", ascending: true },
+        { kind: "range", from: 0, to: 999 },
+      ],
+      [
+        { kind: "order", column: "id", ascending: true },
+        { kind: "range", from: 1000, to: 1999 },
+      ],
+      [
+        { kind: "order", column: "id", ascending: true },
+        { kind: "range", from: 2000, to: 2999 },
+      ],
+    ]);
+    for (const call of fake.calls) {
+      expect(call.options).toEqual({ count: "exact" });
+    }
+  });
+
+  it("returns an empty list for an empty table, which is a legitimate zero", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(rows([], 0));
+
+    expect(await new SupabaseValidatorsRepository(fake.client).listAllIds()).toEqual([]);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("refuses when the count moves between pages rather than stitching a shifted table", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), page(1000, 1999, 2501));
+
+    await expect(new SupabaseValidatorsRepository(fake.client).listAllIds()).rejects.toThrow(
+      /changed mid-read/,
+    );
+  });
+
+  it("refuses an empty page that makes no progress rather than looping forever", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(page(0, 999, 2500), rows([], 2500));
+
+    await expect(new SupabaseValidatorsRepository(fake.client).listAllIds()).rejects.toThrow(
+      /no progress/,
+    );
+  });
+
+  it("raises on a stored value that is not an anonymous identifier rather than counting it", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(rows([{ id: "not-an-attempt" }], 1));
+
+    await expect(new SupabaseValidatorsRepository(fake.client).listAllIds()).rejects.toThrow();
+  });
+
+  it("fails loudly rather than returning zero rows when the query itself fails", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: null,
+      error: { code: "PGRST999", message: "the server did not answer" },
+      count: null,
+    });
+
+    await expect(new SupabaseValidatorsRepository(fake.client).listAllIds()).rejects.toMatchObject({
+      name: "RepositoryError",
+      operation: "validators.listAllIds",
+    });
+  });
+});
+
 describe("SupabaseValidationsRepository", () => {
   it("writes a response in snake_case, turning absent optionals into SQL NULL", async () => {
     const fake = createFakeClient();
@@ -1363,6 +1453,116 @@ describe("the coverage read a pool is measured with", () => {
     await new SupabaseValidationsRepository(fake.client).listForEntries(["OD_1"]);
 
     expect(fake.lastCall().columns?.split(",").sort()).toEqual(VALIDATION_COLUMN_SET);
+  });
+});
+
+describe("SupabaseValidationsRepository.listAllValidatorIds", () => {
+  // Whole-table author IDs, stitched from scripted pages. Duplicates are kept — one attempt may
+  // own many responses — and the caller deduplicates with a `Set`, which is exact over complete
+  // pages. The page boundaries are asserted on the recorded calls while the stitched content is
+  // asserted on the result.
+  const authorPage = (ids: readonly string[], total: number) =>
+    rows(
+      ids.map((validator_id) => ({ validator_id })),
+      total,
+    );
+
+  it("stitches pages of author ids and asks for the exact count on every page", async () => {
+    const first = Array.from({ length: 1000 }, () => "VAL_00000001");
+    const second = Array.from({ length: 500 }, () => "VAL_00000002");
+    const fake = createFakeClient();
+    fake.enqueue(authorPage(first, 1500), authorPage(second, 1500));
+
+    const ids = await new SupabaseValidationsRepository(fake.client).listAllValidatorIds();
+
+    expect(ids).toHaveLength(1500);
+    expect(new Set(ids)).toEqual(new Set(["VAL_00000001", "VAL_00000002"]));
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[0]?.filters).toContainEqual({ kind: "range", from: 0, to: 999 });
+    expect(fake.calls[1]?.filters).toContainEqual({ kind: "range", from: 1000, to: 1999 });
+    for (const call of fake.calls) {
+      expect(call.options).toEqual({ count: "exact" });
+    }
+  });
+
+  it("selects exactly one column, because the result IS one column", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(authorPage(["VAL_00000001"], 1));
+
+    await new SupabaseValidationsRepository(fake.client).listAllValidatorIds();
+
+    expect(fake.lastCall().columns).toBe("validator_id");
+  });
+
+  it("returns an empty list for a table with no responses, which is a legitimate zero", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(rows([], 0));
+
+    expect(await new SupabaseValidationsRepository(fake.client).listAllValidatorIds()).toEqual([]);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("refuses when the count moves between pages rather than stitching a shifted table", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(
+      authorPage(
+        Array.from({ length: 1000 }, () => "VAL_00000001"),
+        1500,
+      ),
+      authorPage(
+        Array.from({ length: 500 }, () => "VAL_00000002"),
+        1501,
+      ),
+    );
+
+    await expect(
+      new SupabaseValidationsRepository(fake.client).listAllValidatorIds(),
+    ).rejects.toThrow(/changed mid-read/);
+  });
+
+  it("raises rather than looping forever on an empty page below the exact count", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(
+      authorPage(
+        Array.from({ length: 1000 }, () => "VAL_00000001"),
+        1500,
+      ),
+      rows([], 1500),
+    );
+
+    const error = await catchError(
+      new SupabaseValidationsRepository(fake.client).listAllValidatorIds(),
+    );
+
+    expect(isRepositoryError(error)).toBe(true);
+    expect((error as RepositoryError).operation).toBe("validations.listAllValidatorIds");
+    expect((error as RepositoryError).detail).toContain("offset 1000");
+    expect(fake.calls).toHaveLength(2);
+  });
+
+  it("raises on a stored value that is not an anonymous identifier rather than counting it", async () => {
+    const fake = createFakeClient();
+    fake.enqueue(authorPage(["not-an-attempt"], 1));
+
+    await expect(
+      new SupabaseValidationsRepository(fake.client).listAllValidatorIds(),
+    ).rejects.toThrow();
+  });
+
+  it("fails loudly rather than returning zero authors when the query itself fails", async () => {
+    const fake = createFakeClient();
+    fake.enqueue({
+      data: null,
+      error: { code: "PGRST999", message: "the server did not answer" },
+      count: null,
+    });
+
+    await expect(
+      new SupabaseValidationsRepository(fake.client).listAllValidatorIds(),
+    ).rejects.toMatchObject({
+      name: "RepositoryError",
+      operation: "validations.listAllValidatorIds",
+    });
   });
 });
 
@@ -2164,11 +2364,17 @@ describe("the operation name each method reports", () => {
       // the method map were BOTH updated: adding the method without the union entry fails the
       // compiler, and adding the union entry without the method fails HERE.
       "validators.listByIds",
+      // Arrived with the attempt-enrollment dashboard figures: the whole-table enrolled-ID read
+      // carries its own operation name under the same contract.
+      "validators.listAllIds",
       "validators.touchLastActive",
       "validations.insert",
       "validations.findById",
       "validations.findByEntry",
       "validations.listForEntries",
+      // Arrived with the attempt-enrollment dashboard figures: the whole-table author-ID read
+      // preserves the ANY-stored-response definition by construction.
+      "validations.listAllValidatorIds",
       "validations.listEntryIdsForValidator",
       "validations.countForEntry",
       "validations.countForValidator",

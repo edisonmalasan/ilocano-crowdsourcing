@@ -36,6 +36,10 @@ function createHarness(options: { findResult?: unknown; createError?: unknown } 
       calls.push("listByIds");
       return [];
     }),
+    listAllIds: vi.fn(async () => {
+      calls.push("listAllIds");
+      return [];
+    }),
     touchLastActive: vi.fn(async () => {
       calls.push("touchLastActive");
     }),

@@ -24,7 +24,7 @@
  * fluent / native / conversational / null / basic; V5's null is the unrecorded bucket. Thirteen
  * stored responses, twelve qualifying, one abstention, five responding validators.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { DatasetEntry } from "@/schemas/dataset";
 import type { ValidationResponse } from "@/schemas/validation";
@@ -140,6 +140,7 @@ function repositories(): DashboardRepositories {
     },
     validations: {
       listForEntries: async (ids) => RESPONSES.filter((r) => ids.includes(r.datasetEntryId)),
+      listAllValidatorIds: async () => RESPONSES.map((r) => r.validatorId),
     },
     validators: {
       listByIds: async (ids) =>
@@ -147,6 +148,7 @@ function repositories(): DashboardRepositories {
           const found = PROFILES.get(id);
           return found ? [found] : [];
         }),
+      listAllIds: async () => [...PROFILES.keys()] as AnonymousValidatorId[],
     },
   };
 }
@@ -157,7 +159,9 @@ describe("loadDashboardOverview", () => {
 
     expect(overview.totalEntries).toBe(6);
     expect(overview.totalQualifyingValidations).toBe(12);
-    expect(overview.totalValidators).toBe(5);
+    expect(overview.attemptsWithResponses).toBe(5);
+    expect(overview.enrolledAttempts).toBe(5);
+    expect(overview.zeroResponseAttempts).toBe(0);
     expect(overview.totalResponses).toBe(13);
     expect(overview.cannotEvaluateCount).toBe(1);
     expect(overview.buckets).toEqual({ incomplete: 1, complete: 5 });
@@ -200,8 +204,8 @@ describe("loadDashboardOverview", () => {
         ],
         findById: async () => null,
       },
-      validations: { listForEntries: async () => [] },
-      validators: { listByIds: async () => [] },
+      validations: { listForEntries: async () => [], listAllValidatorIds: async () => [] },
+      validators: { listByIds: async () => [], listAllIds: async () => [] },
     };
 
     const overview = await loadDashboardOverview(mixed);
@@ -249,8 +253,8 @@ describe("loadDashboardOverview", () => {
   it("reports 0% — not NaN — over an empty dataset", async () => {
     const empty: DashboardRepositories = {
       entries: { listAllActive: async () => [], findById: async () => null },
-      validations: { listForEntries: async () => [] },
-      validators: { listByIds: async () => [] },
+      validations: { listForEntries: async () => [], listAllValidatorIds: async () => [] },
+      validators: { listByIds: async () => [], listAllIds: async () => [] },
     };
 
     const overview = await loadDashboardOverview(empty);
@@ -264,6 +268,164 @@ describe("loadDashboardOverview", () => {
     expect(overview.extraPackageEntries).toEqual([]);
     expect(overview.lateArrivalCount).toBe(0);
     expect(overview.lateArrivalEntryIds).toEqual([]);
+    expect(overview.enrolledAttempts).toBe(0);
+    expect(overview.attemptsWithResponses).toBe(0);
+    expect(overview.zeroResponseAttempts).toBe(0);
+  });
+});
+
+describe("attempt participation", () => {
+  /**
+   * Self-contained attempt corpora: enrolled profiles plus stored responses, with no entries
+   * needed beyond one placeholder — participation figures never read the entry set.
+   */
+  function attemptRepositories(profiles: ValidatorProfile[], responses: ValidationResponse[]) {
+    const byId = new Map(profiles.map((p) => [p.id, p]));
+    return {
+      entries: {
+        listAllActive: async () => [entry("E1")],
+        findById: async (id: string) => (id === "E1" ? entry("E1") : null),
+      },
+      validations: {
+        listForEntries: async (ids: readonly string[]) =>
+          responses.filter((r) => ids.includes(r.datasetEntryId)),
+        listAllValidatorIds: async () => responses.map((r) => r.validatorId),
+      },
+      validators: {
+        listByIds: async (ids: readonly AnonymousValidatorId[]) =>
+          ids.flatMap((id) => {
+            const found = byId.get(id);
+            return found ? [found] : [];
+          }),
+        listAllIds: async () => profiles.map((p) => p.id),
+      },
+    } satisfies DashboardRepositories;
+  }
+
+  const silent = (id: string): ValidatorProfile => profile(id, "fluent");
+
+  it("reports 0/0/0 over no enrolled attempts", async () => {
+    const overview = await loadDashboardOverview(attemptRepositories([], []));
+
+    expect(overview.enrolledAttempts).toBe(0);
+    expect(overview.attemptsWithResponses).toBe(0);
+    expect(overview.zeroResponseAttempts).toBe(0);
+  });
+
+  it("reports 1/0/1 for one enrolled attempt with no responses", async () => {
+    const overview = await loadDashboardOverview(attemptRepositories([silent("VAL_00000001")], []));
+
+    expect(overview.enrolledAttempts).toBe(1);
+    expect(overview.attemptsWithResponses).toBe(0);
+    expect(overview.zeroResponseAttempts).toBe(1);
+  });
+
+  it("reports 1/1/0 for one enrolled attempt with one response", async () => {
+    const overview = await loadDashboardOverview(
+      attemptRepositories(
+        [silent("VAL_00000001")],
+        [response("r01", "VAL_00000001", "E1", "correct_natural", bilingual)],
+      ),
+    );
+
+    expect(overview.enrolledAttempts).toBe(1);
+    expect(overview.attemptsWithResponses).toBe(1);
+    expect(overview.zeroResponseAttempts).toBe(0);
+  });
+
+  it("counts one attempt once however many responses it owns", async () => {
+    const mine = [1, 2, 3, 4, 5].map((n) =>
+      response(`r0${n}`, "VAL_00000001", "E1", "correct_natural", bilingual),
+    );
+    const overview = await loadDashboardOverview(
+      attemptRepositories([silent("VAL_00000001")], mine),
+    );
+
+    expect(overview.enrolledAttempts).toBe(1);
+    expect(overview.attemptsWithResponses).toBe(1);
+    expect(overview.zeroResponseAttempts).toBe(0);
+    // And the raw volume still counts rows, not attempts.
+    expect(overview.totalResponses).toBe(5);
+  });
+
+  it("reports 3/2/1 when three enroll and two respond", async () => {
+    const overview = await loadDashboardOverview(
+      attemptRepositories(
+        [silent("VAL_00000001"), silent("VAL_00000002"), silent("VAL_00000003")],
+        [
+          response("r01", "VAL_00000001", "E1", "correct_natural", bilingual),
+          response("r02", "VAL_00000002", "E1", "correct_natural", bilingual),
+        ],
+      ),
+    );
+
+    expect(overview.enrolledAttempts).toBe(3);
+    expect(overview.attemptsWithResponses).toBe(2);
+    expect(overview.zeroResponseAttempts).toBe(1);
+  });
+
+  it("always satisfies enrolled === withResponses + zeroResponse", async () => {
+    // The partition is by set difference, so the identity holds whatever the corpus looks like —
+    // including an abstention-only attempt, which responds without judging.
+    const overview = await loadDashboardOverview(
+      attemptRepositories(
+        [silent("VAL_00000001"), silent("VAL_00000002"), silent("VAL_00000003")],
+        [
+          response("r01", "VAL_00000001", "E1", "cannot_evaluate"),
+          response("r02", "VAL_00000002", "E1", "correct_natural", bilingual),
+        ],
+      ),
+    );
+
+    expect(overview.enrolledAttempts).toBe(
+      overview.attemptsWithResponses + overview.zeroResponseAttempts,
+    );
+    expect(overview.attemptsWithResponses).toBe(2);
+    expect(overview.zeroResponseAttempts).toBe(1);
+  });
+
+  it("counts an orphan response author as responding and logs the inconsistency", async () => {
+    // A response whose profile cannot be read is a database inconsistency, not a third bucket.
+    // The stored response stays counted; the inconsistency is logged, never rendered.
+    const warnings: unknown[][] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warnings.push(args);
+    });
+    try {
+      const overview = await loadDashboardOverview(
+        attemptRepositories(
+          [silent("VAL_00000001")],
+          [
+            response("r01", "VAL_00000001", "E1", "correct_natural", bilingual),
+            response("r02", "VAL_00000009", "E1", "correct_natural", bilingual),
+          ],
+        ),
+      );
+
+      expect(overview.enrolledAttempts).toBe(1);
+      expect(overview.attemptsWithResponses).toBe(2);
+      expect(overview.zeroResponseAttempts).toBe(0);
+      expect(warnings.length).toBe(1);
+      expect(String(warnings[0]?.[0])).toContain("no validator profile");
+      // Count only, never identifiers: a regression logging the orphan ID must fail here.
+      expect(String(warnings[0]?.[0])).not.toContain("VAL_00000009");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("leaves proficiency and completion figures untouched by silent attempts", async () => {
+    const overview = await loadDashboardOverview(
+      attemptRepositories(
+        [profile("VAL_00000001", "fluent"), profile("VAL_00000009", "native")],
+        [response("r01", "VAL_00000001", "E1", "correct_natural", bilingual)],
+      ),
+    );
+
+    // The silent attempt's proficiency never enters the breakdown: it answers nothing.
+    expect(overview.proficiencyBreakdown).toMatchObject({ fluent: 1, native: 0 });
+    expect(overview.enrolledAttempts).toBe(2);
+    expect(overview.zeroResponseAttempts).toBe(1);
   });
 });
 

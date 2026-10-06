@@ -215,6 +215,10 @@ function createFakes(
       record("validators.listByIds", ids);
       return ids.flatMap((id) => (known.has(id) ? [profile] : []));
     },
+    async listAllIds() {
+      record("validators.listAllIds", undefined);
+      return [...known];
+    },
     async touchLastActive(id, at) {
       record("validators.touchLastActive", { id, at });
     },
@@ -269,6 +273,10 @@ function createFakes(
       record("validations.listEntryIdsForValidator", validatorId);
       const mine = responses.filter((candidate) => candidate.validatorId === validatorId);
       return [...new Set(mine.map((candidate) => candidate.datasetEntryId))] as DatasetEntryId[];
+    },
+    async listAllValidatorIds() {
+      record("validations.listAllValidatorIds", undefined);
+      return responses.map((candidate) => candidate.validatorId);
     },
     // THE RAW COUNT, deliberately. See the header.
     async countForEntry(entryId) {
