@@ -113,27 +113,42 @@ were translatable.
 
 ### Requirement: A completed entry is persisted immediately and the session advances
 
-When a validator completes an entry, the session SHALL persist that response immediately, and SHALL
-NOT hold completed responses until the batch is finished. Completing one entry SHALL advance the session
-to the next entry in the server-allocated order without depending on the rest of the batch.
+When a validator completes an entry, the session SHALL place that response in a
+persistent-until-confirmed save queue immediately, and SHALL NOT hold completed
+responses until the batch is finished. Completing one entry SHALL advance the
+session to the next entry in the server-allocated order without depending on the
+rest of the batch and without waiting for the previous write round trip: the
+advance and the persistence proceed concurrently, and the response is marked
+saved only after the server confirms it.
 
-The write SHALL be single-flight: while a response is being persisted, the control that initiated it
-SHALL expose a pending state and SHALL NOT begin a second write, and controls made inert alongside it
-SHALL change appearance uniformly.
+The write SHALL be single-flight: while a response is being persisted, the
+control that initiated it SHALL expose a pending state and SHALL NOT begin a
+second write, and controls made inert alongside it SHALL change appearance
+uniformly.
 
-Whether a persisted response establishes a completed package SHALL be decided by the definition
-already in force in `domain-contracts` and `entry-completion`, and this capability SHALL NOT restate
-it.
+Whether a persisted response establishes a completed package SHALL be decided by
+the definition already in force in `domain-contracts` and `entry-completion`,
+and this capability SHALL NOT restate it.
 
-> **Why immediacy is specified rather than left to implementation.** A batch is up to ten entries of
-> free-text Ilocano plus two free-text translations each. Holding completed work in memory until the end
-> of a batch is the difference between a dropped connection costing one entry and costing ten, and the
-> loss is silent — the validator sees a form that accepted their work.
+The earlier design assumption that the next sentence must not be fetched before
+the current response is stored is SUPERSEDED by this change: the thesis
+methodology does not require it. A prefetched next entry is held but never
+presented alongside the current one, so one-sentence-at-a-time judgement is
+preserved while the fetch no longer blocks the transition.
 
-> **The pending state is a consumer, not a restatement.** `design-system` and `validator-onboarding`
-> already specify that a control whose action is in flight exposes a pending state and that a write is
-> single-flight. This requirement states that the validation write is such a write; it adds no new rule
-> about appearance.
+> **Why immediacy is specified rather than left to implementation.** A batch is
+> up to ten entries of free-text Ilocano plus two free-text translations each.
+> Holding completed work in memory until the end of a batch is the difference
+> between a dropped connection costing one entry and costing ten, and the loss
+> is silent — the validator sees a form that accepted their work. The queue
+> extends this guarantee across the transition: a response that has advanced
+> past is still retried until confirmed, never silently dropped.
+
+> **The pending state is a consumer, not a restatement.** `design-system` and
+> `validator-onboarding` already specify that a control whose action is in
+> flight exposes a pending state and that a write is single-flight. This
+> requirement states that the validation write is such a write; it adds no new
+> rule about appearance.
 
 #### Scenario: Completing an entry persists it without waiting for the batch
 
@@ -145,6 +160,13 @@ it.
 
 - **WHEN** a validator's response for the current entry is persisted
 - **THEN** the session advances to the next entry in the order the server allocated
+
+#### Scenario: Advancing does not wait for the previous write round trip
+
+- **WHEN** a validator completes an entry whose next entry was already prefetched
+- **THEN** the next entry is presented without waiting for the previous
+  response's persistence round trip, and the previous response is marked saved
+  only after the server confirms it
 
 #### Scenario: Advancing follows the allocated order even when an earlier entry is unanswered
 
@@ -168,7 +190,7 @@ it.
 > never permanently skipped and remains available for the validating package that completes it. A
 > reviewer who prefers the other rule should reject this scenario **and** change the implementation,
 > not merely the scenario.
-
+>
 > **The note above previously ended "can still reach its coverage target", and that phrase is
 > corrected rather than carried forward.** Under the superseded methodology the target was a number
 > of validators, so a reachable unanswered entry had three chances at it. Under the corrected
@@ -185,6 +207,30 @@ it.
 
 - **WHEN** a response is being persisted and other controls are made inert alongside it
 - **THEN** those controls change appearance uniformly, and none of them claims to be in progress
+
+#### Scenario: A transient save failure is retried without losing the response
+
+- **WHEN** a background save fails for a transient reason
+- **THEN** the complete response is retained, retried with bounded backoff, and
+  the participant is shown a non-alarming retry status — never a saved
+  confirmation and never a silent drop
+
+#### Scenario: A permanent save refusal is not retried
+
+- **WHEN** a background save is refused as invalid, unknown-batch, or not-in-batch
+- **THEN** it is not retried, and the participant is told the answer was not stored
+
+#### Scenario: A full backlog pauses advancement until saves drain
+
+- **WHEN** two responses are still unconfirmed
+- **THEN** the session waits for the queue to drain before presenting further
+  entries, shows a plain saving state, and resumes automatically
+
+#### Scenario: Finishing waits for every pending response
+
+- **WHEN** the final entry is answered while saves are still pending
+- **THEN** the batch is not reported complete and the attempt identity is not
+  retired until every queued response is confirmed persisted
 
 ### Requirement: Navigation within the active batch is safe and cannot duplicate a response
 
@@ -293,6 +339,11 @@ nothing else of the entry: neither the intended origin, nor the intended destina
 travel mode, nor the dataset entry identifier is shown to the validator. The session SHALL show the
 validator's **progress** through the active batch.
 
+The client MAY hold at most one server-prefetched future entry so transitions feel instant, but it
+SHALL NOT present, render, or otherwise expose that entry's sentence before the current entry is
+completed. Prefetching is a presentation cache for the transition, never research storage, and the
+server alone decides which entry comes next.
+
 The session SHALL NOT require the validator to hold the whole batch in view to know where they are, and
 progress SHALL be derived from the batch the server allocated rather than from client-side bookkeeping.
 
@@ -321,6 +372,12 @@ progress SHALL be derived from the batch the server allocated rather than from c
 - **WHEN** a validator is viewing an entry in an allocated batch
 - **THEN** no other entry's sentence is presented for evaluation at the same time
 
+#### Scenario: A prefetched entry is never exposed before its turn
+
+- **WHEN** the client holds a prefetched next entry while the current entry is
+  still being answered
+- **THEN** nothing of the prefetched entry's sentence is rendered, readable in
+  the markup, or choosable, until the current entry is completed
 ### Requirement: Each presented entry begins with a fresh validation form
 
 When the session presents a dataset entry for validation, its form SHALL hold no state from any previously answered entry: no evaluation selected, no correction text, no English or Filipino translation text, the translation choice at its default, no field errors, and no pending submission. Advancing after a successful submit, arriving at an entry by position, or returning to an unanswered entry SHALL all present the same empty form. The reset SHALL clear the submitted payload as well as the visible inputs — hiding stale values while keeping them submittable is not a reset.
