@@ -431,6 +431,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `remove-em-dash-interface-copy`, the THIRTY-EIGHTH archived change, so this coupling has now
       // been paid TWENTY-THREE times. Same one-line edit, same reason.
       38: "Thirty-eight",
+      // Added for `dashboard-attempt-enrollment-metrics`, the THIRTY-NINTH archived change, so this coupling has now
+      // been paid TWENTY-FOUR times. Same one-line edit, same reason.
+      39: "Thirty-nine",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
