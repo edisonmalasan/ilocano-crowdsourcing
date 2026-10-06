@@ -19,8 +19,8 @@ import { mount, type Mounted } from "./support/dom-harness";
  *
  *   S-1   mounting prefetches exactly the next position, carrying batch id and position only
  *   S-2   the prefetched sentence is never in the markup before its turn
- *   S-3   submit advances instantly while the save is still open (Saving, not Saved)
- *   S-4   the late confirmation marks Saved without touching the new entry's form
+ *   S-3   submit advances instantly while the save is still open (no status text)
+ *   S-4   the late confirmation resolves silently without touching the new entry's form
  *   S-5   already_recorded counts as synchronized
  *   S-6   a stale prefetch resolution is discarded, never rendered
  *   S-7   transient failure retries automatically and retains the response
@@ -222,7 +222,12 @@ describe("S-2 — the prefetched sentence is never exposed before its turn", () 
 });
 
 describe("S-3/S-4 — instant advance with a save still open", () => {
-  it("shows the next entry immediately, Saving now and Saved on confirmation", async () => {
+  it("shows the next entry immediately, with no running save commentary", async () => {
+    // The routine Saving…/Saved indicator was removed by owner decision: the advance itself is
+    // the feedback, and a validator answering steadily reads no commentary on background work.
+    // What this still proves is the behavior underneath — the entry swaps without awaiting
+    // the write, exactly one save goes out for the answered entry, and the confirmation
+    // resolves silently without touching the new entry.
     const saveGate = deferred<SubmitValidationResult>();
     h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
     h.prefetchScript.set(2, [async () => readyFor(2, E3)]);
@@ -233,10 +238,10 @@ describe("S-3/S-4 — instant advance with a save still open", () => {
     await answerFully()(0);
     await submitCurrent();
 
-    // Advanced WITHOUT awaiting the write: E2 on screen, save still open.
+    // Advanced WITHOUT awaiting the write: E2 on screen, save still open, no status text.
     expect(instructionVisible("OD_0002")).toBe(true);
     expect(instructionVisible("OD_0001")).toBe(false);
-    expect(view.container.textContent).toMatch(/Saving/);
+    expect(view.container.textContent).not.toMatch(/Saving…/);
     expect(view.container.textContent).not.toMatch(/Saved/);
     // Exactly one save, for the answered entry — the advance sent nothing itself.
     expect(h.saves).toHaveLength(1);
@@ -244,7 +249,10 @@ describe("S-3/S-4 — instant advance with a save still open", () => {
     await view.settle(() => {
       saveGate.resolve(recordedFor("OD_0001"));
     });
-    expect(view.container.textContent).toMatch(/Saved/);
+    // Confirmation resolves silently: still no status text, and still on E2.
+    expect(view.container.textContent).not.toMatch(/Saving…/);
+    expect(view.container.textContent).not.toMatch(/Saved/);
+    expect(instructionVisible("OD_0002")).toBe(true);
   });
 
   it("a late confirmation never touches the new entry's form", async () => {
@@ -283,7 +291,9 @@ describe("S-3/S-4 — instant advance with a save still open", () => {
     await submitCurrent();
 
     expect(instructionVisible("OD_0002")).toBe(true);
-    expect(view.container.textContent).toMatch(/Saved/);
+    // No status text either way: already_recorded confirms silently like a fresh record.
+    expect(view.container.textContent).not.toMatch(/Saving…/);
+    expect(view.container.textContent).not.toMatch(/Saved/);
   });
 });
 
@@ -342,9 +352,11 @@ describe("S-7/S-8 — failure, retry, and refusal", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 650));
     });
-    // The queue retried on its own: two submissions, still advancing, Saved at the end.
+    // The queue retried on its own: two submissions, still advancing, and the
+    // confirmation resolves silently with no status text.
     expect(h.saves).toHaveLength(2);
-    expect(view.container.textContent).toMatch(/Saved/);
+    expect(view.container.textContent).not.toMatch(/Saving…/);
+    expect(view.container.textContent).not.toMatch(/Saved/);
   });
 
   it("a permanent refusal is never retried and stays recoverable", async () => {

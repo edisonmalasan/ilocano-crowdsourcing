@@ -341,12 +341,10 @@ export const ENGLISH_COPY = {
   "validation.translation.choice.required": "Say whether you will translate, or skip.",
   "validation.submit": "Save and continue",
   "validation.submitting": "Saving…",
-  // Save-queue status: what the participant reads while a response persists in the background.
-  // Plain operational sentences, and deliberately NOTHING that hurries: no timers, no streaks,
-  // no "keep going". `retrying` names the wait rather than alarming about it, and `unsaved`
-  // carries the same "nothing was saved / nothing is lost" honesty as the failure sentences.
-  "validation.save.saving": "Saving…",
-  "validation.save.saved": "Saved",
+  // Save-queue status: the two sentences a participant may still read while a response
+  // persists in the background. The routine Saving…/Saved indicator was removed by owner
+  // decision; what stays is deliberately NOTHING that hurries: no timers, no streaks, no
+  // "keep going". `retrying` names the wait rather than alarming about it.
   "validation.save.retrying": "Could not save yet. Retrying…",
   "validation.save.backlog": "Saving your recent responses…",
   "validation.failure.invalid":
@@ -745,8 +743,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validation.submitting": "Ini-save…",
   // Katayuan ng save-queue: kaparehong kahulugan ng mga pangungusap sa itaas, hindi mas maikli
   // o mas maluwag na salin. Walang nagmamadali, walang streak, walang papuri sa dami.
-  "validation.save.saving": "Ini-save…",
-  "validation.save.saved": "Naka-save",
   "validation.save.retrying": "Hindi pa na-save. Sinusubukang muli…",
   "validation.save.backlog": "Ini-save ang mga huli mong sagot…",
   "validation.failure.invalid":
