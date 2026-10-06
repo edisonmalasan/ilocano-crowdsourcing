@@ -191,6 +191,11 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
           clear anything before it navigates. `design.md` D3.
 
           The order inside the handler is the specification: discard, then navigate.
+
+          The explanatory note that used to sit beneath this ("Stopping here changes nothing…")
+          was removed by owner decision with its catalog keys: on a screen whose heading already
+          says the batch is finished, it was orientation for a decision the two buttons above
+          already name.
         */}
         <Button
           type="button"
@@ -204,15 +209,6 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
         >
           {t("validate.finished.finish")}
         </Button>
-
-        {/*
-          What finishing means, in words, because a control labelled "Finish for now" invites the
-          reading that something was closed. Nothing was: no response is withdrawn and no entry is
-          unlocked. What it does end is THIS participation attempt in THIS browser session, and the
-          sentence says so in both catalogs. It deliberately says nothing about how many batches a
-          participant should do — the localization requirement forbids implying that.
-        */}
-        <p className="text-small text-ink-faint">{t("validate.finished.finishNote")}</p>
       </div>
     </div>
   );

@@ -478,7 +478,7 @@ describe("every outcome the session can report produces its own screen", () => {
     expect(html).toContain(EN("validate.absent.body"));
   });
 
-  it("keeps every page's landmarks and heading structure, and has exactly one h1", async () => {
+  it("keeps every page's landmarks and heading structure, with the finished screen headerless", async () => {
     const { default: Page } = await loadSessionPage();
 
     for (const outcome of CASES.map((entry) => entry.outcome)) {
@@ -487,7 +487,12 @@ describe("every outcome the session can report produces its own screen", () => {
       openValidationSession.mockResolvedValue(outcome);
       const html = await renderRoute(Page as never);
 
-      expect(countOccurrences(html, "<h1"), outcome.status).toBe(1);
+      // Every state keeps the route header — except `finished`, which drops it by owner
+      // decision ("This batch is finished" already says where the participant is). Asserted
+      // per outcome rather than as a blanket count, so a future state that drops or keeps
+      // the header fails here by name instead of shifting a shared total.
+      const expectedH1 = outcome.status === "finished" ? 0 : 1;
+      expect(countOccurrences(html, "<h1"), outcome.status).toBe(expectedH1);
       expect(html).toContain("<main");
       // `accessibility.test.tsx` covers the landmark rules for the other routes; what matters here is
       // that the failure screens did not drop them, which is what a bare error return would do.
@@ -1546,6 +1551,28 @@ describe("the finished screen's two controls", () => {
     );
   });
 
+  it("renders the finished screen without the route header and without the finish note", async () => {
+    // Owner decision: on the finished screen the heading already says where the participant
+    // is, and the two buttons already name the choice — so the route header (h1 + lead) and
+    // the explanatory note are gone here while every other state keeps the header. Asserted
+    // per locale, because a header rendered only in one language would be the half-localized
+    // page this project forbids.
+    for (const locale of ["en", "fil"] as const) {
+      localeCookie.value = locale === "en" ? null : locale;
+      const t = translatorFor(locale);
+      const html = await renderFinished();
+
+      expect(html, `${locale} finished screen renders a page heading`).not.toContain("<h1");
+      expect(html, `${locale} finished screen renders the route lead`).not.toContain(
+        t("validate.meta.description"),
+      );
+      // The removed note's sentences, quoted so a re-add under any key fails by content.
+      expect(html).not.toContain("Stopping here changes nothing");
+      expect(html).not.toContain("Walang binabago sa ipinasa mo");
+    }
+    localeCookie.value = null;
+  });
+
   it("labels both controls in the FILIPINO catalog too, and neither falls back to English", async () => {
     // `tasks.md` 5.1's scenario "both controls are present in both language catalogs", at the level of
     // the RENDERED screen. Every other test in this file renders with no locale cookie, which resolves
@@ -1565,11 +1592,7 @@ describe("the finished screen's two controls", () => {
     // The two Filipino labels are genuinely different strings from each other AND from the English
     // ones. The second check is the one that matters: a component that read the translator from a
     // module-level default would render English here and pass a `toContain(fil(...))` never.
-    for (const key of [
-      "validate.finished.continue",
-      "validate.finished.finish",
-      "validate.finished.finishNote",
-    ] as const) {
+    for (const key of ["validate.finished.continue", "validate.finished.finish"] as const) {
       expect(fil(key), `${key} fell back to English`).not.toBe(EN(key));
     }
     expect(fil("validate.finished.continue")).not.toBe(fil("validate.finished.finish"));

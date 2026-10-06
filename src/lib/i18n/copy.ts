@@ -389,30 +389,21 @@ export const ENGLISH_COPY = {
   // -- The finished screen's two controls --------------------------------------
   // The paragraph above promises nothing, and that is still right: a promise belongs on the control
   // that keeps it, and the control now EXISTS. So the offer lives here and nowhere else — one label
-  // that asks for another batch, one label that stops, and one sentence saying what stopping means.
+  // that asks for another batch, and one label that stops.
   //
   // "Answer another batch" rather than "You can answer another batch", deliberately. The subject is
   // the participant and the verb is an action they can take; the second wording would be an offer
   // ABOUT them, which is the register a volume mechanic speaks in, and this figure is a record
   // rather than a running total for exactly that reason (`design.md` D7).
+  //
+  // The stop control used to carry a sentence saying what finishing means ("Stopping here changes
+  // nothing…"). Removed by owner decision with this key: the two button labels already name the
+  // choice, and the heading already says the batch is finished.
   "validate.finished.continue": "Answer another batch",
   // The in-button progress label, so the pending state is available as TEXT and not only as styling.
   // It says what is happening rather than how long it is taking: no countdown, no "almost there".
   "validate.finished.continue.working": "Preparing your sentences…",
-  // The stop control, and the sentence that says what it does. A label like "Finish" alone invites
-  // the reading that something was closed, and the sentence rules that out — nothing is written and
-  // nothing is reverted. It used to end "and you can still come back another time", which under
-  // session-scoped attempts is the one clause that became FALSE: coming back is not a continuation,
-  // it is a new screened attempt. What replaces it says what finishing actually ends — this attempt,
-  // in this browser session — and that taking part again means starting one.
-  //
-  // It says NOTHING about how many batches a participant ought to do, which the localization
-  // requirement forbids implying, and it promises no resumption, which would be promising a stored
-  // identity this platform deliberately no longer keeps.
   "validate.finished.finish": "Finish for now",
-  "validate.finished.finishNote":
-    "Stopping here changes nothing you have already submitted. It ends this attempt in this browser " +
-    "session. To take part again, start a new one.",
   // The exhausted pool, in this screen's own words. `validateStart.exhausted` cannot be reused here:
   // it says every available sentence "has already been answered by the required number of people",
   // which is COVERAGE vocabulary, and this screen also shows a lifetime figure that is deliberately
@@ -786,19 +777,9 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   // bilang anyo. Sinasabi nito kung ano ang nangyayari, hindi kung gaano katagal: walang countdown,
   // walang "halos na".
   "validate.finished.continue.working": "Inihahanda ang mga pangungusap…",
-  // Ang control na tumitigil, at ang pangungusap na sinasabi kung ano ang ginagawa nito. Ang label
-  // na "Tapusin" lamang ay nag-aanyaya ng pagbasa na may sarado na, at inaalis ng pangungusap na iyon
-  // ang tanawin — walang isinusulat, walang ibinabalik. Ang dating huling pangungusap ("puwede ka pa
-  // ring bumalik sa ibang pagkakataon") ang unang naging MALI, dahil sa session-scoped na attempt hindi
-  // na pagpapatuloy ang pagbalik kundi bagong pagsubok. Ang pumalit sa lugar nito ay sinasabi kung ano
-  // talaga ang tinatapos: ang pagsubok na ito, sa browser session na ito.
-  //
-  // Walang sinasabi tungkol sa ilang batch ang dapat ang kalahok, at iyon ang ipinagbabawal ng
-  // kinakailangan sa lokalisasyon.
+  // Ang control na tumitigil. Ang pangungusap na nagsasabi kung ano ang ginagawa nito
+  // ("Walang binabago…") ay tinanggal ayon sa desisyon ng may-ari kasama ng key nito.
   "validate.finished.finish": "Tapusin na muna",
-  "validate.finished.finishNote":
-    "Walang binabago sa ipinasa mo kung tatapusin mo na dito. Tinatapos nito ang pagsubok na ito sa " +
-    "browser session na ito. Para makilahok muli, magsimula ng bago.",
   // Ang naubos na pool, sa sariling salita ng screen na ito. Hindi maaaring gamitin ang
   // `validateStart.exhausted`: sinasabi nito na "sagot na ng kinakailangang bilang ng tao" ang bawat
   // pangungusap, at iyon ay salitang COVERAGE — samantalang ang lifetime figure sa screen na ito ay
