@@ -179,9 +179,7 @@ export const ENGLISH_COPY = {
   "screening.proficiency.not_confident": ILOCANO_PROFICIENCY_CHOICES[4].label,
   "screening.submit": "Continue",
   "screening.submitting": "Saving…",
-  "screening.resumeNote":
-    "If this browser already holds a validator identity, continuing resumes it instead of " +
-    "creating a second one, and the answer above will not overwrite the original.",
+  "screening.resumeNote": "",
   "screening.resumed": "Picking up where this browser's validator left off.",
 
   // -- Failure copy. Keyed by outcome reason AND by subject, because a single shared string
