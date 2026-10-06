@@ -141,21 +141,21 @@ export const ENGLISH_COPY = {
 
   // -- Screening route ------------------------------------------------------
   "start.lead":
-    "One question about your Ilocano. It is background information for the research record. It " +
-    "is not a score, and it does not change what you are asked to do. You must answer it to " +
+    "Before we begin, please answer this quick question about your Ilocano background. " +
+    "It isn't a test and won't affect what you do next, but an answer is required to " +
     "continue.",
   "start.beforeAnswer.label": "Before you answer",
   "start.beforeAnswer.item1":
-    "Taking part is voluntary. You can stop at any point, including on this screen, and close the " +
+    "Taking part is completely voluntary. You can stop at any time just by closing the " +
     "tab. Nothing is saved unless you press Continue.",
   "start.beforeAnswer.item2":
-    "We do not ask for your name, your email, your student number, or your phone number, and there " +
-    "is no field on any screen where you could enter one.",
+    "We do not ask for your name, email, student number, or phone number, and there's " +
+    "nowhere to enter them anyway.",
   "start.beforeAnswer.item3":
-    "Your identity is a random code. This browser keeps a copy for the session, so reloading or " +
-    "navigating will not lose your place; the study database stores the code with your answers, " +
-    "where it still cannot be traced back to you. Clearing your browser data ends our ability to " +
-    "recognise you.",
+    "You're identified only by a random code. This tab remembers it so you won't lose your" +
+    "progress if you refresh, and the database saves it with your answers where it can't be traced" +
+    "back to you. Once you close the tab, that progress will be gone.",
+
   "start.meta.title": "Screening",
   "start.meta.description":
     "One question about your Ilocano, and nothing collected about you. No name, no email, no " +
