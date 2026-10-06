@@ -43,8 +43,8 @@
 
 ## 5. Spec sync + verification
 
-- [ ] 5.1 Full matrix (format, lint, typecheck, unit, DOM, integration, build,
+- [x] 5.1 Full matrix (format, lint, typecheck, unit, DOM, integration, build,
   guards, OpenSpec validation) with counts from logs; independent verification
   before Apply merge; CI + Vercel green on every PR.
-- [ ] 5.2 Sync `validation-experience` (superseded fetch-after-store
+- [x] 5.2 Sync `validation-experience` (superseded fetch-after-store
   assumption recorded, new prefetch/queue/status scenarios); Archive.
