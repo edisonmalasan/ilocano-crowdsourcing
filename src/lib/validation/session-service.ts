@@ -8,8 +8,7 @@ import {
   type DatasetEntriesRepository,
   type ValidationsRepository,
 } from "@/lib/repositories";
-import { allocatedEntrySchema, type AllocatedEntry } from "@/schemas/batch";
-import type { DatasetEntry } from "@/schemas/dataset";
+import { projectAllocatedEntry } from "./allocated-entry";
 
 import {
   resolveSessionEntry,
@@ -72,28 +71,6 @@ export function createSessionDependencies(): ValidationSessionDependencies {
     datasetEntries: repositories.datasetEntries,
     validations: repositories.validations,
   };
-}
-
-/**
- * The six fields a validation screen may render, and no more.
- *
- * Built through `allocatedEntrySchema` rather than by writing the object out, so the closed set is
- * enforced by the schema that already documents WHY each other field is excluded — `sourcePayload`
- * because it is the archival copy of the source record, `createdAt` because an ingestion timestamp
- * is not a research finding, `isActive` because a persisted batch cannot contain a retired entry.
- * A hand-written projection would have to restate that reasoning and would eventually restate it
- * wrongly.
- */
-function toAllocatedEntry(entry: DatasetEntry): AllocatedEntry | null {
-  const projected = allocatedEntrySchema.safeParse({
-    id: entry.id,
-    category: entry.category,
-    instruction: entry.instruction,
-    origin: entry.origin,
-    destination: entry.destination,
-    transitMode: entry.transitMode,
-  });
-  return projected.success ? projected.data : null;
 }
 
 /**
@@ -173,7 +150,7 @@ export async function openValidationSession(
       return { status: "failed", reason: "persistence" };
     }
 
-    const entry = toAllocatedEntry(stored);
+    const entry = projectAllocatedEntry(stored);
     if (entry === null) return { status: "failed", reason: "persistence" };
 
     return {
