@@ -1,0 +1,40 @@
+{
+  "categories": [
+    {
+      "category_id": 1,
+      "category": "destination_only",
+      "category_name": "Destination Only",
+      "responses": []
+    },
+    {
+      "category_id": 2,
+      "category": "destination_transit_mode",
+      "category_name": "Destination + Transit Mode",
+      "responses": []
+    },
+    {
+      "category_id": 3,
+      "category": "origin_destination",
+      "category_name": "Origin + Destination",
+      "responses": []
+    },
+    {
+      "category_id": 4,
+      "category": "origin_destination_transit_mode",
+      "category_name": "Origin + Destination + Transit Mode",
+      "responses": []
+    },
+    {
+      "category_id": 5,
+      "category": "complex_preference_expressions",
+      "category_name": "Complex/Preference Expressions",
+      "responses": []
+    },
+    {
+      "category_id": 6,
+      "category": "double_transit_mode",
+      "category_name": "Double Transit Mode",
+      "responses": []
+    }
+  ]
+}
