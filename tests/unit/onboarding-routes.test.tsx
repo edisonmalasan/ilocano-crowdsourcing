@@ -449,13 +449,9 @@ describe("screening form neutrality", () => {
     expect((html.match(/type="submit"/g) ?? []).length).toBe(1);
   });
 
-  it("tells the participant an existing identity will be resumed, not duplicated", async () => {
-    const html = await renderScreeningForm();
-    expect(html).toMatch(/resumes it instead of creating a second one/i);
-    // And that their answer will not be silently overwritten, which is the failure an
-    // independent review actually found in this flow.
-    expect(html).toMatch(/will not overwrite the original/i);
-  });
+  // The resume note ("an existing identity will be resumed, not duplicated") was removed by
+  // owner decision (main `5372074`): the sentence no longer exists, so no test asserts it.
+  // Its guard-weakness.ts entry was removed with it — the audit fails on stale entries.
 });
 
 describe("the submit control while a Server Action is in flight", () => {

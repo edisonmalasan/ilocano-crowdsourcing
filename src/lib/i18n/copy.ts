@@ -179,7 +179,6 @@ export const ENGLISH_COPY = {
   "screening.proficiency.not_confident": ILOCANO_PROFICIENCY_CHOICES[4].label,
   "screening.submit": "Continue",
   "screening.submitting": "Saving…",
-  "screening.resumeNote": "",
   "screening.resumed": "Picking up where this browser's validator left off.",
 
   // -- Failure copy. Keyed by outcome reason AND by subject, because a single shared string
@@ -570,9 +569,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "screening.proficiency.not_confident": "Hindi komportable",
   "screening.submit": "Magpatuloy",
   "screening.submitting": "Ini-save…",
-  "screening.resumeNote":
-    "Kung may hawak nang pagkakakilanlan ng validator ang browser na ito, itutuloy nito iyon " +
-    "sa halip na gumawa ng bago, at hindi mapapatungan ang orihinal ng sagot mo sa itaas.",
   "screening.resumed": "Itutuloy ang validator na hawak na ng browser na ito.",
 
   // -- Failure copy. Per subject as well as per reason: see the English block for why.
