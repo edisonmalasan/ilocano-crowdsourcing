@@ -139,32 +139,6 @@ interface SessionBodyProps {
   readonly locale: InterfaceLocale;
 }
 
-interface CompletedFigureProps {
-  /** The localized label saying WHICH figure this is. Never omitted, never shared between figures. */
-  readonly label: string;
-  /** The server's own count. Rendered as given, with no formatting, rounding, or derivation. */
-  readonly value: number;
-}
-
-/**
- * One labelled count on the finished screen.
- *
- * A `<dt>`/`<dd>` pair, so the association is in the markup rather than in the visual order. The value
- * is a bare number: no percentage, no fraction of a target, no "of N" — a figure shown against
- * something it is being measured against is the mechanic `design.md` D7 exists to keep off this
- * screen, and there is deliberately no second number here for it to be compared with.
- */
-function CompletedFigure({ label, value }: CompletedFigureProps) {
-  return (
-    <div className="min-w-0">
-      <dt className="label-meta text-ink-muted">{label}</dt>
-      <dd className="font-display text-ink mt-1 text-base font-bold break-words tabular-nums">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 function SessionBody({ outcome, locale }: SessionBodyProps) {
   const t = translatorFor(locale);
 
@@ -194,34 +168,15 @@ function SessionBody({ outcome, locale }: SessionBodyProps) {
         <Card as="section" padding="lg">
           <h2 className="text-heading">{t("validate.finished.label")}</h2>
           <p className="text-body text-ink-muted mt-3">{t("validate.finished.body")}</p>
+
           {/*
-            THE TWO FIGURES, each with its own label (`design.md` D5).
-
-            A `<dl>` rather than two bare numbers, so the label and the value are programmatically
-            associated: a screen reader can answer "how many did I do in this batch?" without the
-            participant inferring it from which number sits where.
-
-            The batch figure is `completedCount` and the lifetime figure is `lifetimeAnsweredCount`,
-            and the difference between them is the whole point of labelling them: a validator who has
-            worked through four batches sees `10` and `38`, and an unlabelled pair would ask them to
-            guess which is which. NEITHER figure is read from `validators.total_validations`, and
-            neither is derived from anything the client sent.
-
-            Nothing here is comparative, targeted, or encouraging. The lifetime figure is a static
-            record of work already done (`design.md` D7), so it carries no "keep going", no next
-            milestone, and no rank — the values are rendered as plain numbers with a `label-meta`
-            caption.
+            The numeric figures that used to sit here (batch count and lifetime total, each
+            with its own label) were removed by owner decision with their catalog keys: the
+            heading plus the sentence above already say the batch is finished and saved, and
+            the two buttons below already name the choice. The counts themselves are still
+            computed server-side (progress and read-back still need them); they are simply
+            no longer presented on this screen.
           */}
-          <dl className="border-ink mt-6 grid grid-cols-1 gap-4 border-t-2 pt-5 sm:grid-cols-2">
-            <CompletedFigure
-              label={t("validate.finished.batchFigureLabel")}
-              value={outcome.completedCount}
-            />
-            <CompletedFigure
-              label={t("validate.finished.lifetimeFigureLabel")}
-              value={outcome.lifetimeAnsweredCount}
-            />
-          </dl>
 
           {/*
             THE TWO CONTROLS, and the reason they live in their own client island rather than here.

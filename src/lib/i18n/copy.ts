@@ -374,17 +374,10 @@ export const ENGLISH_COPY = {
   // `tests/unit/locale-copy.test.ts` for what replaced them and why.
   "validate.finished.body":
     "You've answered every sentence in this batch. Each one was saved as you went.",
-  // The two figures, and WHY they are labelled rather than presented as bare numbers (`design.md` D5).
-  // "10" beside "30" is a number and a number; a validator who has just answered ten sentences should
-  // not have to guess whether the pair means ten sentences in this batch or ten in their lifetime.
-  //
-  // The lifetime label says "entries answered" and NOT "contributions", "coverage", or anything that
-  // reads as a credit (`design.md` D2). The figure counts every recorded response including one
-  // recorded as "cannot confidently evaluate", so a wording that implied the study counted it would be
-  // a claim the database does not support. The two labels are deliberately parallel and differ only in
-  // their scope, because that is the only difference there is.
-  "validate.finished.batchFigureLabel": "Entries answered in this batch",
-  "validate.finished.lifetimeFigureLabel": "Entries answered in total",
+  // The two figure labels that used to follow this sentence ("Entries answered in this batch" /
+  // "Entries answered in total") were removed by owner decision with their render site: the
+  // sentence above already states completion qualitatively, and the screen shows no numeric
+  // totals anymore. The counts themselves are still computed server-side.
 
   // -- The finished screen's two controls --------------------------------------
   // The paragraph above promises nothing, and that is still right: a promise belongs on the control
@@ -756,11 +749,8 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.finished.body":
     "Sinagot mo na ang lahat ng pangungusap sa batch na ito. Naka-save ang bawat isa habang " +
     "ginagawa mo.",
-  // The two figure labels, carrying the SAME meaning as the English pair rather than being a shorter
-  // or looser rendering of it: what was answered within this batch, and what has been answered in
-  // total. "Mga ambag" is deliberately absent — see `design.md` D2 and the English label's comment.
-  "validate.finished.batchFigureLabel": "Mga entry na sinagot sa batch na ito",
-  "validate.finished.lifetimeFigureLabel": "Mga entry na sinagot sa kabuuan",
+  // Ang dalawang label ng pigura ("Mga entry na sinagot…") ay tinanggal kasama ng pinag-renderan
+  // sa desisyon ng may-ari; nananatili ang pagkwenta sa server.
 
   // -- Dalawang control ng tapos na ang screen ---------------------------------
   // Ang pangungusap sa itaas ay walang pangangako, at tama iyon: ang pangangako ay nasa control

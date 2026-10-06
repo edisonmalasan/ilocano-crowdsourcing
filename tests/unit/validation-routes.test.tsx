@@ -1027,171 +1027,37 @@ describe("no control on the validation screen is DISABLED, so the pending-state 
   });
 });
 
-describe("the two figures the finished screen reports", () => {
+describe("the finished screen reports no numeric figures", () => {
   /**
-   * WHY THIS BLOCK IS IN `validation-routes.test.tsx` RATHER THAN IN A NEW FILE.
+   * WHY THIS BLOCK EXISTS AFTER THE FIGURES WERE REMOVED.
    *
-   * Because the finished screen is rendered by `@/app/validate/[batchId]/page`, and this file already
-   * owns the harness that can reach it: the `openValidationSession` mock, the controllable locale
-   * cookie, the `renderRoute` helper, the `countOccurrences` counter, and — since this change — the
-   * `finished()` fixture. A new file would have to re-create all of it, and two harnesses for one
-   * route is exactly the "parallel competing pattern" the project's own code-style rules refuse. The
-   * `finished` outcome is also already one of the five cases in the block above, so a reader looking
-   * for "what does this route do with each outcome" finds all five in one place.
+   * The finished screen used to report two labelled counts, and this file owned the harness
+   * that could reach it: the `openValidationSession` mock, the controllable locale cookie,
+   * the `renderRoute` helper, and the `finished()` fixture. The figures are gone by owner
+   * decision, but the harness and the route-enumeration machinery remain the right tools for
+   * the replacement claim — that NO screen shows them — so the block was rewritten rather
+   * than deleted. A deleted block would leave the removal itself unasserted.
    */
 
-  /** One labelled count, read back out of the rendered `<dl>`. */
-  interface RenderedFigure {
-    readonly label: string;
-    readonly value: string;
-  }
+  it("renders no labelled figures on the finished screen, in either language", async () => {
+    // Owner decision: the heading plus the saved-as-you-go sentence already say the batch is
+    // finished, and the two buttons already name the choice. Asserted per locale, and as the
+    // absence of the figure LIST (`<dl>`) rather than of any one label — a screen that kept
+    // the list with different labels would satisfy a label check while violating the
+    // requirement. The removed labels are also named outright below, so a re-add under the
+    // same keys fails by content even before the list check runs.
+    for (const locale of ["en", "fil"] as const) {
+      localeCookie.value = locale === "en" ? null : locale;
+      const html = await renderFinished();
 
-  /**
-   * The label/value pairs the finished screen actually renders, in document order.
-   *
-   * READ OFF THE MARKUP RATHER THAN COMPOSED FROM THE CATALOG. The question "is each number attached
-   * to its own label?" is a question about the DOCUMENT, and building the expected pairs from the
-   * catalog and comparing would answer a different one — the same defect `radioOptionClasses` above
-   * records for a comparison that read the implementation instead of the output.
-   *
-   * The pattern demands a `<dd>` immediately after its own `<dt>`, inside one wrapper, so a screen
-   * that rendered both labels and then both numbers in a different order produces fewer pairs here
-   * rather than two correct ones.
-   */
-  function renderedFigures(html: string): RenderedFigure[] {
-    const figures: RenderedFigure[] = [];
-    // The gap between a `</dt>` and its `<dd>` may NOT contain another `dt` or `dd` tag. The first
-    // draft used a plain lazy `[\s\S]*?`, and the can-fire control below caught it: on markup that
-    // rendered both labels and then both numbers, it happily reported ONE pair whose label was
-    // "First Second" and whose value was "10" — reading a mis-paired screen as a correct one, which
-    // is the exact failure this reader exists to detect.
-    const NOT_A_TERM = "(?:(?!<\\/?d[td]\\b)[\\s\\S])*?";
-    const pattern = new RegExp(`<dt[^>]*>${NOT_A_TERM}</dt><dd[^>]*>${NOT_A_TERM}</dd>`, "g");
-    // Two passes on purpose: the strict pattern establishes THAT a pair exists, and the capture
-    // pattern below — a SECOND, literal regex, not the strict one with groups moved into it — reads
-    // its contents. Reading the contents with the strict pattern would need the capture groups moved
-    // into it, and a reader that both matches and captures is a reader whose capture can be wrong.
-    // An earlier draft hoisted that capture regex to a named `inner` const and then rebuilt it inline
-    // anyway; the const stayed behind as dead code and lint caught it.
-    let strict = pattern.exec(html);
-    while (strict !== null) {
-      const start = strict.index;
-      const text = html.slice(start, start + strict[0].length);
-      const contents = /<dt[^>]*>([\s\S]*?)<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/.exec(text);
-      figures.push({
-        label: stripTags(contents?.[1] ?? "")
-          .replace(/\s+/g, " ")
-          .trim(),
-        value: stripTags(contents?.[2] ?? "")
-          .replace(/\s+/g, " ")
-          .trim(),
-      });
-      strict = pattern.exec(html);
+      expect(html, `${locale} finished screen renders a figure list`).not.toContain("<dl");
+      expect(html, `${locale} finished screen renders a figure term`).not.toContain("<dt");
+      expect(html, `${locale} finished screen renders a figure value`).not.toContain("<dd");
     }
-    return figures;
-  }
-
-  it("renders BOTH figures, each bound to its own label and its own value", async () => {
-    // `tasks.md` 1.1 and 1.4, and the half of 1.4 that matters: not "two numbers appear" but "each
-    // number sits with the label that says which figure it is". Asserting the presence of `10` and
-    // `27` would pass against a screen that rendered `<p>10</p><p>27</p>`.
-    const html = await renderFinished();
-
-    const figures = renderedFigures(html);
-
-    // COUNTED, and the count is 2 because the requirement names two figures. A screen that rendered
-    // one, or three, fails here rather than satisfying a `toContain`.
-    expect(figures).toHaveLength(2);
-    // The pairs, in the order the route emits them, with the values the server supplied. `10` and
-    // `27` are the fixture's own figures — MEASURED from the rendered markup, not chosen: both were
-    // read off real output before these expectations were written, and a fixture where the two
-    // figures agreed would satisfy this whole block while proving nothing.
-    expect(figures).toEqual([
-      { label: EN("validate.finished.batchFigureLabel"), value: "10" },
-      { label: EN("validate.finished.lifetimeFigureLabel"), value: "27" },
-    ]);
-    // The two labels are DISTINCT strings, which is the requirement's own wording ("each labelled so
-    // that a reader can tell which is which"). Restated here because `toEqual` above would still pass
-    // on two identical labels applied to two different numbers.
-    expect(figures[0]?.label).not.toBe(figures[1]?.label);
+    localeCookie.value = null;
   });
 
-  it("CAN FIRE: the label/value reader finds the pairs, and mis-pairs them when the markup does", () => {
-    // The control for the reader above, and the reason it is not a decoration. It runs the SAME
-    // pattern over the real rendered shape, and then over that shape with the values swapped — so a
-    // reader that extracted the labels but ignored which value followed which one would be caught.
-    const real = renderToStaticMarkup(
-      <dl>
-        <div>
-          <dt>First</dt>
-          <dd>10</dd>
-        </div>
-        <div>
-          <dt>Second</dt>
-          <dd>27</dd>
-        </div>
-      </dl>,
-    );
-
-    expect(renderedFigures(real)).toEqual([
-      { label: "First", value: "10" },
-      { label: "Second", value: "27" },
-    ]);
-
-    // A screen that put both labels first and then both numbers is MIS-PAIRED, and the reader must
-    // not report it as the two correct pairs.
-    //
-    // The measured result is ONE pair — "Second" bound to "10" — not zero, because the second `</dt>`
-    // really is immediately followed by the first `<dd>`. The first draft of this control asserted
-    // `[]` and failed against that, which was the CONTROL being wrong rather than the reader: the
-    // reader's guarantee is that it cannot manufacture the correct two-pair result from a mis-paired
-    // document, and it keeps that guarantee whether it reports one wrong pair or none.
-    const flattened = renderToStaticMarkup(
-      <div>
-        <dt>First</dt>
-        <dt>Second</dt>
-        <dd>10</dd>
-        <dd>27</dd>
-      </div>,
-    );
-    const misPaired = renderedFigures(flattened);
-
-    // The claim is a NEGATIVE one and it is the load-bearing one: the mis-paired document does not
-    // yield the two correct pairs. Asserting the specific wrong pair as well would pin an
-    // implementation detail of the reader rather than the property being relied on.
-    expect(misPaired).not.toEqual(renderedFigures(real));
-    expect(misPaired).not.toContainEqual({ label: "First", value: "10" });
-    // And the whole point, restated as the count the real assertion makes: one pair, where the real
-    // screen has two. A screen that mis-pairs therefore cannot pass `toHaveLength(2)`.
-    expect(misPaired.length).toBeLessThan(2);
-  });
-
-  it("shows the LIFETIME figure ONCE, as a static record, with nothing to compare it against", async () => {
-    // `tasks.md` 1.5 and `design.md` D7. Three claims, and the third is the one that needs care.
-    //
-    // "Appears once" is a COUNT over the document. The two labels share a prefix — "Entries answered
-    // in this batch" and "Entries answered in total" — so a count on the shared prefix would be 2
-    // and would prove nothing; each FULL label is counted instead.
-    //
-    // "Static" is asserted structurally: the value is a bare number in a `<dd>`, with no unit, no
-    // fraction, and no sibling it is measured against. The only two figures on the screen are the two
-    // the requirement asks for, so there is no third number for the lifetime total to be compared to,
-    // and `1.5`'s "no comparison, target, milestone, rank, or encouragement" has nothing to attach to
-    // in the markup. The comparative WORDING is not this test's job: it is asserted where the words
-    // live, in `locale-copy.test.ts`, over the catalog.
-    const html = await renderFinished();
-
-    expect(countOccurrences(html, EN("validate.finished.batchFigureLabel"))).toBe(1);
-    expect(countOccurrences(html, EN("validate.finished.lifetimeFigureLabel"))).toBe(1);
-    expect(renderedFigures(html)).toHaveLength(2);
-    // Every value on the screen is a bare integer. A "10 of 500", a "40%", or a "3rd batch" would all
-    // fail this, and each of them is the shape a target or a milestone would take.
-    for (const figure of renderedFigures(html)) {
-      expect(figure.value, `${figure.label} must be a bare count`).toMatch(/^\d+$/);
-    }
-  });
-
-  it("shows no lifetime total on ANY OTHER screen, because that is where it would become a mechanic", async () => {
+  it("shows no figure list and no removed figure label on ANY screen", async () => {
     // The CROSS-SCREEN half of `tasks.md` 1.5, which its verification explicitly says must not be
     // claimed from one file: "naming one file is not that". So every route in the application is
     // rendered and enumerated here, and the claim is made over the whole set.
@@ -1296,8 +1162,16 @@ describe("the two figures the finished screen reports", () => {
       ).toBe(true);
     }
 
-    const lifetimeLabel = EN("validate.finished.lifetimeFigureLabel");
-    const screensWithALifetimeTotal: string[] = [];
+    // The removed figure labels, quoted so a re-add under any key fails by content. The
+    // catalog keys are gone, so these literals are the only witness left that the strings
+    // ever existed — and the only thing that would catch their return.
+    const removedLabels = [
+      "Entries answered in this batch",
+      "Entries answered in total",
+      "Mga entry na sinagot sa batch na ito",
+      "Mga entry na sinagot sa kabuuan",
+    ];
+    const screensWithFigures: string[] = [];
 
     for (const route of validatorRoutes) {
       const specifier = `@/app/${route === "" ? "page" : `${route}/page`}`;
@@ -1321,12 +1195,16 @@ describe("the two figures the finished screen reports", () => {
               await (routeModule.default as () => Promise<React.ReactElement>)(),
             );
 
-      if (html.includes(lifetimeLabel)) screensWithALifetimeTotal.push(route || "/");
+      if (removedLabels.some((label) => html.includes(label))) {
+        screensWithFigures.push(route || "/");
+      }
+      if (html.includes("<dl")) screensWithFigures.push(`${route || "/"}#dl`);
     }
 
-    // EXACTLY ONE, and it is named — so this is a measurement over a known set rather than an
-    // absence assertion. A sixth screen that grew a lifetime total fails here by name.
-    expect(screensWithALifetimeTotal).toEqual(["validate/[batchId]"]);
+    // EXACTLY NONE — so a screen that grows a figure list or re-adds the removed labels fails
+    // here by name. Kept as a measurement over the known route set (rather than a bare
+    // absence assertion on one screen) so the enumeration still notices a new route.
+    expect(screensWithFigures).toEqual([]);
   });
 
   it("reveals NO stored identifier and NO proficiency answer", async () => {
@@ -1401,30 +1279,18 @@ describe("the two figures the finished screen reports", () => {
     expect(leaky).not.toMatch(ANONYMOUS_VALIDATOR_ID_PATTERN);
   });
 
-  it("reports both figures in the FILIPINO catalog too, and none of the English labels", async () => {
-    // The half a locale-scoped test would otherwise miss. Every other test in this block renders with
-    // no locale cookie, which resolves to English, so a missing or untranslated Filipino string would
-    // be invisible to all of them. The Filipino figure labels carry the same claim as the English ones
-    // and must be distinguishable from each other in the same way.
+  it("renders neither figure label in the FILIPINO catalog either", async () => {
+    // The mirror of the English absence above: a removal that left the Filipino labels
+    // rendering would be the half-localized page this project forbids. The keys are gone
+    // from the catalog, so this asserts the render rather than the key set.
     localeCookie.value = "fil";
-    const fil = translatorFor("fil");
 
     const html = await renderFinished();
-    const figures = renderedFigures(html);
 
-    expect(figures).toEqual([
-      { label: fil("validate.finished.batchFigureLabel"), value: "10" },
-      { label: fil("validate.finished.lifetimeFigureLabel"), value: "27" },
-    ]);
-    expect(figures[0]?.label).not.toBe(figures[1]?.label);
-    // And the Filipino labels really are different strings from the English ones, so the assertion
-    // above is not comparing English against itself through a fallback.
-    for (const key of [
-      "validate.finished.batchFigureLabel",
-      "validate.finished.lifetimeFigureLabel",
-    ] as const) {
-      expect(fil(key), `${key} fell back to English`).not.toBe(EN(key));
-    }
+    expect(html).not.toContain("<dl");
+    expect(html).not.toContain("Mga entry na sinagot sa batch na ito");
+    expect(html).not.toContain("Mga entry na sinagot sa kabuuan");
+    localeCookie.value = null;
   });
 });
 
@@ -1472,10 +1338,10 @@ describe("the finished screen's two controls", () => {
     // rules out a submission for the finish control, which is why it stayed a counted assertion
     // rather than becoming a comment.
     expect(countOccurrences(html, "<form"), "forms on the finished screen").toBe(0);
-    // The two figures are still the only figures, and adding the controls added none. Counted as
-    // `<dd>` rather than through the block's own `renderedFigures` reader, because that reader is
-    // scoped to the figures block and this assertion is about the document rather than about pairing.
-    expect(countOccurrences(html, "<dd"), "labelled figures on the finished screen").toBe(2);
+    // No `<dd>` anywhere on this screen: the figures are gone, and adding the controls
+    // added none. Counted as `<dd>` because a figure list reintroduced here would arrive as
+    // exactly that element, and a label-only check would miss it.
+    expect(countOccurrences(html, "<dd"), "labelled figures on the finished screen").toBe(0);
   });
 
   it("CAN FIRE: rendering the same control TWICE makes both counts reach 2", async () => {

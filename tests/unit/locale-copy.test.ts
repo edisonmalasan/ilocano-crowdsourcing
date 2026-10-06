@@ -771,65 +771,26 @@ function finishedStrings(language: "English" | "Filipino"): Array<[CopyKey, stri
 }
 
 describe("the finished screen's own copy", () => {
-  it("supplies both figure labels in BOTH catalogs, and the catalogs agree on the key set", () => {
-    // `tasks.md` 5.1. Key-set parity is the type's job and is asserted as a positive control at the
-    // top of this file, so what is checked HERE is narrower and different: that the two keys this
-    // change adds exist, are reachable, and are non-empty in both languages. A key that existed in
-    // English only would be caught by the annotation; a key that rendered an EMPTY string would not,
-    // and that is the failure worth pinning at this level.
-    const figureKeys = [
+  it("carries no figure labels in either catalog: the keys are gone, not emptied", () => {
+    // Removed by owner decision with their render site: the finished sentence already states
+    // completion qualitatively, and the screen shows no numeric totals. Asserted as ABSENCE
+    // from both catalogs — an emptied key would still satisfy a key-set check while rendering
+    // nothing, which is the half-removed state this guards against.
+    for (const key of [
       "validate.finished.batchFigureLabel",
       "validate.finished.lifetimeFigureLabel",
-    ] as const satisfies readonly CopyKey[];
-
-    expect(figureKeys).toHaveLength(2);
-    for (const key of figureKeys) {
-      expect(ENGLISH_COPY[key], `${key} is missing from the English catalog`).toBeTruthy();
-      expect(FILIPINO_COPY[key], `${key} is missing from the Filipino catalog`).toBeTruthy();
-      expect(ENGLISH_COPY[key].trim().length).toBeGreaterThan(0);
-      expect(FILIPINO_COPY[key].trim().length).toBeGreaterThan(0);
-      // Not a byte-identical string, which the file-level allowlist already covers — repeated here
-      // so a failure names the FIGURE LABEL rather than an anonymous key in a 147-entry diff.
-      expect(FILIPINO_COPY[key], `${key} is untranslated`).not.toBe(ENGLISH_COPY[key]);
+    ] as const) {
+      expect(key in ENGLISH_COPY, `English still carries ${key}`).toBe(false);
+      expect(key in FILIPINO_COPY, `Filipino still carries ${key}`).toBe(false);
     }
   });
 
-  it("gives the two figures DIFFERENT labels, in both catalogs, so neither can be read as the other", () => {
-    // `design.md` D5, and the load-bearing half of task 1.4. Asserting that two numbers appear cannot
-    // tell which is which; asserting the two labels are different strings can, and it fails the moment
-    // somebody copies one label over the other — which is the mistake the requirement is about.
-    expect(ENGLISH_COPY["validate.finished.batchFigureLabel"]).not.toBe(
-      ENGLISH_COPY["validate.finished.lifetimeFigureLabel"],
-    );
-    expect(FILIPINO_COPY["validate.finished.batchFigureLabel"]).not.toBe(
-      FILIPINO_COPY["validate.finished.lifetimeFigureLabel"],
-    );
-    // And the pair differs in the SAME WAY in both languages: the batch label names the batch and the
-    // lifetime label does not. Without this, a translator could ship two distinct Filipino strings
-    // that nonetheless fail to say which figure is which, and "not equal" would pass.
-    for (const catalog of [ENGLISH_COPY, FILIPINO_COPY]) {
-      const batch = catalog["validate.finished.batchFigureLabel"];
-      const lifetime = catalog["validate.finished.lifetimeFigureLabel"];
-      expect(batch.toLowerCase(), "the batch label must name the batch").toMatch(
-        /batch|baatch na ito/i,
-      );
-      expect(lifetime.toLowerCase(), "the lifetime label must not name a batch").not.toMatch(
-        /batch/,
-      );
-    }
-  });
-
-  it("describes the lifetime figure as ENTRIES ANSWERED, never as coverage, credit, or a score", () => {
-    // `tasks.md` 5.3 and `design.md` D2, and the reason this enumerates phrasings instead of
-    // forbidding the word "coverage": the figure is NOT a coverage figure, and the honest way to
-    // say that is that the copy must not claim it is. Enumerating the claim rather than banning one
-    // token is what lets the guard cover the Filipino wording too, which shares no root with the
-    // English one.
-    //
-    // SCOPE, stated honestly: this is over the `validate.finished` NAMESPACE, not the whole catalog.
-    // The requirement is about the finished screen, and a whole-catalog sweep would either have to
-    // tolerate legitimate uses elsewhere or would be reporting coverage it does not have — the
-    // measured reason it is scoped is recorded below.
+  it("lets no finished-screen string claim coverage, credit, or a score", () => {
+    // The remainder of the removed lifetime-figure guard: with no figures there is nothing to
+    // describe, but the namespace sweep stays — a future string claiming coverage on this
+    // screen must still fail here. Scoped to `validate.finished.*` for the measured reason
+    // recorded beside the vocabulary: a whole-catalog sweep would report coverage it does
+    // not have.
     for (const language of ["English", "Filipino"] as const) {
       for (const [key, value] of finishedStrings(language)) {
         for (const phrase of COVERAGE_CLAIM) {

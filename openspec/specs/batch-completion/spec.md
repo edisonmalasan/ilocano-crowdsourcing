@@ -3,7 +3,7 @@
 ## Purpose
 Defines what a validator sees and may do once every entry in their batch has been answered. Covers how
 a finished batch is recognised from the absence of unanswered entries rather than from a stored status,
-how the finished screen reports its two server-derived figures, how a validator may request one further
+how the finished screen states completion without numeric figures, how a validator may request one further
 coverage-aware batch or stop without discarding anything, and what the finished presentation
 deliberately does not reveal.
 
@@ -41,52 +41,46 @@ authority that can disagree with the entries, and this change deliberately decli
   `research-schema` leaves those undefined until the change that owns them, and the finished
   presentation derives its own state
 
-### Requirement: The finished screen reports two distinct figures, both server-derived
+### Requirement: The finished screen states completion without numeric figures
 
-The finished presentation SHALL report the number of entries the validator answered **in this batch**
-and the number of entries that validator **has answered in total**, and SHALL keep the two visually
-and verbally distinct so that neither can be read as the other.
+The finished presentation SHALL state that every sentence in the batch was answered and saved,
+and SHALL show no numeric totals: no batch count, no lifetime total, and no derived figure of
+any kind.
 
-Both figures SHALL be derived by the server from persisted state. The lifetime figure SHALL count every
-recorded response the validator has submitted, **including a response that could not be confidently
-evaluated**. It SHALL NOT be a count of only those responses that qualify toward research coverage:
-a figure that rose only when a validator felt confident would reward confidence rather than effort and
-would be a covert quality measure, which the project's research rules forbid. Because the lifetime
-figure is not a coverage figure, the single definition of a qualifying completed validation does not
-govern it, and the presentation SHALL NOT describe it as one.
+> **Amended by owner decision; the removed requirement is recorded, not deleted.** This
+> requirement previously read "The finished screen reports two distinct figures, both
+> server-derived", with the batch figure and the lifetime total each labelled, the lifetime
+> total counting every recorded response including `cannot_evaluate`, and both derived by the
+> server rather than supplied by the client. The figures are removed from the presentation
+> because the heading plus the saved-as-you-go sentence already say the batch is finished and
+> the two controls already name the choice — not because any of those properties was wrong.
+> The counts themselves are still computed server-side (batch progress and the batch
+> read-back still need them); they are simply no longer presented on this screen. A reader of
+> an earlier commit who expects the figures here should read this note instead of concluding
+> they were forgotten.
+>
+> The prohibitions below survive the removal unchanged: with no figures there is nothing for
+> a comparison, target, milestone, rank, or encouragement to attach to, and that absence is
+> itself the requirement rather than an accident of layout.
 
-#### Scenario: The batch figure and the lifetime figure are both shown and distinguishable
+#### Scenario: The finished presentation shows no numeric totals
 
 - **WHEN** a validator is shown the finished presentation for a batch
-- **THEN** it reports both the entries answered in that batch and the validator's lifetime total, each
-  labelled so that a reader can tell which is which
+- **THEN** no batch count, no lifetime total, and no derived figure appears on it, in either
+  language
 
-#### Scenario: The lifetime total counts a response that could not be evaluated
-
-- **WHEN** a validator's recorded response to an entry is a "cannot confidently evaluate" response
-- **THEN** that response is included in the lifetime total, and the presentation describes the total as
-  entries answered rather than as entries that counted toward the study
-
-#### Scenario: The figures are derived by the server and not supplied by the client
-
-- **WHEN** the finished presentation is rendered
-- **THEN** both figures come from persisted state on the server, and a figure presented by the client
-  is not used in their place
-
-#### Scenario: The lifetime figure is a completion record and not a running pressure mechanic
+#### Scenario: No screen shows a lifetime total that rises while a validator is answering
 
 - **WHEN** any screen is rendered
-- **THEN** the lifetime total appears only on the finished presentation as a static record of work
-  already done, no screen displays a lifetime total that rises while a validator is answering, and the
-  figure is not accompanied by any comparison, target, milestone, rank, or encouragement to reach a
-  further one
+- **THEN** no screen displays a lifetime total that rises while a validator is answering, and no
+  figure on any screen is accompanied by any comparison, target, milestone, rank, or
+  encouragement to reach a further one
 
 This is the boundary against the existing rule that no screen carries a streak counter or a
 speed-pressure mechanic. The distinguishing property is **whether the figure escalates during the
 activity**. Progress *within the current batch* is a progress indicator and is already required; a
 lifetime total that climbs on screen while a validator works would be a volume counter competing for
-attention with the sentence in front of them, which is the mechanic that rule exists to prevent. The
-figure is therefore shown once, after the batch, as a record.
+attention with the sentence in front of them, which is the mechanic that rule exists to prevent.
 
 ### Requirement: Continuing offers one further batch, requested from the server
 
@@ -194,12 +188,6 @@ particular must never be shown back as though it were feedback or a judgement.
 
 - **WHEN** a validator is shown the finished presentation
 - **THEN** no stored identifier and no self-reported proficiency answer appear anywhere on it
-
-#### Scenario: Progress figures come from validation records, not from the profile
-
-- **WHEN** the finished presentation reports that a validator has answered entries
-- **THEN** those figures are derived from recorded validation responses rather than from any counter
-  stored on the validator profile
 
 ### Requirement: The finished presentation is localized in both interface languages
 
