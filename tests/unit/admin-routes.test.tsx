@@ -475,6 +475,10 @@ vi.mock("@/lib/repositories/supabase", () => ({
         dashboardCalls.push("validations.listForEntries");
         return DASHBOARD_RESPONSES.filter((response) => ids.includes(response.datasetEntryId));
       },
+      listAllValidatorIds: async () => {
+        dashboardCalls.push("validations.listAllValidatorIds");
+        return DASHBOARD_RESPONSES.map((response) => response.validatorId);
+      },
     },
     validators: {
       listByIds: async (ids: readonly string[]) => {
@@ -493,6 +497,10 @@ vi.mock("@/lib/repositories/supabase", () => ({
                 },
               ];
         });
+      },
+      listAllIds: async () => {
+        dashboardCalls.push("validators.listAllIds");
+        return [...DASHBOARD_PROFILES.keys()] as AnonymousValidatorId[];
       },
     },
   }),
@@ -552,7 +560,17 @@ describe("the protected home page renders the dashboard from its repositories", 
     // test in this file.
     expect(dashboardCalls).toContain("entries.listAllActive");
     expect(dashboardCalls).toContain("validations.listForEntries");
+    expect(dashboardCalls).toContain("validations.listAllValidatorIds");
     expect(dashboardCalls).toContain("validators.listByIds");
+    expect(dashboardCalls).toContain("validators.listAllIds");
+  });
+
+  it("renders the participation attempt figures from the same repositories", () => {
+    const shown = visibleText(html);
+    expect(shown).toContain("Participation attempts");
+    expect(shown).toContain("Enrolled attempts");
+    expect(shown).toContain("Attempts with responses");
+    expect(shown).toContain("Zero-response attempts");
   });
 
   it("targets the skip link's `#main` landmark", () => {

@@ -156,6 +156,7 @@ function dashboardRepositories() {
     validations: {
       listForEntries: async (ids: readonly string[]) =>
         RESPONSES.filter((r) => ids.includes(r.datasetEntryId)),
+      listAllValidatorIds: async () => RESPONSES.map((r) => r.validatorId),
     },
     validators: {
       listByIds: async (ids: readonly string[]) =>
@@ -172,6 +173,7 @@ function dashboardRepositories() {
             },
           ];
         }),
+      listAllIds: async () => [...PROFICIENCIES.keys()] as AnonymousValidatorId[],
     },
   };
 }
@@ -376,8 +378,8 @@ describe("the dashboard and the export agree on one corpus", () => {
     // the empty case would leave the one state this project is actually in unverified.
     const overview = await loadDashboardOverview({
       entries: { listAllActive: async () => [], findById: async () => null },
-      validations: { listForEntries: async () => [] },
-      validators: { listByIds: async () => [] },
+      validations: { listForEntries: async () => [], listAllValidatorIds: async () => [] },
+      validators: { listByIds: async () => [], listAllIds: async () => [] },
     });
     const summary = buildExportSummary([], []);
     const validated = buildValidatedDataset([], []);

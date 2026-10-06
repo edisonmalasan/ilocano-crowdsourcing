@@ -327,9 +327,7 @@ describe("screening route", () => {
   });
 
   it("states that no identifying information is collected", () => {
-    expect(html).toMatch(
-      /do not ask for your name, email, student number, or phone/i,
-    );
+    expect(html).toMatch(/do not ask for your name, email, student number, or phone/i);
   });
 
   it("does not claim the code exists only in the browser, because it does not", () => {

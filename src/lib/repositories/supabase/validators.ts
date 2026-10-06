@@ -7,6 +7,7 @@ import {
   type ValidatorsRepository,
 } from "@/lib/repositories";
 import {
+  anonymousValidatorIdSchema,
   validatorProfileSchema,
   type AnonymousValidatorId,
   type ValidatorProfile,
@@ -19,6 +20,7 @@ import {
   parseDomainValue,
   persistenceFailure,
   POSTGREST_UNIQUE_VIOLATION_CODE,
+  readExactCount,
   readRows,
   readSingleRow,
   toIsoDateTime,
@@ -195,6 +197,76 @@ export class SupabaseValidatorsRepository implements ValidatorsRepository {
       const found = byId.get(id);
       return found ? [found] : [];
     });
+  }
+
+  /**
+   * Every enrolled attempt ID in the table.
+   *
+   * Paged at the response cap with per-page exact-count agreement (the `listAllActive`
+   * pattern from the dataset-entries repository): an attempt population past 1000 rows
+   * would otherwise truncate silently and undercount enrollment. Ordered by `id` so pages
+   * are stable across requests; an unordered `offset` page is not stable between calls.
+   * Each ID is validated, so a stored value that is not an anonymous identifier raises
+   * rather than flowing into a figure.
+   */
+  async listAllIds(): Promise<AnonymousValidatorId[]> {
+    const PAGE_SIZE = 1000;
+    const context = "validators.listAllIds";
+    const collected: AnonymousValidatorId[] = [];
+    let expectedTotal: number | null = null;
+
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const result = await awaitQuery(OPS.listAllIds, context, () =>
+        this.client
+          .from("validators")
+          .select("id", { count: "exact" })
+          .order("id", { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1),
+      );
+
+      const rows = readRows(result, OPS.listAllIds, context);
+      const total = readExactCount(result, OPS.listAllIds, context);
+      if (expectedTotal === null) {
+        expectedTotal = total;
+      } else if (total !== expectedTotal) {
+        throw new RepositoryError(
+          OPS.listAllIds,
+          `${context} saw ${total} matching rows after seeing ${expectedTotal}: the table ` +
+            "changed mid-read, so stitched pages would duplicate one attempt and drop another. " +
+            "Re-run the read rather than trusting a shifted result.",
+          { detail: `count moved from ${expectedTotal} to ${total}` },
+        );
+      }
+      if (rows.length === 0 && collected.length < expectedTotal) {
+        throw new RepositoryError(
+          OPS.listAllIds,
+          `${context} made no progress at offset ${offset} with ${expectedTotal - collected.length} ` +
+            "rows still unread. Re-run the read rather than returning a short pool.",
+          { detail: `empty page at offset ${offset}` },
+        );
+      }
+      for (const [index, row] of rows.entries()) {
+        collected.push(
+          parseDomainValue(
+            anonymousValidatorIdSchema,
+            row.id,
+            OPS.listAllIds,
+            `${context} row ${offset + index}`,
+          ),
+        );
+      }
+      if (collected.length >= expectedTotal) break;
+    }
+
+    if (collected.length !== expectedTotal) {
+      throw new RepositoryError(
+        OPS.listAllIds,
+        `${context} stitched ${collected.length} rows against a count of ${expectedTotal}. ` +
+          "Re-run the read rather than trusting a short pool.",
+        { detail: `stitched ${collected.length} of ${expectedTotal}` },
+      );
+    }
+    return collected;
   }
 
   /**

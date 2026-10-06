@@ -88,6 +88,19 @@ export interface ValidationsRepository {
    */
   countForEntry(entryId: DatasetEntryId): Promise<number>;
 
+  /**
+   * Every stored response's author ID, across the whole table, UNFILTERED.
+   *
+   * The dashboard's "attempts with responses" means ANY legitimately stored response — not
+   * merely responses attached to entries that happen to be active today. Deriving the set from
+   * the active-pool `listForEntries` read would be equivalent while no entry is retired and
+   * would silently reclassify attempts the day one is, so this read exists to preserve the
+   * definition by construction. Duplicates are kept (one row can share an author with another);
+   * the service deduplicates with a `Set`, which is exact over complete pages. Paged past the
+   * response cap like every other unbounded read here.
+   */
+  listAllValidatorIds(): Promise<AnonymousValidatorId[]>;
+
   /** How many entries a validator has completed. Used for the profile's total and for progress. */
   countForValidator(validatorId: AnonymousValidatorId): Promise<number>;
 }

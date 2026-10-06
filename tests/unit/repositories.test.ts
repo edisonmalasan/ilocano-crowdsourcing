@@ -112,6 +112,9 @@ function createInMemoryRepositories() {
         return found ? [found] : [];
       });
     },
+    async listAllIds() {
+      return [...profiles.keys()];
+    },
     async touchLastActive(id, at) {
       const existing = profiles.get(id);
       if (!existing) return;
@@ -156,6 +159,9 @@ function createInMemoryRepositories() {
             .map((response) => response.datasetEntryId),
         ),
       ];
+    },
+    async listAllValidatorIds() {
+      return responses.map((response) => response.validatorId);
     },
     async countForEntry(entryId) {
       // Distinct validators, not rows: coverage is defined in terms of independent validators.
@@ -391,6 +397,7 @@ describe("failing repository", () => {
         create: async () => fail("validators.insert", "down"),
         findById: async () => fail("validators.findById", "down"),
         listByIds: async () => fail("validators.listByIds", "down"),
+        listAllIds: async () => fail("validators.listAllIds", "down"),
         touchLastActive: async () => fail("validators.touchLastActive", "down"),
       },
       validations: {
@@ -398,6 +405,7 @@ describe("failing repository", () => {
         findById: async () => fail("validations.findById", "down"),
         findByEntry: async () => fail("validations.findByEntry", "down"),
         listForEntries: async () => fail("validations.listForEntries", "down"),
+        listAllValidatorIds: async () => fail("validations.listAllValidatorIds", "down"),
         listEntryIdsForValidator: async () => fail("validations.listEntryIdsForValidator", "down"),
         countForEntry: async () => fail("validations.countForEntry", "down"),
         countForValidator: async () => fail("validations.countForValidator", "down"),
@@ -586,6 +594,23 @@ describe("coverage stays where it belongs", () => {
     await validations.insert({ ...RESPONSE, id: "res_02", datasetEntryId: "OD_0002" });
 
     expect(await validations.listEntryIdsForValidator(PROFILE.id)).toEqual(["OD_0001", "OD_0002"]);
+  });
+
+  it("lists every enrolled attempt id, including one that never answered", async () => {
+    const { validators, validations } = createInMemoryRepositories();
+    await validators.create(PROFILE);
+    await validators.create({ ...PROFILE, id: "VAL_0000beef" });
+    await validations.insert(RESPONSE);
+
+    expect(await validators.listAllIds()).toEqual(["VAL_a81d92c1", "VAL_0000beef"]);
+  });
+
+  it("lists every stored response author, duplicates kept for the caller to deduplicate", async () => {
+    const { validations } = createInMemoryRepositories();
+    await validations.insert(RESPONSE);
+    await validations.insert({ ...RESPONSE, id: "res_02", datasetEntryId: "OD_0002" });
+
+    expect(await validations.listAllValidatorIds()).toEqual(["VAL_a81d92c1", "VAL_a81d92c1"]);
   });
 
   it("issues no coverage query for an empty pool, because `.in([])` is malformed rather than empty", async () => {

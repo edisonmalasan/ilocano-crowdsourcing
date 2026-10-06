@@ -6,7 +6,7 @@ import {
   type ValidationsRepository,
 } from "@/lib/repositories";
 import { datasetEntryIdSchema, type DatasetEntryId } from "@/schemas/dataset";
-import type { AnonymousValidatorId } from "@/schemas/validator";
+import { anonymousValidatorIdSchema, type AnonymousValidatorId } from "@/schemas/validator";
 import { validationResponseSchema, type ValidationResponse } from "@/schemas/validation";
 
 import type { SupabaseClientLike } from "./client";
@@ -410,6 +410,76 @@ export class SupabaseValidationsRepository implements ValidationsRepository {
         `validations.listEntryIdsForValidator row ${index}`,
       ),
     );
+  }
+
+  /**
+   * Every stored response's author ID, across the whole table.
+   *
+   * One column, because the result IS one column. Ordered by the primary key so pages are
+   * stable, paged at the response cap with per-page exact-count agreement: a study with more
+   * responses than one page holds would otherwise undercount distinct attempts. Duplicates are
+   * kept — one attempt may own many responses — and the caller deduplicates with a `Set`,
+   * which is exact over complete pages. Each ID is validated, so a stored value that is not
+   * an anonymous identifier raises rather than flowing into a figure.
+   */
+  async listAllValidatorIds(): Promise<AnonymousValidatorId[]> {
+    const collected: AnonymousValidatorId[] = [];
+    let expectedTotal: number | null = null;
+
+    for (let from = 0; ; from += RESPONSE_PAGE_SIZE) {
+      const result = await awaitQuery(
+        OPS.listAllValidatorIds,
+        "validations.listAllValidatorIds",
+        () =>
+          this.client
+            .from("validations")
+            .select(COUNT_COLUMN, { count: "exact" })
+            .order("id", { ascending: true })
+            .range(from, from + RESPONSE_PAGE_SIZE - 1),
+      );
+
+      const rows = readRows(result, OPS.listAllValidatorIds, "validations.listAllValidatorIds");
+      const pageTotal = readExactCount(
+        result,
+        OPS.listAllValidatorIds,
+        "validations.listAllValidatorIds",
+      );
+      if (expectedTotal === null) {
+        expectedTotal = pageTotal;
+      } else if (pageTotal !== expectedTotal) {
+        throw new RepositoryError(
+          OPS.listAllValidatorIds,
+          `validations.listAllValidatorIds saw ${pageTotal} matching rows after seeing ` +
+            `${expectedTotal}: the table changed mid-read, so stitched pages would duplicate one ` +
+            "author and drop another. Re-run the read rather than trusting a shifted result.",
+          { detail: `count moved from ${expectedTotal} to ${pageTotal}` },
+        );
+      }
+      for (const [index, row] of rows.entries()) {
+        collected.push(
+          parseDomainValue(
+            anonymousValidatorIdSchema,
+            row.validator_id,
+            OPS.listAllValidatorIds,
+            `validations.listAllValidatorIds row ${from + index}`,
+          ),
+        );
+      }
+
+      if (collected.length >= pageTotal) break;
+      if (rows.length === 0) {
+        throw new RepositoryError(
+          OPS.listAllValidatorIds,
+          `validations.listAllValidatorIds received an empty page at offset ${from} with ` +
+            `${collected.length} of ${pageTotal} rows read. The server is truncating without ` +
+            "reporting a count, so the remaining authors cannot be read, and an attempt figure " +
+            "computed from a partial set would be silently wrong.",
+          { detail: `empty page at offset ${from} of ${pageTotal} rows` },
+        );
+      }
+    }
+
+    return collected;
   }
 
   /**

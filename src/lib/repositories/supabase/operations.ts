@@ -86,6 +86,7 @@ export const VALIDATORS_OPERATIONS = {
   create: "validators.insert",
   findById: "validators.findById",
   listByIds: "validators.listByIds",
+  listAllIds: "validators.listAllIds",
   touchLastActive: "validators.touchLastActive",
 } as const satisfies Record<keyof ValidatorsRepository, RepositoryOperation>;
 
@@ -98,6 +99,7 @@ export const VALIDATIONS_OPERATIONS = {
   // already-answered exclusion read. Neither is a count, which is deliberate: see the note on
   // `countForEntry` in the interface.
   listForEntries: "validations.listForEntries",
+  listAllValidatorIds: "validations.listAllValidatorIds",
   listEntryIdsForValidator: "validations.listEntryIdsForValidator",
   countForEntry: "validations.countForEntry",
   countForValidator: "validations.countForValidator",

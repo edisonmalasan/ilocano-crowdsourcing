@@ -82,10 +82,7 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
             label="Qualifying validations"
             value={String(overview.totalQualifyingValidations)}
           />
-          <Figure
-            label="Validators who submitted responses"
-            value={String(overview.totalValidators)}
-          />
+          <Figure label="Attempts with responses" value={String(overview.attemptsWithResponses)} />
           <Figure
             label="Overall completion"
             value={`${overview.coveragePercentage}%`}
@@ -116,6 +113,33 @@ export function OverviewView({ overview }: { overview: DashboardOverview }) {
           />
           <Figure label="Needs researcher review" value={String(overview.reviewEntryIds.length)} />
         </div>
+      </section>
+
+      <section aria-label="Participation attempts" className="mt-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Participation attempts</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <p className="text-small text-ink-muted">
+              Attempts are anonymous study sessions, not unique people.
+            </p>
+            <dl className="mt-4 space-y-2">
+              {(
+                [
+                  ["Enrolled attempts", overview.enrolledAttempts],
+                  ["Attempts with responses", overview.attemptsWithResponses],
+                  ["Zero-response attempts", overview.zeroResponseAttempts],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label} className="flex items-baseline justify-between gap-4">
+                  <dt className="text-body">{label}</dt>
+                  <dd className="text-heading font-display">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </CardBody>
+        </Card>
       </section>
 
       <section aria-label="Evaluation distribution" className="mt-8">

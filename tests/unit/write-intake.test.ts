@@ -52,6 +52,10 @@ function createCountingRepository() {
       const wanted = new Set(entryIds);
       return stored.filter((response) => wanted.has(response.datasetEntryId));
     },
+    async listAllValidatorIds() {
+      calls.push("listAllValidatorIds");
+      return stored.map((response) => response.validatorId);
+    },
     async listEntryIdsForValidator(validatorId) {
       calls.push("listEntryIdsForValidator");
       return stored

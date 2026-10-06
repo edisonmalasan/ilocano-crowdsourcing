@@ -19,10 +19,12 @@
  *
  * Two display decisions that are methodology-adjacent and therefore stated, not hidden:
  *
- *   - "Total validators" counts validators WITH at least one stored response. A registered
+ *   - "Attempts with responses" counts attempts WITH at least one stored response, over the
+ *     whole validations table. A registered
  *     profile that never validated contributes to no other figure; including it in this one
  *     would make the headcount disagree with every breakdown on the same screen. The dashboard
- *     labels it "validators who submitted responses" so the definition is on the screen.
+ *     labels it "Attempts with responses" so the definition is on the screen, and the sibling
+ *     figures "Enrolled attempts" and "Zero-response attempts" complete the partition.
  *   - Completion percentage is complete entries ÷ total active entries, to one decimal. The
  *     denominator is total entries, not entries with any response: dividing by attempted entries
  *     would report 100% while untouched entries exist, which is the silent-wrong-answer direction.
@@ -59,8 +61,8 @@ import type { ValidatorsRepository } from "@/lib/repositories/validators-reposit
  */
 export interface DashboardRepositories {
   readonly entries: Pick<DatasetEntriesRepository, "listAllActive" | "findById">;
-  readonly validations: Pick<ValidationsRepository, "listForEntries">;
-  readonly validators: Pick<ValidatorsRepository, "listByIds">;
+  readonly validations: Pick<ValidationsRepository, "listForEntries" | "listAllValidatorIds">;
+  readonly validators: Pick<ValidatorsRepository, "listByIds" | "listAllIds">;
 }
 
 /**
@@ -96,12 +98,28 @@ export interface DashboardOverview {
   readonly totalEntries: number;
   readonly totalQualifyingValidations: number;
   /**
-   * Distinct validator identifiers holding at least one stored response. These are ATTEMPTS,
-   * never persons: the same human may hold any number of attempts, and the platform records
-   * nothing linking one attempt to another, so this figure SHALL NOT be presented, labelled, or
-   * exported as a number of distinct human beings.
+   * Distinct attempt identifiers holding at least one stored response, over the WHOLE
+   * validations table rather than only the active pool: an attempt has responses if it has ANY
+   * legitimately stored response, so retiring an entry can never reclassify its validators as
+   * zero-response. These are ATTEMPTS, never persons: the same human may hold any number of
+   * attempts, and the platform records nothing linking one attempt to another, so this figure
+   * SHALL NOT be presented, labelled, or exported as a number of distinct human beings.
+   *
+   * Formerly `totalValidators`, renamed because the old name invited exactly that person-count
+   * reading. Identical value, clearer name; no second name for the same value survives.
    */
-  readonly totalValidators: number;
+  readonly attemptsWithResponses: number;
+  /**
+   * Every stored attempt profile, whether or not it ever responded. The onboarding drop-off
+   * diagnostic: enrolled minus responding is the zero-response count, always, by set difference
+   * rather than by a counter that could drift.
+   */
+  readonly enrolledAttempts: number;
+  /**
+   * Enrolled attempts with no stored response. Zero here is ordinary — a participant may enroll
+   * and leave before answering — and it is never styled as an error.
+   */
+  readonly zeroResponseAttempts: number;
   /** Every stored validation row, qualifying or not — the raw volume abstention hides inside. */
   readonly totalResponses: number;
   /** Stored rows with evaluation `cannot_evaluate`: judged nothing, still research data. */
@@ -226,6 +244,29 @@ export async function loadDashboardOverview(
   }
   const cannotEvaluateCount = evaluationDistribution.cannot_evaluate;
 
+  // Attempt participation, from the stored row SETS rather than a counter: enrolled attempt IDs
+  // minus the IDs behind stored responses is the zero-response count, so the three figures
+  // satisfy enrolled === withResponses + zeroResponse by construction rather than by agreement
+  // between two queries. The responding set comes from the whole-table read (ANY stored
+  // response, never only active-pool ones), so a retired entry can never move its validators
+  // into the zero-response bucket.
+  const allAuthorIds = await repositories.validations.listAllValidatorIds();
+  const wholeTableResponding = new Set<string>(allAuthorIds);
+  const enrolledIds = await repositories.validators.listAllIds();
+  const enrolledSet = new Set<string>(enrolledIds);
+  const orphans = [...wholeTableResponding].filter((id) => !enrolledSet.has(id));
+  if (orphans.length > 0) {
+    // A response whose author profile cannot be read is a database inconsistency, not a third
+    // bucket: the response is stored evidence and stays counted, and the inconsistency is
+    // logged rather than rendered as a mathematically impossible partition. Count only, never
+    // IDs — server logs are not a place to link attempts.
+    console.warn(
+      `[sadino:dashboard] ${orphans.length} stored response author(s) have no validator profile; ` +
+        "they are counted as attempts with responses and the partition may exceed enrolled attempts by that many.",
+    );
+  }
+  const zeroResponseAttempts = enrolledIds.filter((id) => !wholeTableResponding.has(id)).length;
+
   const profiles = await repositories.validators.listByIds([...respondingValidatorIds]);
   const proficiencyBreakdown = emptyBreakdown();
   for (const profile of profiles) {
@@ -236,7 +277,9 @@ export async function loadDashboardOverview(
   return {
     totalEntries: entries.length,
     totalQualifyingValidations,
-    totalValidators: respondingValidatorIds.size,
+    attemptsWithResponses: wholeTableResponding.size,
+    enrolledAttempts: enrolledIds.length,
+    zeroResponseAttempts,
     totalResponses: validations.length,
     cannotEvaluateCount,
     buckets,
