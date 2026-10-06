@@ -114,8 +114,18 @@ export default async function ValidatePage({ params, searchParams }: ValidatePag
 
   return (
     <main id="main" className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-title">{t("validate.meta.title")}</h1>
-      <p className="text-lead text-ink-muted mt-3">{t("validate.meta.description")}</p>
+      {/*
+        The route header is deliberately absent on the finished screen: "This batch is
+        finished" already says where the participant is, so a second heading plus the
+        task introduction would be orientation for a task that is over. Every other
+        state keeps it.
+      */}
+      {outcome.status !== "finished" ? (
+        <>
+          <h1 className="text-title">{t("validate.meta.title")}</h1>
+          <p className="text-lead text-ink-muted mt-3">{t("validate.meta.description")}</p>
+        </>
+      ) : null}
 
       <div className="mt-8 flex flex-col gap-6">
         <SessionBody outcome={outcome} locale={locale} />

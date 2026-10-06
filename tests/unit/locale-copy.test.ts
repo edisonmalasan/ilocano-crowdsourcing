@@ -369,7 +369,7 @@ const ENCOURAGEMENT_FIL: readonly RegExp[] = [
 const ENCOURAGEMENT_ALL: readonly RegExp[] = [...ENCOURAGEMENT_EN, ...ENCOURAGEMENT_FIL];
 
 /**
- * The eight catalog keys this continuation work adds, named rather than derived.
+ * The seven catalog keys this continuation work adds, named rather than derived.
  *
  * NAMED, and that is a deliberate exception to the "derive, never list" rule this file follows
  * elsewhere. The rule exists so a guard keeps COVERING a namespace as it grows; here the claim is the
@@ -379,15 +379,18 @@ const ENCOURAGEMENT_ALL: readonly RegExp[] = [...ENCOURAGEMENT_EN, ...ENCOURAGEM
  * the names are written down here, and the count is asserted, which is what stops a name being added
  * to the list without the corresponding key existing in both catalogs.
  *
- * All eight are asserted for: presence in both catalogs, non-empty, and genuinely translated. The
- * key-set parity over the whole `validate.finished.` namespace is asserted separately, so a ninth
+ * All seven are asserted for: presence in both catalogs, non-empty, and genuinely translated. The
+ * key-set parity over the whole `validate.finished.` namespace is asserted separately, so an eighth
  * key added later is still covered by THAT even though this list does not name it.
+ *
+ * The eighth key this list once named — `validate.finished.finishNote` — was removed by owner
+ * decision with both catalog values and its render site; it is absent here on purpose, and the
+ * removal is asserted below rather than left for a reader to infer from a shorter list.
  */
 const CONTINUATION_KEYS = [
   "validate.finished.continue",
   "validate.finished.continue.working",
   "validate.finished.finish",
-  "validate.finished.finishNote",
   "validate.finished.exhausted",
   "validate.finished.failure.notConfigured",
   "validate.finished.failure.invalid",
@@ -404,7 +407,7 @@ const CONTINUATION_KEYS = [
  * count is the coarsest honest proxy for it, and it is coarse on purpose, because a proxy that
  * pretended to be a semantic check would be worse than none.
  *
- * MEASURED before use: all twelve `validate.finished.*` values currently agree between the catalogs
+ * MEASURED before use: all eleven `validate.finished.*` values currently agree between the catalogs
  * on this count, so the assertion below is a real baseline rather than a threshold invented to pass.
  * The splitter ends a sentence on `.`, `!`, `?`, or `…` followed by whitespace, and drops empty parts,
  * so an ellipsis in "Preparing your sentences…" does not read as two sentences.
@@ -1101,12 +1104,12 @@ describe("the finished screen's own copy", () => {
     ).toEqual([]);
   });
 
-  it("supplies all eight continuation strings in BOTH catalogs, and the catalogs agree on the key set", () => {
+  it("supplies all seven continuation strings in BOTH catalogs, and the catalogs agree on the key set", () => {
     // `tasks.md` 5.1, for the strings this half of the change adds. Key-set parity over the whole
     // `validate.finished.` namespace is asserted here too rather than left to the file's top-level
     // annotation, because the annotation proves the two objects have the same TYPE and this proves
     // the same thing about the VALUES actually shipped.
-    expect(CONTINUATION_KEYS).toHaveLength(8);
+    expect(CONTINUATION_KEYS).toHaveLength(7);
     for (const key of CONTINUATION_KEYS) {
       expect(ENGLISH_COPY[key], `${key} is missing from the English catalog`).toBeTruthy();
       expect(FILIPINO_COPY[key], `${key} is missing from the Filipino catalog`).toBeTruthy();
@@ -1381,52 +1384,42 @@ describe("the copy that described a returning person, and now describes one sess
     }
   });
 
-  it("tells a participant that finishing ends the ATTEMPT, and promises no resumption", () => {
+  it("carries no finish note in either catalog: the key is gone, not emptied", () => {
+    // Removed by owner decision with both catalog values and its render site. Asserted as
+    // ABSENCE in both catalogs rather than as an empty string — an emptied key would still
+    // render an empty paragraph, which is the half-removed state this guards against. The
+    // removed sentences are quoted below so a re-add under a new key fails by content, since
+    // the key-absence check alone would pass it.
     for (const [locale, catalog] of CATALOGS) {
-      const note = catalog["validate.finished.finishNote"] ?? "";
-      // Unchanged in substance: nothing submitted is altered. This is the reassurance the sentence
-      // exists for, and losing it to satisfy the session requirement would be a real regression.
-      expect(note.length, `${locale} finishNote is empty`).toBeGreaterThan(20);
-      // The clause that became false: "you can still come back another time" is a promise of
-      // continuation, and under session-scoped attempts coming back is a new screened attempt.
-      expect(note.toLowerCase(), `${locale} finishNote promises a return`).not.toMatch(
-        /come back|coming back|another time|bumalik/,
+      expect(
+        `validate.finished.finishNote` in catalog,
+        `${locale} still carries the removed finish note`,
+      ).toBe(false);
+      const resurrected = Object.values(catalog).filter(
+        (value) =>
+          value.includes("Stopping here changes nothing") ||
+          value.includes("Walang binabago sa ipinasa mo"),
       );
-      // What it says instead, in each language's own words for it.
-      const sessionNamed = /session/.test(note.toLowerCase());
-      expect(sessionNamed, `${locale} finishNote does not name the session`).toBe(true);
-      const attemptNamed =
-        /attempt/.test(note.toLowerCase()) || /pagsubok/.test(note.toLowerCase());
-      expect(attemptNamed, `${locale} finishNote does not name what ended`).toBe(true);
-      const againNamed =
-        /again|new one/.test(note.toLowerCase()) || /muli|bago/.test(note.toLowerCase());
-      expect(againNamed, `${locale} finishNote does not say what taking part again means`).toBe(
-        true,
-      );
+      expect(resurrected, `${locale} re-added the removed note under another key`).toEqual([]);
     }
   });
 
   it("renders the session promise in the language actually rendered, not only in the catalog", () => {
     // The catalog-level assertions above read the data. This one goes through `translatorFor`, because
     // a catalog can be correct and a component can still render a different string — and the
-    // requirement is about what the participant is shown.
+    // requirement is about what the participant is shown. (The finished-screen note this test
+    // used to read alongside is gone with its key; the notice half below is what remains.)
     for (const locale of INTERFACE_LOCALES) {
       const t = translatorFor(locale);
       const notice = t("start.beforeAnswer.item3");
-      const note = t("validate.finished.finishNote");
       expect(notice.length, `${locale} notice item3 rendered empty`).toBeGreaterThan(20);
-      expect(note.length, `${locale} finishNote rendered empty`).toBeGreaterThan(20);
       expect(notice.toLowerCase(), `${locale} rendered notice claims a previous visit`).not.toMatch(
         /before/,
       );
-      expect(note.toLowerCase(), `${locale} rendered finishNote promises a return`).not.toMatch(
-        /come back|another time|bumalik/,
-      );
-      // And each language rendered its OWN string rather than falling back to English — the failure
+      // And the language rendered its OWN string rather than falling back to English — the failure
       // this project has already had to catch once, for a missing Filipino key.
       if (locale === "fil") {
         expect(notice).not.toBe(ENGLISH_COPY["start.beforeAnswer.item3"]);
-        expect(note).not.toBe(ENGLISH_COPY["validate.finished.finishNote"]);
       }
     }
   });
