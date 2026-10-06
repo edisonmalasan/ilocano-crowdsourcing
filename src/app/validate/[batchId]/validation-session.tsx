@@ -120,7 +120,6 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
   const [prefetchAtEnd, setPrefetchAtEnd] = useState(false);
   const [phase, setPhase] = useState<RunnerPhase>("answering");
   const [snapshot, setSnapshot] = useState<SaveQueueSnapshot>(emptySnapshot);
-  const [hasConfirmedSave, setHasConfirmedSave] = useState(false);
 
   /**
    * Every submit this mount has enqueued, including ones that did not advance yet. When a
@@ -146,7 +145,6 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
         }),
       notify: (next: SaveQueueSnapshot) => {
         setSnapshot(next);
-        if (next.pending.length === 0 && next.unsaved.length === 0) setHasConfirmedSave(true);
       },
     });
   }
@@ -332,7 +330,6 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
       <SaveStatus
         locale={locale}
         snapshot={snapshot}
-        confirmed={hasConfirmedSave}
         queue={queueRef.current}
         batchId={initial.batchId}
       />
@@ -360,13 +357,11 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
 function SaveStatus({
   locale,
   snapshot,
-  confirmed,
   queue,
   batchId,
 }: {
   locale: InterfaceLocale;
   snapshot: SaveQueueSnapshot;
-  confirmed: boolean;
   queue: SaveQueue | null;
   batchId: string;
 }) {
@@ -410,19 +405,16 @@ function SaveStatus({
     );
   }
 
+  // The routine Saving…/Saved indicator was removed by owner decision: a validator
+  // answering steadily does not need a running commentary on background work. What stays
+  // is everything that needs action or explains a hold: the retrying notice while a save
+  // is being retried, the unsaved alert above, and the backlog notice beside the form.
   if (snapshot.pending.length > 0) {
     const retrying = Object.values(snapshot.states).some((state) => state.kind === "retrying");
+    if (!retrying) return null;
     return (
       <p role="status" className="text-small text-ink-muted">
-        {retrying ? t("validation.save.retrying") : t("validation.save.saving")}
-      </p>
-    );
-  }
-
-  if (confirmed) {
-    return (
-      <p role="status" className="text-small text-ink-muted">
-        {t("validation.save.saved")}
+        {t("validation.save.retrying")}
       </p>
     );
   }
