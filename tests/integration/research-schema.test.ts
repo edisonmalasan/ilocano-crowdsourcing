@@ -126,6 +126,11 @@ const EXPECTED_MIGRATIONS = [
   // in no table list. Same reason as the entries above: a migration this list does not name
   // must FAIL here.
   "20261007120000_double_transit_mode.sql",
+  // Arrived with fast-database-batch-allocation: the versioned `allocate_validation_batch_v1`
+  // function (selection, claim, and persistence in one transaction) plus its privilege grants.
+  // It ADDS one function and changes nothing else, so it appears here and in no table list.
+  // Same reason as the entries above: a migration this list does not name must FAIL here.
+  "20261007130000_allocate_validation_batch.sql",
 ] as const;
 
 /**

@@ -53,8 +53,9 @@ export function decideContinueBatch(
     case "allocated":
       return { kind: "continue", batchId: outcome.batchId };
     // An ordinary research outcome, reported as itself. NO batch was fabricated: the service
-    // returns `exhausted` precisely when its selection produced nothing, and it performs no write
-    // on that path. `tests/unit/allocation-actions.test.ts` counts `batches.create` calls there.
+    // returns `exhausted` precisely when the allocation call granted nothing, and it performs
+    // no write on that path. `tests/unit/allocation-actions.test.ts` asserts the absence of
+    // `batches.findById` there (no read-back with nothing to confirm).
     case "exhausted":
       return { kind: "exhausted" };
     case "failed":

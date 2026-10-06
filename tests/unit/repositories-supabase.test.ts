@@ -2384,6 +2384,9 @@ describe("the operation name each method reports", () => {
       // BOTH updated: the check is bidirectional, so adding the method without the union entry fails
       // the compiler and adding the union entry without the method fails HERE.
       "validation_batches.listForRecovery",
+      // Arrived with the database-side allocator: the single-call grant carries its own
+      // operation name under the same contract.
+      "validation_batches.allocate",
       // Arrived with the reservation seam, under the same contract: the compiler catches a method
       // without a union entry, and this list catches a union entry without a method.
       "entry_reservations.claim",

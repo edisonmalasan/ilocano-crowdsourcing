@@ -14,7 +14,6 @@ import type {
   AllocationIntent,
   AllocationIntentKeysAreIdentifierAndSizeOnly,
 } from "@/lib/allocation/allocation-actions-core";
-import { selectBatchEntries, type AllocationCandidate } from "@/lib/domain/allocation";
 import type { AllocatedEntry } from "@/schemas/batch";
 import type { DatasetEntry, DatasetEntryInput } from "@/schemas/dataset";
 import type { ValidatorProfile } from "@/schemas/validator";
@@ -171,68 +170,13 @@ describe("static dataset definition and runtime response state are distinct type
 });
 
 /**
- * The selection rule cannot be called without the inputs that make it research-reproducible.
- *
- * Same mechanism as the assertions above: a `@ts-expect-error` that fails the type-check if the
- * line ever becomes legal. Two properties are pinned, and they are distinct failures rather than
- * one:
- *
- *   - **the random source has no default.** A rule that defaulted it would read `Math.random()` or a
- *     module-level generator whenever a caller forgot to pass one, which is precisely the ambient
- *     randomness the spec forbids — and it would be *invisible*, because the rule would still
- *     return a valid-looking order.
- *   - **completion cannot be omitted.** The completion set is what keeps a finished entry out of
- *     the pool. A signature that made it optional would compile a call that selects a batch with
- *     no idea which entries are already complete, and the batch would look perfectly ordinary.
- *
- * A third, smaller claim is asserted rather than hoped for: a `DatasetEntry` IS an
- * `AllocationCandidate`, which is what lets the service hand its own pool straight to the rule
- * without a mapping step and without widening the rule to see `source_payload`.
+ * The client-side selection rule and its required-inputs pin were removed with
+ * `src/lib/domain/allocation.ts` by `fast-database-batch-allocation`: selection now runs
+ * inside the versioned database function (`ORDER BY random()`), so there is no TypeScript
+ * signature left to pin. Randomness-source discipline moved with it — the spec delta records
+ * the change, and distribution (no low-ID bias, all categories reachable) is asserted by the
+ * allocation integration tests instead of seed reproducibility.
  */
-describe("the allocation selection rule's required inputs", () => {
-  const pool: AllocationCandidate[] = [{ id: "OD_0001" }, { id: "OD_0002" }];
-  const answered = new Set<string>();
-  const done: ReadonlySet<string> = new Set(["OD_0001"]);
-
-  /**
-   * Declared and NEVER CALLED, and the declaration is the assertion.
-   *
-   * Vitest transpiles without type-checking, so an invalid call written straight into a test body
-   * would still EXECUTE and fail for a reason that has nothing to do with the compile-time claim —
-   * `random` arriving as `undefined` is a `TypeError`, not "the type-check rejected this". That is
-   * exactly the failure mode the repository record calls a false negative wearing a green
-   * checkmark. Keeping the calls inside a function nothing invokes separates the two layers: the
-   * assertions below hold at runtime, and the `@ts-expect-error` directives hold at compile time.
-   */
-  function callsTheCompilerMustReject(): unknown {
-    // @ts-expect-error the random source is required and has no default
-    return selectBatchEntries(pool, answered, done, 10);
-  }
-
-  function omitsCompletionTheCompilerMustReject(): unknown {
-    // A number standing in the completion slot is not a mistake this compiler catches by argument
-    // COUNT alone — there are still five arguments — so it is caught by type instead: a
-    // `ReadonlySet` and a `number` are not interchangeable, and no other parameter in this list
-    // accepts one in place of the other.
-    // @ts-expect-error the completion set is required, and a number cannot stand in for it
-    return selectBatchEntries(pool, answered, 3, 10, () => 0);
-  }
-
-  it("declares two calls that must not compile", () => {
-    // The assertion is that these are FUNCTIONS and that nothing invoked them. If either call
-    // became legal, `pnpm run typecheck` fails with "Unused '@ts-expect-error' directive".
-    expect(typeof callsTheCompilerMustReject).toBe("function");
-    expect(typeof omitsCompletionTheCompilerMustReject).toBe("function");
-  });
-
-  it("accepts a stored dataset entry as a candidate, so the service need not map one", () => {
-    // Structural, not nominal: `DatasetEntry` satisfies `{ id: string }`, which is what lets
-    // `allocateBatch` hand its own pool straight to the rule instead of projecting ids first.
-    const fromStored: AllocationCandidate[] = [entry, { ...entry, id: "OD_0002" }];
-
-    expect(fromStored.map((candidate) => candidate.id)).toEqual(["OD_0001", "OD_0002"]);
-  });
-});
 
 /**
  * What crosses to a browser as an allocated entry is a CLOSED set, and the compiler is the only place

@@ -1,7 +1,30 @@
 import type { RecoverableBatch } from "@/lib/domain/batch-recovery";
 import type { BatchRecord } from "@/schemas/batch";
+import type { AnonymousValidatorId } from "@/schemas/validator";
 
 import type { IsoDateTimeString } from "./types";
+
+/**
+ * What the allocation call carries into the database.
+ *
+ * The batch identity is pre-minted by the service (`defaultBatch`: one instant for the id and
+ * the column), the size is already capped by `resolveBatchSize`, and the TTL is the
+ * server-authoritative reservation duration. None of these is a fact about coverage, and none
+ * of them lets a caller choose entries.
+ */
+export interface AllocateBatchInput {
+  readonly batchId: string;
+  readonly validatorId: AnonymousValidatorId;
+  readonly size: number;
+  readonly ttlSeconds: number;
+  readonly createdAt: IsoDateTimeString;
+}
+
+/** One granted placement, in the stored position order. */
+export interface AllocatedPlacement {
+  readonly entryId: string;
+  readonly position: number;
+}
 
 /**
  * Access to persisted batches and their ordered entries.
@@ -30,7 +53,31 @@ import type { IsoDateTimeString } from "./types";
  */
 export interface BatchesRepository {
   /**
+   * Allocates a coverage-aware batch for one attempt in a single database call.
+   *
+   * Selection, reservation claims, and batch persistence commit atomically inside the
+   * versioned allocation function: the granted placements are the stored placements, so two
+   * simultaneous requests arbitrate in Postgres rather than in the application. The input
+   * carries the pre-minted batch identity (id scheme and one-instant pairing stay with the
+   * service), the capped size preference, and the reservation TTL — and nothing else. There
+   * is no parameter for an entry list, an order, or a coverage figure, so a caller cannot
+   * steer the selection; the strictObject intent at the action boundary rejects such fields
+   * before they reach here.
+   *
+   * Returns the granted placements in stored position order. An EMPTY array is a REAL answer
+   * — exhaustion or total contention, not failure — and the service reports `exhausted` on
+   * it rather than a batch. What raises is an allocation that never got an answer.
+   *
+   * Raises `RepositoryError` on failure — see `@/lib/repositories/errors`.
+   */
+  allocate(input: AllocateBatchInput): Promise<readonly AllocatedPlacement[]>;
+
+  /**
    * Persists a batch and its ordered entries, in ONE repository call.
+   *
+   * Allocation no longer reaches this method: batches are persisted atomically inside the
+   * versioned allocation function through `allocate`. Retained with its implementation and
+   * tests as the seam's direct-write path.
    *
    * `createdAt` is the batch's authoritative creation instant, SUPPLIED BY THE CALLER rather than
    * defaulted by the database. That is the same choice `ValidatorsRepository.touchLastActive` makes

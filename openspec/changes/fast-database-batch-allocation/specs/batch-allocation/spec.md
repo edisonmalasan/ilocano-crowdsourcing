@@ -133,3 +133,62 @@ reads.
 - **WHEN** allocation reads a pool larger than one PostgREST response
 - **THEN** every active entry is considered exactly once, or the read refuses loudly
   rather than serving a short pool
+
+### Requirement: Eligible entries are offered in a randomized order
+
+Among eligible entries the platform SHALL randomize the candidates, so that no entry is
+systematically preferred over another. The batch SHALL be taken from the randomized order, and
+SHALL be short only when the eligible pool cannot fill the requested size. On the ordinary
+path the randomization runs inside the database (`ORDER BY random()` over the eligible set);
+seed-reproducibility of the former client-side shuffle is replaced by distribution evidence —
+no low-ID bias, all categories reachable — because a seed cannot usefully cross the
+application/database boundary. The platform SHALL NOT draw randomness from an ambient
+process-wide source inside any application-side selection rule that remains.
+
+> **Superseded scenarios, recorded rather than deleted.** Two scenarios of this requirement
+> cannot survive the move and are intentionally removed: "Randomization does not come from
+> an ambient source" (there is no caller-supplied source anymore — the database draws its
+> own randomness, and no application rule remains to default one) and "The same inputs and
+> the same supplied randomness produce the same order" (seed reproducibility cannot cross
+> the application/database boundary; distribution evidence replaces it). A reader of an
+> earlier commit who expects them here should read this note instead of concluding they
+> were forgotten.
+
+The ordering rule no longer sorts candidates by ascending qualifying coverage. Under the corrected
+completion model every eligible entry is incomplete, so a least-covered-first ordering would sort a
+single group and could not prefer anything over anything else. The randomization it also required is
+retained, because that part was doing real work independently of the superseded target.
+
+#### Scenario: Eligible entries are offered in a randomized order
+
+- **WHEN** several eligible entries exist
+- **THEN** the order among them is randomized rather than fixed, so that one entry is not
+  repeatedly served first
+
+#### Scenario: Randomization does not come from an ambient source
+
+- **SUPERSEDED by this change, kept so the removal is visible rather than silent.**
+  Originally: when the selection rule drew randomness, it used the source the caller
+  supplied. The caller-supplied source no longer exists — the database draws its own
+  randomness — so there is no application rule left for this scenario to govern. Its
+  replacement is the distribution evidence in "Randomization shows no systematic
+  preference" below.
+
+#### Scenario: The same inputs and the same supplied randomness produce the same order
+
+- **SUPERSEDED by this change, kept so the removal is visible rather than silent.**
+  Originally: the same pool, configuration, and randomness source presented twice gave the
+  identical order. Seed reproducibility cannot cross the application/database boundary, so
+  this guarantee is withdrawn and replaced by the distribution evidence below. No caller
+  may rely on a repeated allocation returning the same order.
+
+#### Scenario: Randomization shows no systematic preference
+
+- **WHEN** repeated allocations draw from the same eligible pool
+- **THEN** grants spread across the pool with varying first positions, rather than always
+  serving the lowest ids first
+
+#### Scenario: The batch is short only when the eligible pool is exhausted
+
+- **WHEN** fewer eligible entries remain than the requested batch size
+- **THEN** the batch contains all of the remaining eligible entries and no others

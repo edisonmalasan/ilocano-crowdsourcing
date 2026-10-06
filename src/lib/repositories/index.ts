@@ -30,7 +30,11 @@ export type { DatasetEntriesRepository } from "./dataset-entries-repository";
 export type { EntryReservationsRepository } from "./entry-reservations-repository";
 export type { ValidatorsRepository } from "./validators-repository";
 export type { ValidationsRepository } from "./validations-repository";
-export type { BatchesRepository } from "./batches-repository";
+export type {
+  BatchesRepository,
+  AllocateBatchInput,
+  AllocatedPlacement,
+} from "./batches-repository";
 export type { SignInAttemptsRepository } from "./sign-in-attempts-repository";
 
 export type { IsoDateTimeString, ListDatasetEntriesOptions } from "./types";

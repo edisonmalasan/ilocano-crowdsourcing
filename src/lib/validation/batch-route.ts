@@ -8,9 +8,9 @@
  *   - It must be usable by four client-side producers (`start-batch.tsx`,
  *     `validation-form.tsx`, `finished-batch.tsx`) and by a Server Component (`page.tsx`), so it
  *     cannot be `server-only` and cannot reach the Supabase client.
- *   - It must not import a schema. `src/lib/domain/allocation.ts` records the reason: the one
- *     function that must never grow a dependency cannot import a module that itself has
- *     dependencies.
+ *   - It must not import a schema. The dependency-free domain-module standard records the
+ *     reason: the one function that must never grow a dependency cannot import a module that
+ *     itself has dependencies.
  *
  * ============================================================================
  * WHAT THE CONTRACT IS, IN ONE SENTENCE

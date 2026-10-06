@@ -1,79 +1,72 @@
 import "server-only";
 
 import {
-  selectBatchEntries,
-  type AllocationCandidate,
-  type CompletedEntryIds,
-  type SelectedEntry,
-} from "@/lib/domain/allocation";
-import { isEntryComplete, type CoverageResponseShape } from "@/lib/domain/validation-response";
-import {
   isRepositoryError,
+  RepositoryError,
   type BatchesRepository,
   type DatasetEntriesRepository,
-  type EntryReservationsRepository,
-  type ValidationsRepository,
   type ValidatorsRepository,
 } from "@/lib/repositories";
+import { projectAllocatedEntry } from "@/lib/validation/allocated-entry";
 import {
   resolveBatchSize,
   type AllocationConfig,
   type AllocationFailureReason,
   type AllocationOutcome,
-  type AllocatedEntry,
 } from "@/schemas/batch";
-import type { DatasetEntry } from "@/schemas/dataset";
 import type { AnonymousValidatorId } from "@/schemas/validator";
 
 /**
- * Coverage-aware batch allocation.
+ * Coverage-aware batch allocation, served by the versioned database function.
  *
  * ============================================================================
  * WHAT THE CLIENT SENDS AND WHAT IT GETS BACK
  * ============================================================================
  * The request carries an identifier and, at most, a *preference* for how many entries it would
- * like. Everything that decides the batch — which entries are eligible, what order they come back
- * in, how many are served — is derived here. There is no parameter through which a caller could
- * supply an entry list, an order, a per-entry coverage figure, or a coverage target, and that is
- * the guarantee rather than a convenience: a parameter a caller "cannot really" forge would be a
- * convention, whereas an absent parameter is structural. There is not even a target to supply —
- * the corrected methodology has none.
+ * like. Everything that decides the batch is derived server-side. There is no parameter through
+ * which a caller could supply an entry list, an order, a per-entry coverage figure, or a
+ * coverage target, and that is the guarantee rather than a convenience. There is not even a
+ * target to supply — the corrected methodology holds none.
  *
  * `requestedSize` is capped by `resolveBatchSize` against the server's configuration, so a client
  * can ask for FEWER entries and never for more.
  *
  * ============================================================================
- * WHY COMPLETION IS COMPUTED HERE AND NOWHERE ELSE
+ * WHERE EACH DECISION LIVES NOW
  * ============================================================================
- * The pool's stored responses are read ONCE and reduced with `isEntryComplete`, the one in-force
- * definition of entry completion. Three things were available instead and all three are wrong:
+ * The order of operations is the specification:
  *
- *   - `countForEntry` per entry. A raw row count. Three `cannot_evaluate` responses would read as
- *     a judged entry and retire one that nobody has validated, which is the scenario the spec
- *     names first. There is a test here that fails if this is ever substituted back in.
- *   - a `where` clause on the repository read. That would be the same rule expressed in SQL, a
- *     second implementation in a second language, and a drifted copy fails by producing a plausible
- *     wrong answer rather than an error.
- *   - counting rows and de-duplicating here. Self-evidently correct and also wrong at scale, because
- *     a capped response would silently under-count.
+ *   1. Confirm the validator exists (`unknown_validator` before anything else, exactly as
+ *      before — no batch, no reservation, nothing read past the profile).
+ *   2. Enforce the proficiency gate (`screening_required` on the profile read alone).
+ *   3. Resolve the effective size against the server's configuration.
+ *   4. ONE database call — `allocate_validation_batch_v1` — computes eligible entries with the
+ *      pooled-completion pillars, excludes this attempt's answered/assigned entries and
+ *      others' active reservations, randomizes, claims with bounded in-function backfill, and
+ *      persists the batch with 1-based positions, returning only the granted placements.
+ *   5. Read the batch back through `findById` (never echo) and project the granted entries.
  *
- * ============================================================================
- * WHY THE COMPLETION SET IS DERIVED FROM THE WHOLE POOL, NOT FROM THE RESPONSES ALONE
- * ============================================================================
- * `selectBatchEntries` treats an entry absent from the completion set as incomplete, and this
- * service derives the set from every pool entry's stored responses. It has to: a set built only
- * from the returned responses would leave an entry with no responses at all absent, and the rule
- * would then read it as eligible for a reason that is correct but accidental. Deriving completion
- * over the whole pool makes "no pooled coverage means eligible" an explicit statement here
- * rather than a fallback the rule happens to have.
+ * Steps 1–3 perform no write; the allocation call in step 4 is the first one. The ordinary
+ * path is four round trips: profile read, allocation call, batch read-back, granted-entry
+ * projection. The 4,800-row pool transfer and the 200-id chunk loops are gone from this path;
+ * they remain the fallback/recovery/export reads, not allocation's.
  *
  * ============================================================================
- * WHY THE BATCH IS READ BACK RATHER THAN THE REQUEST ECHOED
+ * WHY COMPLETION IS EVALUATED IN SQL HERE, DESPITE THE STANDING RULE
  * ============================================================================
- * `create` returns the stored record, and this service returns THAT. Echoing the request would let a
- * repository that stored a different order be reported as the batch the validator worked through,
- * which is a research record changing to suit a write. `enrollValidator` makes the same choice about
- * the identifier it minted.
+ * This module used to read the whole pool plus the pool's responses and reduce completion
+ * with the TypeScript definition, refusing on principle to express the predicate in SQL —
+ * two implementations in two languages drift, and drifted coverage is invisible. That
+ * refusal cost ~37 round trips per batch and is SUPERSEDED for the allocation-time
+ * evaluation by explicit task requirement, with the safeguard the refusal was standing in
+ * for: the pillars live in exactly ONE SQL place (the versioned function), and the parity
+ * suite `tests/integration/allocation-rpc-parity.test.ts` proves the function and the
+ * TypeScript definition classify every response combination identically. A drift in either
+ * direction fails loudly rather than retiring entries quietly.
+ *
+ * The TypeScript definition is unchanged and remains the definition for every other
+ * consumer (dashboard, export, review). This module does not reimplement it; it calls the
+ * function that embodies it and reads the answer back.
  *
  * ============================================================================
  * WHY `unknown_validator` IS NOT `persistence`
@@ -82,20 +75,6 @@ import type { AnonymousValidatorId } from "@/schemas/validator";
  * wrong, and the correct response is to offer a fresh identity. Reporting it as a database fault
  * would tell a participant the study is broken when nothing is.
  */
-
-/**
- * One stored response, as far as completion is concerned: the fields {@link isEntryComplete}
- * reads, plus the entry it belongs to.
- *
- * Declared here as an intersection rather than reusing `ValidationResponse` because the grouping key
- * is what this module adds and nothing else in the completion path carries it. `datasetEntryId` is the
- * ONLY addition, and the repository's return type satisfies it structurally — a `ValidationResponse`
- * from `ValidationsRepository.listForEntries` is assignable to `PoolResponse` with no cast, which is
- * what makes the structural declaration honest rather than a loosening. Naming the field the domain
- * module deliberately leaves out is the point: `CoverageResponseShape` is deliberately validator-
- * agnostic, and the entry it belongs to is this module's concern.
- */
-type PoolResponse = CoverageResponseShape & { readonly datasetEntryId: string };
 
 /** What a caller asks for. An identifier and a preference; nothing authoritative. */
 export interface AllocationRequest {
@@ -108,11 +87,9 @@ export interface AllocationRequest {
 }
 
 export interface AllocationDependencies {
-  readonly validators: ValidatorsRepository;
-  readonly datasetEntries: DatasetEntriesRepository;
-  readonly validations: ValidationsRepository;
-  readonly batches: BatchesRepository;
-  readonly entryReservations: EntryReservationsRepository;
+  readonly validators: Pick<ValidatorsRepository, "findById">;
+  readonly batches: Pick<BatchesRepository, "allocate" | "findById">;
+  readonly datasetEntries: Pick<DatasetEntriesRepository, "listByIds">;
   /**
    * The research parameters, injected rather than imported as constants.
    *
@@ -121,13 +98,6 @@ export interface AllocationDependencies {
    * there is no target for a future caller to pass *around*, because there is no target at all.
    */
   readonly config: AllocationConfig;
-  /**
-   * The source of randomness, injected for the same reason `selectBatchEntries` takes one: the
-   * selection rule must stay reproducible for the spec scenario "the same inputs and the same
-   * supplied randomness produce the same order". `Math.random` is the production value; a scripted
-   * source is the test value. Nothing in this module draws from an ambient source.
-   */
-  readonly random: () => number;
   /**
    * A batch's identity at the moment it is created: its identifier AND its creation instant.
    *
@@ -180,134 +150,11 @@ export function defaultBatch(validatorId: AnonymousValidatorId, now: Date): Mint
 }
 
 /**
- * The pool entries that already hold a validating package.
- *
- * A `Set` rather than `Record<string, boolean>` because `Record` makes every string a legal key —
- * the same argument `CompletedEntryIds` makes — and because absence from the set is the eligible
- * direction, which the selection rule's header decides on purpose.
- *
- * Every pool entry is considered, including those with no stored responses: an entry with nothing
- * stored holds no validating package and is therefore eligible, stated here rather than left to
- * the fallback in `selectBatchEntries` (see the header).
- */
-function completedEntryIds(
-  candidates: readonly AllocationCandidate[],
-  responses: readonly PoolResponse[],
-): CompletedEntryIds {
-  const responsesByEntry = new Map<string, PoolResponse[]>();
-
-  for (const response of responses) {
-    const existing = responsesByEntry.get(response.datasetEntryId);
-    if (existing === undefined) responsesByEntry.set(response.datasetEntryId, [response]);
-    else existing.push(response);
-  }
-
-  // Built as a mutable `Set` and returned through the read-only alias. `CompletedEntryIds` is a
-  // `ReadonlySet` because that is what the selection rule needs; a builder that could not insert
-  // would have to go through a cast, and a cast here is exactly the kind of unchecked widening
-  // `AGENTS.md` warns about at a domain boundary.
-  const completed = new Set<string>();
-  for (const candidate of candidates) {
-    const stored = responsesByEntry.get(candidate.id) ?? [];
-    if (isEntryComplete(stored)) completed.add(candidate.id);
-  }
-
-  return completed;
-}
-
-/**
- * Claim rounds per allocation: the initial selection plus two backfills. Bounded so two
- * contending allocators cannot livelock each other re-selecting the same denied ids — each round
- * excludes everything granted or denied before it, so every round either grows the grant or ends
- * the loop. Persistent contention collapses to a short or empty grant, which the caller reports
- * honestly rather than retrying forever.
- */
-const MAX_CLAIM_ROUNDS = 3;
-
-/**
- * Selects up to `size` entries and claims each one through the reservation seam.
- *
- * Selection proposes and the database disposes: every selected id is offered to
- * `claimReservations`, which grants exactly the entries no other unexpired claim holds. A
- * shortfall re-runs selection past granted AND denied ids — re-selecting granted ids would
- * re-claim our own rows (harmless but progress-free), and re-selecting denied ids would ask
- * Postgres a question it just answered. Denied ids are therefore excluded, not retried, within
- * one request; their holders' TTLs, not this loop, decide when they return.
- *
- * The loop always terminates: each round either adds to `granted` or selects nothing new, and
- * the round count is capped regardless.
- */
-async function claimEntries(
-  pool: readonly AllocationCandidate[],
-  answered: ReadonlySet<string>,
-  completed: CompletedEntryIds,
-  size: number,
-  validatorId: AnonymousValidatorId,
-  dependencies: AllocationDependencies,
-): Promise<SelectedEntry[]> {
-  const granted: SelectedEntry[] = [];
-  const settled = new Set<string>();
-
-  for (let round = 0; granted.length < size && round < MAX_CLAIM_ROUNDS; round += 1) {
-    // `settled` joins the exclusion so a later round never re-selects a granted id (re-claiming
-    // our own rows would be harmless but progress-free) nor a denied id (re-asking a question
-    // Postgres just answered). Denied ids return via their holders' TTLs, not via this loop.
-    const ineligible = new Set<string>([...answered, ...settled]);
-    const selected = selectBatchEntries(
-      pool,
-      ineligible,
-      completed,
-      size - granted.length,
-      dependencies.random,
-    );
-    if (selected.length === 0) break;
-    const won = await dependencies.entryReservations.claimReservations(
-      validatorId,
-      selected.map((entry) => entry.id),
-      dependencies.config.reservationTtlSeconds,
-    );
-    const wonIds = new Set<string>(won);
-    for (const entry of selected) {
-      settled.add(entry.id);
-      if (wonIds.has(entry.id)) granted.push(entry);
-    }
-    // A round that grants nothing new ends the loop even below the cap: the next round would
-    // select past the same denied set, which is a slower way of learning nothing.
-    if (won.length === 0) break;
-  }
-
-  return granted;
-}
-
-/**
  * Allocates a coverage-aware batch for one validator.
  *
- * The order of operations is the specification, and each step exists because the one after it would
- * otherwise have to guess:
- *
- *   1. Confirm the validator exists. Without this, an identifier naming nobody would be persisted as
- *      a batch, and the foreign key would refuse it — or, worse, would not if the schema ever
- *      changed — producing a batch belonging to a person who does not exist.
- *   2. Resolve the effective size against the server's configuration.
- *   3. Read the active pool. Not paged: the whole pool is the candidate set by definition, and a
- *      truncated pool would silently exclude the entries that sort last.
- *   4. Read the pool's stored responses ONCE and reduce them to the set of completed entries.
- *   5. Exclude the entries this validator already answered, UNION the entries assigned to the
- *      validator's existing batches. Answered-but-unassigned cannot happen (a response is filed
- *      against a batch), but assigned-but-unanswered can — the remainders of interrupted batches —
- *      and a second Continue must not re-offer them. The union needs no lifecycle column: entries
- *      in fully-answered batches are answered and already excluded, so what the union adds is
- *      exactly the remainders.
- *   6. Select, then CLAIM the selection through the reservation seam, backfilling shortfalls by
- *      re-selecting past granted and denied ids (bounded rounds). Selection proposes; only the
- *      database disposes — two simultaneous requests arbitrate in Postgres, never in this process.
- *   7. Persist with 1-based positions derived from the granted order.
- *   8. Read back, and project to `AllocatedEntry`.
- *
- * Steps 1–5 perform no write — the reservation claim in step 6 is the first one, and it runs
- * only after the validator is confirmed. An `unknown_validator` outcome is therefore observable
- * as "no batch was created and nothing was reserved", which a test asserts directly rather than
- * inferring from the absence of a batch id.
+ * Contention-collapse as well as pool exhaustion collapse to `exhausted`: when nothing could be
+ * granted — nobody else's fault and nothing persisted — the honest outcome is exhaustion, never
+ * an empty batch.
  */
 export async function allocateBatch(
   request: AllocationRequest,
@@ -323,79 +170,89 @@ export async function allocateBatch(
     // without an answer predate the correction and stay valid rows — this
     // refuses the REQUEST, it does not judge, migrate, or rewrite the profile.
     // Placed before every other read so the refusal costs exactly the profile
-    // read above: no pool read, no batch persisted, no reservation claimed.
+    // read above: no allocation call, no batch persisted, no reservation claimed.
     if (profile.ilocanoProficiency === null) {
       return { status: "failed", reason: "screening_required" satisfies AllocationFailureReason };
     }
 
     const size = resolveBatchSize(request.requestedSize, dependencies.config);
-
-    // No category filter: the pool is every active entry, because category-conditional allocation
-    // would let a category with no under-covered entries starve while another category had them, and
-    // that is a coverage-reporting question rather than an allocation one. `listAllActive`, not
-    // `listActive`: the pool is 4,800 rows across six categories and a single PostgREST response
-    // is capped, so an uncapped read would refuse rather than serve.
-    const pool = await dependencies.datasetEntries.listAllActive();
-    if (pool.length === 0) return { status: "exhausted" };
-
-    const answeredEntryIds = await dependencies.validations.listEntryIdsForValidator(
-      request.validatorId,
-    );
-    // A `Set` because the selection rule probes membership once per pool entry, and `Array.includes`
-    // would make that quadratic in exactly the read this module already pays for.
-    const answered = new Set<string>(answeredEntryIds);
-    // The attempt's OWN assignments, including unanswered remainders. Read from the same
-    // `listForRecovery` rows the recovery path reads, so the two paths cannot disagree about what
-    // was assigned — a second recognition implementation here would be the drift the recovery
-    // rule's header forbids. Residue rows with no entries union to nothing by construction.
-    const ownBatches = await dependencies.batches.listForRecovery(request.validatorId);
-    for (const batch of ownBatches) {
-      for (const entryId of batch.entryIds) answered.add(entryId);
-    }
-
-    // One read for the WHOLE pool. Per-entry reads would be up to 4,800 round trips for one batch
-    // request, and each would be a separate chance to observe a different snapshot of coverage.
-    const responses = await dependencies.validations.listForEntries(pool.map((entry) => entry.id));
-
-    const completed = completedEntryIds(pool, responses);
-    const granted = await claimEntries(
-      pool,
-      answered,
-      completed,
-      size,
-      request.validatorId,
-      dependencies,
-    );
-
-    // Contention-collapse as well as pool exhaustion: when nothing could be granted — nobody
-    // else's fault and nothing persisted — the honest outcome is exhaustion, never an empty batch.
-    if (granted.length === 0) return { status: "exhausted" };
-
     const minted = dependencies.newBatch(request.validatorId);
 
-    // READ BACK, not the argument. See the header.
-    const stored = await dependencies.batches.create(
-      {
-        id: minted.id,
-        validatorId: request.validatorId,
-        entries: granted.map((entry, index) => ({
-          datasetEntryId: entry.id,
-          // 1-based, derived HERE from the granted order. There is no code path by which a caller
-          // supplies this, which is what the "a client cannot dictate the batch order" scenario
-          // reduces to once the parameter does not exist.
-          position: index + 1,
-        })),
-      },
-      minted.createdAt,
+    // The single allocation call: selection, claims, and persistence commit atomically inside
+    // the versioned function. An empty grant is exhaustion-or-total-contention, never failure.
+    const placements = await dependencies.batches.allocate({
+      batchId: minted.id,
+      validatorId: request.validatorId,
+      size,
+      ttlSeconds: dependencies.config.reservationTtlSeconds,
+      createdAt: minted.createdAt,
+    });
+    if (placements.length === 0) return { status: "exhausted" };
+
+    // READ BACK, not the placements echoed. The function returns what it stored, and this
+    // confirms it through the same path a later `findById` would use — a batch this class
+    // could not itself produce is never reported.
+    const stored = await dependencies.batches.findById(minted.id);
+    if (stored === null) {
+      throw new RepositoryError(
+        "validation_batches.findById",
+        `Batch ${minted.id} was allocated and reads back as absent. Reporting the placements ` +
+          "instead would report a batch as persisted on the strength of a call this class could " +
+          "not confirm.",
+        { detail: "batch absent immediately after allocate" },
+      );
+    }
+
+    // Project the STORED placements against the granted entries, in stored order. The read is
+    // bounded by the grant (at most the effective size), never by the pool: the 4,800-row
+    // transfer this replaces is exactly what this change removes. A stored id with no entry
+    // behind it fails loudly rather than returning a shorter batch.
+    const granted = await dependencies.datasetEntries.listByIds(
+      stored.entries.map((entry) => entry.datasetEntryId),
     );
+    if (granted.length !== stored.entries.length) {
+      throw new RepositoryError(
+        "dataset_entries.listByIds",
+        `Batch ${minted.id} stores ${stored.entries.length} entries but only ${granted.length} ` +
+          "resolve. Filtering the missing id out would return a batch the validator never " +
+          "received.",
+        {
+          detail: `resolved ${granted.length} of ${stored.entries.length} granted entries`,
+        },
+      );
+    }
+    const byId = new Map(granted.map((entry) => [entry.id, entry]));
+    const entries = stored.entries.map((placement) => {
+      const found = byId.get(placement.datasetEntryId);
+      if (found === undefined) {
+        throw new RepositoryError(
+          "dataset_entries.listByIds",
+          `Batch ${minted.id} references ${placement.datasetEntryId}, which the granted-entry ` +
+            "read did not return.",
+          { detail: `granted entry ${placement.datasetEntryId} unresolved` },
+        );
+      }
+      // Schema-enforced projection (six renderable fields, never the source payload), shared
+      // with the session read so the two producers cannot disagree about what a participant
+      // may see. A `null` here is a stored row the schema refuses — a bug or a database that
+      // is not the one these tests assume — and it fails loudly rather than serving a partial
+      // batch.
+      const projected = projectAllocatedEntry(found);
+      if (projected === null) {
+        throw new RepositoryError(
+          "dataset_entries.listByIds",
+          `Batch ${minted.id} references ${placement.datasetEntryId}, which does not project ` +
+            "to a renderable entry.",
+          { detail: `granted entry ${placement.datasetEntryId} unprojectable` },
+        );
+      }
+      return projected;
+    });
 
     return {
       status: "allocated",
       batchId: stored.id,
-      entries: projectEntries(
-        pool,
-        stored.entries.map((entry) => entry.datasetEntryId),
-      ),
+      entries,
     };
   } catch (error) {
     // A `RepositoryError` is an expected outcome of an ordinary network call and the caller has to
@@ -405,47 +262,4 @@ export async function allocateBatch(
     if (!isRepositoryError(error)) throw error;
     return { status: "failed", reason: "persistence" };
   }
-}
-
-/**
- * Resolves the persisted placements against the pool, in the ORDER STORED, and projects each to the
- * six fields a validator may see.
- *
- * The order comes from the read-back rather than from `selected`, which is the whole reason the
- * batch is read back. The lookup is against the pool the service already holds rather than a fresh
- * `listByIds`, so no additional query is issued for data this call already has — and because a pool
- * that shrank between two reads cannot drop an entry out of a batch that was already persisted, the
- * projection walks the stored placements and resolves each id, failing loudly on one that is
- * missing rather than silently returning a shorter batch.
- */
-function projectEntries(
-  pool: readonly DatasetEntry[],
-  persistedEntryIds: readonly string[],
-): AllocatedEntry[] {
-  const byId = new Map<string, AllocatedEntry>();
-
-  for (const entry of pool) {
-    byId.set(entry.id, {
-      id: entry.id,
-      category: entry.category,
-      instruction: entry.instruction,
-      origin: entry.origin,
-      destination: entry.destination,
-      transitMode: entry.transitMode,
-    });
-  }
-
-  return persistedEntryIds.map((id) => {
-    const entry = byId.get(id);
-    if (entry === undefined) {
-      // Unreachable while the pool is the one the selection ran against. It is here because the
-      // alternative — filtering the id out — would return a batch the validator never received, and
-      // the research would record fewer entries than were actually allocated to them.
-      throw new Error(
-        `allocated batch ${JSON.stringify(id)} is not in the pool it was selected from; the pool ` +
-          "changed between the selection and the projection",
-      );
-    }
-    return entry;
-  });
 }
