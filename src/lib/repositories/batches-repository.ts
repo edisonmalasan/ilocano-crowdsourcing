@@ -75,6 +75,10 @@ export interface BatchesRepository {
   /**
    * Persists a batch and its ordered entries, in ONE repository call.
    *
+   * Allocation no longer reaches this method: batches are persisted atomically inside the
+   * versioned allocation function through `allocate`. Retained with its implementation and
+   * tests as the seam's direct-write path.
+   *
    * `createdAt` is the batch's authoritative creation instant, SUPPLIED BY THE CALLER rather than
    * defaulted by the database. That is the same choice `ValidatorsRepository.touchLastActive` makes
    * with its `at`, and for the same reason: a column default would make the database a second source

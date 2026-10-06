@@ -47,7 +47,7 @@
  * ============================================================================
  * WHY THIS MODULE IMPORTS NOTHING
  * ============================================================================
- * Same standard as `@/lib/domain/allocation`: the locale is needed by a Server Component, a
+ * Same standard as the former dependency-free allocation module: the locale is needed by a Server Component, a
  * Server Action, a client component, and a plain test, and it must not drag Zod, `next/headers`, or
  * `server-only` into any of them. The two approved locales are therefore plain literals here, and
  * the Zod schema that guards the Server Action is declared over them in the action's core rather

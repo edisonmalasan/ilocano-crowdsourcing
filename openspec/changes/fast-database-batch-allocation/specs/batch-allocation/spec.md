@@ -165,6 +165,23 @@ retained, because that part was doing real work independently of the superseded 
 - **THEN** the order among them is randomized rather than fixed, so that one entry is not
   repeatedly served first
 
+#### Scenario: Randomization does not come from an ambient source
+
+- **SUPERSEDED by this change, kept so the removal is visible rather than silent.**
+  Originally: when the selection rule drew randomness, it used the source the caller
+  supplied. The caller-supplied source no longer exists — the database draws its own
+  randomness — so there is no application rule left for this scenario to govern. Its
+  replacement is the distribution evidence in "Randomization shows no systematic
+  preference" below.
+
+#### Scenario: The same inputs and the same supplied randomness produce the same order
+
+- **SUPERSEDED by this change, kept so the removal is visible rather than silent.**
+  Originally: the same pool, configuration, and randomness source presented twice gave the
+  identical order. Seed reproducibility cannot cross the application/database boundary, so
+  this guarantee is withdrawn and replaced by the distribution evidence below. No caller
+  may rely on a repeated allocation returning the same order.
+
 #### Scenario: Randomization shows no systematic preference
 
 - **WHEN** repeated allocations draw from the same eligible pool
