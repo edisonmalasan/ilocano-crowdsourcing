@@ -62,6 +62,10 @@ function createCountingRepository() {
         .filter((response) => response.validatorId === validatorId)
         .map((response) => response.datasetEntryId);
     },
+    async submitResponse() {
+      calls.push("submitResponse");
+      throw new Error("counting fake never reaches the versioned submit function");
+    },
   };
 
   return { repository, calls, stored };

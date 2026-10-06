@@ -94,7 +94,7 @@ export const ENGLISH_COPY = {
   // -- Document ------------------------------------------------------------
   "meta.siteTitle": "Sadino — validate Ilocano navigation data",
   "meta.siteDescription":
-    "Help check Ilocano navigation instructions for the Sadino research project. Ten short " +
+    "Help check Ilocano navigation instructions for the Sadino research project. Five short " +
     "sentences at a time. No name, no email, no account.",
 
   // -- Shared chrome -------------------------------------------------------
@@ -112,7 +112,7 @@ export const ENGLISH_COPY = {
   "landing.cta.continue": "Continue validation",
   "landing.expectations.heading": "What to expect",
   "landing.panel.task.label": "The task",
-  "landing.panel.task.title": "Ten sentences at a time",
+  "landing.panel.task.title": "Five sentences at a time",
   "landing.panel.task.body":
     "You will see a short Ilocano navigation instruction plus the place it is meant to " +
     "describe. You decide whether the sentence says what it should, and you fix it when it " +
@@ -294,14 +294,15 @@ export const ENGLISH_COPY = {
   "validate.entry.label": "The sentence",
   "validate.entry.instructionLabel": "Ilocano sentence",
 
-  // -- Progress --------------------------------------------------------------
-  // Three fragments rather than one formatted sentence, because "Sentence 3 of 10" and
-  // "Pangungusap 3 ng 10" are the same fact with different grammar, and a format string would force
-  // one of those languages to carry the other's word order.
-  "validate.progress.label": "Progress through this batch",
-  "validate.progress.sentence": "Sentence",
-  "validate.progress.of": "of",
-  "validate.progress.saved": "saved",
+  // -- Progress removed ------------------------------------------------------
+  // The progress block ("Sentence 3 of 5", saved counts, progress bar) was removed by the
+  // `five-entry-concurrent-persistence` change: the participant focuses on the current sentence
+  // and its form. Internal placement and counts are still derived server-side; they are simply
+  // no longer presented. The keys are gone in both catalogs, and their removal is the requirement.
+  //
+  // (An earlier comment here explained why the fragments were three keys rather than one format
+  // string. That rationale is retired with the keys: no format string carries this fact in either
+  // language anymore.)
 
   // -- Per-entry form --------------------------------------------------------
   "validation.evaluation.legend": "What does this sentence do?",
@@ -346,7 +347,9 @@ export const ENGLISH_COPY = {
   // decision; what stays is deliberately NOTHING that hurries: no timers, no streaks, no
   // "keep going". `retrying` names the wait rather than alarming about it.
   "validation.save.retrying": "Could not save yet. Retrying…",
-  "validation.save.backlog": "Saving your recent responses…",
+  // The backlog notice ("Saving your recent responses…") is gone with the backlog phase: advancement
+  // no longer waits on worker occupancy, so there is no hold to explain. Failures still surface
+  // through `retrying` above and the failure panel below.
   "validation.failure.invalid":
     "That answer did not go through, and nothing was saved. Check the highlighted inputs.",
   "validation.failure.notConfigured": "The study is closed at the moment, and nothing was saved.",
@@ -372,8 +375,12 @@ export const ENGLISH_COPY = {
   // participant presses it rather than reading about it. The guards that once forbade promising a
   // further batch were re-aimed when the control landed; see `ENCOURAGEMENT_EN` in
   // `tests/unit/locale-copy.test.ts` for what replaced them and why.
-  "validate.finished.body":
-    "You've answered every sentence in this batch. Each one was saved as you went.",
+  //
+  // Amended by the `five-entry-concurrent-persistence` change, recorded rather than silently edited:
+  // the body that read "You've answered every sentence in this batch. Each one was saved as you
+  // went." now invites the next batch instead. The finished state is already stated by the heading;
+  // the body names the choice.
+  "validate.finished.body": "Would you like to answer another batch?",
   // The two figure labels that used to follow this sentence ("Entries answered in this batch" /
   // "Entries answered in total") were removed by owner decision with their render site: the
   // sentence above already states completion qualitatively, and the screen shows no numeric
@@ -481,7 +488,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "meta.siteTitle": "Sadino — suriin ang datos ng nabigasyon sa Ilocano",
   "meta.siteDescription":
     "Tulungan sa pagsusuri ng mga tagubilin sa nabigasyong Ilocano para sa proyekto ng " +
-    "pananaliksik na Sadino. Sampung maiikling pangungusap sa isang beses. Walang pangalan, " +
+    "pananaliksik na Sadino. Limang maiikling pangungusap sa isang beses. Walang pangalan, " +
     "walang email, walang account.",
 
   // -- Shared chrome -------------------------------------------------------
@@ -504,7 +511,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "landing.cta.continue": "Magpatuloy sa pagpapatunay",
   "landing.expectations.heading": "Ano ang inaasahan",
   "landing.panel.task.label": "Ang gawain",
-  "landing.panel.task.title": "Sampung pangungusap sa isang beses",
+  "landing.panel.task.title": "Limang pangungusap sa isang beses",
   "landing.panel.task.body":
     "Makikita mo ang isang maikling tagubilin sa Ilocano kasama ang lugar na tinutukoy nito. " +
     "Ikaw ang magpapasya kung tama ang sinasabi ng pangungusap, at aayusin mo ito kapag hindi.",
@@ -677,14 +684,9 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.entry.label": "Ang pangungusap",
   "validate.entry.instructionLabel": "Pangungusap sa Ilocano",
 
-  // -- Progreso ---------------------------------------------------------------
-  // Tatlong fragmento sa halip na isang pangungusap na may format, dahil ang “Pangungusap 3 ng 10” at
-  // ang “Sentence 3 of 10” ay iisang bagay na magkaibayong gramatika, at ang isang format string ay
-  // pipilitin sa isang wika na dalhin ang gramatika ng iba.
-  "validate.progress.label": "Progreso sa batch na ito",
-  "validate.progress.sentence": "Pangungusap",
-  "validate.progress.of": "ng",
-  "validate.progress.saved": "ang naisave",
+  // -- Progreso, tinanggal ------------------------------------------------------
+  // Tinanggal ang progress block sa `five-entry-concurrent-persistence`: ang kalahok ay nakatuon sa
+  // kasalukuyang pangungusap. Wala na ang mga key sa parehong catalog, at ang pagtanggal ang requirement.
 
   // -- Form kada entry --------------------------------------------------------
   "validation.evaluation.legend": "Ano ang ginagawa ng pangungusap na ito?",
@@ -728,7 +730,7 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   // Katayuan ng save-queue: kaparehong kahulugan ng mga pangungusap sa itaas, hindi mas maikli
   // o mas maluwag na salin. Walang nagmamadali, walang streak, walang papuri sa dami.
   "validation.save.retrying": "Hindi pa na-save. Sinusubukang muli…",
-  "validation.save.backlog": "Ini-save ang mga huli mong sagot…",
+  // Wala na ang backlog notice kasabay ng backlog phase: hindi na naghihintay ang pag-usad sa mga worker.
   "validation.failure.invalid":
     "Hindi umubra ang sagot na iyon, at walang nase-save. Pakitsek ang mga naka-highlight na " +
     "input.",
@@ -746,9 +748,9 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   // change removes. Nothing replaces it that promises a further batch either, and that is still the
   // right call now that the continue control EXISTS — the pool is not unlimited, so an open-ended
   // offer in prose is a claim the server cannot keep. The offer lives on the control's own label.
-  "validate.finished.body":
-    "Sinagot mo na ang lahat ng pangungusap sa batch na ito. Naka-save ang bawat isa habang " +
-    "ginagawa mo.",
+  // Iniba ng `five-entry-concurrent-persistence`: imbitasyon sa susunod na batch ang body ngayon.
+  // Ang tapos nang kalagayan ay sinasabi na ng heading; ang body ay nagpapangalan sa pagpipilian.
+  "validate.finished.body": "Gusto mo bang sumagot ng isa pang batch?",
   // Ang dalawang label ng pigura ("Mga entry na sinagot…") ay tinanggal kasama ng pinag-renderan
   // sa desisyon ng may-ari; nananatili ang pagkwenta sa server.
 

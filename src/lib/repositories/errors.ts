@@ -47,6 +47,7 @@ export type RepositoryOperation =
   | "validators.listAllIds"
   | "validators.touchLastActive"
   | "validations.insert"
+  | "validations.submitResponse"
   | "validations.findByEntry"
   | "validations.findById"
   | "validations.listForEntries"

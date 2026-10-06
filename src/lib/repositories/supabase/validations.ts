@@ -3,6 +3,8 @@ import "server-only";
 import {
   RepositoryError,
   type RepositoryOperation,
+  type SubmitResponseInput,
+  type SubmitResponseOutcome,
   type ValidationsRepository,
 } from "@/lib/repositories";
 import { datasetEntryIdSchema, type DatasetEntryId } from "@/schemas/dataset";
@@ -244,6 +246,80 @@ export class SupabaseValidationsRepository implements ValidationsRepository {
       );
     }
     return toDomain(row, "validations.insert", OPS.insert);
+  }
+
+  private static readonly SUBMIT_FUNCTION = "submit_validation_response_v1";
+
+  /**
+   * Persists one response through the versioned submit function in one call.
+   *
+   * The function returns exactly one row; anything else means the deployed function is not the
+   * one this file names, and treating it as a confirmation would report a research response as
+   * persisted that was never read. Refusals (`unknown_batch`, `not_in_batch`) are OUTCOMES, not
+   * failures: they mean nothing was written and the caller must not retry the same bytes.
+   *
+   * Constraint violations (23514 bilingual/correction CHECKs, 23503 FK, 23505 id collision) raise
+   * as `RepositoryError` naming `validations.submitResponse` — a row the database refused is a
+   * failed write, never a confirmation, and never silently an `already_recorded`.
+   */
+  async submitResponse(input: SubmitResponseInput): Promise<SubmitResponseOutcome> {
+    const context = "validations.submitResponse";
+    const result = await awaitQuery(OPS.submitResponse, context, () =>
+      this.client.rpc(SupabaseValidationsRepository.SUBMIT_FUNCTION, {
+        p_response_id: input.responseId,
+        p_batch_id: input.batchId,
+        p_dataset_entry_id: input.datasetEntryId,
+        p_evaluation: input.evaluation,
+        p_corrected_instruction: input.correctedInstruction,
+        p_english_translation: input.englishTranslation,
+        p_filipino_translation: input.filipinoTranslation,
+        p_created_at: input.createdAt,
+      }),
+    );
+    if (result.error !== null) {
+      throw persistenceFailure(OPS.submitResponse, context, result.error);
+    }
+    if (!Array.isArray(result.data) || result.data.length !== 1) {
+      throw new RepositoryError(
+        OPS.submitResponse,
+        `${context} did not return exactly one row. Treating that as a confirmation would ` +
+          "report a research response as persisted that was never read.",
+        { detail: "unexpected rpc return shape" },
+      );
+    }
+    const row = result.data[0] as {
+      status?: unknown;
+      response_id?: unknown;
+      reservation_released?: unknown;
+      refusal_reason?: unknown;
+    };
+    if (row.status === "recorded" || row.status === "already_recorded") {
+      if (typeof row.response_id !== "string" || row.response_id.length === 0) {
+        throw new RepositoryError(
+          OPS.submitResponse,
+          `${context} confirmed without a stored response id.`,
+          { detail: "confirmation without response id" },
+        );
+      }
+      return {
+        status: row.status,
+        responseId: row.response_id,
+        reservationReleased: row.reservation_released === true,
+      };
+    }
+    if (row.status === "refused") {
+      if (row.refusal_reason === "unknown_batch" || row.refusal_reason === "not_in_batch") {
+        return { status: "refused", reason: row.refusal_reason };
+      }
+      throw new RepositoryError(
+        OPS.submitResponse,
+        `${context} refused with an unrecognised reason.`,
+        { detail: "unrecognised refusal reason" },
+      );
+    }
+    throw new RepositoryError(OPS.submitResponse, `${context} returned an unrecognised status.`, {
+      detail: "unrecognised rpc status",
+    });
   }
 
   /** The stored response with this ID, or `null` when absent. */

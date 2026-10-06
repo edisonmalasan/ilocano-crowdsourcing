@@ -29,7 +29,11 @@ export type { RepositoryErrorOptions, RepositoryOperation } from "./errors";
 export type { DatasetEntriesRepository } from "./dataset-entries-repository";
 export type { EntryReservationsRepository } from "./entry-reservations-repository";
 export type { ValidatorsRepository } from "./validators-repository";
-export type { ValidationsRepository } from "./validations-repository";
+export type {
+  ValidationsRepository,
+  SubmitResponseInput,
+  SubmitResponseOutcome,
+} from "./validations-repository";
 export type {
   BatchesRepository,
   AllocateBatchInput,

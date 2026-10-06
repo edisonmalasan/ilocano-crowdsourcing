@@ -3,9 +3,45 @@ import type { AnonymousValidatorId } from "@/schemas/validator";
 import type { ValidationResponse } from "@/schemas/validation";
 
 /**
+ * The single-call persistence outcome for one background response write.
+ *
+ * `recorded` and `already_recorded` both mean the entry is complete on the server;
+ * `refused` means nothing was written and names why. This is the RPC's own vocabulary,
+ * translated to domain naming — the repository does not invent or collapse cases.
+ */
+export type SubmitResponseOutcome =
+  | {
+      readonly status: "recorded" | "already_recorded";
+      readonly responseId: string;
+      readonly reservationReleased: boolean;
+    }
+  | {
+      readonly status: "refused";
+      readonly reason: "unknown_batch" | "not_in_batch";
+    };
+
+/**
+ * The server-minted facts plus the participant's answer for one response write.
+ *
+ * The validator id is deliberately ABSENT: it is derived from the stored batch inside the
+ * function, so there is no second claim to reconcile. Timestamps and the response id are
+ * minted by the server before the call; the browser never supplies them.
+ */
+export interface SubmitResponseInput {
+  readonly responseId: string;
+  readonly batchId: string;
+  readonly datasetEntryId: DatasetEntryId;
+  readonly evaluation: string;
+  readonly correctedInstruction: string | null;
+  readonly englishTranslation: string | null;
+  readonly filipinoTranslation: string | null;
+  readonly createdAt: string;
+}
+
+/**
  * Access to persisted validation responses.
  *
- * `ValidationResponse` carries the correction and the translation as fields on the *response*,
+ * ValidationResponse carries the correction and the translation as fields on the *response*,
  * never as a mutation of the dataset entry — that separation is the immutability guarantee for
  * `data/merged-ilocano-synthetic-data.json` and it is visible in this signature.
  *
@@ -24,6 +60,16 @@ export interface ValidationsRepository {
    * approved saving strategy persists each entry as it is finished rather than at batch end.
    */
   insert(response: ValidationResponse): Promise<ValidationResponse>;
+
+  /**
+   * Persists one response through the versioned submit function: one call resolves the
+   * batch-owned validator, checks membership, inserts idempotently, and releases the
+   * reservation best-effort. The single background-write path; insert remains for
+   * one-shot/operator flows.
+   *
+   * Raises RepositoryError naming validations.submitResponse on failure.
+   */
+  submitResponse(input: SubmitResponseInput): Promise<SubmitResponseOutcome>;
 
   /** The stored response with this ID, or `null` when absent. `null` means absent, not failed. */
   findById(id: string): Promise<ValidationResponse | null>;

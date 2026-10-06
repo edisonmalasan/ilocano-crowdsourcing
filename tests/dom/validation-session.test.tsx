@@ -81,6 +81,10 @@ const h = vi.hoisted(() => ({
   /** Scripted prefetch answers keyed by requested position, consumed FIFO per position. */
   prefetchScript: new Map<number, Array<() => Promise<RequestNextEntryResult>>>(),
   prefetchCalls: [] as unknown[],
+  verifyCalls: [] as unknown[],
+  verifyScript: [] as Array<
+    () => Promise<import("@/lib/validation/verify-batch-core").VerifyBatchResult>
+  >,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -94,15 +98,6 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/validation/actions", () => ({
-  submitValidationAction: vi.fn(async (raw: unknown) => {
-    h.saves.push(raw);
-    const next = h.saveScript.shift();
-    if (next === undefined) throw new Error("save with no scripted answer");
-    return next();
-  }),
-}));
-
 vi.mock("@/lib/validation/next-entry-actions", () => ({
   requestNextEntryAction: vi.fn(async (raw: unknown) => {
     h.prefetchCalls.push(raw);
@@ -112,6 +107,25 @@ vi.mock("@/lib/validation/next-entry-actions", () => ({
     if (next === undefined) throw new Error(`prefetch for position ${position} with no answer`);
     return next();
   }),
+}));
+
+vi.mock("@/lib/validation/verify-batch-actions", () => ({
+  verifyBatchResponsesAction: vi.fn(async (raw: unknown) => {
+    h.verifyCalls.push(raw);
+    const next = h.verifyScript.shift();
+    if (next !== undefined) return next();
+    return { status: "verified", complete: true, missing: [], total: 0 };
+  }),
+}));
+
+vi.mock("@/lib/allocation/actions", () => ({
+  requestBatchAction: vi.fn(async () => ({ status: "failed", reason: "persistence" })),
+}));
+
+vi.mock("@/lib/validators/browser-identity", () => ({
+  readStoredValidatorId: vi.fn(() => null),
+  writeStoredValidatorId: vi.fn(() => {}),
+  clearStoredValidatorId: vi.fn(() => {}),
 }));
 
 function deferred<T>() {
@@ -169,11 +183,38 @@ beforeEach(() => {
   h.saveScript.length = 0;
   h.prefetchCalls.length = 0;
   h.prefetchScript.clear();
+  h.verifyCalls.length = 0;
+  h.verifyScript.length = 0;
+  // Background writes travel as same-origin POSTs. The stub records the request body and
+  // answers from the scripted save outcomes, so a held-open save is an ordinary deferred.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+      let parsed: unknown = null;
+      try {
+        parsed = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      } catch {
+        parsed = null;
+      }
+      h.saves.push(parsed);
+      const next = h.saveScript.shift();
+      if (next === undefined) throw new Error("save with no scripted answer");
+      const outcome = await next();
+      if (outcome.status === "recorded") {
+        return { json: async () => ({ status: "recorded", responseId: outcome.responseId }) };
+      }
+      if (outcome.status === "already_recorded") {
+        return { json: async () => ({ status: "already_recorded" }) };
+      }
+      return { json: async () => ({ status: "failed", reason: outcome.reason }) };
+    }),
+  );
 });
 
 afterEach(() => {
   view.unmount();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("S-1 — mounting prefetches exactly the next position", () => {
@@ -377,6 +418,42 @@ describe("S-7/S-8 — failure, retry, and refusal", () => {
     await view.settle();
     expect(h.saves).toHaveLength(1);
   });
+
+  it("a recorded verdict without a response id is retried, never treated as saved", async () => {
+    // The repository refuses a confirmation without a stored id; the transport holds the
+    // same rule. A malformed recorded answer is a persistence failure: the queue retries
+    // and the second, well-formed answer confirms — two submissions, not one silent save.
+    h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
+    h.prefetchScript.set(2, [async () => readyFor(2, E3)]);
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+        let parsed: unknown = null;
+        try {
+          parsed = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+        } catch {
+          parsed = null;
+        }
+        h.saves.push(parsed);
+        calls += 1;
+        if (calls === 1) return { json: async () => ({ status: "recorded" }) };
+        return { json: async () => ({ status: "recorded", responseId: "rsp_OD_0001" }) };
+      }),
+    );
+    mountRunner();
+    await view.settle();
+
+    await answerFully()(0);
+    await submitCurrent();
+    expect(instructionVisible("OD_0002")).toBe(true);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+    });
+    await view.settle();
+    expect(h.saves).toHaveLength(2);
+  });
 });
 
 describe("S-15 — a submit held by a parked failure resumes after retry", () => {
@@ -441,8 +518,10 @@ describe("S-15 — a submit held by a parked failure resumes after retry", () =>
   });
 });
 
-describe("S-9 — the backlog bound pauses and resumes advancement", () => {
-  it("two pending saves still advance; the third waits and resumes on drain", async () => {
+describe("S-9 — worker occupancy never holds advancement", () => {
+  it("three pending saves still advance; all 5 are queueable with at most 3 active", async () => {
+    // MAX_ACTIVE_SAVES=3 with no advancement gate: a slow save continues its own lifecycle
+    // while the session moves on. Two held-open saves must not hold the third submit.
     const first = deferred<SubmitValidationResult>();
     const second = deferred<SubmitValidationResult>();
     const third = deferred<SubmitValidationResult>();
@@ -463,45 +542,60 @@ describe("S-9 — the backlog bound pauses and resumes advancement", () => {
 
     await answerFully()(0);
     await submitCurrent();
+    // Still advancing with two saves open: no backlog hold, no plain-copy pause.
     expect(instructionVisible("OD_0003")).toBe(true);
+    expect(view.container.textContent).not.toMatch(/Saving your recent responses/);
+    expect(h.saves).toHaveLength(2);
 
-    // Third submit with two saves still open: held on OD_0003 with plain copy.
+    // The final answer enqueues a third save and transitions in place to the finished card —
+    // advancement itself never waited on worker occupancy.
     await answerFully()(0);
     await submitCurrent();
-    expect(instructionVisible("OD_0003")).toBe(true);
-    expect(view.container.textContent).toMatch(/Saving your recent responses/);
+    expect(h.saves).toHaveLength(3);
+    expect(h.pushes).toHaveLength(0);
 
-    // Drain everything: the held advance completes to the finished flush (position 3 was the
-    // last, so its prefetch said finished) — which navigates only after confirmation.
     await view.settle(() => {
       first.resolve(recordedFor("OD_0001"));
       second.resolve(recordedFor("OD_0002"));
       third.resolve(recordedFor("OD_0003"));
     });
-    expect(h.pushes).toHaveLength(1);
-    expect(h.pushes[0]).toContain("position=4");
+    // In-place finished card, still no navigation: the checkpoint owns the controls now.
+    expect(h.pushes).toHaveLength(0);
+    expect(view.container.textContent).toMatch(/batch is finished/i);
   });
 });
 
-describe("S-10 — the final entry drains before any navigation", () => {
-  it("no navigation happens until every save confirms", async () => {
+describe("S-10 — the final entry checkpoints in place without navigating", () => {
+  it("shows the finished card with gated controls until verification proves all 5 stored", async () => {
     const gate = deferred<SubmitValidationResult>();
     h.prefetchScript.set(3, [async () => FINISHED]);
     h.saveScript.push(() => gate.promise);
+    // Hold verification open: controls must stay unavailable until it proves completeness.
+    h.verifyScript.push(async () => ({
+      status: "verified",
+      complete: true,
+      missing: [],
+      total: 1,
+    }));
     mountRunner({ entry: E3, position: 3 });
     await view.settle();
 
     await answerFully()(0);
     await submitCurrent();
 
+    // No navigation on the final entry: the queue stays mounted under the finished card.
     expect(h.pushes).toHaveLength(0);
-    expect(view.container.textContent).toMatch(/Saving your recent responses/);
+    expect(view.container.textContent).toMatch(/batch is finished/i);
+    // While the save is still open the checkpoint cannot have completed: both controls gated.
+    const buttons = view.all("button");
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
 
     await view.settle(() => {
       gate.resolve(recordedFor("OD_0003"));
     });
-    expect(h.pushes).toHaveLength(1);
-    expect(h.pushes[0]).toContain("position=4");
+    await view.settle();
+    expect(h.pushes).toHaveLength(0);
+    expect(view.container.textContent).toMatch(/batch is finished/i);
   });
 });
 

@@ -544,60 +544,44 @@ describe("a deployment with no database configured", () => {
   });
 });
 
-describe("the progress the participant is shown", () => {
-  it("reports the COMPLETED count, which is not the same as the position minus one", async () => {
-    // Out-of-order completion, a resumed session, and a batch whose first entries were answered days
-    // ago all make the two diverge. The progress bar that shows the derived figure would tell someone
-    // who has answered four entries they have answered one.
+describe("no routine progress is presented", () => {
+  it("renders the entry and its form with no progress sentence, saved count, bar, or percentage", async () => {
+    // Owner decision (five-entry-concurrent-persistence): steady answering needs no running
+    // commentary on background work. The runner renders the entry plus failure-only status;
+    // the completed count and placement still travel server-side and are simply not presented.
     const { default: Page } = await loadSessionPage();
     openValidationSession.mockResolvedValue(
-      presenting({ position: 2, completedCount: 4, total: 10 }),
+      presenting({ position: 2, completedCount: 4, total: 5 }),
     );
 
     const html = await renderRoute(Page as never);
 
-    expect(html).toContain(`4 ${EN("validate.progress.saved")}`);
-    expect(html).not.toContain(`1 ${EN("validate.progress.saved")}`);
+    expect(html).toContain(INSTRUCTION);
+    expect(html).not.toContain('role="progressbar"');
+    expect(html).not.toContain("aria-valuenow");
+    expect(html).not.toContain("%");
   });
 
-  it("names the position within the batch, in the interface's own grammar", async () => {
+  it("renders the SERVER's entry, never the URL's requested position", async () => {
+    // The progress line that used to witness this is gone by owner decision, so the entry
+    // itself is the witness: the service resolved position 1 forward to the entry at
+    // placement 4, and the route renders exactly that entry.
     const { default: Page } = await loadSessionPage();
-    openValidationSession.mockResolvedValue(presenting({ position: 3, total: 10 }));
-
-    const html = await renderRoute(Page as never);
-
-    expect(html).toContain(
-      `${EN("validate.progress.sentence")} 3 ${EN("validate.progress.of")} 10`,
-    );
-  });
-
-  it("treats the SERVER's placement position as the current one, never the URL's requested one", async () => {
-    // The third of the three links that make the advance correct, and the one the Phase 5
-    // verification pass found missing. The advance is `position + 1` in
-    // `src/app/validate/[batchId]/validation-form.tsx`, and that arithmetic is only forward-progressing
-    // if the `position` the form receives is the PLACEMENT's own position. If it were the URL's
-    // requested position, a participant arriving on a stale `?position=1` link whose placements 1-3
-    // are already answered would be advanced to position 2 — an entry they had already completed.
-    //
-    // It is witnessed here from RENDERED MARKUP rather than from source text, because the form's
-    // `position` prop is not itself an attribute in the output; the progress line is where the
-    // server's figure is visible, and the route renders the same `session.position` into both. A
-    // source scan would prove a string is present and nothing about which value reached it.
-    const { default: Page } = await loadSessionPage();
-    // The service resolved a request for position 1 forward to placement 4, which is what it does
-    // when the earlier placements are already completed.
-    openValidationSession.mockResolvedValue(presenting({ position: 4, total: 10 }));
+    const RESOLVED_INSTRUCTION =
+      "Iti Balligi terminal ti ayanko ita; masapulko a makadanon iti Centro.";
+    const resolved = presenting({ position: 4, total: 5 });
+    resolved.session.entry = {
+      ...resolved.session.entry,
+      id: "OD_0009",
+      instruction: RESOLVED_INSTRUCTION,
+      origin: "Balligi terminal",
+      destination: "Centro",
+    };
+    openValidationSession.mockResolvedValue(resolved);
 
     const html = await renderRoute(Page as never, { searchParams: { position: "1" } });
 
-    // The screen's own account of where the validator is, and the figure the advance is derived from.
-    expect(html).toContain(
-      `${EN("validate.progress.sentence")} 4 ${EN("validate.progress.of")} 10`,
-    );
-    // The requested position is not what the screen believes, and never appears as the current one.
-    expect(html).not.toContain(
-      `${EN("validate.progress.sentence")} 1 ${EN("validate.progress.of")}`,
-    );
+    expect(html).toContain(RESOLVED_INSTRUCTION);
     // The service WAS asked for the URL's position — so the test is not passing because the route
     // ignored the query string altogether and defaulted to the first placement.
     expect(openValidationSession.mock.calls[0]?.[0]).toMatchObject({ position: 1 });
@@ -1093,6 +1077,7 @@ describe("the finished screen reports no numeric figures", () => {
 
     expect(routes).toEqual([
       "",
+      "api/validation-responses",
       "ready",
       "researcher/(protected)",
       "researcher/(protected)/entries/[id]",
@@ -1142,14 +1127,22 @@ describe("the finished screen reports no numeric figures", () => {
       { route: "researcher/sign-in", witness: "tests/unit/admin-routes.test.tsx" },
     ];
     const AUTHENTICATED_ROUTE_NAMES = AUTHENTICATED_ROUTES.map((entry) => entry.route);
-    const validatorRoutes = routes.filter((route) => !AUTHENTICATED_ROUTE_NAMES.includes(route));
+    // The background-write transport is a POST-only Route Handler: it has no page component
+    // and renders no markup, so it belongs in neither rendered group. Named outright rather
+    // than filtered by prefix, so a second API route fails the partition below by name.
+    const API_ROUTES = ["api/validation-responses"];
+    const validatorRoutes = routes.filter(
+      (route) => !AUTHENTICATED_ROUTE_NAMES.includes(route) && !API_ROUTES.includes(route),
+    );
     const skippedRoutes = routes.filter((route) => AUTHENTICATED_ROUTE_NAMES.includes(route));
+    const apiRoutes = routes.filter((route) => API_ROUTES.includes(route));
 
     // The partition is total and disjoint, which is what makes the exclusion an assertion rather than
     // a filter. If a route were in neither list it would simply not be rendered or counted.
-    expect([...validatorRoutes, ...skippedRoutes].sort()).toEqual(routes);
+    expect([...validatorRoutes, ...skippedRoutes, ...apiRoutes].sort()).toEqual(routes);
     expect(validatorRoutes).toEqual(["", "ready", "start", "validate", "validate/[batchId]"]);
     expect(skippedRoutes).toEqual(AUTHENTICATED_ROUTE_NAMES);
+    expect(apiRoutes).toEqual(API_ROUTES);
 
     // And the handover is real rather than asserted in prose: for every skipped route, the file
     // named as its witness must exist. A missing witness makes that route's exclusion unmonitored,

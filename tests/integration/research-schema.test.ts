@@ -131,6 +131,11 @@ const EXPECTED_MIGRATIONS = [
   // It ADDS one function and changes nothing else, so it appears here and in no table list.
   // Same reason as the entries above: a migration this list does not name must FAIL here.
   "20261007130000_allocate_validation_batch.sql",
+  // Arrived with five-entry-concurrent-persistence: the versioned `submit_validation_response_v1`
+  // function (resolve, verify, insert, release in one call) plus its privilege grants.
+  // It ADDS one function and changes nothing else, so it appears here and in no table list.
+  // Same reason as the entries above: a migration this list does not name must FAIL here.
+  "20261008120000_submit_validation_response.sql",
 ] as const;
 
 /**
