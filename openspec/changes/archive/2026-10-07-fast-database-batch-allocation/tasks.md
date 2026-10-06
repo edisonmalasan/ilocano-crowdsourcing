@@ -32,6 +32,6 @@
 
 ## 4. Verification + lifecycle
 
-- [ ] 4.1 Full matrix with counts from logs; independent verification before Apply merge;
+- [x] 4.1 Full matrix with counts from logs; independent verification before Apply merge;
   CI + Vercel green on every PR; optimistic-entry-progression behavior intact.
-- [ ] 4.2 Sync `batch-allocation`; Archive.
+- [x] 4.2 Sync `batch-allocation`; Archive.

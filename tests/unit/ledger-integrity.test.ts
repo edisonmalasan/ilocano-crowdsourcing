@@ -437,6 +437,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `optimistic-entry-progression`, the FORTIETH archived change, so this coupling has now
       // been paid TWENTY-FIVE times. Same one-line edit, same reason.
       40: "Forty",
+      // Added for `fast-database-batch-allocation`, the FORTY-FIRST archived change, so this coupling has now
+      // been paid TWENTY-SIX times. Same one-line edit, same reason.
+      41: "Forty-one",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
