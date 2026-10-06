@@ -2369,6 +2369,9 @@ describe("the operation name each method reports", () => {
       "validators.listAllIds",
       "validators.touchLastActive",
       "validations.insert",
+      // Arrived with the single-RPC background write path: one versioned function resolves
+      // the batch-owned validator, inserts idempotently, and releases the reservation.
+      "validations.submitResponse",
       "validations.findById",
       "validations.findByEntry",
       "validations.listForEntries",

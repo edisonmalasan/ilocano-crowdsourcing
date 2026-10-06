@@ -18,9 +18,9 @@ function config(overrides: Partial<AllocationConfig> = {}): AllocationConfig {
 }
 
 describe("allocation configuration defaults", () => {
-  it("defaults the batch size to 10 when nothing is configured", () => {
+  it("defaults the batch size to 5 when nothing is configured", () => {
     expect(allocationConfigSchema.parse({}).batchSize).toBe(BATCH_SIZE_DEFAULT);
-    expect(BATCH_SIZE_DEFAULT).toBe(10);
+    expect(BATCH_SIZE_DEFAULT).toBe(5);
   });
 
   it("defaults the reservation lease to 30 minutes when nothing is configured", () => {
@@ -83,7 +83,7 @@ describe("allocation configuration validation", () => {
   });
 
   it("rejects a misspelled setting rather than silently falling back to the default", () => {
-    // A typo in a research parameter must not quietly mean "10 entries".
+    // A typo in a research parameter must not quietly mean "5 entries".
     const result = allocationConfigSchema.safeParse({ batchSizes: 5 });
 
     expect(result.success).toBe(false);
@@ -164,11 +164,11 @@ describe("batch request", () => {
 
 describe("effective batch size", () => {
   it("uses the configured batch size when the request states no preference", () => {
-    expect(resolveBatchSize(undefined, config())).toBe(10);
+    expect(resolveBatchSize(undefined, config())).toBe(5);
   });
 
   it("reduces an over-maximum request to the configured maximum instead of accepting it", () => {
-    expect(resolveBatchSize(500, config())).toBe(10);
+    expect(resolveBatchSize(500, config())).toBe(5);
     expect(resolveBatchSize(11, config({ batchSize: 5 }))).toBe(5);
   });
 

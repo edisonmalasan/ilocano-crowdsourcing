@@ -177,6 +177,12 @@ function createInMemoryRepositories() {
     async countForValidator(validatorId) {
       return responses.filter((response) => response.validatorId === validatorId).length;
     },
+    async submitResponse() {
+      throw new RepositoryError(
+        "validations.submitResponse",
+        "in-memory fake does not implement the versioned submit function",
+      );
+    },
   };
 
   const batches = new Map<string, BatchRecord>();
@@ -418,6 +424,7 @@ describe("failing repository", () => {
       },
       validations: {
         insert: async () => fail("validations.insert", "down"),
+        submitResponse: async () => fail("validations.submitResponse", "down"),
         findById: async () => fail("validations.findById", "down"),
         findByEntry: async () => fail("validations.findByEntry", "down"),
         listForEntries: async () => fail("validations.listForEntries", "down"),

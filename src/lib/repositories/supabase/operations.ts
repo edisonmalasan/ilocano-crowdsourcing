@@ -92,6 +92,7 @@ export const VALIDATORS_OPERATIONS = {
 
 export const VALIDATIONS_OPERATIONS = {
   insert: "validations.insert",
+  submitResponse: "validations.submitResponse",
   findById: "validations.findById",
   findByEntry: "validations.findByEntry",
   // The two coverage reads. `listForEntries` is the one the qualifying predicate is applied to, in

@@ -79,12 +79,19 @@ import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/
  */
 export interface FinishedBatchProps {
   readonly locale: InterfaceLocale;
+  /**
+   * The hard checkpoint verdict, owned by the queue-owning session runner.
+   * Absent (standalone finished route) means ungated; present but incomplete
+   * disables both controls so Finish cannot retire the attempt before every
+   * placement is verified stored.
+   */
+  readonly gate?: { readonly complete: boolean };
 }
 
 /** Where finishing goes. Named so a test asserts the value rather than a literal repeated beside it. */
 export const FINISH_HREF = "/";
 
-export function FinishedBatch({ locale }: FinishedBatchProps) {
+export function FinishedBatch({ locale, gate }: FinishedBatchProps) {
   const t = translatorFor(locale);
   const router = useRouter();
   const [decision, setDecision] = useState<ContinueBatchDecision | null>(null);
@@ -121,6 +128,7 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
   }
 
   const continueState = continueControlState(isPending, t);
+  const gated = gate?.complete === false;
 
   return (
     <div className="mt-6 flex flex-col gap-4">
@@ -171,8 +179,8 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
         <Button
           type="button"
           size="lg"
-          disabled={continueState.disabled}
-          aria-busy={continueState.ariaBusy}
+          disabled={continueState.disabled || gated}
+          aria-busy={continueState.ariaBusy || gated || undefined}
           onClick={() => {
             if (inFlight.current) return;
             inFlight.current = true;
@@ -202,6 +210,8 @@ export function FinishedBatch({ locale }: FinishedBatchProps) {
           variant="secondary"
           size="lg"
           fullWidth
+          disabled={gated}
+          aria-busy={gated || undefined}
           onClick={() => {
             clearStoredValidatorId();
             router.push(FINISH_HREF);

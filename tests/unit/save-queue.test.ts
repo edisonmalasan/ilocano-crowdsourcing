@@ -300,4 +300,190 @@ describe("createSaveQueue", () => {
     expect(seen.length).toBeGreaterThanOrEqual(2);
     expect(seen[seen.length - 1]).toContain('"saved"');
   });
+
+  it("admits all 5 of a batch but runs at most MAX_ACTIVE_SAVES at once", async () => {
+    // The 5.4 measurement: five rapid submits with every save held open. All five are
+    // queued (pending 5), but only three workers start — the fourth and fifth wait FIFO.
+    const resolvers = new Map<string, (result: SubmitValidationResult) => void>();
+    const submit = vi.fn(
+      (entry: QueuedSave) =>
+        new Promise<SubmitValidationResult>((resolve) => {
+          resolvers.set(entry.key, resolve);
+        }),
+    );
+    const queue = createSaveQueue({ submit, wait: async () => {} });
+
+    const ids = ["OD_0001", "OD_0002", "OD_0003", "OD_0004", "OD_0005"];
+    for (const [index, id] of ids.entries()) {
+      queue.enqueue(item(id, { position: index + 1, datasetEntryId: id }));
+    }
+    await flush();
+
+    expect(queue.pendingCount()).toBe(5);
+    expect(queue.activeCount()).toBe(3);
+    expect(submit).toHaveBeenCalledTimes(3);
+
+    // Draining one worker refills exactly one waiter, FIFO: the fourth starts, the fifth waits.
+    // Polled, not slept fixed: the refill crosses several promise ticks (drive settle, pump,
+    // next drive), and a fixed flush count is a guess about the harness's scheduling.
+    resolvers.get("OD_0001")!(RECORDED);
+    for (let waited = 0; waited < 50; waited += 1) {
+      if (submit.mock.calls.length >= 4) break;
+      await flush();
+    }
+    expect(submit).toHaveBeenCalledTimes(4);
+    expect(queue.activeCount()).toBe(3);
+
+    for (const id of ["OD_0002", "OD_0003", "OD_0004", "OD_0005"]) {
+      for (let waited = 0; waited < 50; waited += 1) {
+        if (resolvers.has(id)) break;
+        await flush();
+      }
+      resolvers.get(id)!({ ...RECORDED, datasetEntryId: id });
+    }
+    await queue.drain();
+    expect(submit).toHaveBeenCalledTimes(5);
+    expect(queue.pendingCount()).toBe(0);
+    for (const id of ids) {
+      expect(queue.snapshot().states[id]).toEqual({ kind: "saved" });
+    }
+  });
+
+  it("CAN FIRE: the active bound is observed, not assumed — a latch-less double start would show 2", async () => {
+    // The control for the test above: with only TWO held saves the active count is 2, so a
+    // count of 3 is a measurement of the bound and not of the harness. And resolving both
+    // drains cleanly, so the bound never strands work.
+    const resolvers = new Map<string, (result: SubmitValidationResult) => void>();
+    const submit = vi.fn(
+      (entry: QueuedSave) =>
+        new Promise<SubmitValidationResult>((resolve) => {
+          resolvers.set(entry.key, resolve);
+        }),
+    );
+    const queue = createSaveQueue({ submit, wait: async () => {} });
+
+    queue.enqueue(item("OD_0001"));
+    queue.enqueue(item("OD_0002"));
+    await flush();
+
+    expect(queue.activeCount()).toBe(2);
+    resolvers.get("OD_0001")!(RECORDED);
+    resolvers.get("OD_0002")!({ ...RECORDED, datasetEntryId: "OD_0002" });
+    await queue.drain();
+    expect(queue.pendingCount()).toBe(0);
+  });
+
+  it("a slow first save never head-of-line-blocks the saves behind it", async () => {
+    // Out-of-order attribution at the worker level: entries 2-5 confirm while entry 1 is
+    // still open, and each confirmation lands on its own key.
+    const resolvers = new Map<string, (result: SubmitValidationResult) => void>();
+    const submit = vi.fn(
+      (entry: QueuedSave) =>
+        new Promise<SubmitValidationResult>((resolve) => {
+          resolvers.set(entry.key, resolve);
+        }),
+    );
+    const queue = createSaveQueue({ submit, wait: async () => {} });
+
+    for (const id of ["OD_0001", "OD_0002", "OD_0003"]) {
+      queue.enqueue(item(id, { datasetEntryId: id }));
+    }
+    await flush();
+
+    resolvers.get("OD_0003")!({ ...RECORDED, datasetEntryId: "OD_0003" });
+    resolvers.get("OD_0002")!({ ...RECORDED, datasetEntryId: "OD_0002" });
+    await flush();
+    expect(queue.snapshot().states["OD_0002"]).toEqual({ kind: "saved" });
+    expect(queue.snapshot().states["OD_0003"]).toEqual({ kind: "saved" });
+    expect(queue.snapshot().states["OD_0001"]).toEqual({ kind: "saving", attempt: 1 });
+
+    resolvers.get("OD_0001")!(RECORDED);
+    await queue.drain();
+    expect(queue.snapshot().states["OD_0001"]).toEqual({ kind: "saved" });
+  });
+
+  it("exposes live worker counts: 3 active and 2 queued under a five-rapid burst", async () => {
+    // The operator half of the 5.4 measurement: `activeSaves`/`queuedSaves` read the live
+    // worker occupancy off the snapshot rather than deriving it from state kinds.
+    const resolvers = new Map<string, (result: SubmitValidationResult) => void>();
+    const submit = vi.fn(
+      (entry: QueuedSave) =>
+        new Promise<SubmitValidationResult>((resolve) => {
+          resolvers.set(entry.key, resolve);
+        }),
+    );
+    const queue = createSaveQueue({ submit, wait: async () => {} });
+
+    for (const id of ["OD_0001", "OD_0002", "OD_0003", "OD_0004", "OD_0005"]) {
+      queue.enqueue(item(id, { datasetEntryId: id }));
+    }
+    await flush();
+
+    expect(queue.snapshot().activeSaves).toBe(3);
+    expect(queue.snapshot().queuedSaves).toBe(2);
+
+    for (const id of ["OD_0001", "OD_0002", "OD_0003", "OD_0004", "OD_0005"]) {
+      for (let waited = 0; waited < 50; waited += 1) {
+        if (resolvers.has(id)) break;
+        await flush();
+      }
+      resolvers.get(id)!({ ...RECORDED, datasetEntryId: id });
+    }
+    await queue.drain();
+    expect(queue.snapshot().activeSaves).toBe(0);
+    expect(queue.snapshot().queuedSaves).toBe(0);
+  });
+
+  it("reports per-key queue wait off an injected clock, absent until a worker starts", async () => {
+    // Privacy-safe timing with no wall clock: three held workers, two waiters admitted at
+    // t=2000, one worker freed at t=2500. The waiter that starts reports 500; the one
+    // still waiting reports nothing — absence is the unstarted state, not a zero.
+    let t = 1000;
+    const resolvers = new Map<string, (result: SubmitValidationResult) => void>();
+    const submit = vi.fn(
+      (entry: QueuedSave) =>
+        new Promise<SubmitValidationResult>((resolve) => {
+          resolvers.set(entry.key, resolve);
+        }),
+    );
+    const queue = createSaveQueue({ submit, wait: async () => {}, now: () => t });
+
+    for (const id of ["OD_0001", "OD_0002", "OD_0003"]) {
+      queue.enqueue(item(id, { datasetEntryId: id }));
+    }
+    await flush();
+    expect(queue.snapshot().queueWaitMs).toEqual({
+      OD_0001: 0,
+      OD_0002: 0,
+      OD_0003: 0,
+    });
+
+    t = 2000;
+    queue.enqueue(item("OD_0004", { datasetEntryId: "OD_0004" }));
+    queue.enqueue(item("OD_0005", { datasetEntryId: "OD_0005" }));
+    await flush();
+    expect(queue.snapshot().queueWaitMs["OD_0004"]).toBeUndefined();
+    expect(queue.snapshot().queueWaitMs["OD_0005"]).toBeUndefined();
+
+    t = 2500;
+    resolvers.get("OD_0001")!(RECORDED);
+    for (let waited = 0; waited < 50; waited += 1) {
+      if (submit.mock.calls.length >= 4) break;
+      await flush();
+    }
+    expect(submit).toHaveBeenCalledTimes(4);
+    expect(queue.snapshot().queueWaitMs["OD_0004"]).toBe(500);
+    expect(queue.snapshot().queueWaitMs["OD_0005"]).toBeUndefined();
+
+    for (const id of ["OD_0002", "OD_0003", "OD_0004", "OD_0005"]) {
+      for (let waited = 0; waited < 50; waited += 1) {
+        if (resolvers.has(id)) break;
+        await flush();
+      }
+      resolvers.get(id)!({ ...RECORDED, datasetEntryId: id });
+    }
+    await queue.drain();
+    // Settle clears per-key timing with the key: the snapshot describes live work only.
+    expect(queue.snapshot().queueWaitMs).toEqual({});
+  });
 });

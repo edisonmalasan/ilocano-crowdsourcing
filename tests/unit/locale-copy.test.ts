@@ -201,20 +201,23 @@ describe("the two things the type cannot catch", () => {
 });
 
 /**
- * How short a catalog value may be before "appears inside an instruction" stops being evidence of
- * a leak.
+ * RETIRED: the whole-word fragment floor (`MIN_FRAGMENT_CHARACTERS = 8`).
  *
- * MEASURED against the real data rather than chosen. Instructions run 57 to 132 characters
- * (median 84), so no catalog value can be a whole instruction; the reverse direction is only ever
- * about a pasted FRAGMENT, and the shortest thing a person would paste from a sentence is a short
- * phrase. Every value in both catalogs of eight or more characters matches zero instructions as a
- * whole-word phrase.
+ * The floor existed for exactly one catalog value: English `"of"`
+ * (`validate.progress.of`), which whole-word-matched 353 instructions through English
+ * institution names ("University of the Cordilleras"). No length threshold can distinguish a
+ * coincidence between two real things, so the floor merely SKIPPED values below it — and
+ * the test below re-measured both halves (the floor excluded something real; it hid
+ * nothing) to keep the skip honest.
  *
- * The two halves of that claim — that the floor excludes something real, and that it hides nothing —
- * are both re-measured by the test named `MEASURED: the whole-word fragment floor is load-bearing
- * and hides nothing`, so this constant cannot quietly become a loophole.
+ * `five-entry-concurrent-persistence` removed the progress block by owner decision, and with
+ * it the only whole-word-colliding value in either catalog (measured: zero collisions at
+ * any length across both catalogs and all 4800 instructions). A floor that excludes
+ * nothing is the unexplained special case the measurement test warned about, so the floor
+ * is DELETED rather than kept as a vacuous skip: the reverse-direction guard below now
+ * checks every catalog value at every length. A future short value that genuinely
+ * collides will fail loudly here instead of being silently skipped.
  */
-const MIN_FRAGMENT_CHARACTERS = 8;
 
 /**
  * Ways the finished screen's copy could claim the lifetime figure is a COVERAGE figure, a credit, or
@@ -545,7 +548,7 @@ describe("the typing of the research material that must never be localized", () 
             );
           }
           // ----------------------------------------------------------------------------------
-          // THE REVERSE DIRECTION NEEDS BOTH GUARDS BELOW, AND BOTH ARE MEASURED, NOT ASSUMED
+          // THE REVERSE DIRECTION NEEDS WHOLE-WORD MATCHING, MEASURED, NOT ASSUMED
           // ----------------------------------------------------------------------------------
           // Plain `instruction.includes(value)` is not a usable test in either language, and the
           // two languages fail for DIFFERENT reasons, which is why neither fix alone was kept:
@@ -559,16 +562,16 @@ describe("the typing of the research material that must never be localized", () 
           //   Cordilleras" — and "of" is a legitimate English word. No amount of word-boundary
           //   care fixes a coincidence between two real things.
           //
-          // So the reverse direction requires a whole-word match AND a length floor. The floor is
-          // not fitted to the offender: across both catalogs and all 4800 instructions, exactly one
-          // value collides at whole-word level, it is two characters long, and every value of
-          // eight or more characters collides zero times. The test immediately below re-measures
-          // both halves of that claim, so if a future copy edit creates a collision the floor is
-          // shown to have been hiding it rather than asserted to have been safe.
-          if (
-            value.length >= MIN_FRAGMENT_CHARACTERS &&
-            matchesWholeWords(value, entry.instruction)
-          ) {
+          // That coincidence used to be suppressed by a length floor (`MIN_FRAGMENT_CHARACTERS`),
+          // because the colliding value was the two-character progress key `validate.progress.of`
+          // and every value of eight or more characters collided zero times. The progress block —
+          // and with it the only whole-word-colliding value in either catalog — was removed by
+          // owner decision in `five-entry-concurrent-persistence` (measured: zero collisions at
+          // any length), so the floor was retired as the vacuous skip it had become. The guard
+          // below checks EVERY value at EVERY length; the test immediately below re-measures the
+          // zero-collision claim, so if a future copy edit creates a collision it fails loudly
+          // here rather than being silently skipped.
+          if (matchesWholeWords(value, entry.instruction)) {
             violations.push(
               `${language} key "${key}" appears verbatim inside the instruction of ${entry.id}`,
             );
@@ -594,19 +597,13 @@ describe("the typing of the research material that must never be localized", () 
     }
   });
 
-  it("MEASURED: the whole-word fragment floor is load-bearing and hides nothing", async () => {
-    // The floor `MIN_FRAGMENT_CHARACTERS` introduces is only defensible if BOTH of its halves are
-    // true at the same time, and both are re-measured here rather than asserted in a comment:
-    //
-    //   1. IT IS LOAD-BEARING. Without it, at least one catalog value matches an instruction as a
-    //      whole word. If that set were empty, the floor would be excluding nothing and the rule
-    //      would be an unexplained special case.
-    //   2. IT HIDES NOTHING. No catalog value at or above the floor matches any instruction as a
-    //      whole word. If that is ever false, a real leak is being suppressed by the floor, and the
-    //      failure belongs HERE, naming the offending key — not in a guard that silently skips it.
-    //
-    // Between them these two make the floor self-validating on every run of the suite. A copy edit
-    // that starts colliding is reported by this test, whatever its length.
+  it("MEASURED: no catalog value appears as whole words inside any instruction", async () => {
+    // The successor of the retired fragment-floor measurement. The floor existed to skip the
+    // two-character progress key `validate.progress.of`, the only whole-word-colliding value
+    // in either catalog; that key is gone by owner decision, so the guard above checks every
+    // value at every length and this test re-measures the zero-collision claim that makes the
+    // un-floored check safe. If a future copy edit introduces a collision, it fails HERE,
+    // naming the offending key — not in a guard that silently skips it.
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
@@ -618,8 +615,7 @@ describe("the typing of the research material that must never be localized", () 
     );
     expect(entries.length, "this measurement read a real dataset").toBe(4800);
 
-    const belowFloor: string[] = [];
-    const atOrAboveFloor: string[] = [];
+    const collisions: string[] = [];
 
     for (const [language, catalog] of [
       ["English", ENGLISH_COPY],
@@ -627,23 +623,13 @@ describe("the typing of the research material that must never be localized", () 
     ] as const) {
       for (const [key, value] of Object.entries(catalog)) {
         if (!entries.some((entry) => matchesWholeWords(value, entry.instruction))) continue;
-        const label = `${language} "${key}" = ${JSON.stringify(value)} (${value.length} chars)`;
-        if (value.length < MIN_FRAGMENT_CHARACTERS) belowFloor.push(label);
-        else atOrAboveFloor.push(label);
+        collisions.push(`${language} "${key}" = ${JSON.stringify(value)} (${value.length} chars)`);
       }
     }
 
-    // (1) The floor excludes something real. The offender is named so a reader is not left to
-    // rediscover it: an English "of" against "University of Baguio".
     expect(
-      belowFloor.length,
-      `the fragment floor must be excluding at least one real whole-word collision; found none, so MIN_FRAGMENT_CHARACTERS = ${MIN_FRAGMENT_CHARACTERS} is an unexplained special case and should be reconsidered`,
-    ).toBeGreaterThan(0);
-
-    // (2) And nothing it excludes was hiding a leak.
-    expect(
-      atOrAboveFloor,
-      `a catalog value of ${MIN_FRAGMENT_CHARACTERS} or more characters appears verbatim in an instruction`,
+      collisions,
+      "a catalog value appears as whole words inside a dataset instruction",
     ).toEqual([]);
   });
 
@@ -693,27 +679,26 @@ describe("the typing of the research material that must never be localized", () 
     // The fragment is taken from the record because a hand-written sample would have reproduced the
     // original defect in a smaller size: a marker that matches neither the sample nor the data.
     const fragment = instruction.split(/\s+/u).slice(0, 3).join(" ");
-    expect(
-      fragment.length,
-      "the control fragment clears MIN_FRAGMENT_CHARACTERS, so it exercises the rule in force",
-    ).toBeGreaterThanOrEqual(MIN_FRAGMENT_CHARACTERS);
     expect(matchesWholeWords(fragment, instruction), "the control fragment is a real one").toBe(
       true,
     );
 
-    // And the coincidence the floor exists for is demonstrated on REAL data, with the offending
-    // instruction FOUND rather than written out. The first draft of this control hardcoded `entries[0]`
+    // And the coincidence the RETIRED floor existed for is demonstrated on REAL data, with the
+    // offending instruction FOUND rather than written out. The first draft of this control hardcoded `entries[0]`
     // and the word "of", and it failed: that record does not mention a university, so the anchor was a
     // guess about the data and the assertion was false for a reason that had nothing to do with the
     // rule. This is the same lesson as every other hand-typed anchor in this repository - it is also
     // why the search below asserts that it found something, so a dataset revision that removes the
     // collision reports INCONCLUSIVE rather than passing quietly.
+    //
+    // The floor is gone but the coincidence is still in the DATA: "of" whole-word-matches an
+    // instruction carrying an English institution name, which is exactly why no catalog value
+    // may be such a word — the zero-collision measurement above enforces that at every length.
     const shortValue = "of";
-    expect(shortValue.length).toBeLessThan(MIN_FRAGMENT_CHARACTERS);
     const coincidence = entries.find((entry) => matchesWholeWords(shortValue, entry.instruction));
     expect(
       coincidence,
-      `no instruction contains ${JSON.stringify(shortValue)} as a whole word, so the fragment floor is no longer excluding anything and MIN_FRAGMENT_CHARACTERS should be reconsidered`,
+      `no instruction contains ${JSON.stringify(shortValue)} as a whole word, so the matcher itself cannot fire and the zero-collision measurement above is vacuous`,
     ).toBeDefined();
     // Named in the message because it is the evidence for the floor being load-bearing: an English
     // function word colliding with an English institution name inside an Ilocano sentence.
