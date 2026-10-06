@@ -115,6 +115,10 @@ export const BATCHES_OPERATIONS = {
   // the union is named after the table at all, and rejected for the reason above — it would be a
   // FOURTH locally reasonable convention in a union that is meant to have one.
   listForRecovery: "validation_batches.listForRecovery",
+  // `allocate` is NOT a divergence: the method and the persistence call share one name, because
+  // the versioned function is itself the persistence call — there is no table verb to diverge
+  // from. The union entry names the table so the operation reads like its siblings.
+  allocate: "validation_batches.allocate",
 } as const satisfies Record<keyof BatchesRepository, RepositoryOperation>;
 
 /**

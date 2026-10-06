@@ -153,8 +153,8 @@ export const batchIdSchema = z
  * decoration: they mirror `batch_entries_position_positive` in the allocation migration, so a
  * value the database would refuse cannot be constructed here either.
  *
- * What this deliberately cannot be is client-supplied. The position is derived by the allocation
- * service from the order `selectBatchEntries` returned; there is no code path by which a payload
+ * What this deliberately cannot be is client-supplied. The position is derived by the
+ * versioned allocation function from the order it granted; there is no code path by which a payload
  * chooses it.
  */
 export const batchEntryPositionSchema = z

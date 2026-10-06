@@ -3,6 +3,8 @@ import "server-only";
 import type { RecoverableBatch } from "@/lib/domain/batch-recovery";
 import {
   RepositoryError,
+  type AllocatedPlacement,
+  type AllocateBatchInput,
   type BatchesRepository,
   type IsoDateTimeString,
 } from "@/lib/repositories";
@@ -104,6 +106,85 @@ export class SupabaseBatchesRepository implements BatchesRepository {
 
   constructor(client: SupabaseClientLike) {
     this.client = client;
+  }
+
+  /**
+   * The versioned allocation function this repository calls, named as a constant.
+   *
+   * Not parameterised by a caller, for the reason `entry-reservations.ts` records for its own
+   * two functions: a search for the name finds this file and the migration and nothing in
+   * between. The version suffix is load-bearing — a future allocator is a new function, never
+   * a redefinition — so the name is asserted whole, not composed from parts.
+   */
+  private static readonly ALLOCATE_FUNCTION = "allocate_validation_batch_v1";
+
+  /**
+   * Allocates a batch through the versioned function: one RPC call, granted placements back.
+   *
+   * An empty array is exhaustion-or-total-contention, never a failure: the function returns no
+   * rows when it granted nothing, and the service reports `exhausted` on exactly that. What
+   * raises is a call that never got an answer, or rows this code does not understand — a row
+   * that is not an entry id at a positive position means the deployed function is not the one
+   * this file names, and silently dropping it would turn someone else's grant into our
+   * contention, which fails in the wrong direction.
+   *
+   * Positions arrive 1-based from the function and are re-checked here rather than trusted:
+   * the stored order is research data, and a guarantee callers rely on must be a property of
+   * the returned value. The service reads the batch back through `findById` afterwards, so
+   * this check is the first of two, not the only one.
+   */
+  async allocate(input: AllocateBatchInput): Promise<readonly AllocatedPlacement[]> {
+    const context = "validation_batches.allocate";
+    const result = await awaitQuery(OPS.allocate, context, () =>
+      this.client.rpc(SupabaseBatchesRepository.ALLOCATE_FUNCTION, {
+        p_validator_id: input.validatorId,
+        p_batch_id: input.batchId,
+        p_batch_size: input.size,
+        p_ttl_seconds: input.ttlSeconds,
+        p_created_at: input.createdAt,
+      }),
+    );
+    if (result.error !== null) {
+      throw persistenceFailure(OPS.allocate, context, result.error);
+    }
+    if (!Array.isArray(result.data)) {
+      throw new RepositoryError(
+        OPS.allocate,
+        `${context} did not return a row array. Treating that as "nothing granted" would ` +
+          "report exhaustion precisely when the database is unreachable, which is the wrong direction.",
+        { detail: `unexpected rpc return shape` },
+      );
+    }
+    const placements: AllocatedPlacement[] = [];
+    for (const [index, row] of result.data.entries()) {
+      const entryId =
+        typeof row === "string" ? row : (row as { entry_id?: unknown } | null)?.entry_id;
+      // `entry_position`, not `position`: the latter is a reserved word in PostgreSQL and
+      // cannot name an OUT parameter, which the migration that first used it learned from the
+      // engine rather than from review.
+      const position =
+        typeof row === "object" && row !== null
+          ? (row as { entry_position?: unknown }).entry_position
+          : undefined;
+      if (typeof entryId !== "string" || entryId.length === 0) {
+        throw new RepositoryError(
+          OPS.allocate,
+          `${context} returned a row that is not an entry id.`,
+          {
+            detail: `unexpected rpc row shape at index ${index}`,
+          },
+        );
+      }
+      if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
+        throw new RepositoryError(
+          OPS.allocate,
+          `${context} returned a row without a positive 1-based position.`,
+          { detail: `unexpected rpc row shape at index ${index}` },
+        );
+      }
+      placements.push({ entryId, position });
+    }
+    return placements;
   }
 
   /**

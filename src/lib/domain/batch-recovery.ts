@@ -31,7 +31,7 @@
  *
  *   - Counting only this batch's responses would report work that does not exist. The validator
  *     answered the entry during an earlier batch, `validations_validator_entry_unique` means they
- *     will never be asked it again, and the allocation filter in `selectBatchEntries` excludes it.
+ *     will never be asked it again, and the versioned allocation function excludes it.
  *     An offer saying "3 remaining" would be showing someone a third entry they cannot do, and
  *     would show a validator a batch they cannot finish.
  *

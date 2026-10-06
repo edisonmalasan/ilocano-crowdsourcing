@@ -51,20 +51,16 @@ import type { AllocationOutcome } from "@/schemas/batch";
  */
 function actionDependencies(): AllocationActionDependencies {
   getServerEnv();
-  const { validators, datasetEntries, validations, batches, entryReservations } =
-    createSupabaseRepositories();
+  const { validators, datasetEntries, batches } = createSupabaseRepositories();
   return {
     validators,
     datasetEntries,
-    validations,
     batches,
-    entryReservations,
     // The schema's own defaults, parsed through the schema rather than written as literals, so
     // that when the approved batch size arrives it changes in `allocationConfigSchema` and nowhere
     // else. It remains pending thesis-team and adviser approval; there is no second number, because
     // the corrected methodology holds no validation target.
     config: allocationConfigSchema.parse({}),
-    random: Math.random,
     // ONE `Date` per batch, for the identifier AND the `created_at` the migration requires the
     // server to write. Two reads of the clock would let a batch's id and its column disagree, and the
     // column is the one that orders.

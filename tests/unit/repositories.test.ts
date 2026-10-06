@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DatasetEntry, DatasetEntryId } from "@/schemas/dataset";
 import type { ValidatorProfile } from "@/schemas/validator";
+import type { AllocateBatchInput, AllocatedPlacement } from "@/lib/repositories";
 import type { ValidationResponse } from "@/schemas/validation";
 
 import {
@@ -76,6 +77,8 @@ function createInMemoryRepositories() {
   const entries = new Map<DatasetEntryId, DatasetEntry>([[ENTRY.id, ENTRY]]);
   const profiles = new Map<string, ValidatorProfile>();
   const responses: ValidationResponse[] = [];
+  const allocateCalls: AllocateBatchInput[] = [];
+  const allocateScript: Array<readonly AllocatedPlacement[]> = [];
 
   const datasetEntries: DatasetEntriesRepository = {
     async listActive() {
@@ -183,6 +186,17 @@ function createInMemoryRepositories() {
   const batchCreatedAt = new Map<string, string>();
 
   const batchRepository: BatchesRepository = {
+    async allocate(input) {
+      // Records the call; the grant itself is scripted per test through `allocateScript`,
+      // because an in-memory fake cannot arbitrate contention — that is the database's job,
+      // proven in `tests/integration/allocation-rpc-parity.test.ts`.
+      allocateCalls.push(input);
+      const next = allocateScript.shift();
+      if (next === undefined) {
+        throw new Error("batches.allocate called with no scripted grant");
+      }
+      return next;
+    },
     async create(batch, createdAt) {
       if (batches.has(batch.id)) {
         throw new RepositoryError("validation_batches.insert", `batch ${batch.id} already exists`);
@@ -242,6 +256,8 @@ function createInMemoryRepositories() {
     responses,
     profiles,
     entries,
+    allocateCalls,
+    allocateScript,
   };
 }
 
@@ -411,6 +427,7 @@ describe("failing repository", () => {
         countForValidator: async () => fail("validations.countForValidator", "down"),
       },
       batches: {
+        allocate: async () => fail("validation_batches.allocate", "down"),
         create: async () => fail("validation_batches.insert", "down"),
         findById: async () => fail("validation_batches.findById", "down"),
         listForRecovery: async () => fail("validation_batches.listForRecovery", "down"),

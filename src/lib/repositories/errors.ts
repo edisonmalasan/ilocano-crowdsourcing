@@ -57,6 +57,7 @@ export type RepositoryOperation =
   | "validation_batches.insert"
   | "validation_batches.findById"
   | "validation_batches.listForRecovery"
+  | "validation_batches.allocate"
   | "researcher_signin_attempts.recordAttempt"
   | "researcher_signin_attempts.clear"
   | "entry_reservations.claim"

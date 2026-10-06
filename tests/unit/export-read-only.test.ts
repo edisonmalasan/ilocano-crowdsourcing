@@ -34,7 +34,10 @@ const SCOPED = [
 const KNOWN_WRITERS = [
   { file: path.join(SRC, "lib", "validation", "validation-actions-core.ts"), method: "insert" },
   { file: path.join(SRC, "lib", "validators", "enrollment.ts"), method: "create" },
-  { file: path.join(SRC, "lib", "allocation", "allocate-batch.ts"), method: "create" },
+  // `allocate-batch.ts` used to be the `.create(` control here; the database-side allocator
+  // removed its repository write call, so the control moved to the module that still writes
+  // through the privileged path — and to the `rpc` shape, which is the call this change adds.
+  { file: path.join(SRC, "lib", "repositories", "supabase", "batches.ts"), method: "rpc" },
   { file: path.join(SRC, "lib", "admin", "signin-core.ts"), method: "recordAttempt" },
   { file: path.join(SRC, "lib", "admin", "signin-core.ts"), method: "clear" },
 ] as const;
