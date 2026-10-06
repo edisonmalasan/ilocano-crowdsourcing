@@ -1286,8 +1286,8 @@ describe("the copy that described a returning person, and now describes one sess
       "en:ready.title",
       "en:resume.unknown",
       "en:screening.resumeNote",
-      "en:start.beforeAnswer.item3",
       "en:start.beforeAnswer.label",
+      "en:start.lead",
       "en:validate.finished.failure.invalid",
       "en:validate.finished.failure.screeningRequired",
       "en:validateStart.failure.invalid",
@@ -1368,8 +1368,14 @@ describe("the copy that described a returning person, and now describes one sess
       expect(notice.toLowerCase(), `${locale} notice claims a previous visit`).not.toMatch(
         /(take|taken|participat|gininawa|nagawa)/,
       );
-      // And it DOES name the session, which is the half that makes it an answer rather than a deletion.
-      expect(notice.toLowerCase(), `${locale} notice does not name the session`).toMatch(/session/);
+      // And it DOES name the scope that makes it an answer rather than a deletion. The English
+      // wording names the tab mechanism ("This tab remembers it"); the Filipino wording names
+      // the session. Re-baselined for the owner's plain-words screening rewrite, which expresses
+      // session scope without the word "session" in English.
+      const scopePattern = locale === "en" ? /tab remembers it|session/ : /session/;
+      expect(notice.toLowerCase(), `${locale} notice does not name the session`).toMatch(
+        scopePattern,
+      );
     }
   });
 

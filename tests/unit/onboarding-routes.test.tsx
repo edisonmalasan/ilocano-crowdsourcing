@@ -322,13 +322,13 @@ describe("screening route", () => {
 
   it("states the voluntary-participation notice on the same screen as the question", () => {
     // A notice only reachable from another page is a notice a participant can skip.
-    expect(html).toMatch(/Taking part is voluntary/);
-    expect(html).toMatch(/stop at any point/);
+    expect(html).toMatch(/Taking part is completely voluntary/);
+    expect(html).toMatch(/stop at any time/);
   });
 
   it("states that no identifying information is collected", () => {
     expect(html).toMatch(
-      /do not ask for your name, your email, your student number, or your phone/i,
+      /do not ask for your name, email, student number, or phone/i,
     );
   });
 
@@ -338,8 +338,8 @@ describe("screening route", () => {
     // string verbatim — protecting the error from review rather than catching it.
     expect(html).not.toMatch(/random code held only in this browser/i);
 
-    expect(html).toMatch(/keeps a copy for the session/i);
-    expect(html).toMatch(/stores the code with your answers/i);
+    expect(html).toMatch(/this tab remembers it/i);
+    expect(html).toMatch(/database saves it with your answers/i);
   });
 
   it("places every notice statement ABOVE the first submit control", () => {
@@ -356,9 +356,9 @@ describe("screening route", () => {
 
     // And each individual statement, not just the card heading.
     for (const statement of [
-      /Taking part is voluntary/,
+      /Taking part is completely voluntary/,
       /do not ask for your name/,
-      /Your identity is a random code/,
+      /identified only by a random code/,
     ]) {
       const at = html.search(statement);
       expect(at).toBeGreaterThan(-1);
