@@ -407,6 +407,8 @@ describe("attempt participation", () => {
       expect(overview.zeroResponseAttempts).toBe(0);
       expect(warnings.length).toBe(1);
       expect(String(warnings[0]?.[0])).toContain("no validator profile");
+      // Count only, never identifiers: a regression logging the orphan ID must fail here.
+      expect(String(warnings[0]?.[0])).not.toContain("VAL_00000009");
     } finally {
       spy.mockRestore();
     }
