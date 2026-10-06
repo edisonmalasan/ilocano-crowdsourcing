@@ -23,6 +23,18 @@ The privileged credential SHALL be readable only from server-side modules. No mo
 reachable from a client component SHALL import, reference, or forward a privileged credential,
 and no privileged credential SHALL be embedded in any value sent to the browser.
 
+Background validation-response writes SHALL travel as same-origin POST requests to a Route
+Handler that validates input strictly (batch id, dataset entry id, response payload only),
+derives validator/attempt ownership and timestamps server-side, and persists through exactly one
+versioned `submit_validation_response` RPC executed with the privileged path. The browser SHALL
+never call a privileged RPC directly and SHALL never supply validator id, response id,
+timestamps, or batch ownership.
+
+The response-submit RPC SHALL follow the established versioned-function posture: explicit
+`search_path`, `SECURITY DEFINER`, and EXECUTE granted to `service_role` only with PUBLIC, anon,
+and authenticated revoked. Client-called Server Actions remain for one-shot workflows and SHALL
+NOT serve as the transport for individual background response writes.
+
 #### Scenario: Privileged credential is unavailable to browser code
 
 - **WHEN** the module graph reachable from a client component is inspected
@@ -39,6 +51,16 @@ and no privileged credential SHALL be embedded in any value sent to the browser.
 
 - **WHEN** the browser access path is constructed
 - **THEN** it is configured with the public-safe key only
+
+#### Scenario: A background save is a strict POST
+
+- **WHEN** a malformed response POST arrives
+- **THEN** it is refused with a typed reason before any database work
+
+#### Scenario: The submit RPC is service-role only
+
+- **WHEN** the RPC grants are inspected on the hosted project
+- **THEN** only `service_role` may execute it and PUBLIC/anon/authenticated are revoked
 
 ### Requirement: Repository interfaces own persistence concerns
 

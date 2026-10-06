@@ -17,6 +17,11 @@ count behind an entry SHALL decide eligibility. A client SHALL NOT supply the
 entry list, the per-entry coverage, the ordering, or the effective batch size; any such value
 submitted by a client SHALL be ignored.
 
+The configured batch size is 5. Allocation SHALL return at most 5 entries per batch; a shorter
+batch under honest exhaustion or contention is reported with its actual persisted size. The
+configured size lives in the allocation configuration default (`BATCH_SIZE_DEFAULT = 5`) and
+nowhere else.
+
 The eligibility computation SHALL run inside the database in a versioned allocation function,
 so the ordinary allocation path transfers neither the 4,800-entry pool nor the pool's response
 rows to the application server. The pooled-completeness pillars SHALL exist in exactly one SQL
@@ -44,6 +49,13 @@ ids), and persistence in one transaction, which is what makes the atomicity real
 aspirational. When a claim round grants fewer entries than requested, selection SHALL run again
 excluding granted ids, for at most two extra rounds; persistent contention SHALL collapse to
 `exhausted` rather than to an empty batch.
+
+Answering another batch after a passed checkpoint keeps the SAME attempt identity: no new
+validator is minted because another batch was requested.
+
+> **The batch size of 10 is SUPERSEDED by this change, recorded rather than silently edited.**
+> The earlier configuration allocated 10 entries per batch. The rule is otherwise unchanged;
+> only the number moves from 10 to 5.
 
 #### Scenario: A client cannot choose which entries it receives
 
@@ -119,6 +131,26 @@ excluding granted ids, for at most two extra rounds; persistent contention SHALL
   the TypeScript completion definition
 - **THEN** both report the same complete/incomplete answer, as proven by the exhaustive
   parity suite rather than by inspection
+
+#### Scenario: Allocation returns at most five entries
+
+- **WHEN** a validator with no blocking state requests a batch from a healthy pool
+- **THEN** the allocated batch holds at most 5 entries
+
+#### Scenario: A short batch under exhaustion is honest
+
+- **WHEN** the eligible pool holds fewer than 5 entries
+- **THEN** the batch reports its actual persisted size and does not repeat entries to reach 5
+
+#### Scenario: Same-attempt entries are never re-assigned
+
+- **WHEN** an attempt that already answered or was assigned an entry requests another batch
+- **THEN** that entry is excluded from the new batch
+
+#### Scenario: Answering another batch keeps the same attempt
+
+- **WHEN** a validator requests another batch after a passed checkpoint
+- **THEN** the same attempt identity is used and no new validator is minted
 
 ### Requirement: Eligible entries are offered in a randomized order
 
