@@ -349,9 +349,6 @@ export const ENGLISH_COPY = {
   "validation.save.saved": "Saved",
   "validation.save.retrying": "Could not save yet. Retrying…",
   "validation.save.backlog": "Saving your recent responses…",
-  "validation.save.unsaved":
-    "One answer is still not saved. Nothing is lost. Try again in a moment.",
-  "validation.save.leaveWarning": "Some answers are still saving. Leaving now may lose them.",
   "validation.failure.invalid":
     "That answer did not go through, and nothing was saved. Check the highlighted inputs.",
   "validation.failure.notConfigured": "The study is closed at the moment, and nothing was saved.",
@@ -752,10 +749,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validation.save.saved": "Naka-save",
   "validation.save.retrying": "Hindi pa na-save. Sinusubukang muli…",
   "validation.save.backlog": "Ini-save ang mga huli mong sagot…",
-  "validation.save.unsaved":
-    "May isang sagot na hindi pa nase-save. Walang nawala. Subukan mong muli maya-maya.",
-  "validation.save.leaveWarning":
-    "May mga sagot pang sini-save. Kapag umalis ka ngayon, baka mawala ang mga iyon.",
   "validation.failure.invalid":
     "Hindi umubra ang sagot na iyon, at walang nase-save. Pakitsek ang mga naka-highlight na " +
     "input.",

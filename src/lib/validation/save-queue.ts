@@ -112,8 +112,9 @@ export function createSaveQueue(options: SaveQueueOptions) {
    *
    * Strictly sequential per key: a second `drive` for the same key while one is in flight is
    * impossible, because `draining` holds the in-flight promise and `enqueue` returns it rather
-   * than starting another. Two entries drive concurrently with each other — each awaits only its
-   * own submission — so one slow save never head-of-line-blocks another.
+   * than starting another. Across keys the drives are concurrent — each awaits only its own
+   * submission — so one slow save never head-of-line-blocks another; per-key order is what the
+   * guarantee covers, and `drain()` waits for every key.
    */
   async function drive(item: QueuedSave): Promise<void> {
     for (let attempt = 1; ; attempt += 1) {
@@ -145,6 +146,11 @@ export function createSaveQueue(options: SaveQueueOptions) {
         return;
       }
 
+      // Announced BEFORE the backoff elapses, not after: the wait is the visible part of a
+      // retry, and a status that appears only while the next attempt's request is in flight
+      // would flicker past unread. The loop top re-asserts the same state for the attempt.
+      states.set(item.key, { kind: "retrying", attempt: attempt + 1 });
+      emit();
       await wait(backoff[Math.min(attempt - 1, backoff.length - 1)] ?? 0);
     }
   }

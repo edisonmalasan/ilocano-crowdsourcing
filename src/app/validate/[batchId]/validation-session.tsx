@@ -123,6 +123,15 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
   const [hasConfirmedSave, setHasConfirmedSave] = useState(false);
 
   /**
+   * Every submit this mount has enqueued, including ones that did not advance yet. When a
+   * submitted entry's save confirms while the view is still on it — the unsaved-block path —
+   * the resume effect below completes the held advance. Without this record the session would
+   * sit on an answered, latched entry with no control that advances: the latch never releases
+   * for the same entry, and the queue's idempotency would no-op a resubmit.
+   */
+  const submittedRef = useRef<ReadonlySet<string>>(new Set());
+
+  /**
    * The queue outlives every render: payloads must survive the transition they were enqueued
    * for. Created once per mount — a batch is one mount — so a re-render never strands a save.
    */
@@ -211,6 +220,21 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
     // eslint-disable-next-line react-hooks/exhaustive-deps -- advanceOrFlush reads the prefetch and view as they are at the moment the drain completes; subscribing to them would re-fire the held advance on every unrelated prefetch resolution.
   }, [phase, snapshot.pending.length, snapshot.unsaved.length]);
 
+  /**
+   * Complete a held advance: the view is still on an entry it already submitted, and that
+   * entry's save has since confirmed. Normal submits advance synchronously, so by the time a
+   * save confirms the view is elsewhere and this does nothing; it fires only for the held
+   * paths (unsaved-block, backlog) whose advance was deferred. Flush phases are excluded —
+   * they own their own navigation — and so is anything but a confirmed save of THIS entry.
+   */
+  useEffect(() => {
+    if (phase !== "answering") return;
+    if (!submittedRef.current.has(view.entry.id)) return;
+    if (snapshot.states[view.entry.id]?.kind !== "saved") return;
+    advanceOrFlush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see the effect above.
+  }, [phase, snapshot, view.entry.id]);
+
   /** Swap the presented entry in place and record where the address bar says we are. */
   function advanceTo(next: PresentedEntry): void {
     setView(next);
@@ -267,6 +291,9 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
       position: view.position,
       payload,
     });
+    // Recorded even when the advance below is held: the resume effect completes it once the
+    // save confirms, which is what keeps a submit-while-parked from wedging the session.
+    submittedRef.current = new Set(submittedRef.current).add(view.entry.id);
 
     // A parked failure blocks advancement until it is retried: moving on would strand a
     // response the participant believes is queued, and the unsaved panel below is where it is
@@ -384,9 +411,10 @@ function SaveStatus({
   }
 
   if (snapshot.pending.length > 0) {
+    const retrying = Object.values(snapshot.states).some((state) => state.kind === "retrying");
     return (
       <p role="status" className="text-small text-ink-muted">
-        {t("validation.save.saving")}
+        {retrying ? t("validation.save.retrying") : t("validation.save.saving")}
       </p>
     );
   }

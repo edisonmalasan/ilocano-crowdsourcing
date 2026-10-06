@@ -149,11 +149,14 @@ describe("createSaveQueue", () => {
     queue.enqueue(item());
     await flush();
     expect(submit).toHaveBeenCalledTimes(1);
-    expect(queue.snapshot().states["OD_0001"]).toEqual({ kind: "saving", attempt: 1 });
 
     // The first retry waits 500ms; nothing is re-sent until the test releases the wait.
     expect(wait).toHaveBeenCalledTimes(1);
     expect(wait).toHaveBeenLastCalledWith(500);
+    // The retry is announced BEFORE the backoff elapses — the wait is the visible part —
+    // so the retry state already shows while nothing has been re-sent yet.
+    expect(queue.snapshot().states["OD_0001"]).toEqual({ kind: "retrying", attempt: 2 });
+    expect(submit).toHaveBeenCalledTimes(1);
     releases.forEach((release) => release());
     await queue.drain();
 
@@ -184,6 +187,26 @@ describe("createSaveQueue", () => {
     expect(submit).toHaveBeenCalledTimes(3);
     expect(queue.snapshot().states["OD_0001"]).toEqual({ kind: "saved" });
     expect(queue.snapshot().unsaved).toEqual([]);
+  });
+
+  it("treats not_configured as transient: bounded retries, then parked", async () => {
+    // A deployment that gains a database mid-batch recovers on retry; one that never does
+    // parks like any exhausted transient — retried, then retained, never dropped.
+    const submit = vi.fn(async (): Promise<SubmitValidationResult> => ({
+      status: "failed",
+      reason: "not_configured",
+    }));
+    const queue = createSaveQueue({ submit, wait: async () => {}, maxAttempts: 2 });
+
+    queue.enqueue(item());
+    await queue.drain();
+
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(queue.snapshot().states["OD_0001"]).toEqual({
+      kind: "unsaved",
+      reason: "not_configured",
+    });
+    expect(queue.snapshot().unsaved.map((entry) => entry.key)).toEqual(["OD_0001"]);
   });
 
   it("never retries an invalid, unknown-batch, or not-in-batch refusal", async () => {

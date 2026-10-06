@@ -335,6 +335,10 @@ describe("S-7/S-8 — failure, retry, and refusal", () => {
     await view.settle(() => {
       first.resolve(PERSISTENCE);
     });
+    // Between the failure and the retry the status names the wait, without alarming: the
+    // response is still queued and the participant may keep answering.
+    await view.settle();
+    expect(view.container.textContent).toMatch(/Could not save yet/);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 650));
     });
@@ -360,6 +364,68 @@ describe("S-7/S-8 — failure, retry, and refusal", () => {
     // No retry storm for a refusal that re-sending cannot fix.
     await view.settle();
     expect(h.saves).toHaveLength(1);
+  });
+});
+
+describe("S-15 — a submit held by a parked failure resumes after retry", () => {
+  it("retrying the parked entry completes the held advance", async () => {
+    // THE deadlock independent verification found: entry 1 parks while the session is on
+    // entry 2, entry 2 is submitted while entry 1 is parked (its advance held nowhere),
+    // entry 1 is retried to saved and entry 2 confirms — and the session must move on
+    // rather than sit on an answered, latched entry no control advances.
+    const first = deferred<SubmitValidationResult>();
+    const second = deferred<SubmitValidationResult>();
+    h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
+    h.prefetchScript.set(2, [async () => readyFor(2, E3)]);
+    h.prefetchScript.set(3, [async () => FINISHED]);
+    h.saveScript.push(
+      () => first.promise,
+      async () => ({ status: "failed", reason: "persistence" }),
+      async () => ({ status: "failed", reason: "persistence" }),
+      () => second.promise,
+      async () => recordedFor("OD_0001"),
+    );
+    mountRunner();
+    await view.settle();
+
+    // Answer entry 1 and advance while its save is still open.
+    await answerFully()(0);
+    await submitCurrent();
+    expect(instructionVisible("OD_0002")).toBe(true);
+
+    // Fail all three attempts (500ms + 1000ms of real backoff): entry 1 parks while the
+    // session is on entry 2. Polled rather than slept fixed: backoff timing plus harness
+    // overhead makes any single sleep either flaky or wasteful, and the panel's appearance
+    // is the event being waited for.
+    await view.settle(() => {
+      first.resolve(PERSISTENCE);
+    });
+    for (let waited = 0; waited < 20; waited += 1) {
+      if (view.all('[role="alert"]').length > 0) break;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      });
+      if (waited === 19) throw new Error("unsaved panel never appeared for the parked entry");
+    }
+    expect(view.one('[role="alert"]')).toBeTruthy();
+    expect(instructionVisible("OD_0002")).toBe(true);
+
+    // Submit entry 2 while entry 1 is parked: the advance is held, not lost.
+    await answerFully()(0);
+    await submitCurrent();
+    expect(instructionVisible("OD_0002")).toBe(true);
+
+    // Retry entry 1 through its panel control, then confirm entry 2: the held advance
+    // completes to entry 3 without another submit.
+    const retry = view
+      .all("button")
+      .find((button) => button.textContent === "Try again") as HTMLButtonElement;
+    await view.pressAndSettle(retry);
+    await view.settle(() => {
+      second.resolve(recordedFor("OD_0002"));
+    });
+    expect(instructionVisible("OD_0003")).toBe(true);
+    expect(h.saves).toHaveLength(5);
   });
 });
 
