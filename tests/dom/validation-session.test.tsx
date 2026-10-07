@@ -2,7 +2,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  ENTRY_SETTLING_MS,
+  ENTRY_TRANSITION_MS,
   ValidationSessionRunner,
 } from "@/app/validate/[batchId]/validation-session";
 import type { RequestNextEntryResult } from "@/lib/validation/next-entry-actions-core";
@@ -177,19 +177,22 @@ async function submitCurrent(): Promise<void> {
 }
 
 /**
- * Waits out the entry-settling interval in real time.
+ * Waits out the entry transition in real time.
  *
- * Follow-up entries present with their controls disabled for
- * `ENTRY_SETTLING_MS`; a test that answers a second entry must let that
- * interval elapse first, or the press meets a disabled control and records
- * nothing. The small margin covers harness overhead. Only tests that answer
- * past the first entry need this — the first presentation never settles.
+ * Follow-up entries reveal after `ENTRY_TRANSITION_MS`; a test that answers
+ * a second entry must let that interval elapse first, or the press meets a
+ * skeleton with no form and records nothing. The small margin covers harness
+ * overhead.
  */
-async function waitSettling(): Promise<void> {
+async function waitTransition(): Promise<void> {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ENTRY_SETTLING_MS + 150));
+    await new Promise((resolve) => setTimeout(resolve, ENTRY_TRANSITION_MS + 200));
   });
   await view.settle();
+}
+
+function skeletonVisible(): boolean {
+  return view.container.querySelectorAll('[data-skeleton="validation"]').length === 1;
 }
 
 function instructionVisible(id: string): boolean {
@@ -257,7 +260,9 @@ describe("S-1 — mounting prefetches exactly the next position", () => {
     await answerFully()(0);
     await submitCurrent();
 
-    await view.settle();
+    // The submit starts the transition skeleton; the reveal fires the next prefetch.
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     // The advance consumed the position-1 prefetch; exactly one position-2 prefetch follows.
     expect(
       h.prefetchCalls.filter((call) => (call as { position: number }).position === 2),
@@ -281,13 +286,13 @@ describe("S-2 — the prefetched sentence is never exposed before its turn", () 
   });
 });
 
-describe("S-3/S-4 — instant advance with a save still open", () => {
-  it("shows the next entry immediately, with no running save commentary", async () => {
-    // The routine Saving…/Saved indicator was removed by owner decision: the advance itself is
+describe("S-3/S-4 — skeleton transition with a save still open", () => {
+  it("shows the skeleton at once, then the next entry, with no running save commentary", async () => {
+    // The routine Saving…/Saved indicator was removed by owner decision: the skeleton is
     // the feedback, and a validator answering steadily reads no commentary on background work.
-    // What this still proves is the behavior underneath — the entry swaps without awaiting
-    // the write, exactly one save goes out for the answered entry, and the confirmation
-    // resolves silently without touching the new entry.
+    // What this still proves is the behavior underneath — the save starts at submit, exactly
+    // one save goes out for the answered entry, the skeleton owns the interval, and the
+    // confirmation resolves silently without touching the new entry.
     const saveGate = deferred<SubmitValidationResult>();
     h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
     h.prefetchScript.set(2, [async () => readyFor(2, E3)]);
@@ -298,13 +303,17 @@ describe("S-3/S-4 — instant advance with a save still open", () => {
     await answerFully()(0);
     await submitCurrent();
 
-    // Advanced WITHOUT awaiting the write: E2 on screen, save still open, no status text.
-    expect(instructionVisible("OD_0002")).toBe(true);
+    // Skeleton WITHOUT awaiting the write: neither sentence, save still open, no status text.
+    expect(skeletonVisible()).toBe(true);
     expect(instructionVisible("OD_0001")).toBe(false);
+    expect(instructionVisible("OD_0002")).toBe(false);
     expect(view.container.textContent).not.toMatch(/Saving…/);
     expect(view.container.textContent).not.toMatch(/Saved/);
-    // Exactly one save, for the answered entry — the advance sent nothing itself.
+    // Exactly one save, for the answered entry — the transition sent nothing itself.
     expect(h.saves).toHaveLength(1);
+
+    await waitTransition();
+    expect(instructionVisible("OD_0002")).toBe(true);
 
     await view.settle(() => {
       saveGate.resolve(recordedFor("OD_0001"));
@@ -325,9 +334,9 @@ describe("S-3/S-4 — instant advance with a save still open", () => {
 
     await answerFully()(0);
     await submitCurrent();
-    // The new entry settles before accepting input: let its interval elapse
-    // before typing into it, or the press meets a disabled control.
-    await waitSettling();
+    // The transition owns the interval: let it elapse before typing into the
+    // revealed entry, or the press meets a skeleton with no form.
+    await waitTransition();
     // Type into the NEW entry while the old save is still open.
     const group = view.all('[role="radiogroup"]')[0] as HTMLElement;
     const buttons = Array.from(group.querySelectorAll('button[role="radio"]'));
@@ -353,6 +362,8 @@ describe("S-3/S-4 — instant advance with a save still open", () => {
     await answerFully()(0);
     await submitCurrent();
 
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0002")).toBe(true);
     // No status text either way: already_recorded confirms silently like a fresh record.
     expect(view.container.textContent).not.toMatch(/Saving…/);
@@ -400,6 +411,8 @@ describe("S-7/S-8 — failure, retry, and refusal", () => {
 
     await answerFully()(0);
     await submitCurrent();
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0002")).toBe(true);
 
     // Fail the first attempt. The retry waits out the real 500ms backoff — advanced here
@@ -468,6 +481,8 @@ describe("S-7/S-8 — failure, retry, and refusal", () => {
 
     await answerFully()(0);
     await submitCurrent();
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0002")).toBe(true);
 
     await act(async () => {
@@ -499,9 +514,11 @@ describe("S-15 — a submit held by a parked failure resumes after retry", () =>
     mountRunner();
     await view.settle();
 
-    // Answer entry 1 and advance while its save is still open.
+    // Answer entry 1 and show the transition skeleton while its save is still open.
     await answerFully()(0);
     await submitCurrent();
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0002")).toBe(true);
 
     // Fail all three attempts (500ms + 1000ms of real backoff): entry 1 parks while the
@@ -521,16 +538,16 @@ describe("S-15 — a submit held by a parked failure resumes after retry", () =>
     expect(view.one('[role="alert"]')).toBeTruthy();
     expect(instructionVisible("OD_0002")).toBe(true);
 
-    // The parked-entry wait above consumed most of the settling interval, but
-    // not all of it: let the remainder elapse before answering entry 2.
-    await waitSettling();
+    // The parked-entry wait above ran past the transition; entry 2 is revealed.
+    await waitTransition();
     // Submit entry 2 while entry 1 is parked: the advance is held, not lost.
     await answerFully()(0);
     await submitCurrent();
+    // Held: still on entry 2 with the skeleton cleared to the entry the panel refers to.
     expect(instructionVisible("OD_0002")).toBe(true);
 
     // Retry entry 1 through its panel control, then confirm entry 2: the held advance
-    // completes to entry 3 without another submit.
+    // completes through the transition skeleton to entry 3 without another submit.
     const retry = view
       .all("button")
       .find((button) => button.textContent === "Try again") as HTMLButtonElement;
@@ -538,6 +555,8 @@ describe("S-15 — a submit held by a parked failure resumes after retry", () =>
     await view.settle(() => {
       second.resolve(recordedFor("OD_0002"));
     });
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0003")).toBe(true);
     expect(h.saves).toHaveLength(5);
   });
@@ -563,20 +582,22 @@ describe("S-9 — worker occupancy never holds advancement", () => {
 
     await answerFully()(0);
     await submitCurrent();
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0002")).toBe(true);
 
-    // Each follow-up entry settles before accepting input.
-    await waitSettling();
+    // Each follow-up entry reveals after its own transition.
     await answerFully()(0);
     await submitCurrent();
-    // Still advancing with two saves open: no backlog hold, no plain-copy pause.
+    // Still advancing with two saves open: skeleton first, then the entry.
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0003")).toBe(true);
     expect(view.container.textContent).not.toMatch(/Saving your recent responses/);
     expect(h.saves).toHaveLength(2);
 
     // The final answer enqueues a third save and transitions in place to the finished card —
     // advancement itself never waited on worker occupancy.
-    await waitSettling();
     await answerFully()(0);
     await submitCurrent();
     expect(h.saves).toHaveLength(3);
@@ -637,7 +658,10 @@ describe("S-11 — no usable prefetch falls back to confirm-then-navigate", () =
     await answerFully()(0);
     await submitCurrent();
 
+    // Generic skeleton while the fallback confirms, then navigation.
+    expect(skeletonVisible()).toBe(true);
     expect(h.saves).toHaveLength(1);
+    await waitTransition();
     expect(h.pushes).toHaveLength(1);
     expect(h.pushes[0]).toContain("position=2");
   });
@@ -659,6 +683,8 @@ describe("S-12 — double submit sends once", () => {
     });
 
     expect(h.saves).toHaveLength(1);
+    expect(skeletonVisible()).toBe(true);
+    await waitTransition();
     expect(instructionVisible("OD_0002")).toBe(true);
   });
 });

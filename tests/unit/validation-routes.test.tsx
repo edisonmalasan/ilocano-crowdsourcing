@@ -1581,12 +1581,12 @@ describe("the start route", () => {
 
     const metadata = await generateMetadata();
 
-    // The `validateStart.*` namespace, not `validate.*`. The first draft of this test asked for
-    // `validate.start.meta.title` and compared against `undefined`, which is the shape a wrong key
-    // produces and nothing else — `expect(undefined).toBe(undefined)` passes.
-    expect(metadata.title).toBe(EN("validateStart.meta.title"));
+    // The `/validate` page renders the Validating shell directly: its title and
+    // description come from the `validate.meta.*` namespace, not the removed
+    // `validateStart.meta.title` / `validateStart.lead` waiting-page keys.
+    expect(metadata.title).toBe(EN("validate.meta.title"));
     expect(metadata.title).toBeDefined();
-    expect(String(metadata.description ?? "")).toBe(EN("validateStart.lead"));
+    expect(String(metadata.description ?? "")).toBe(EN("validate.meta.description"));
   });
 
   it("issues no manual control in server markup — orchestration starts on mount", async () => {

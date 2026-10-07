@@ -71,19 +71,6 @@ export interface ValidationFormProps {
   readonly locale: InterfaceLocale;
   readonly datasetEntryId: string;
   /**
-   * True while the newly presented entry is still settling. ORed with the
-   * form's own pending state for every control's `disabled`: during the
-   * interval the sentence stays readable but nothing is answerable.
-   *
-   * No submit guard reads this flag, and that is not an omission. While
-   * settling, the only submit control is disabled, the options are
-   * `type="button"`, and the text inputs are textareas (Enter inserts a
-   * newline, never an implicit submission) — so in a real browser there is no
-   * enabled path that reaches `onSubmit` before the interval ends. The runner
-   * owns the interval; this component only renders it.
-   */
-  readonly settling?: boolean;
-  /**
    * Receives a locally-validated payload. The runner enqueues it and advances;
    * nothing here awaits the server, so this callback is synchronous by contract
    * and the form never reports a response as saved.
@@ -91,12 +78,7 @@ export interface ValidationFormProps {
   readonly onValidSubmit: (payload: ValidationResponseInput) => void;
 }
 
-export function ValidationForm({
-  locale,
-  datasetEntryId,
-  settling = false,
-  onValidSubmit,
-}: ValidationFormProps) {
+export function ValidationForm({ locale, datasetEntryId, onValidSubmit }: ValidationFormProps) {
   const t = translatorFor(locale);
   const [input, setInput] = useState<EntryFormInput>(EMPTY_ENTRY_FORM_INPUT);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
@@ -178,9 +160,10 @@ export function ValidationForm({
   // control still reports its own in-progress state per `design-system`, and the latch above
   // is still what makes the single-flight guarantee.
   //
-  // `settling` joins `isPending` for every interactive control: a newly presented entry is
-  // readable but not answerable until its interval ends. Only availability changes — the
-  // submit LABEL stays "Save and continue" rather than borrowing the "Saving…" text, because
+  // Entry transitions never disable this form: while the skeleton shows, this
+  // component is not rendered at all, and a revealed entry arrives immediately
+  // interactive. Only `isPending` governs availability here — the submit LABEL
+  // stays "Save and continue" rather than borrowing the "Saving…" text, because
   // reporting a presentational pause as a server write would be exactly the routine saving
   // commentary the study removed, and `aria-busy` stays reserved for a genuine pending write.
   const submitState = submitControlState(isPending, t);
@@ -213,7 +196,7 @@ export function ValidationForm({
           const parsed = evaluationSchema.safeParse(value);
           if (parsed.success) edit("evaluation", parsed.data);
         }}
-        disabled={isPending || settling}
+        disabled={isPending}
         error={fieldErrors["evaluation"]}
       />
 
@@ -232,7 +215,7 @@ export function ValidationForm({
               lang="ilo"
               rows={3}
               value={input.correctedInstruction}
-              disabled={isPending || settling}
+              disabled={isPending}
               aria-describedby={describedBy}
               aria-invalid={invalid}
               onChange={(event) => edit("correctedInstruction", event.currentTarget.value)}
@@ -266,7 +249,7 @@ export function ValidationForm({
                 edit("translationChoice", value);
               }
             }}
-            disabled={isPending || settling}
+            disabled={isPending}
             error={
               fieldErrors["translationChoice"] !== undefined
                 ? t("validation.translation.choice.required")
@@ -288,7 +271,7 @@ export function ValidationForm({
                   lang="en"
                   rows={3}
                   value={input.englishTranslation}
-                  disabled={isPending || settling}
+                  disabled={isPending}
                   aria-describedby={describedBy}
                   aria-invalid={invalid}
                   onChange={(event) => edit("englishTranslation", event.currentTarget.value)}
@@ -312,7 +295,7 @@ export function ValidationForm({
                   lang="fil"
                   rows={3}
                   value={input.filipinoTranslation}
-                  disabled={isPending || settling}
+                  disabled={isPending}
                   aria-describedby={describedBy}
                   aria-invalid={invalid}
                   onChange={(event) => edit("filipinoTranslation", event.currentTarget.value)}
@@ -346,7 +329,7 @@ export function ValidationForm({
         <Button
           type="submit"
           size="lg"
-          disabled={submitState.disabled || settling}
+          disabled={submitState.disabled}
           aria-busy={submitState.ariaBusy}
         >
           {submitState.label}

@@ -249,13 +249,11 @@ export const ENGLISH_COPY = {
   "notFound.meta.title": "Page not found",
 
   // -- Starting a batch -----------------------------------------------------
-  // The orchestration screen reached after screening. The batch is requested
+  // The orchestration island on `/validate`, reached after screening. The batch is requested
   // from the server rather than linked to, because a batch id does not exist until the server has
-  // chosen one.
-  "validateStart.meta.title": "Start validating",
-  "validateStart.lead":
-    "You will get a set of Ilocano navigation sentences, one at a time, in the order the study " +
-    "chose.",
+  // chosen one. The route renders the Validating shell while the orchestration
+  // runs, so these keys cover only the failure and retry states: the waiting
+  // page and its title and lead copy are gone, in both catalogs.
   "validateStart.begin": "Give me my sentences",
   "validateStart.working": "Preparing your sentences…",
   "validateStart.working.ariaLabel": "Preparing your sentences",
@@ -642,9 +640,6 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   // -- Simula ng batch -------------------------------------------------------
   // The `/ready` page's onward path. A batch id does not exist until the server has chosen one, so
   // the request is made from the participant's browser rather than linked to from `/ready`.
-  "validateStart.meta.title": "Magsimula ng pagpapatunay",
-  "validateStart.lead":
-    "Makakakuha ka ng set ng mga pangungusap sa Ilocano, isa-isa, ayon sa ayos ng pag-aaral.",
   "validateStart.begin": "Bigyan ako ng mga pangungusap",
   "validateStart.working": "Inihahanda ang iyong mga pangungusap…",
   "validateStart.working.ariaLabel": "Inihahanda ang iyong mga pangungusap",

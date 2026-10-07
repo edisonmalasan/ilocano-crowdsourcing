@@ -16,13 +16,20 @@ import { StartBatch } from "./start-batch";
  * once the server has answered. That keeps the privileged repository out of
  * the client module graph by construction.
  *
+ * The page renders the Validating shell — the same header, container, and
+ * layout-matched skeleton the session route shows — so screening Continue
+ * lands directly in the Validating experience with no intermediate waiting
+ * page. Only the participant-facing waiting page is gone; every server
+ * behavior underneath (attempt validation, screening requirements, recovery,
+ * allocation, reservation, authorization) runs unchanged.
+ *
  * It DOES read the interface-locale cookie, so this route is dynamic for the same reason `/start` is.
  * That is per-browser presentation state, not a query.
  */
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getInterfaceLocale();
   const t = translatorFor(locale);
-  return { title: t("validateStart.meta.title"), description: t("validateStart.lead") };
+  return { title: t("validate.meta.title"), description: t("validate.meta.description") };
 }
 
 export default async function ValidateIndexPage() {
@@ -31,9 +38,10 @@ export default async function ValidateIndexPage() {
 
   return (
     <main id="main" className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-title">{t("validateStart.meta.title")}</h1>
+      <h1 className="text-title">{t("validate.meta.title")}</h1>
+      <p className="text-lead text-ink-muted mt-3">{t("validate.meta.description")}</p>
 
-      <div className="mt-8">
+      <div className="mt-8 flex flex-col gap-6">
         <StartBatch locale={locale} />
       </div>
     </main>
