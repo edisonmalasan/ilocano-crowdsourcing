@@ -102,6 +102,17 @@ interface PrefetchedEntry extends PresentedEntry {
 
 type RunnerPhase = "answering" | "finishing";
 
+/**
+ * How long a newly presented entry's controls stay disabled so the participant
+ * registers the new sentence before answering.
+ *
+ * PRESENTATION ONLY. This number never gates, delays, or observes persistence:
+ * the previous entry's save started at submit time, and a save confirming early
+ * does not shorten the interval while a save confirming late does not extend it.
+ * Exported so tests assert against the shipped value rather than a retyped copy.
+ */
+export const ENTRY_SETTLING_MS = 2000;
+
 type CheckpointState =
   | { readonly kind: "checking" }
   | { readonly kind: "complete" }
@@ -220,6 +231,52 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
   const [phase, setPhase] = useState<RunnerPhase>("answering");
   const [snapshot, setSnapshot] = useState<SaveQueueSnapshot>(emptySnapshot);
   const [checkpoint, setCheckpoint] = useState<CheckpointState>({ kind: "checking" });
+
+  /**
+   * The entry-settling interval: which presented entry is still reading-settling.
+   *
+   * Belongs to the PRESENTED entry, not to the save. The effect below starts a
+   * fresh `ENTRY_SETTLING_MS` timer whenever the presented entry CHANGES — the
+   * first presentation is not a change, so it settles nothing — and clears the
+   * timer on entry change and unmount. Expiry re-checks
+   * identity, so a timer from an older entry can never enable a newer one early.
+   * `locale` is deliberately not a dependency (no locale value is read), so a
+   * language switch neither restarts the interval nor touches the queue. The
+   * queue is never consulted here: this state cannot see persistence, by
+   * construction rather than by discipline.
+   */
+  const [settlingEntryId, setSettlingEntryId] = useState<string | null>(null);
+
+  /**
+   * The previously presented entry, so the first presentation is not mistaken
+   * for a change. StrictMode remounts reset this ref, and a remount is not a
+   * change either — either way no timer starts without an actual transition.
+   */
+  const previousEntryIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const presentedId = view.entry.id;
+    const previous = previousEntryIdRef.current;
+    previousEntryIdRef.current = presentedId;
+    // The initial presentation is not a change: the participant arrives from a
+    // loading state with nothing to re-register, so the first entry is usable
+    // at once and only transitions settle.
+    if (previous === null) return;
+    setSettlingEntryId(presentedId);
+    // Bare globals, not `window.`-qualified: in a browser they are the same function, and under
+    // test doubles they are the ones fake timers replace, so the interval stays controllable
+    // without ever sleeping a real two seconds.
+    const timer = setTimeout(() => {
+      setSettlingEntryId((current) => (current === presentedId ? null : current));
+    }, ENTRY_SETTLING_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+    // `locale` is deliberately not a dependency: switching language must not
+    // restart the settling interval. (No disable directive: the effect body
+    // references no locale value, so there is nothing for exhaustive-deps to
+    // ask for.)
+  }, [view.entry.id]);
 
   /**
    * Every submit this mount has enqueued, including ones that did not advance yet. When a
@@ -499,6 +556,7 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
           key={view.entry.id}
           locale={locale}
           datasetEntryId={view.entry.id}
+          settling={settlingEntryId === view.entry.id}
           onValidSubmit={handleValidSubmit}
         />
       </Card>

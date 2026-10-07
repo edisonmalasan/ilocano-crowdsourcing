@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ValidationSkeleton } from "@/components/validation/validation-skeleton";
 import type { InterfaceLocale } from "@/lib/domain/locale";
 import { translatorFor } from "@/lib/i18n/copy";
 import { batchRoutePath } from "@/lib/validation/batch-route";
@@ -153,18 +154,18 @@ export function StartBatch({ locale }: StartBatchProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-running would double-allocate; see above.
   }, []);
 
-  return (
-    <Card as="section" padding="lg" aria-busy={phase.kind === "working" || undefined}>
-      {phase.kind === "working" ? (
-        <p className="text-body text-ink-muted flex items-center gap-3" role="status">
-          <span
-            aria-hidden="true"
-            className="bg-accent size-2.5 shrink-0 animate-pulse rounded-full"
-          />
-          {t("validateStart.working")}
-        </p>
-      ) : null}
+  // The working phase shows the validation skeleton rather than a spinner card:
+  // the participant asked for sentences by completing screening, so this wait is
+  // presented as the validation layout arriving rather than as a separate
+  // "start" page. The `validateStart.working` copy stays in the catalog for the
+  // retry control's pending label below, which is a genuine button state, not a
+  // normal-flow card.
+  if (phase.kind === "working") {
+    return <ValidationSkeleton />;
+  }
 
+  return (
+    <Card as="section" padding="lg" aria-busy={isPending || undefined}>
       {phase.kind === "no-identity" ? (
         <div className="flex flex-col gap-2">
           <p className="text-body text-ink-muted">{t("validateStart.noIdentity")}</p>

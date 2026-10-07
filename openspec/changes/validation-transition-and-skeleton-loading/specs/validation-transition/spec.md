@@ -29,10 +29,10 @@ The interval SHALL belong to the presented entry: presenting another entry start
 - **WHEN** entry N's save confirms before the interval ends, or remains unresolved past it
 - **THEN** entry N+1 enables at the same ~2000ms point either way
 
-#### Scenario: A newer entry gets a fresh interval no older timer can cut short
+#### Scenario: Every presented entry gets its own full interval
 
-- **WHEN** entry N+2 is presented while entry N+1's interval is still running
-- **THEN** entry N+2's controls stay disabled for their own full ~2000ms regardless of the older timer
+- **WHEN** entry N+2 is presented after entry N+1 ran its own interval
+- **THEN** entry N+2's controls stay disabled for their own full ~2000ms from presentation, regardless of any earlier timer
 
 #### Scenario: Same-entry re-renders and locale switches keep the running interval
 

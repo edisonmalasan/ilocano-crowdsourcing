@@ -209,6 +209,62 @@ describe("VF-3 — an incomplete answer is never handed up", () => {
   });
 });
 
+describe("VF-6 — the settling interval disables every offered input", () => {
+  it("a correction and translation inputs offered before settling stay offered but disabled while settling", async () => {
+    const incorrect = EVALUATION_CHOICES.findIndex((choice) => choice.value === "incorrect");
+    await choose(incorrect);
+    await chooseLanguage(BOTH_LANGUAGES);
+    // All three text inputs are offered and enabled while the entry is not settling.
+    expect(field("correctedInstruction").disabled).toBe(false);
+    expect(field("englishTranslation").disabled).toBe(false);
+    expect(field("filipinoTranslation").disabled).toBe(false);
+
+    // The runner flips the flag when a new entry is presented. State is kept —
+    // the offered inputs stay offered — and only availability changes.
+    view.rerender(
+      <ValidationForm
+        locale="en"
+        datasetEntryId="OD_0007"
+        settling
+        onValidSubmit={(payload) => {
+          h.handedUp.push(payload);
+        }}
+      />,
+    );
+    await view.settle();
+
+    expect(field("correctedInstruction").disabled).toBe(true);
+    expect(field("englishTranslation").disabled).toBe(true);
+    expect(field("filipinoTranslation").disabled).toBe(true);
+    const radios = Array.from(
+      (view.all('[role="radiogroup"]')[0] as HTMLElement).querySelectorAll('button[role="radio"]'),
+    );
+    expect(radios.length).toBe(4);
+    for (const radio of radios) {
+      expect((radio as HTMLButtonElement).disabled).toBe(true);
+    }
+    const submit = view.one('button[type="submit"]') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    // The pause is never narrated: the ordinary label stays.
+    expect(submit.textContent).toBe("Save and continue");
+
+    // Ending the interval re-enables everything without losing the judgement.
+    view.rerender(
+      <ValidationForm
+        locale="en"
+        datasetEntryId="OD_0007"
+        settling={false}
+        onValidSubmit={(payload) => {
+          h.handedUp.push(payload);
+        }}
+      />,
+    );
+    await view.settle();
+    expect(field("correctedInstruction").disabled).toBe(false);
+    expect(submit.textContent).toBe("Save and continue");
+  });
+});
+
 describe("VF-4 — two submits in one task hand up exactly one payload", () => {
   it("the single-flight latch holds when React has committed nothing between clicks", async () => {
     await answerFully(0);
