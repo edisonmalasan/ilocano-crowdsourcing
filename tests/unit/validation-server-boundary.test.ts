@@ -61,6 +61,7 @@ const STYLES = readSrc("components", "validation", "answer-option-styles.ts");
 const SKELETON = readSrc("components", "validation", "validation-skeleton.tsx");
 const ANSWER_OPTION = readSrc("components", "validation", "answer-option.tsx");
 const LOADING = readSrc("app", "validate", "[batchId]", "loading.tsx");
+const SHELL = readSrc("components", "validation", "validation-page-shell.tsx");
 
 describe("the shared option-geometry module is server-safe", () => {
   it("carries no client directive", () => {
@@ -109,5 +110,29 @@ describe("the route loading boundary still renders the skeleton", () => {
   it("imports the skeleton from the server-safe validation module", () => {
     expect(LOADING).toContain("@/components/validation/validation-skeleton");
     expect(LOADING).toContain("ValidationSkeleton");
+  });
+
+  it("renders the skeleton inside the shared shell, never alone", () => {
+    expect(LOADING).toContain("@/components/validation/validation-page-shell");
+    expect(LOADING).toContain("ValidationPageShell");
+  });
+});
+
+describe("the shared Validating shell is server-safe", () => {
+  it("carries no client directive", () => {
+    expect(hasClientDirective(SHELL)).toBe(false);
+  });
+
+  it("imports no value from any client module", () => {
+    const clientSources = importSpecifiers(SHELL)
+      .map((specifier) => ({ specifier, source: resolveSrcModule(specifier) }))
+      .filter((entry): entry is { specifier: string; source: string } => entry.source !== null)
+      .filter((entry) => hasClientDirective(entry.source));
+    expect(clientSources.map((entry) => entry.specifier)).toEqual([]);
+  });
+
+  it("imports no privileged server-only modules", () => {
+    expect(SHELL).not.toContain("server-only");
+    expect(SHELL).not.toContain("@supabase/supabase-js");
   });
 });

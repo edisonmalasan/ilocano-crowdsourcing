@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import ValidateBatchLoading from "@/app/validate/[batchId]/loading";
+import { ValidationPageShell } from "@/components/validation/validation-page-shell";
 import { StartBatch } from "@/app/validate/start-batch";
 import { ValidationSkeleton } from "@/components/validation/validation-skeleton";
 import { translatorFor } from "@/lib/i18n/copy";
@@ -56,6 +56,17 @@ vi.mock("@/lib/validators/browser-identity", () => ({
   readStoredValidatorId: vi.fn(() => "validator-attempt"),
   writeStoredValidatorId: vi.fn(() => {}),
   clearStoredValidatorId: vi.fn(() => {}),
+}));
+
+/**
+ * `StartBatch` now renders the session runner in place on the happy path, and
+ * the real runner pulls server-action modules (`server-only`) that happy-dom
+ * cannot import. This file owns the SKELETON states, not the handoff — so the
+ * runner is stubbed to a marker, exactly as `start-batch.test.tsx` does for
+ * the handoff it owns.
+ */
+vi.mock("@/app/validate/[batchId]/validation-session", () => ({
+  ValidationSessionRunner: () => <div data-runner="session" />,
 }));
 
 let view: Mounted | null = null;
@@ -121,15 +132,59 @@ describe("K-4 — no fake research content", () => {
 });
 
 describe("K-5 — the session loading boundary is the skeleton in the route shell", () => {
-  it("renders the skeleton inside the validation main landmark, and nothing else", () => {
-    const loading = mount(<ValidateBatchLoading />);
+  it("renders heading, description, and skeleton in the shared shell geometry", () => {
+    // `loading.tsx` is an async Server Component, which happy-dom cannot mount
+    // as a client component — so this renders exactly what it renders: the
+    // shared shell with the skeleton in its content slot. The source half
+    // (`validation-server-boundary.test.ts`) pins that the boundary imports
+    // and renders both. What this proves is the geometry: heading once,
+    // description once, skeleton once, in the validation main landmark.
+    const loading = mount(
+      <ValidationPageShell
+        title={t("validate.meta.title")}
+        description={t("validate.meta.description")}
+      >
+        <ValidationSkeleton />
+      </ValidationPageShell>,
+    );
     view = loading;
 
+    expect(loading.one("main#main h1")?.textContent).toBe(t("validate.meta.title"));
     expect(loading.one("main#main [data-skeleton='validation']")).toBeTruthy();
+    expect(loading.container.textContent ?? "").toContain(t("validate.meta.description"));
     // No duplicate layout beside the skeleton: no card text, no form, no button.
     expect(loading.all("button").length).toBe(0);
     expect(loading.all("form").length).toBe(0);
-    expect((loading.container.textContent ?? "").trim()).toBe("");
+    // The shell container geometry is the contract the handoff preserves.
+    expect(loading.one("main#main")?.getAttribute("class")).toContain("max-w-2xl");
+  });
+
+  it("shares container geometry with the presenting shell", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const shell = readFileSync(
+      join(process.cwd(), "src", "components", "validation", "validation-page-shell.tsx"),
+      "utf8",
+    );
+    // One shell module owns the main container: the start page, the session
+    // route, and the loading fallback cannot drift because none of them spells
+    // the container itself.
+    expect(shell).toContain("max-w-2xl");
+    const page = readFileSync(join(process.cwd(), "src", "app", "validate", "page.tsx"), "utf8");
+    const session = readFileSync(
+      join(process.cwd(), "src", "app", "validate", "[batchId]", "page.tsx"),
+      "utf8",
+    );
+    const fallback = readFileSync(
+      join(process.cwd(), "src", "app", "validate", "[batchId]", "loading.tsx"),
+      "utf8",
+    );
+    for (const source of [page, session, fallback]) {
+      expect(source).toContain("ValidationPageShell");
+    }
+    for (const source of [page, session, fallback]) {
+      expect(source).not.toMatch(/<main[^>]*id="main"/);
+    }
   });
 });
 
