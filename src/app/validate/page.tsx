@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { ValidationPageShell } from "@/components/validation/validation-page-shell";
 import { translatorFor } from "@/lib/i18n/copy";
 import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
 
@@ -12,8 +13,8 @@ import { StartBatch } from "./start-batch";
  * with no database dependency of its own. The batch is REQUESTED rather than
  * linked to, because its identifier does not exist until the server has chosen
  * one; the only client island is `StartBatch`, which runs the orchestration
- * (resume where an interrupted batch exists, allocate otherwise) and navigates
- * once the server has answered. That keeps the privileged repository out of
+ * (resume where an interrupted batch exists, allocate otherwise) and renders
+ * the first entry in place once the server has answered. That keeps the privileged repository out of
  * the client module graph by construction.
  *
  * The page renders the Validating shell — the same header, container, and
@@ -37,13 +38,11 @@ export default async function ValidateIndexPage() {
   const t = translatorFor(locale);
 
   return (
-    <main id="main" className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-title">{t("validate.meta.title")}</h1>
-      <p className="text-lead text-ink-muted mt-3">{t("validate.meta.description")}</p>
-
-      <div className="mt-8 flex flex-col gap-6">
-        <StartBatch locale={locale} />
-      </div>
-    </main>
+    <ValidationPageShell
+      title={t("validate.meta.title")}
+      description={t("validate.meta.description")}
+    >
+      <StartBatch locale={locale} />
+    </ValidationPageShell>
   );
 }

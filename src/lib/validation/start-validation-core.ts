@@ -38,15 +38,16 @@ import { resolveSessionEntry } from "./session";
  * `resolveSessionEntry`, and the six-field projection lives in `projectAllocatedEntry`. What this
  * module owns is the ORDER — recovery check first, allocation only when there is nothing to
  * resume, first-entry resolution last — and the SHAPE of the result (batch id plus exactly one
- * entry, never the batch).
+ * entry plus its completed count, never the batch).
  *
  * ============================================================================
  * WHY THE RESULT IS A NEW CLOSED UNION AND NOT `AllocationOutcome`
  * ============================================================================
  * The shape contract — exactly one entry, never the batch — is the point of this change, and
  * reusing the wide type would let the `entries` array leak back in through the same field the
- * old clients deliberately read past. A new union carrying one `entry` (plus its `position` and
- * the batch `total`) makes a second entry unrepresentable rather than merely unread.
+ * old clients deliberately read past. A new union carrying one `entry` (plus its `position`,
+ * the batch `total`, and the `completedCount` the session runner opens with) makes a second entry
+ * unrepresentable rather than merely unread.
  *
  * Terminal outcomes reuse `AllocationFailureReason` rather than inventing a second vocabulary:
  * `invalid` (nothing read, nothing written), `unknown_validator`, `screening_required`,
@@ -117,9 +118,9 @@ export type StartValidationIntentKeysAreIdentifierAndSizeOnly =
  * `status` is forced to handle every case.
  *
  *   `started` — a fresh batch was allocated; the single entry to present, with its 1-based
- *               position in the server's order and the batch total.
+ *               position in the server's order, the batch total, and the completed count (zero).
  *   `resumed` — an interrupted batch was resumed; the first unanswered entry, addressed the
- *               same way. Zero allocation calls behind it.
+ *               same way, with the authoritative completed count. Zero allocation calls behind it.
  *   `exhausted` — an ordinary research outcome, never a failure.
  *   `failed` — nothing usable resulted, with the reused `AllocationFailureReason` vocabulary.
  */
@@ -130,6 +131,7 @@ export type StartValidationOutcome =
       readonly entry: AllocatedEntry;
       readonly position: number;
       readonly total: number;
+      readonly completedCount: number;
     }
   | {
       readonly status: "resumed";
@@ -137,9 +139,31 @@ export type StartValidationOutcome =
       readonly entry: AllocatedEntry;
       readonly position: number;
       readonly total: number;
+      readonly completedCount: number;
     }
   | { readonly status: "exhausted" }
   | { readonly status: "failed"; readonly reason: AllocationFailureReason };
+
+/**
+ * Type-level pin on the START RESULT's key set, both presentational arms.
+ *
+ * The one-entry wire shape is the point of the orchestration, and a second entry (or a
+ * payload, coverage figure, or researcher field) added on purpose must fail
+ * `pnpm run typecheck` whatever it is called — the same pin already holding the intent.
+ * The runtime half is the exact `Object.keys` assertion in `start-validation-core.test.ts`.
+ */
+export type StartValidationOutcomeKeysAreBatchIdEntryPositionTotalAndCountOnly =
+  Equals<
+    KeyUnion<Extract<StartValidationOutcome, { readonly status: "started" }>>,
+    "status" | "batchId" | "entry" | "position" | "total" | "completedCount"
+  > extends true
+    ? Equals<
+        KeyUnion<Extract<StartValidationOutcome, { readonly status: "resumed" }>>,
+        "status" | "batchId" | "entry" | "position" | "total" | "completedCount"
+      > extends true
+      ? true
+      : never
+    : never;
 
 export interface StartValidationDependencies {
   readonly validators: Pick<ValidatorsRepository, "findById">;
@@ -179,7 +203,12 @@ async function resolveFirstEntry(
   batchId: string,
   validatorId: StartValidationIntent["validatorId"],
   deps: StartValidationDependencies,
-): Promise<{ entry: AllocatedEntry; position: number; total: number } | null> {
+): Promise<{
+  entry: AllocatedEntry;
+  position: number;
+  total: number;
+  completedCount: number;
+} | null> {
   const batch = await deps.batches.findById(batchId);
   if (batch === null) return null;
   const completedEntryIds = new Set(await deps.validations.listEntryIdsForValidator(validatorId));
@@ -189,7 +218,12 @@ async function resolveFirstEntry(
   if (stored === null) return null;
   const entry = projectAllocatedEntry(stored);
   if (entry === null) return null;
-  return { entry, position: choice.placement.position, total: choice.total };
+  return {
+    entry,
+    position: choice.placement.position,
+    total: choice.total,
+    completedCount: choice.completedCount,
+  };
 }
 
 /**
@@ -262,6 +296,7 @@ export async function runStartValidation(
           entry: first.entry,
           position: first.position,
           total: first.total,
+          completedCount: first.completedCount,
         };
       }
       // The offer's batch reads back as absent or finished: a stale read between the
@@ -297,6 +332,7 @@ export async function runStartValidation(
       entry: first.entry,
       position: first.position,
       total: first.total,
+      completedCount: first.completedCount,
     };
   } catch (error) {
     if (isConfigurationFailure(error, deps)) return { status: "failed", reason: "not_configured" };

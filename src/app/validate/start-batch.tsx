@@ -14,6 +14,11 @@ import { requestStartValidationAction } from "@/lib/validation/start-validation-
 import { decideStartBatch } from "@/lib/validation/start-batch-flow";
 import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/browser-identity";
 
+import {
+  ValidationSessionRunner,
+  type ValidationSessionInitial,
+} from "@/app/validate/[batchId]/validation-session";
+
 /**
  * ============================================================================
  * OBTAINING A BATCH — the auto-orchestration island on `/validate`
@@ -23,7 +28,7 @@ import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/
  * runs the single start orchestration once — one client→server round trip that checks
  * for a resumable interrupted batch, allocates a new batch when there is none, and
  * resolves the first entry — using the anonymous identifier the onboarding flow already
- * stored, and navigates as soon as the server has answered.
+ * stored, and renders the first entry in place as soon as the server has answered.
  *
  * There is deliberately no manual start control on the happy path. The
  * participant already asked for sentences by completing screening; asking
@@ -52,6 +57,19 @@ import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/
  * ref closes that second run synchronously, before the first `await`, the
  * same way the validation form's single-flight latch closes a second submit.
  * The retry control re-runs deliberately and is disabled while running.
+ *
+ * ============================================================================
+ * WHY THE FIRST ENTRY RENDERS HERE INSTEAD OF AFTER A NAVIGATION
+ * ============================================================================
+ * The orchestration returns the batch id plus the first entry, so navigating to
+ * the session route would resolve the same entry a second time behind a second
+ * loading boundary — a skeleton with no header while the address changes, then
+ * the header back with the question. Instead the island keeps the outcome and
+ * renders the session runner directly in the same shell: the skeleton slot is
+ * replaced in place by the real first entry. The address bar still becomes the
+ * batch address, through a history replacement that triggers no navigation and
+ * therefore no second session read. A refresh, pasted link, or direct visit
+ * still reconstructs the session server-side through the unchanged route.
  *
  * ============================================================================
  * WHY THERE IS ONE ACTION AND NO SEPARATE RECOVERY LOOKUP
@@ -84,6 +102,7 @@ export function StartBatch({ locale }: StartBatchProps) {
   const t = translatorFor(locale);
   const router = useRouter();
   const [phase, setPhase] = useState<OrchestrationPhase>({ kind: "working" });
+  const [session, setSession] = useState<ValidationSessionInitial | null>(null);
   const [isPending, startTransition] = useTransition();
   const started = useRef(false);
 
@@ -95,15 +114,27 @@ export function StartBatch({ locale }: StartBatchProps) {
     }
 
     // One round trip: recovery check, allocation where needed, and first-entry
-    // resolution all run server-side inside the orchestration. A resumed batch is
-    // navigation, not a lifecycle event — nothing is created for it — and a failed
+    // resolution all run server-side inside the orchestration. A resumed batch
+    // reuses the interrupted batch rather than creating one — nothing is
+    // created for it — and a failed
     // internal check falls through to allocation rather than stranding the
     // participant. The orchestration's terminal outcomes are mapped onto the
     // existing allocation-shaped decision input so both screens keep one
     // vocabulary for the same research facts.
     const outcome = await requestStartValidationAction({ validatorId: stored });
     if (outcome.status === "started" || outcome.status === "resumed") {
-      router.push(batchRoutePath(outcome.batchId));
+      // The first entry is already resolved: render it in place rather than
+      // navigating into a second resolution of the same entry. The history
+      // replacement updates the address bar without triggering the session route,
+      // so no second session read runs before the first render.
+      setSession({
+        batchId: outcome.batchId,
+        entry: outcome.entry,
+        position: outcome.position,
+        total: outcome.total,
+        completedCount: outcome.completedCount,
+      });
+      window.history.replaceState(null, "", batchRoutePath(outcome.batchId));
       return;
     }
 
@@ -153,6 +184,14 @@ export function StartBatch({ locale }: StartBatchProps) {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-running would double-allocate; see above.
   }, []);
+
+  // The session is already resolved: the runner opens on the orchestration's
+  // first entry in the same shell the skeleton occupied, with no navigation
+  // between them. Everything below is the pre-resolution working and terminal
+  // states.
+  if (session !== null) {
+    return <ValidationSessionRunner locale={locale} initial={session} />;
+  }
 
   // The working phase shows the validation skeleton rather than a spinner card:
   // the participant asked for sentences by completing screening, so this wait is
