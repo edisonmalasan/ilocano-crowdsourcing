@@ -452,6 +452,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `fix-validation-skeleton-server-boundary`, the FORTY-SIXTH archived change, so this coupling has now
       // been paid THIRTY-ONE times. Same one-line edit, same reason.
       46: "Forty-six",
+      // Added for `eliminate-duplicate-validation-loading-phase`, the FORTY-SEVENTH archived change, so this coupling has now
+      // been paid THIRTY-TWO times. Same one-line edit, same reason.
+      47: "Forty-seven",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
