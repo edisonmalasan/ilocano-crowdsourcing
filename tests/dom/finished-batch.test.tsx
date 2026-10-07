@@ -66,7 +66,20 @@ const h = vi.hoisted(() => ({
    */
   hold: null as null | { readonly promise: Promise<unknown>; resolve: () => void },
   /** What the action reports, changed per test. */
-  result: { status: "allocated", batchId: "VAL_deadbeef-2026-10-01T00:00:00.000Z" } as unknown,
+  result: {
+    status: "started",
+    batchId: "VAL_deadbeef-2026-10-01T00:00:00.000Z",
+    entry: {
+      id: "OD_1",
+      category: "origin_destination",
+      instruction: "Iti OD_1 ti ayanko ita.",
+      origin: null,
+      destination: null,
+      transitMode: null,
+    },
+    position: 1,
+    total: 5,
+  } as unknown,
   /** What the browser holds as its anonymous identity, or `null` for none. */
   storedId: "VAL_a81d92c1" as string | null,
   /**
@@ -94,8 +107,8 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/allocation/actions", () => ({
-  requestBatchAction: vi.fn(async (raw: unknown) => {
+vi.mock("@/lib/validation/start-validation-actions", () => ({
+  requestStartValidationAction: vi.fn(async (raw: unknown) => {
     h.requests.push(raw);
     h.events.push("request-batch");
     if (h.hold !== null) return h.hold.promise;
@@ -206,7 +219,20 @@ beforeEach(() => {
   h.identityReads = 0;
   h.clears = 0;
   h.storedId = "VAL_a81d92c1";
-  h.result = { status: "allocated", batchId: NEW_BATCH };
+  h.result = {
+    status: "started",
+    batchId: NEW_BATCH,
+    entry: {
+      id: "OD_1",
+      category: "origin_destination",
+      instruction: "Iti OD_1 ti ayanko ita.",
+      origin: null,
+      destination: null,
+      transitMode: null,
+    },
+    position: 1,
+    total: 5,
+  };
   view = mount(<FinishedBatch locale="en" />);
 });
 
@@ -327,13 +353,14 @@ describe("CB-1/CB-2 — continuing asks the server, and sends nothing but who it
 });
 
 describe("CB-3 — the continued batch's contents never reach the participant", () => {
-  it("renders no entry from the allocation response, even when the response carries them", async () => {
-    // `requestBatchAction` returns the allocated batch's ENTRIES as well as its id. Reading them past
-    // would put a whole batch in the browser before any of it is answered, which is the condition
-    // the per-entry screen's own header exists to prevent — and a continuation path is exactly where
-    // it would come back. The instruction below is a REAL one, taken from the dataset, so a guard
-    // that only matched a hand-written sample would be the smaller version of the defect this
-    // repository has already found once.
+  it("renders no entry from the orchestration response, even when the response carries one", async () => {
+    // The orchestration returns the batch id plus the first entry only. Reading the
+    // entry past here would put a sentence in the browser before any of it is answered,
+    // which is the condition the per-entry screen's own header exists to prevent — and
+    // a continuation path is exactly where it would come back. The instruction below
+    // is a REAL one, taken from the dataset, so a guard that only matched a
+    // hand-written sample would be the smaller version of the defect this repository
+    // has already found once.
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const { parseSyntheticDataset } = await import("@/lib/dataset/synthetic-source");
@@ -347,26 +374,18 @@ describe("CB-3 — the continued batch's contents never reach the participant", 
     expect(instruction.length).toBeGreaterThan(0);
 
     h.result = {
-      status: "allocated",
+      status: "started",
       batchId: NEW_BATCH,
-      entries: [
-        {
-          id: entries[0].id,
-          category: "origin_destination",
-          instruction,
-          origin: null,
-          destination: null,
-          transitMode: null,
-        },
-        {
-          id: entries[1].id,
-          category: "origin_destination",
-          instruction: entries[1].instruction,
-          origin: null,
-          destination: null,
-          transitMode: null,
-        },
-      ],
+      entry: {
+        id: entries[0].id,
+        category: "origin_destination",
+        instruction,
+        origin: null,
+        destination: null,
+        transitMode: null,
+      },
+      position: 1,
+      total: 5,
     };
 
     await view.pressAndSettle(continueControl());
@@ -377,8 +396,10 @@ describe("CB-3 — the continued batch's contents never reach the participant", 
     expect(h.pushes).toHaveLength(1);
     expect(batchIdFromAddress(h.pushes[0] as string)).toBe(NEW_BATCH);
     expect(view.container.innerHTML).not.toContain(instruction);
-    expect(view.container.innerHTML).not.toContain(entries[1].instruction);
     expect(view.container.innerHTML).not.toContain(entries[0].id);
+    // And the shape carries no second entry at all: one `entry`, never an `entries`
+    // array for a continuation path to read past.
+    expect(h.result).not.toHaveProperty("entries");
   });
 });
 

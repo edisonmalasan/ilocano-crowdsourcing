@@ -118,8 +118,8 @@ vi.mock("@/lib/validation/verify-batch-actions", () => ({
   }),
 }));
 
-vi.mock("@/lib/allocation/actions", () => ({
-  requestBatchAction: vi.fn(async () => ({ status: "failed", reason: "persistence" })),
+vi.mock("@/lib/validation/start-validation-actions", () => ({
+  requestStartValidationAction: vi.fn(async () => ({ status: "failed", reason: "persistence" })),
 }));
 
 vi.mock("@/lib/validators/browser-identity", () => ({

@@ -67,8 +67,8 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/allocation/actions", () => ({
-  requestBatchAction: vi.fn(async (raw: unknown) => {
+vi.mock("@/lib/validation/start-validation-actions", () => ({
+  requestStartValidationAction: vi.fn(async (raw: unknown) => {
     h.requests.push(raw);
     return h.result;
   }),
@@ -182,7 +182,20 @@ describe("FINISH retires the attempt in this browser session", () => {
     // enrollment on the next screen — which is the whole defect this change's session scoping exists
     // to prevent.
     writeStoredValidatorId(ATTEMPT_ID);
-    h.result = { status: "allocated", batchId: "VAL_deadbeef-2026-10-01T00:00:00.000Z" };
+    h.result = {
+      status: "started",
+      batchId: "VAL_deadbeef-2026-10-01T00:00:00.000Z",
+      entry: {
+        id: "OD_1",
+        category: "origin_destination",
+        instruction: "Iti OD_1 ti ayanko ita.",
+        origin: null,
+        destination: null,
+        transitMode: null,
+      },
+      position: 1,
+      total: 5,
+    };
 
     await view.pressAndSettle(continueControl());
 
