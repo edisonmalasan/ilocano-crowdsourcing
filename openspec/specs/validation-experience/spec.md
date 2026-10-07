@@ -45,7 +45,7 @@ For *correct and natural* and *cannot confidently evaluate* the session SHALL NO
 
 Which evaluations require a correction SHALL be decided by the single rule already in force in `domain-contracts`, and this capability SHALL NOT restate it as a second rule that could disagree.
 
-During the entry-settling interval the correction input, when offered, SHALL be disabled along with every other interactive control; the rule for when it is offered is unchanged.
+Entry transitions never present a real control in a disabled state: during the transition interval only the skeleton is shown, so the correction input — like every other control — is revealed already usable, with the rule for when it is offered unchanged.
 
 #### Scenario: Choosing an evaluation that requires a correction reveals the correction input
 
@@ -65,8 +65,12 @@ During the entry-settling interval the correction input, when offered, SHALL be 
 
 #### Scenario: The correction input settles with the rest of the form
 
-- **WHEN** a new entry requiring a correction is presented
-- **THEN** the correction input is disabled for the settling interval exactly like the other controls, and its offer/require rule is unchanged
+- **SUPERSEDED by `refine-validation-loading-transitions`, kept so the replacement is visible rather than silent.** Originally the correction input was disabled for the settling interval. Transitions no longer present real controls at all; its replacement is "The correction input is revealed usable after the transition" below.
+
+#### Scenario: The correction input is revealed usable after the transition
+
+- **WHEN** a new entry requiring a correction is revealed after its transition skeleton
+- **THEN** the correction input is enabled at once like the other controls, and its offer/require rule is unchanged
 
 ### Requirement: Each evaluable response offers a translation language choice
 
@@ -125,6 +129,12 @@ worker availability: the advance and the persistence proceed concurrently under 
 controlled concurrency defined in `response-persistence`, and the response is confirmed
 only after the server acknowledges it.
 
+Advancing means the transition skeleton followed by the reveal: the response is
+enqueued synchronously at submit, the skeleton shows for the transition interval
+defined in `validation-transition`, and the next entry is revealed immediately
+interactive — never gated on persistence, prefetch, reservation, or server state.
+The next entry's real sentence and form are not rendered during the interval.
+
 The write SHALL be single-flight per entry: while a response is being persisted, the
 control that initiated it SHALL expose a pending state and SHALL NOT begin a
 second write for the same entry, and controls made inert alongside it SHALL change appearance
@@ -177,7 +187,8 @@ preserved while the fetch no longer blocks the transition.
 #### Scenario: Advancing does not wait for the previous write round trip
 
 - **WHEN** a validator completes an entry whose next entry was already prefetched
-- **THEN** the next entry is presented without waiting for the previous
+- **THEN** the response is enqueued at submit, the transition skeleton shows for the transition
+  interval, and the next entry is revealed immediately interactive without waiting for the previous
   response's persistence round trip, and the previous response is marked saved
   only after the server confirms it
 
