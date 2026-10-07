@@ -1,0 +1,22 @@
+# Tasks
+
+## 1. Start result carries the runner's completed count
+
+- [ ] 1.1 Extend `resolveFirstEntry` in `start-validation-core.ts` to also return the count of the batch's placements present in the completed-id set, thread it through both arms (`started` with natural zero, `resumed` with the answered count) as `completedCount`, and verify with core unit tests against fakes: fresh batch counts 0, resumed batch counts answered placements only, finished batch still falls through — plus wire-shape tests proving no second entry, payload, coverage, or researcher data is present.
+- [ ] 1.2 Update the `StartValidationOutcome` type, the action boundary, and the `ValidationSessionInitial` construction contract so the runner's full initial state builds from the orchestration result alone, and verify `pnpm run typecheck` exits 0 with the exact key-set pin failing on a widened shape (can-fire probe: add a probe key, typecheck goes red, restore byte-identical).
+
+## 2. Shared Validating page shell
+
+- [ ] 2.1 Create server-safe `ValidationPageShell` (no `"use client"`) owning the `<main>` container, `h1`, description, spacing, and content slot, rewire `/validate` page, `[batchId]` page, and `[batchId]/loading.tsx` (shell + skeleton, never skeleton alone) onto it with zero duplicated heading markup, and verify with DOM tests comparing container/heading/description geometry across start-loading, fallback, and presenting renders at mobile and desktop widths.
+- [ ] 2.2 Prove the shell boundary holds: server-boundary unit test asserting the shell module carries no `"use client"` and no privileged imports, and verify `pnpm run lint` exits 0.
+
+## 3. In-place first-entry handoff on `/validate`
+
+- [ ] 3.1 Rewire `StartBatch`: on `started`/`resumed` keep the outcome in state and render `ValidationSessionRunner` directly in the same shell (no `router.push` on the happy path), update the URL once via `window.history.replaceState(batchRoutePath(batchId))`, preserve single-flight, retry, and all error states (`exhausted`, `screening_required`, no-identity, honest failure replace the skeleton with the existing error UI), and verify with DOM tests: heading/description stay mounted from skeleton to Question 1, skeleton slot is replaced in place, exactly one `replaceState` with the batch path, zero `router.push/replace` calls, resumed flow uses the returned entry directly, failed start shows error state with no standing skeleton.
+- [ ] 3.2 Prove no duplicate resolution: unit/DOM tests asserting the normal handoff issues one orchestration and zero session-open reads before first render, the first returned entry is rendered (not discarded), and the client sends identity only (no entry choice, no batch contents) — plus can-fire probe restoring `router.push` and deleting the direct render, turning the guard red by name before byte-identical restore.
+- [ ] 3.3 Preserve direct/refresh entry: leave the `[batchId]` Server Component's open logic untouched and verify with route-level tests that a direct batch address still resolves the current entry server-side, the fallback carries heading + description, and refresh reconstructs the correct entry; `FinishedBatch` next-batch navigation stays on the navigate path with the shared fallback.
+
+## 4. Full verification, measurement, and report
+
+- [ ] 4.1 Run the AGENTS.md matrix on the branch tip and record real counts: `format:check`, `lint`, `typecheck`, `test:unit`, `test:dom`, `test:integration`, `build`, dataset guard, `openspec change validate --strict`, `openspec validate --specs --strict` (must stay 24/24 with no new top-level spec dir before Sync); run independent verification with zero unresolved CRITICAL before Apply merge.
+- [ ] 4.2 Measure before/after on the real path and record: Continue → Question 1 wall time, client/server transition count, session/batch read count on the first-entry path, whether a second loading boundary was entered, whether Question 1 was resolved twice — stating device/network conditions and what the measurement does not prove; perform the real-browser Screening → Continue → Validating + skeleton → Question 1 observation with no Validating disappearance, no description disappearance, no skeleton jump, and no second shell (honest UNVERIFIABLE note if the preview gate blocks it); confirm zero research writes and untouched dataset; open/merge the Apply PR with a merge commit and report PR/SHA numbers.
