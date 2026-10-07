@@ -18,6 +18,7 @@ import {
   startValidationIntentSchema,
   type StartValidationDependencies,
   type StartValidationIntentKeysAreIdentifierAndSizeOnly,
+  type StartValidationOutcomeKeysAreBatchIdEntryPositionTotalAndCountOnly,
 } from "@/lib/validation/start-validation-core";
 
 /**
@@ -46,6 +47,10 @@ vi.mock("server-only", () => ({}));
 /** Type-level pin is consumed here, so a third intent key fails `pnpm run typecheck`. */
 const INTENT_KEYS_ARE_IDENTIFIER_AND_SIZE_ONLY: StartValidationIntentKeysAreIdentifierAndSizeOnly = true;
 void INTENT_KEYS_ARE_IDENTIFIER_AND_SIZE_ONLY;
+
+/** Type-level pin is consumed here, so a seventh result key fails `pnpm run typecheck`. */
+const OUTCOME_KEYS_ARE_BATCH_ID_ENTRY_POSITION_TOTAL_AND_COUNT_ONLY: StartValidationOutcomeKeysAreBatchIdEntryPositionTotalAndCountOnly = true;
+void OUTCOME_KEYS_ARE_BATCH_ID_ENTRY_POSITION_TOTAL_AND_COUNT_ONLY;
 
 function datasetEntry(id: string): DatasetEntry {
   return {
@@ -224,6 +229,7 @@ describe("fresh start", () => {
     expect(outcome.entry.id).toBe("OD_1");
     expect(outcome.position).toBe(1);
     expect(outcome.total).toBe(2);
+    expect(outcome.completedCount).toBe(0);
     expect(calls).toContain("batches.allocate");
   });
 
@@ -252,6 +258,27 @@ describe("fresh start", () => {
     expect(wire).not.toContain("OD_2");
   });
 
+  it("carries exactly the runner-construction keys and nothing beyond them", async () => {
+    const { dependencies } = createScenarioDependencies();
+
+    const outcome = await runStartValidation(VALID, dependencies);
+    if (outcome.status !== "started") {
+      throw new Error(`expected started, got ${JSON.stringify(outcome)}`);
+    }
+
+    // The completed count is the only permitted addition: no source payload, no
+    // coverage data, no researcher metadata, no second entry under any key.
+    expect(Object.keys(outcome).sort()).toEqual([
+      "batchId",
+      "completedCount",
+      "entry",
+      "position",
+      "status",
+      "total",
+    ]);
+    expect(outcome.completedCount).toBe(0);
+  });
+
   it("reports exhausted when the allocation call grants nothing", async () => {
     const { dependencies } = createScenarioDependencies({ grants: [] });
 
@@ -278,6 +305,7 @@ describe("resume", () => {
     expect(outcome.batchId).toBe(INTERRUPTED_ID);
     expect(outcome.entry.id).toBe("OD_2");
     expect(outcome.total).toBe(2);
+    expect(outcome.completedCount).toBe(1);
   });
 
   it("performs zero allocation calls on the resume arm", async () => {
@@ -308,6 +336,34 @@ describe("resume", () => {
     const wire = JSON.stringify(outcome);
     expect(wire).toContain("OD_1");
     expect(wire).not.toContain("OD_2");
+    expect(Object.keys(outcome).sort()).toEqual([
+      "batchId",
+      "completedCount",
+      "entry",
+      "position",
+      "status",
+      "total",
+    ]);
+  });
+
+  it("falls through to allocation when the interrupted batch is fully answered", async () => {
+    // A finished interrupted batch recognises as `none`, so the run allocates fresh
+    // rather than stranding the participant. The fresh pool holds entries this attempt
+    // has never answered, matching the allocation exclusion the fake does not enforce.
+    const { dependencies, calls } = createScenarioDependencies({
+      recoveryBatches: [interruptedBatch(["OD_1", "OD_2"])],
+      answered: ["OD_1", "OD_2"],
+      pool: [datasetEntry("OD_3"), datasetEntry("OD_4")],
+    });
+
+    const outcome = await runStartValidation(VALID, dependencies);
+
+    if (outcome.status !== "started") {
+      throw new Error(`expected started, got ${JSON.stringify(outcome)}`);
+    }
+    expect(outcome.entry.id).toBe("OD_3");
+    expect(outcome.completedCount).toBe(0);
+    expect(calls).toContain("batches.allocate");
   });
 });
 
