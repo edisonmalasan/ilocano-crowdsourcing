@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { answerOptionClasses } from "@/components/validation/answer-option";
+import { answerOptionClasses } from "@/components/validation/answer-option-styles";
 import { defaultBatchId } from "@/lib/allocation/allocate-batch";
 import { ServerEnvError } from "@/lib/env/server";
 import { translatorFor } from "@/lib/i18n/copy";

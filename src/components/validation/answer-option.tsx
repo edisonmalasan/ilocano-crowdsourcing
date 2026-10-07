@@ -3,6 +3,7 @@
 import { useCallback, useId, useRef, useState } from "react";
 
 import { cn } from "@/lib/styles/cn";
+import { answerOptionClasses } from "@/components/validation/answer-option-styles";
 
 /**
  * Validation answer option.
@@ -39,35 +40,13 @@ import { cn } from "@/lib/styles/cn";
  * through the four options without tabbing through each one.
  */
 
-export interface AnswerOptionClassesOptions {
-  selected: boolean;
-  className?: string;
-}
-
-const UNSELECTED =
-  "bg-answer-surface border-answer-border text-ink shadow-brutal-sm " +
-  "hover:bg-paper-sunken hover:shadow-brutal-md";
-
-const SELECTED = "bg-answer-selected-surface border-ink text-answer-selected-text shadow-brutal-md";
-
 /**
- * Note: the disabled treatment lives in the base class list, not in a parameter. There is
- * deliberately no way to ask for a "disabled but unselected" or "disabled and selected" variant,
- * because a validator cannot choose a disabled option — the group controls that.
+ * The class tokens themselves live in `./answer-option-styles` (server-safe,
+ * shared with the validation skeleton); what remains here is the component
+ * that enforces the contract above at its call site. There is deliberately no
+ * value re-export of the helper from this client module: server code must
+ * import it from `./answer-option-styles`, never from here.
  */
-export function answerOptionClasses({ selected, className }: AnswerOptionClassesOptions): string {
-  return cn(
-    "relative flex w-full items-center gap-3 rounded-control border-2 px-4 py-4 text-left",
-    "font-display text-base font-bold tracking-tight",
-    "transition-[transform,box-shadow,background-color,color] duration-[--duration-fast] " +
-      "ease-[--ease-brutal]",
-    "active:translate-x-[1px] active:translate-y-[1px] active:shadow-brutal-press",
-    "focus-visible:outline-[3px] focus-visible:outline-focus focus-visible:outline-offset-2",
-    "disabled:cursor-not-allowed disabled:opacity-50",
-    selected ? SELECTED : UNSELECTED,
-    className,
-  );
-}
 
 export interface AnswerOption {
   value: string;
