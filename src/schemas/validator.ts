@@ -77,16 +77,31 @@ export function toIlocanoProficiency(value: string): IlocanoProficiency | null {
 }
 
 /**
- * Anonymous validator identifier: `VAL_` plus exactly eight lowercase hex characters
- * (32 bits of entropy; see `@/lib/domain/anonymous-validator-id`).
+ * Anonymous validator identifier: `VAL_` plus 32 lowercase hex characters (128 bits of
+ * CSPRNG entropy; see `@/lib/domain/anonymous-validator-id`). The legacy 8-hex shape is
+ * still accepted so existing research records keep resolving, but it is never minted.
  */
-export const ANONYMOUS_VALIDATOR_ID_PATTERN = /^VAL_[0-9a-f]{8}$/;
+export const ANONYMOUS_VALIDATOR_ID_PATTERN = /^VAL_([0-9a-f]{8}|[0-9a-f]{32})$/;
 
 export const anonymousValidatorIdSchema = z
   .string()
   .regex(
     ANONYMOUS_VALIDATOR_ID_PATTERN,
-    "id must look like VAL_ followed by 8 lowercase hex characters",
+    "id must look like VAL_ followed by 32 lowercase hex characters (a legacy VAL_ with 8 is still accepted)",
+  );
+
+/**
+ * The mint-shape pin at the schema layer: newly enrolled attempts must match the 32-hex
+ * shape. A legacy 8-hex value passes `anonymousValidatorIdSchema` (accept) and fails here
+ * (mint), so the two shapes cannot be confused.
+ */
+export const ANONYMOUS_VALIDATOR_ID_MINT_PATTERN = /^VAL_[0-9a-f]{32}$/;
+
+export const anonymousValidatorIdMintSchema = z
+  .string()
+  .regex(
+    ANONYMOUS_VALIDATOR_ID_MINT_PATTERN,
+    "id must look like VAL_ followed by 32 lowercase hex characters",
   );
 
 export type AnonymousValidatorId = z.infer<typeof anonymousValidatorIdSchema>;

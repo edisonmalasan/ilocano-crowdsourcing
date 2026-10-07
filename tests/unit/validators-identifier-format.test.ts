@@ -82,7 +82,7 @@ describe("the anonymous validator identifier format", () => {
     expect(parsed.success).toBe(false);
     if (parsed.success) return;
     expect(parsed.error.issues[0]?.message).toBe(
-      "id must look like VAL_ followed by 8 lowercase hex characters",
+      "id must look like VAL_ followed by 32 lowercase hex characters (a legacy VAL_ with 8 is still accepted)",
     );
   });
 });
