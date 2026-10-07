@@ -10,7 +10,7 @@ Collapses the Continue/start → first-entry path into one client→server round
 
 The platform SHALL provide one start orchestration that a client invokes with a single request carrying only the anonymous validator identity (plus an optional size preference capped server-side), and that request SHALL return everything the client needs to present the first entry: either the address of a resumable interrupted batch plus its first unanswered entry, or a newly allocated batch's identifier plus its first entry. The orchestration SHALL perform the recovery check, the allocation (where needed), and the first-entry resolution server-side within that one invoked request, issuing exactly one allocation RPC in the fresh-start case and zero allocation RPCs in the resume case.
 
-The orchestration's result SHALL carry the batch identifier plus exactly one entry (identifier, sentence, position, total), and SHALL NOT carry the remaining batch entries. Later entries continue to arrive through the existing per-position next-entry path; the orchestration does not pre-deliver them.
+The orchestration's result SHALL carry the batch identifier plus exactly one entry (identifier, sentence, position, total) plus the completed count for that batch (zero for a freshly allocated batch, the authoritative completed count for a resumed batch), and SHALL NOT carry the remaining batch entries. The completed count is the only permitted addition beyond the batch identifier and the single entry: no second entry's sentence, identifier, or position, no source payload, no coverage data, and no researcher metadata SHALL be present. Later entries continue to arrive through the existing per-position next-entry path; the orchestration does not pre-deliver them.
 
 The orchestration SHALL be single-flight per invocation source: while a start request is in flight the control that initiated it SHALL expose a pending state and SHALL NOT begin a second start request (no double allocation from a double click or a StrictMode double-mount), and a retry after a transport failure SHALL be idempotent from the participant's point of view — it never leaves two usable batches where one was asked for.
 
@@ -33,6 +33,11 @@ The orchestration SHALL be single-flight per invocation source: while a start re
 
 - **WHEN** the start control is activated twice before the first request resolves
 - **THEN** exactly one orchestration runs and exactly one batch results from it
+
+#### Scenario: The result carries the completed count and nothing else beyond it
+
+- **WHEN** the orchestration result is inspected on the wire
+- **THEN** it carries a completed count (zero for a fresh batch, the authoritative count for a resumed batch) alongside the batch identifier and the single entry, and no source payload, coverage data, researcher metadata, or second entry is present
 
 ### Requirement: The orchestration preserves every allocation and recovery guarantee
 
@@ -64,9 +69,9 @@ The platform SHALL measure start latency from the moment the start request is di
 
 ### Requirement: Start opens directly into the Validating shell
 
-The `/validate` route SHALL NOT present a separate "Start validating" page. While the single start orchestration runs, the route SHALL render the Validating page shell — the same container, header, and layout-matched validation skeleton the participant meets everywhere else in the validating experience — and SHALL navigate to the allocated session as soon as the orchestration resolves. The participant goes from screening Continue directly into the Validating experience with no intermediate waiting-room page.
+The `/validate` route SHALL NOT present a separate "Start validating" page. While the single start orchestration runs, the route SHALL render the Validating page shell — the same container, header, and layout-matched validation skeleton the participant meets everywhere else in the validating experience — and SHALL present the first entry in that same mounted shell as soon as the orchestration resolves, without navigating through a second session resolution. The participant goes from screening Continue directly into the Validating experience with no intermediate waiting-room page and no second loading phase.
 
-All server-side work underneath is unchanged: attempt validation, screening requirements, recovery, allocation, reservation, and server authorization run exactly as specified. Only the participant-facing waiting page is removed.
+The browser URL SHALL still become the batch address (`/validate/[batchId]`) through a history update that does not re-trigger the session-open path, so the normal handoff performs zero session reads for an entry the orchestration already resolved. A direct visit, refresh, or pasted link to the batch address SHALL still reconstruct the session server-side through the unchanged session route. All server-side work underneath is unchanged: attempt validation, screening requirements, recovery, allocation, reservation, and server authorization run exactly as specified. Only the participant-facing handoff is changed: the first entry is rendered from the orchestration result, not re-resolved.
 
 #### Scenario: Continue reaches the Validating shell, not a start page
 
@@ -77,6 +82,21 @@ All server-side work underneath is unchanged: attempt validation, screening requ
 
 - **WHEN** the start orchestration resolves with a batch and its first entry
 - **THEN** the session opens on the real first entry, replacing the skeleton with no intermediate page
+
+#### Scenario: No second session resolution before first render
+
+- **WHEN** the start orchestration resolves in the normal flow
+- **THEN** the first entry renders from the orchestration result with no second session-open read and no second loading boundary entered before it
+
+#### Scenario: The URL names the batch without re-resolving
+
+- **WHEN** the first entry renders from the orchestration result
+- **THEN** the browser URL becomes the batch address without triggering the session-open path again
+
+#### Scenario: A refreshed batch address reconstructs server-side
+
+- **WHEN** a validator refreshes, pastes, or directly visits the batch address
+- **THEN** the session route resolves the current entry server-side exactly as before, independent of any in-memory start state
 
 #### Scenario: Start failures keep their onward actions
 
