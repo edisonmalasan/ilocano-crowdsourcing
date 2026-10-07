@@ -329,8 +329,11 @@ describe("a successful allocation", () => {
       ttlSeconds: number;
       createdAt: string;
     };
-    // ONE instant for the id and the column, from the injected clock.
-    expect(input.batchId).toBe(`${VALIDATOR}-${TIMESTAMP}`);
+    // The minted identity is an opaque BAT_ capability, independent of the validator
+    // and the clock; the instant lives only in the createdAt column, from the injected clock.
+    expect(input.batchId).toMatch(/^BAT_[0-9a-f]{32}$/);
+    expect(input.batchId).not.toContain(VALIDATOR);
+    expect(input.batchId).not.toContain(TIMESTAMP);
     expect(input.createdAt).toBe(TIMESTAMP);
     expect(input.validatorId).toBe(VALIDATOR);
     expect(input.size).toBe(4);
@@ -355,7 +358,7 @@ describe("a successful allocation", () => {
   });
 
   it("reports the batch the read-back returned, never an echo of the request", async () => {
-    const { dependencies } = createFakes({
+    const { dependencies, calls } = createFakes({
       grants: placements(["OD_1", "OD_2"]),
       storedEntries: grantedEntries(["OD_1", "OD_2"]),
     });
@@ -364,7 +367,11 @@ describe("a successful allocation", () => {
 
     if (outcome.status !== "allocated")
       throw new Error(`expected allocated, got ${outcome.status}`);
-    expect(outcome.batchId).toBe(`${VALIDATOR}-${TIMESTAMP}`);
+    // The reported id is the minted opaque capability the read-back returned — never an
+    // echo of a validator-derived construction.
+    expect(outcome.batchId).toMatch(/^BAT_[0-9a-f]{32}$/);
+    const allocate = calls.find((call) => call.method === "batches.allocate");
+    expect(outcome.batchId).toBe((allocate?.argument as { batchId: string }).batchId);
     expect(outcome.entries.map((entry) => entry.id)).toEqual(["OD_1", "OD_2"]);
   });
 
@@ -415,7 +422,7 @@ describe("a successful allocation", () => {
     expect(outcome.entries).toHaveLength(2);
   });
 
-  it("derives the batch id from the validator's own identifier and the injected clock", async () => {
+  it("mints an opaque batch id independent of the validator and the clock", async () => {
     const { dependencies, calls } = createFakes({
       grants: placements(["OD_1"]),
       storedEntries: grantedEntries(["OD_1"]),
@@ -425,8 +432,11 @@ describe("a successful allocation", () => {
 
     const allocate = calls.find((call) => call.method === "batches.allocate");
     const input = allocate?.argument as { batchId: string; createdAt: string };
-    expect(input.batchId).toContain(VALIDATOR);
-    expect(input.batchId).toContain(TIMESTAMP);
+    // The identifier carries neither the owner's identity nor the creation instant: it is
+    // a fresh BAT_ capability, and the instant lives only in createdAt from the one clock.
+    expect(input.batchId).toMatch(/^BAT_[0-9a-f]{32}$/);
+    expect(input.batchId).not.toContain(VALIDATOR);
+    expect(input.batchId).not.toContain(TIMESTAMP);
     expect(input.createdAt).toBe(TIMESTAMP);
   });
 });
