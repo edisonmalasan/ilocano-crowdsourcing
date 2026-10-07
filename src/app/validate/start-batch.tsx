@@ -7,11 +7,9 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { InterfaceLocale } from "@/lib/domain/locale";
-import { requestBatchAction } from "@/lib/allocation/actions";
 import { translatorFor } from "@/lib/i18n/copy";
-import { decideRecovery } from "@/lib/validation/recovery-flow";
-import { batchRouteHref, batchRoutePath } from "@/lib/validation/batch-route";
-import { requestInterruptedBatchAction } from "@/lib/validation/recovery-actions";
+import { batchRoutePath } from "@/lib/validation/batch-route";
+import { requestStartValidationAction } from "@/lib/validation/start-validation-actions";
 import { decideStartBatch } from "@/lib/validation/start-batch-flow";
 import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/browser-identity";
 
@@ -21,9 +19,10 @@ import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/
  * ============================================================================
  * A batch id does not exist until the server has chosen one, so this route
  * cannot be a static link: there is nothing to link TO. On mount the island
- * runs the orchestration once — recovery lookup first, then allocation —
- * using the anonymous identifier the onboarding flow already stored, and
- * navigates as soon as the server has answered.
+ * runs the single start orchestration once — one client→server round trip that checks
+ * for a resumable interrupted batch, allocates a new batch when there is none, and
+ * resolves the first entry — using the anonymous identifier the onboarding flow already
+ * stored, and navigates as soon as the server has answered.
  *
  * There is deliberately no manual start control on the happy path. The
  * participant already asked for sentences by completing screening; asking
@@ -54,13 +53,13 @@ import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/
  * The retry control re-runs deliberately and is disabled while running.
  *
  * ============================================================================
- * WHY RECOVERY RUNS BEFORE ALLOCATION, AND WHY A FAILED LOOKUP FALLS THROUGH
+ * WHY THERE IS ONE ACTION AND NO SEPARATE RECOVERY LOOKUP
  * ============================================================================
- * An interrupted batch is the participant's own unfinished work, so it wins
- * over a fresh batch. A lookup that fails or cannot complete is not shown as
- * an error sentence — the participant cannot act on it — and the run proceeds
- * to allocation exactly as when no interrupted batch exists. That fall-through
- * is the additive rule, restated for a flow with no manual control to preserve.
+ * The recovery check runs INSIDE the start orchestration rather than as a separate
+ * client-issued round trip: an interrupted batch is resumed at its own address with no
+ * write of any kind, and a lookup that fails or cannot complete falls through to
+ * allocation rather than stranding the participant. The orchestration returns the batch
+ * id plus the first entry only — the whole batch entry list never crosses to the client.
  */
 
 export interface StartBatchProps {
@@ -94,22 +93,28 @@ export function StartBatch({ locale }: StartBatchProps) {
       return;
     }
 
-    // Recovery first: an interrupted batch is resumed at its own address with
-    // no write of any kind. A failed lookup falls through to allocation below
-    // rather than stranding the participant, and `decideRecovery` collapses
-    // the not-yet-answered, none, and failed outcomes into the same decision.
-    const recovery = decideRecovery(
-      stored,
-      await requestInterruptedBatchAction({ validatorId: stored }),
-    );
-    if (recovery.kind === "resume") {
-      router.push(batchRoutePath(recovery.batchId));
+    // One round trip: recovery check, allocation where needed, and first-entry
+    // resolution all run server-side inside the orchestration. A resumed batch is
+    // navigation, not a lifecycle event — nothing is created for it — and a failed
+    // internal check falls through to allocation rather than stranding the
+    // participant. The orchestration's terminal outcomes are mapped onto the
+    // existing allocation-shaped decision input so both screens keep one
+    // vocabulary for the same research facts.
+    const outcome = await requestStartValidationAction({ validatorId: stored });
+    if (outcome.status === "started" || outcome.status === "resumed") {
+      router.push(batchRoutePath(outcome.batchId));
       return;
     }
 
-    const decision = decideStartBatch(stored, await requestBatchAction({ validatorId: stored }), t);
+    const decision = decideStartBatch(
+      stored,
+      outcome.status === "exhausted"
+        ? { status: "exhausted" }
+        : { status: "failed", reason: outcome.reason },
+      t,
+    );
     if (decision.kind === "start") {
-      router.push(batchRouteHref(decision.batchId));
+      router.push(batchRoutePath(decision.batchId));
       return;
     }
 

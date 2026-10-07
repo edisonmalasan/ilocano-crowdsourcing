@@ -4,15 +4,15 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { requestBatchAction } from "@/lib/allocation/actions";
 import type { InterfaceLocale } from "@/lib/domain/locale";
 import { translatorFor } from "@/lib/i18n/copy";
-import { batchRouteHref } from "@/lib/validation/batch-route";
+import { batchRoutePath } from "@/lib/validation/batch-route";
 import {
   continueControlState,
   decideContinueBatch,
   type ContinueBatchDecision,
 } from "@/lib/validation/continue-batch-flow";
+import { requestStartValidationAction } from "@/lib/validation/start-validation-actions";
 import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/browser-identity";
 
 /**
@@ -22,14 +22,15 @@ import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/
  * Two controls, side by side, and the whole design of this file is that they are genuinely
  * different KINDS of thing rather than two buttons with different wording.
  *
- *   CONTINUE — a `<button>` that calls the existing `requestBatchAction` and then navigates to the
- *              batch the server chose. A control, not a link, because a batch id does not exist
+ *   CONTINUE — a `<button>` that calls the single start orchestration and then navigates
+ *              to the batch the server chose. A control, not a link, because a batch id does not exist
  *              until the server has produced one: there is nothing to link TO, and linking to
  *              `/validate` instead would put a second request screen between a participant and the
  *              work they asked to continue. That is `design.md` D1, and it is the reason this file
  *              imports the SAME action `/validate`'s own island imports rather than reaching past
  *              it — two paths to allocation would be two paths that can disagree about what
- *              allocation does.
+ *              allocation does. The orchestration runs under the SAME attempt: no new validator is
+ *              minted because another batch was requested.
  *
  *   FINISH   — a `<button>` that discards the attempt token and then navigates to the same internal
  *              `/`. It still issues NO Server Action and writes no participation record, no
@@ -66,12 +67,14 @@ import { clearStoredValidatorId, readStoredValidatorId } from "@/lib/validators/
  * ============================================================================
  * WHAT THE CLIENT IS NOT TOLD
  * ============================================================================
- * `requestBatchAction` returns the allocated batch's ENTRIES as well as its id. They are read past
- * here — only `batchId` is used, and the response is never rendered. That is not tidiness: a client
- * holding a whole batch's contents before it has answered any of it is the condition the per-entry
- * screen's own header exists to prevent, and a continuation path is exactly where it would creep
- * back in. A DOM test pastes a real instruction into the action's response and asserts it never
- * reaches the document.
+ * `requestStartValidationAction` returns the batch id plus the first entry only. The
+ * entry is read past here — only `batchId` is used, and the response is never rendered.
+ * That is not tidiness: a client holding a whole batch's contents before it has answered
+ * any of it is the condition the per-entry screen's own header exists to prevent, and a
+ * continuation path is exactly where it would creep back in. A DOM test pastes a real
+ * instruction into the action's response as a SECOND entry and asserts it never reaches
+ * the document — and the response shape makes a second entry unrepresentable rather than
+ * merely unread.
  *
  * The identity is read at PRESS time for the reason `start-batch.tsx` records: browser storage does
  * not exist while the server renders, so reading it during render would make the first client
@@ -115,16 +118,29 @@ export function FinishedBatch({ locale, gate }: FinishedBatchProps) {
     const stored = readStoredValidatorId();
     // `null` means no request was made at all, which is a different fact from a request that came
     // back `failed`. `decideContinueBatch` distinguishes them, exactly as `decideStartBatch` does.
-    const outcome = stored === null ? null : await requestBatchAction({ validatorId: stored });
+    // The orchestration's terminal outcomes are mapped onto the existing allocation-shaped
+    // decision input so both start screens keep one vocabulary for the same research facts.
+    const outcome =
+      stored === null ? null : await requestStartValidationAction({ validatorId: stored });
 
     inFlight.current = false;
 
-    if (outcome !== null && outcome.status === "allocated") {
-      router.push(batchRouteHref(outcome.batchId));
+    if (outcome !== null && (outcome.status === "started" || outcome.status === "resumed")) {
+      router.push(batchRoutePath(outcome.batchId));
       return;
     }
 
-    setDecision(decideContinueBatch(stored, outcome, t));
+    setDecision(
+      decideContinueBatch(
+        stored,
+        outcome === null
+          ? null
+          : outcome.status === "exhausted"
+            ? { status: "exhausted" }
+            : { status: "failed", reason: outcome.reason },
+        t,
+      ),
+    );
   }
 
   const continueState = continueControlState(isPending, t);
