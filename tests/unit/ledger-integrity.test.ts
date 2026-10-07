@@ -443,6 +443,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `five-entry-concurrent-persistence`, the FORTY-SECOND archived change, so this coupling has now
       // been paid TWENTY-SEVEN times. Same one-line edit, same reason.
       42: "Forty-two",
+      // Added for `single-roundtrip-validation-start`, the FORTY-THIRD archived change, so this coupling has now
+      // been paid TWENTY-EIGHT times. Same one-line edit, same reason.
+      43: "Forty-three",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
