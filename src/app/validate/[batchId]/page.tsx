@@ -1,49 +1,64 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
-import { Card } from "@/components/ui/card";
 import { ValidationPageShell } from "@/components/validation/validation-page-shell";
-import type { InterfaceLocale } from "@/lib/domain/locale";
+import { resolveOriginKey } from "@/lib/admin/origin";
 import { ServerEnvError } from "@/lib/env/server";
 import { translatorFor } from "@/lib/i18n/copy";
 import { getInterfaceLocale } from "@/lib/i18n/interface-locale-cookie";
 import { parseBatchRouteParam } from "@/lib/validation/batch-route";
-import type { ValidationSessionOutcome } from "@/lib/validation/session";
-import { openValidationSession, sessionDependencies } from "@/lib/validation/session-service";
+import type {
+  OwnedValidationSessionRequest,
+  ValidationSessionOutcome,
+} from "@/lib/validation/session";
+import { openOwnedValidationSession, sessionDependencies } from "@/lib/validation/session-service";
+import { sharedPublicThrottle } from "@/lib/validators/public-throttle";
 
-import { FinishedBatch } from "./finished-batch";
-import { ValidationSessionRunner } from "./validation-session";
+import { OwnedSessionGate } from "./owned-session-gate";
 
 /**
  * ============================================================================
  * THE VALIDATION SESSION ROUTE — `/validate/[batchId]`
  * ============================================================================
- * A Server Component that reads one batch, resolves which single entry to present, and renders that
- * entry together with the form that collects a judgement on it.
+ * A Server Component that renders a NEUTRAL SHELL and nothing else: heading,
+ * description, and the ownership gate island. No sentence is resolved here
+ * and none is in the markup, because a batch address alone grants nothing —
+ * the gate proves the browser's active attempt against the batch's stored
+ * owner through the server action below, and content renders only on
+ * equality. See `owned-session-gate.tsx` for the client half and
+ * `openOwnedValidationSession` for the comparison.
+ *
+ * WHAT IS SERVER-DERIVED HERE: only the batch half of the ownership request
+ * (the identifier recovered from the route, plus the requested position
+ * within the server's order). The attempt half arrives from the gate's
+ * session-scoped read and is joined to it inside the gated call — never in
+ * the URL, so no `VAL_` reaches history, logs, or the address bar.
+ *
+ * WHY THE GATE IS AN ISLAND rather than a server-side check: the active
+ * attempt lives in session-scoped browser storage, which does not exist
+ * while the server renders. A Server Component cannot read it, so the proof
+ * has to be a client call back to the server after mount.
  *
  * ============================================================================
- * WHAT IS SERVER-DERIVED HERE, AND WHY EACH THING MATTERS
+ * WHICH entry, WHOSE batch, and PROGRESS
  * ============================================================================
- *   WHICH entry — from `resolveSessionEntry`, over `batch_entries.position` and the completed set
- *                 from `listEntryIdsForValidator`. The URL may carry `?position=`; it is a position
- *                 INTO the order the server chose, and it is resolved against that order, so a
- *                 stale link lands on the next entry that still needs an answer rather than on
- *                 nothing.
- *   WHOSE batch — from `BatchRecord.validatorId`. The request carries no identity, because the batch
- *                 names its owner and a second client-supplied claim about identity is a second
- *                 thing to get wrong.
- *   PROGRESS — from the batch's own size and the completed count. There is no counter in this
- *                 component and none in the form, so there is nothing for a participant to have
- *                 influenced.
+ * Unchanged from before the gate — they just resolve one layer down now, in
+ * `openOwnedValidationSession`'s shared tail rather than in this component.
+ * WHICH entry comes from `resolveSessionEntry` over `batch_entries.position`
+ * and the completed set; WHOSE batch comes from the batch's own stored
+ * owner, read from the batch rather than asserted by the caller; PROGRESS
+ * comes from the batch's size and the completed count. The reads run against
+ * the STORED owner, never against the supplied attempt, even though the two
+ * are equal on the only path that reaches them.
  *
  * ============================================================================
  * WHY EXACTLY ONE ENTRY IS IN THE MARKUP
  * ============================================================================
- * A route that rendered the whole batch would put nine un-evaluated sentences in the browser at
- * once, which is the thing `design.md` D1 exists to prevent. It is also a research problem rather
- * than only a design one: a validator holding the whole batch can see what is coming before
- * committing to a judgement, and the resulting responses are not independent of each other. The
- * count is asserted by a rendered-markup test, not by this comment.
+ * A route that rendered the whole batch would put every un-evaluated
+ * sentence in the browser at once, which is the thing `design.md` D1 exists
+ * to prevent. The gate preserves it in a stronger form: not even one
+ * sentence is in the markup before ownership is proven.
  */
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getInterfaceLocale();
@@ -60,9 +75,9 @@ interface ValidatePageProps {
  * Reads the requested position out of the query string.
  *
  * `Number` here rather than a Zod coercion, deliberately: `Number("abc")` is `NaN` and `NaN` fails
- * `batchEntryPositionSchema`, so a mangled link produces a rendered "that link did not name a
- * sentence position" state rather than being quietly treated as position one. A validator who
- * followed a bad link deserves to be told the link is bad.
+ * `batchEntryPositionSchema`, so a mangled link produces a refused position rather than being
+ * quietly treated as position one. A validator who followed a bad link deserves to be told the
+ * link is bad.
  */
 function readRequestedPosition(raw: string | string[] | undefined): number | undefined {
   if (typeof raw !== "string" || raw.trim() === "") return undefined;
@@ -87,138 +102,84 @@ export default async function ValidatePage({ params, searchParams }: ValidatePag
    * `parseBatchRouteParam` is the only place that decoding happens, and it does NOT retry: a
    * twice-encoded segment or one that is not valid percent-encoding is REFUSED rather than repaired.
    *
-   * A refusal reports the route's existing `absent` state and performs **no lookup at all** — not
-   * `sessionDependencies()` either, so no environment check and no query runs for an address that
-   * cannot name a batch. `absent` is the honest sentence here: it is the same state a well-formed
-   * address naming a batch that is not in storage produces, and this platform has no way to tell the
-   * two apart that a participant would care about.
+   * A refusal takes the same road as every other denial on this route — home, with no sentence,
+   * no metadata, and no existence signal. The locale survives the trip because it lives in a
+   * cookie, not the address.
    */
   const parsed = parseBatchRouteParam(batchIdSegment);
 
   // The environment check lives in `sessionDependencies`, and a missing deployment is a NORMAL
   // state for this route rather than a crash: the participant gets a plain explanation and nothing
   // is lost, which is the same treatment the screening form gives a missing database.
-  let outcome: ValidationSessionOutcome;
+  //
+  // The check still runs for a refused segment — the refusal below navigates away before any
+  // lookup, so no environment read and no query runs for an address that cannot name a batch.
+  // `redirectHome` is the honest sentence here: it is the same outcome a well-formed address
+  // naming a batch that is not in storage produces, and this platform has no way to tell the
+  // two apart that a participant would care about.
   if (!parsed.ok) {
-    outcome = { status: "absent" };
-  } else {
+    redirect("/");
+  }
+
+  /**
+   * The ownership-gated open, bound to this request.
+   *
+   * Runs AFTER the refusal above, so an address that cannot name a batch never reaches the
+   * environment read or the lookup. The request carries both halves the gate requires — the
+   * batch recovered from the route and the browser's active attempt — and the server compares
+   * the supplied attempt against the batch's STORED owner, returning content only on equality.
+   * Every other case produces the one generic redirect outcome, with no validator row created
+   * on the way out.
+   *
+   * Paced like the resume path, against the same hashed origin signal: a burst of ownership
+   * probes costs no database work and learns nothing faster than the allowance permits.
+   */
+  async function openOwnedSession(
+    request: OwnedValidationSessionRequest,
+  ): Promise<ValidationSessionOutcome> {
+    "use server";
+    const jar = await headers();
     try {
-      outcome = await openValidationSession(
-        { batchId: parsed.batchId, position: readRequestedPosition(query["position"]) },
-        sessionDependencies(),
-      );
+      return await openOwnedValidationSession(request, {
+        ...sessionDependencies(),
+        throttleContext: {
+          throttle: sharedPublicThrottle,
+          originKey: resolveOriginKey((name) => jar.get(name)),
+        },
+      });
     } catch (error) {
       if (!(error instanceof ServerEnvError)) throw error;
-      outcome = { status: "failed", reason: "not_configured" };
+      return { status: "failed", reason: "not_configured" };
     }
   }
+
+  /**
+   * The batch half of the ownership request, assembled server-side from the route. The attempt
+   * half arrives from the gate's session-scoped read and is joined to this inside the gated
+   * call — never in the URL.
+   */
+  const gateRequest = {
+    batchId: parsed.batchId,
+    position: readRequestedPosition(query["position"]),
+  };
 
   return (
     <ValidationPageShell
       title={t("validate.meta.title")}
       description={t("validate.meta.description")}
       /*
-       * The route header is deliberately absent on the finished screen: "This batch is
-       * finished" already says where the participant is, so a second heading plus the
-       * task introduction would be orientation for a task that is over. Every other
-       * state keeps it.
+       * The heading stays on every state now, including the finished one the old route hid it
+       * on: the server no longer knows which state the gate will prove into, so there is no
+       * longer a server-known finished branch to hide it for. The finished card below says
+       * where the participant is; the heading says what the place is.
        */
-      hideHeading={outcome.status === "finished"}
     >
-      <SessionBody outcome={outcome} locale={locale} />
-    </ValidationPageShell>
-  );
-}
-
-interface SessionBodyProps {
-  readonly outcome: ValidationSessionOutcome;
-  readonly locale: InterfaceLocale;
-}
-
-function SessionBody({ outcome, locale }: SessionBodyProps) {
-  const t = translatorFor(locale);
-
-  if (outcome.status === "presenting") {
-    const { session } = outcome;
-    // One server render opens the session; every later transition happens inside the runner,
-    // in place, against the prefetched next entry and the background save queue. The route
-    // still owns the finished/absent/failed branches below, and the runner navigates back
-    // here — rather than rendering those itself — whenever only the server can decide.
-    return (
-      <ValidationSessionRunner
+      <OwnedSessionGate
         locale={locale}
-        initial={{
-          batchId: session.batchId,
-          entry: session.entry,
-          position: session.position,
-          total: session.total,
-          completedCount: session.completedCount,
-        }}
+        batchId={gateRequest.batchId}
+        position={gateRequest.position}
+        openSession={openOwnedSession}
       />
-    );
-  }
-
-  if (outcome.status === "finished") {
-    return (
-      <>
-        <Card as="section" padding="lg">
-          <h2 className="text-heading">{t("validate.finished.label")}</h2>
-          <p className="text-body text-ink-muted mt-3">{t("validate.finished.body")}</p>
-
-          {/*
-            The numeric figures that used to sit here (batch count and lifetime total, each
-            with its own label) were removed by owner decision with their catalog keys: the
-            heading plus the sentence above already say the batch is finished and saved, and
-            the two buttons below already name the choice. The counts themselves are still
-            computed server-side (progress and read-back still need them); they are simply
-            no longer presented on this screen.
-          */}
-
-          {/*
-            THE TWO CONTROLS, and the reason they live in their own client island rather than here.
-
-            A Server Component cannot ask the server for a batch on a participant's behalf, so the
-            continue control has to be an island — and once one of them is, putting the other beside it
-            costs nothing and buys two things worth having. The requirement is that continuing and
-            finishing are DISTINCT controls and that choosing one does not trigger the other, and that
-            is a claim about two controls answering to the same component, which is only observable
-            if they are in one place: a handler-level test can drive either one from a single mount.
-            A finish control in a Server Component would be inertly correct and untestable, and
-            "untestable" is how the two would have quietly grown the same handler.
-
-            `FINISH_HREF` is `"/"`, the only route that is not part of the validation sequence, and
-            neither the two figures above nor anything else on this card is derived from the
-            destination. See the component's header for both decisions in full.
-          */}
-          <FinishedBatch locale={locale} />
-        </Card>
-      </>
-    );
-  }
-
-  if (outcome.status === "absent") {
-    return (
-      <Card as="section" padding="lg">
-        <h2 className="text-heading">{t("validate.absent.label")}</h2>
-        <p className="text-body text-ink-muted mt-3">{t("validate.absent.body")}</p>
-        <p className="mt-5">
-          <Link className="font-display font-bold underline" href="/validate">
-            {t("validate.absent.cta")}
-          </Link>
-        </p>
-      </Card>
-    );
-  }
-
-  return (
-    <Card as="section" padding="lg">
-      <h2 className="text-heading">{t("validate.failed.label")}</h2>
-      <p className="text-body text-ink-muted mt-3">{t("validate.failed.body")}</p>
-      <p className="text-small text-ink-faint mt-3">
-        {outcome.reason === "invalid"
-          ? t("validate.failed.invalid")
-          : t("validate.failed.persistence")}
-      </p>
-    </Card>
+    </ValidationPageShell>
   );
 }

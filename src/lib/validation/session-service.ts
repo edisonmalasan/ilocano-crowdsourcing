@@ -11,10 +11,13 @@ import {
 import { projectAllocatedEntry } from "./allocated-entry";
 
 import {
+  ownedValidationSessionRequestSchema,
   resolveSessionEntry,
   validationSessionRequestSchema,
   type ValidationSessionOutcome,
 } from "./session";
+import type { BatchRecord } from "@/schemas/batch";
+import type { PublicThrottle } from "@/lib/validators/public-throttle";
 
 /**
  * ============================================================================
@@ -41,6 +44,23 @@ import {
  * — validators are anonymous and there is nothing to authenticate against — and the batch id already
  * embeds the anonymous validator id, so a URL that carried the validator id separately would leak
  * nothing new while adding a second thing to get wrong.
+ *
+ * SUPERSEDED, recorded rather than deleted, by the ownership gate below
+ * (`openOwnedValidationSession`, `attempt-and-batch-capability-hardening`
+ * task 3.1): a batch address alone no longer grants access. The server takes
+ * the batch identifier plus the browser's active attempt identity, compares
+ * the supplied attempt against the batch's STORED owner, and returns content
+ * only on equality. Every other case — owner mismatch, unknown batch,
+ * malformed or absent attempt, throttled check — produces ONE generic
+ * `redirectHome` outcome, so the cases are indistinguishable from outside.
+ * The legacy `openValidationSession` beneath is kept byte-for-byte in
+ * observable behavior for its existing callers and its recording-fake
+ * suite; new callers use the gated open.
+ *
+ * The batch identifier is OPAQUE to the gate in both shapes: legacy
+ * `VAL_<hex>-<ISO>` rows still in storage and new `BAT_<hex>` capabilities
+ * are carried, decoded once by the route, and looked up. The gate never
+ * parses a validator identity or a timestamp out of either shape.
  */
 export interface ValidationSessionDependencies {
   readonly batches: Pick<BatchesRepository, "findById">;
@@ -94,6 +114,107 @@ export async function openValidationSession(
     const batch = await dependencies.batches.findById(batchId);
     if (batch === null) return { status: "absent" };
 
+    return await presentLoadedBatch(batch, batchId, position, dependencies);
+  } catch (error) {
+    if (isRepositoryError(error)) return { status: "failed", reason: "persistence" };
+    // A throw that reaches here is not a repository failure — it is a bug. Reporting it as
+    // `persistence` would send an operator looking at a database for a defect in the code, so it
+    // propagates and the route's own boundary decides what to log.
+    throw error;
+  }
+}
+
+/**
+ * What the ownership gate needs beyond the three reads: pacing for the
+ * public check, and the origin signal it is paced against.
+ *
+ * Both optional, so recording-fake suites that never thought about abuse
+ * keep working unchanged: with no throttle context the gate still compares
+ * ownership, which is the authorization decision, and pacing is simply off.
+ * Production always supplies both.
+ */
+export interface OwnedSessionThrottleContext {
+  readonly throttle: PublicThrottle;
+  /** Hashed inside the throttle; the raw header value never reaches storage. */
+  readonly originKey: string;
+}
+
+export interface OwnedValidationSessionDependencies extends ValidationSessionDependencies {
+  readonly throttleContext?: OwnedSessionThrottleContext;
+}
+
+/**
+ * Opens the session for one batch ONLY when the supplied active attempt
+ * names the batch's stored owner.
+ *
+ * `raw` is untrusted and parsed HERE, like the legacy open: the browser's
+ * attempt arrives in the action body (never in the URL), and a malformed
+ * one produces the same generic outcome as a mismatch rather than a
+ * distinct refusal — the distinction would be the oracle.
+ *
+ * The READS after the comparison run against the STORED owner
+ * (`batch.validatorId`), never against the supplied attempt, even though
+ * the two are equal on the only path that reaches them. The supplied
+ * attempt is proof-of-session, never an override of stored ownership —
+ * the same rule the submit path enforces when it files a response under
+ * the batch's owner.
+ *
+ * This path performs ZERO enrollment writes: it reads batches, completed
+ * sets, counts, and entries, and creates nothing. A foreign link opened
+ * under another attempt (or none) leaves no validator row behind.
+ */
+export async function openOwnedValidationSession(
+  raw: unknown,
+  dependencies: OwnedValidationSessionDependencies,
+): Promise<ValidationSessionOutcome> {
+  const parsed = ownedValidationSessionRequestSchema.safeParse(raw);
+  if (!parsed.success) return { status: "redirectHome" };
+
+  const { batchId, position, activeAttemptId } = parsed.data;
+
+  // Paced BEFORE any read, so a burst costs no database work at all.
+  // Refusal is the same generic outcome as every other denial.
+  if (dependencies.throttleContext !== undefined) {
+    const allowed = dependencies.throttleContext.throttle.check(
+      "session_open",
+      dependencies.throttleContext.originKey,
+      activeAttemptId,
+    );
+    if (!allowed) return { status: "redirectHome" };
+  }
+
+  try {
+    const batch = await dependencies.batches.findById(batchId);
+    // Unknown batch and owner mismatch share ONE outcome. Naming which
+    // happened would tell a prober whether the identifier exists.
+    if (batch === null) return { status: "redirectHome" };
+    if (batch.validatorId !== activeAttemptId) return { status: "redirectHome" };
+
+    return await presentLoadedBatch(batch, batchId, position, dependencies);
+  } catch (error) {
+    // A read failure stays distinguishable from a denial: during normal
+    // operation every probe of every nonexistent batch gets `redirectHome`,
+    // so the failure case carries no existence signal, while an outage
+    // still reports as an outage rather than a quiet trip home.
+    if (isRepositoryError(error)) return { status: "failed", reason: "persistence" };
+    throw error;
+  }
+}
+
+/**
+ * The shared tail both opens resolve through once the batch is loaded:
+ * completed set, placement choice, finished figures, single-entry
+ * projection. One function rather than two copies, so the presenting and
+ * finished behavior the legacy suite pins cannot drift from what the gate
+ * serves its proven owner.
+ */
+async function presentLoadedBatch(
+  batch: BatchRecord,
+  batchId: string,
+  position: number | undefined,
+  dependencies: ValidationSessionDependencies,
+): Promise<ValidationSessionOutcome> {
+  try {
     const completedEntryIds = new Set(
       await dependencies.validations.listEntryIdsForValidator(batch.validatorId),
     );
