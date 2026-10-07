@@ -449,9 +449,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `validation-transition-and-skeleton-loading`, the FORTY-FOURTH archived change, so this coupling has now
       // been paid TWENTY-NINE times. Same one-line edit, same reason.
       44: "Forty-four",
-      // Added for `refine-validation-loading-transitions`, the FORTY-FIFTH archived change, so this coupling has now
-      // been paid THIRTY times. Same one-line edit, same reason.
-      45: "Forty-five",
+      // Added for `fix-validation-skeleton-server-boundary`, the FORTY-SIXTH archived change, so this coupling has now
+      // been paid THIRTY-ONE times. Same one-line edit, same reason.
+      46: "Forty-six",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
