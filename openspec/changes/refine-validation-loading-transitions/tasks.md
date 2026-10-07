@@ -31,3 +31,43 @@
 - [x] 5.1 Full matrix green (`lint`, `format:check`, `typecheck`, unit, DOM, integration, build) with real counts recorded; no persistence/allocation/recovery/completion/export test weakened; verified by command outputs.
 - [x] 5.2 Timing expectations recorded: click-to-skeleton immediate; reveal ~1500ms after submit; save starts at click, never after the interval; verified by the transition tests.
 - [x] 5.3 Run `openspec validate refine-validation-loading-transitions --strict`, independent verification pass (every delta scenario named with its test), hosted read-only probes only (no resets, reseeds, or research writes); record real counts.
+
+## Verification record (2026-10-07, verification-hardening pass)
+
+The independent verification of the Apply (PR #193, `cb0ce0d`) reported no
+CRITICAL findings and four WARNINGs. This record closes them:
+
+- **W1, stale-timer scenario untested.** The expiry decision is now the
+  exported pure predicate `transitionTimerIsCurrent` in
+  `validation-session.tsx`, used by the timer effect. Named unit tests live
+  in `tests/unit/validation-transition-timer.test.ts` (5 tests: live timer
+  expires, stale-older and stale-newer ids refused, null halves refused,
+  identity by id value not reference/expiry). Can-fire probe: dropping the
+  id check goes `2 failed / 3 passed (5)`, naming both stale directions;
+  restored byte-identical (`git diff` shows only the intended addition).
+- **W2, can-fire probes unrecorded (task 4.1).** Each with a green control
+  immediately before and a byte-identical restore immediately after,
+  measured on this branch:
+  - P1, transition branch forced off (`if (false)`): settling suite
+    `8 failed / 3 passed (11)` — proves the skeleton-during-interval guards.
+  - P2, `ValidationSkeleton` returns null: skeleton + settling suites
+    `15 failed / 8 passed (23)` — proves the skeleton-presence guards.
+  - P3, interval doubled (`ENTRY_TRANSITION_MS * 2` at the call site; the
+    export is unchanged so tests still assert against it): settling suite
+    `6 failed / 5 passed (11)` — proves the boundary-timing guards.
+- **W3, visual-review method unrecorded (task 4.3).** Proxy only, stated
+  honestly: no human eye, no real browser viewport. The proxy is the
+  geometry-parity suite (`validation-skeleton.test.tsx` K-9: real EntryCard
+  shell classes, real option classes, real button size; K-1 zero text; K-3
+  no animation classes, confirmed by grep for `animate-|transition-|motion-`
+  over the skeleton with no matches; K-10 adaptive lines; K-5..K-8 route
+  boundaries) in ENG and FIL. Skeleton-to-real reveal therefore cannot jump
+  beyond what the shared constants allow at the class level; a human look
+  at a real viewport is still owed before pilot crowdsourcing.
+- **W4, integration worker RPC timeout.** Local full-parallel runs report
+  `17 passed (17)` files / `279 passed (279)` tests plus one unhandled
+  `[vitest-worker]: Timeout calling "onTaskUpdate"` (exit 1) — reproduced
+  locally 3x with all tests passing, while CI run 37609567367 on the Apply
+  commit reports `17 passed (17)` / `279 passed (279)` with no error. The
+  change touches zero integration-covered files, so this is recorded as a
+  pre-existing local-load flake, not a regression.

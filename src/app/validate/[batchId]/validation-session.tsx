@@ -118,10 +118,27 @@ type RunnerPhase = "answering" | "finishing";
  */
 export const ENTRY_TRANSITION_MS = 1500;
 
-interface PendingTransition {
+export interface PendingTransition {
   readonly id: number;
   readonly next: PresentedEntry | null;
   readonly expired: boolean;
+}
+
+/**
+ * Whether a firing transition timer still owns the transition on screen.
+ *
+ * The timer effect is keyed on the transition id and cleaned up on every key
+ * change, so a stale fire cannot normally happen — but "cannot normally
+ * happen" is not an enforcement. This predicate IS: expiry applies only when
+ * the live transition still carries the timer's id, so a timer from an older
+ * transition can never expire (and thereby reveal) a newer one. Exported so
+ * the stale-timer scenario has a named unit test rather than review prose.
+ */
+export function transitionTimerIsCurrent(
+  current: PendingTransition | null,
+  timerKey: number | null,
+): current is PendingTransition {
+  return current !== null && timerKey !== null && current.id === timerKey;
 }
 
 type CheckpointState =
@@ -281,7 +298,7 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
     if (transitionTimerKey === null) return;
     const timer = setTimeout(() => {
       setTransition((current) =>
-        current !== null && current.id === transitionTimerKey
+        transitionTimerIsCurrent(current, transitionTimerKey)
           ? { ...current, expired: true }
           : current,
       );
