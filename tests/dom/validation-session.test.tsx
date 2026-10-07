@@ -1,7 +1,10 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ValidationSessionRunner } from "@/app/validate/[batchId]/validation-session";
+import {
+  ENTRY_SETTLING_MS,
+  ValidationSessionRunner,
+} from "@/app/validate/[batchId]/validation-session";
 import type { RequestNextEntryResult } from "@/lib/validation/next-entry-actions-core";
 import type { SubmitValidationResult } from "@/lib/validation/validation-actions-core";
 import { EVALUATION_CHOICES } from "@/schemas/validation";
@@ -173,6 +176,22 @@ async function submitCurrent(): Promise<void> {
   await view.submitFormAndSettle(view.one("form"));
 }
 
+/**
+ * Waits out the entry-settling interval in real time.
+ *
+ * Follow-up entries present with their controls disabled for
+ * `ENTRY_SETTLING_MS`; a test that answers a second entry must let that
+ * interval elapse first, or the press meets a disabled control and records
+ * nothing. The small margin covers harness overhead. Only tests that answer
+ * past the first entry need this — the first presentation never settles.
+ */
+async function waitSettling(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ENTRY_SETTLING_MS + 150));
+  });
+  await view.settle();
+}
+
 function instructionVisible(id: string): boolean {
   return (view.container.textContent ?? "").includes(`Instruction sentence for ${id}.`);
 }
@@ -306,6 +325,9 @@ describe("S-3/S-4 — instant advance with a save still open", () => {
 
     await answerFully()(0);
     await submitCurrent();
+    // The new entry settles before accepting input: let its interval elapse
+    // before typing into it, or the press meets a disabled control.
+    await waitSettling();
     // Type into the NEW entry while the old save is still open.
     const group = view.all('[role="radiogroup"]')[0] as HTMLElement;
     const buttons = Array.from(group.querySelectorAll('button[role="radio"]'));
@@ -499,6 +521,9 @@ describe("S-15 — a submit held by a parked failure resumes after retry", () =>
     expect(view.one('[role="alert"]')).toBeTruthy();
     expect(instructionVisible("OD_0002")).toBe(true);
 
+    // The parked-entry wait above consumed most of the settling interval, but
+    // not all of it: let the remainder elapse before answering entry 2.
+    await waitSettling();
     // Submit entry 2 while entry 1 is parked: the advance is held, not lost.
     await answerFully()(0);
     await submitCurrent();
@@ -540,6 +565,8 @@ describe("S-9 — worker occupancy never holds advancement", () => {
     await submitCurrent();
     expect(instructionVisible("OD_0002")).toBe(true);
 
+    // Each follow-up entry settles before accepting input.
+    await waitSettling();
     await answerFully()(0);
     await submitCurrent();
     // Still advancing with two saves open: no backlog hold, no plain-copy pause.
@@ -549,6 +576,7 @@ describe("S-9 — worker occupancy never holds advancement", () => {
 
     // The final answer enqueues a third save and transitions in place to the finished card —
     // advancement itself never waited on worker occupancy.
+    await waitSettling();
     await answerFully()(0);
     await submitCurrent();
     expect(h.saves).toHaveLength(3);

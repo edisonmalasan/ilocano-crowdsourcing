@@ -30,7 +30,7 @@ import { mount, type Mounted } from "./support/dom-harness";
  *   AO-7  no stored identifier issues no request and points at screening
  *   AO-8  one mount issues one orchestration
  *   AO-9  an attempt without a recorded answer restarts screened
- *   AO-10 the island carries no title and the working state reads as pending
+ *   AO-10 the island carries no title and the working state is a skeleton
  *   AO-11 the first entry's sentence never reaches the document on the start path
  *
  * =================================================================================================
@@ -294,7 +294,7 @@ describe("AO-8 — one mount issues one orchestration", () => {
   });
 });
 
-describe("AO-10 — the island carries no title and the working state reads as pending", () => {
+describe("AO-10 — the island carries no title and the working state is a skeleton", () => {
   it("renders no heading of its own, so the route title appears exactly once", async () => {
     // The route page owns the single `h1`. An island-level heading with the
     // same title rendered "Start validating" twice — once as the page, once
@@ -308,7 +308,7 @@ describe("AO-10 — the island carries no title and the working state reads as p
     expect(view.container.innerHTML).toContain(t("validateStart.exhausted"));
   });
 
-  it("marks the working state pending with a status role and a busy section", async () => {
+  it("shows the validation skeleton while working, never a preparing card", async () => {
     // Mount settles past working on the default fixture, so hold the run
     // open: the orchestration mock below never resolves, leaving the island in
     // its working phase while the assertions run.
@@ -317,9 +317,12 @@ describe("AO-10 — the island carries no title and the working state reads as p
     view = mount(<StartBatch locale="en" />);
     await view.settle();
 
-    const status = view.one('[role="status"]');
-    expect(status.textContent).toBe(t("validateStart.working"));
-    expect(view.one("section")?.getAttribute("aria-busy")).toBe("true");
+    // The normal-flow working state is the validation skeleton: a busy
+    // container whose visual blocks are hidden from assistive technology, with
+    // no "Preparing your sentences" card text anywhere in the flow.
+    expect(view.one('[data-skeleton="validation"]')?.getAttribute("aria-busy")).toBe("true");
+    expect(view.container.textContent ?? "").not.toContain(t("validateStart.working"));
+    expect(view.container.textContent ?? "").not.toContain(t("validateStart.working.ariaLabel"));
     h.startResult = freshResult();
   });
 });
