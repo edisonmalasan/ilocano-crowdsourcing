@@ -15,6 +15,7 @@ import {
   type EnrollmentOutcome,
   type ResumeOutcome,
 } from "./enrollment";
+import type { PublicThrottle } from "./public-throttle";
 
 /**
  * Onboarding action core — the testable half of the Server Actions.
@@ -165,12 +166,37 @@ export async function runEnroll(
 }
 
 /**
+ * What the throttled resume path is paced against.
+ *
+ * Optional, so the recording-fake suites that never thought about abuse keep
+ * working unchanged: with no throttle context the resume still looks the
+ * identifier up, which is the authorization decision, and pacing is simply
+ * off. Production always supplies both halves.
+ */
+export interface ResumeThrottleContext {
+  readonly throttle: PublicThrottle;
+  /**
+   * The request-origin signal, hashed inside the throttle. The raw header
+   * value never reaches storage, a research table, or an export.
+   */
+  readonly originKey: string;
+}
+
+/**
  * Resolves a client-supplied stored identifier to a server-confirmed validator.
  *
  * The write intake checks only "a non-empty string", so this is the check that
  * actually means anything, and a value failing it is reported as `absent` rather
  * than `invalid` — a stale or tampered local-storage value is not something the
  * participant did wrong, and `invalid` reads to them like a bug.
+ *
+ * THROTTLED BEFORE ANYTHING IS LEARNED. When a throttle context is supplied
+ * the check is paced first — before the format parse, before the lookup — so a
+ * burst costs no database work at all. A refused check returns the same
+ * `absent` as a malformed or unknown identifier: the three cases are
+ * indistinguishable from outside, which is what keeps the resume surface from
+ * becoming a valid/invalid oracle taken at network speed. A refused check
+ * consumes nothing further and performs no read and no write.
  *
  * HONEST NOTE ON REDUNDANCY, because a deliberate duplicate that is not labelled as
  * one becomes accidental the next time someone edits it. `resumeValidator` below
@@ -185,6 +211,7 @@ export async function runEnroll(
 export async function runResume(
   raw: unknown,
   deps: OnboardingActionDependencies,
+  throttleContext?: ResumeThrottleContext,
 ): Promise<ResumeActionResult> {
   let intent: z.output<typeof resumeIntentSchema>;
   try {
@@ -192,6 +219,18 @@ export async function runResume(
   } catch (error) {
     if (isWriteIntentError(error)) return { status: "failed", reason: "invalid" };
     throw error;
+  }
+
+  // Paced on the ATTEMPTED identifier even when it is malformed: a prober
+  // sweeping guesses must spend budget on every guess, not only on the ones
+  // shaped like an identifier. Refusal is `absent`, like every other denial.
+  if (throttleContext !== undefined) {
+    const allowed = throttleContext.throttle.check(
+      "resume",
+      throttleContext.originKey,
+      intent.storedId,
+    );
+    if (!allowed) return { status: "absent" };
   }
 
   const parsed = anonymousValidatorIdSchema.safeParse(intent.storedId);
