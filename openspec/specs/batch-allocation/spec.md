@@ -53,6 +53,12 @@ excluding granted ids, for at most two extra rounds; persistent contention SHALL
 Answering another batch after a passed checkpoint keeps the SAME attempt identity: no new
 validator is minted because another batch was requested.
 
+On the validation-start path defined in `validation-start`, the server SHALL return the batch
+identifier plus the first entry to present, and SHALL NOT transfer the whole allocated entry
+list to the client. Allocation still persists and reserves the full batch server-side; only the
+start response is narrowed. The per-position next-entry path is unchanged and remains the way
+later entries are reached.
+
 > **The batch size of 10 is SUPERSEDED by this change, recorded rather than silently edited.**
 > The earlier configuration allocated 10 entries per batch. The rule is otherwise unchanged;
 > only the number moves from 10 to 5.
@@ -151,6 +157,18 @@ validator is minted because another batch was requested.
 
 - **WHEN** a validator requests another batch after a passed checkpoint
 - **THEN** the same attempt identity is used and no new validator is minted
+
+#### Scenario: The start response carries one entry, not the batch
+
+- **WHEN** a validator starts validation through the orchestration defined in `validation-start`
+- **THEN** the response names the batch identifier and exactly one entry to present, and no
+  second allocated entry's sentence, identifier, or position is transferred
+
+#### Scenario: The narrowed start response changes nothing stored
+
+- **WHEN** a batch is allocated through the orchestration
+- **THEN** the persisted batch, its entries, and its reservations are identical to a batch
+  allocated through the standalone allocation path
 
 ### Requirement: Eligible entries are offered in a randomized order
 

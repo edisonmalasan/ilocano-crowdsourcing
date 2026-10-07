@@ -194,6 +194,12 @@ remove, disable, or delay the onward path: the orchestration runs the lookup fir
 to the interrupted batch where one is recognised, otherwise to allocation — and a lookup that has not
 completed, or that fails, SHALL proceed to allocation exactly as when no interrupted batch exists.
 
+On the validation-start path defined in `validation-start`, the lookup SHALL run inside the single
+start orchestration rather than as a separate client-issued round trip. Recognition, ordering, and
+resume semantics are unchanged: the most recently created interrupted batch is still the one offered,
+resuming still writes nothing, and a failed internal check still falls through to allocation with
+nothing shown to the participant for the check itself.
+
 A lookup that cannot complete SHALL report an explicit modelled outcome that distinguishes "no interrupted
 batch" from "could not determine", and SHALL NOT be an exception swallowed into a success. That modelled
 outcome SHALL NOT be shown to the participant as an error sentence: the participant cannot act on it, and
@@ -222,3 +228,15 @@ is a control that can never succeed.
 
 - **WHEN** the lookup completes without finding an interrupted batch, and separately when it cannot complete
 - **THEN** these are distinct outcomes the platform can tell apart, and the second is not an exception swallowed into the first
+
+#### Scenario: The start path issues no standalone recovery round trip
+
+- **WHEN** a validator starts validation through the orchestration defined in `validation-start`
+- **THEN** the client issues no separate recovery-lookup request; the check runs inside the
+  orchestration and the resume-or-allocate decision arrives with the first entry
+
+#### Scenario: The folded lookup keeps its ordering and silence
+
+- **WHEN** the orchestration's internal check finds an interrupted batch, and separately when it fails
+- **THEN** the most recently created batch is the one resumed, resuming writes nothing, and a
+  failed check is indistinguishable to the participant from no interrupted batch existing

@@ -35,6 +35,14 @@ The response-submit RPC SHALL follow the established versioned-function posture:
 and authenticated revoked. Client-called Server Actions remain for one-shot workflows and SHALL
 NOT serve as the transport for individual background response writes.
 
+The validation-start orchestration defined in `validation-start` SHALL be a client-called Server
+Action for a one-shot workflow: it SHALL validate its input strictly (validator identity plus an
+optional size preference only), derive ownership and timestamps server-side, and reach
+persistence only through the existing versioned allocation function executed with the
+privileged path. It SHALL introduce no new RPC and no new privilege. The browser SHALL never
+call the allocation function directly and SHALL never supply entry lists, ordering, coverage,
+batch ownership, or timestamps.
+
 #### Scenario: Privileged credential is unavailable to browser code
 
 - **WHEN** the module graph reachable from a client component is inspected
@@ -61,6 +69,19 @@ NOT serve as the transport for individual background response writes.
 
 - **WHEN** the RPC grants are inspected on the hosted project
 - **THEN** only `service_role` may execute it and PUBLIC/anon/authenticated are revoked
+
+#### Scenario: The start orchestration takes intent only
+
+- **WHEN** a start request carrying an entry list, an ordering, a coverage value, batch
+  ownership, or timestamps arrives
+- **THEN** it is refused as an unrecognised input or has those values ignored before any
+  database work, and the server derives the authoritative values itself
+
+#### Scenario: The start orchestration adds no privilege
+
+- **WHEN** the persistence calls reachable from the start orchestration are enumerated
+- **THEN** they are the existing versioned allocation function plus read-only lookups, all
+  executed with the privileged path server-side, and no new RPC or grant exists
 
 ### Requirement: Repository interfaces own persistence concerns
 
