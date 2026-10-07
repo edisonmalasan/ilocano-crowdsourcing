@@ -177,3 +177,87 @@ describe("K-8 — the finished card never renders a skeleton of its own", () => 
     expect(finished.all("button").length).toBe(2);
   });
 });
+
+describe("K-9 — the skeleton shares geometry with the real UI, not a redraw", () => {
+  it("renders the real EntryCard shell, the real option classes, and the real button size", async () => {
+    const skeleton = mountSkeleton();
+    const { ENTRY_CARD_SECTION_CLASS, ENTRY_CARD_INNER_CLASS } =
+      await import("@/components/validation/entry-card");
+    const { answerOptionClasses } = await import("@/components/validation/answer-option");
+    const { buttonClasses } = await import("@/components/ui/button");
+
+    const section = skeleton.all("section")[0]!;
+    for (const token of ENTRY_CARD_SECTION_CLASS.split(" ")) {
+      expect(section.getAttribute("class")).toContain(token);
+    }
+    const inner = section.querySelector("div");
+    for (const token of ENTRY_CARD_INNER_CLASS.split(" ")) {
+      expect(inner?.getAttribute("class")).toContain(token);
+    }
+
+    const options = skeleton.all('[data-skeleton-line="option"]');
+    expect(options).toHaveLength(4);
+    const expectedOption = answerOptionClasses({ selected: false });
+    for (const option of options) {
+      expect(option.getAttribute("class")).toBe(expectedOption);
+    }
+
+    // Save-button block mirrors Button size="lg" geometry (min-h-13 px-7 py-3.5, full width).
+    const buttonBlock = skeleton.one('[data-skeleton-line="button"]');
+    const buttonGeometry = buttonClasses({ size: "lg", fullWidth: true });
+    for (const token of ["min-h-13", "px-7", "py-3.5", "w-full"]) {
+      expect(buttonBlock.getAttribute("class")).toContain(token);
+      expect(buttonGeometry).toContain(token);
+    }
+  });
+
+  it("carries no control semantics: no button, form, or focusable content", () => {
+    const skeleton = mountSkeleton();
+    expect(skeleton.all("button").length).toBe(0);
+    expect(skeleton.all("form").length).toBe(0);
+    expect(skeleton.all("a").length).toBe(0);
+    expect(skeleton.all("input").length).toBe(0);
+    expect(skeleton.all("textarea").length).toBe(0);
+    expect(skeleton.all("[tabindex]").length).toBe(0);
+  });
+});
+
+describe("K-10 — the sentence skeleton adapts to the upcoming sentence length", () => {
+  it("shows fewer lines for a short sentence and more for a long one, never the text", async () => {
+    const { ValidationSkeleton: Skeleton } =
+      await import("@/components/validation/validation-skeleton");
+    const short = mount(<Skeleton upcomingInstructionLength={21} />);
+    const long = mount(<Skeleton upcomingInstructionLength={185} />);
+    view = short;
+    try {
+      const shortLines = short.all('[data-skeleton-line="sentence"]');
+      const longLines = long.all('[data-skeleton-line="sentence"]');
+      expect(shortLines.length).toBeLessThan(longLines.length);
+      expect(shortLines.length).toBe(1);
+      expect(longLines.length).toBe(4);
+      expect((short.container.textContent ?? "").trim()).toBe("");
+      expect((long.container.textContent ?? "").trim()).toBe("");
+    } finally {
+      short.unmount();
+      long.unmount();
+      view = null;
+    }
+  });
+
+  it("uses the stable generic shape when the upcoming sentence is unknown", async () => {
+    const { ValidationSkeleton: Skeleton } =
+      await import("@/components/validation/validation-skeleton");
+    const generic = mount(<Skeleton />);
+    const explicit = mount(<Skeleton upcomingInstructionLength={null} />);
+    view = generic;
+    try {
+      expect(generic.all('[data-skeleton-line="sentence"]').length).toBe(2);
+      expect(explicit.all('[data-skeleton-line="sentence"]').length).toBe(2);
+      expect((generic.container.textContent ?? "").trim()).toBe("");
+    } finally {
+      generic.unmount();
+      explicit.unmount();
+      view = null;
+    }
+  });
+});

@@ -46,18 +46,28 @@ export interface EntryCardProps {
  * error instead of a flag flip.
  */
 
+/**
+ * Shared shell geometry for the sentence card, exported so the loading
+ * skeleton renders the same chrome from the same strings rather than
+ * retyping them. Research-material rules are unchanged: this file still
+ * renders `entry.instruction` as stored, with no catalog lookup.
+ */
+export const ENTRY_CARD_SECTION_CLASS =
+  "rounded-card border-ink bg-paper-raised shadow-brutal-md border-2";
+export const ENTRY_CARD_INNER_CLASS = "px-5 py-4 sm:px-6 sm:py-5";
+export const ENTRY_CARD_LABEL_CLASS = "label-meta text-ink-muted";
+export const ENTRY_CARD_SENTENCE_CLASS =
+  "font-display text-ink mt-2 text-xl leading-relaxed font-bold";
+
 export function EntryCard({ entry, label, instructionLabel }: EntryCardProps) {
   return (
-    <section
-      aria-label={label}
-      className="rounded-card border-ink bg-paper-raised shadow-brutal-md border-2"
-    >
-      <div className="px-5 py-4 sm:px-6 sm:py-5">
-        <p className="label-meta text-ink-muted">{instructionLabel}</p>
+    <section aria-label={label} className={ENTRY_CARD_SECTION_CLASS}>
+      <div className={ENTRY_CARD_INNER_CLASS}>
+        <p className={ENTRY_CARD_LABEL_CLASS}>{instructionLabel}</p>
         {/* The sentence itself. `lang` is declared so a screen reader switches voice rather than
             reading Ilocano text with an English voice, which is the difference between an
             intelligible sentence and an unintelligible one. No catalog lookup touches this value. */}
-        <p lang="ilo" className="font-display text-ink mt-2 text-xl leading-relaxed font-bold">
+        <p lang="ilo" className={ENTRY_CARD_SENTENCE_CLASS}>
           {entry.instruction}
         </p>
       </div>

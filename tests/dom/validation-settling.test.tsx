@@ -2,7 +2,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  ENTRY_SETTLING_MS,
+  ENTRY_TRANSITION_MS,
   ValidationSessionRunner,
 } from "@/app/validate/[batchId]/validation-session";
 import type { RequestNextEntryResult } from "@/lib/validation/next-entry-actions-core";
@@ -12,30 +12,25 @@ import type { AllocatedEntry } from "@/schemas/batch";
 import { mount, type Mounted } from "./support/dom-harness";
 
 /**
- * The entry-settling interval — driven for real under fake timers.
+ * The entry transition — driven for real under fake timers.
  *
- * The runner presents each newly transitioned entry immediately while keeping
- * its controls disabled for `ENTRY_SETTLING_MS`; the save starts at submit
- * time and the interval never observes it. Fake timers stand in for the
- * 2000ms so no test sleeps a real two seconds: every duration below is
- * asserted against the exported constant, never a retyped copy.
+ * The runner enqueues the save at submit time, shows the layout-matched
+ * skeleton for `ENTRY_TRANSITION_MS`, and only then reveals the next entry,
+ * immediately interactive. The next entry's real sentence and form are never
+ * rendered during the interval. Fake timers stand in for the 1500ms so no
+ * test sleeps a real second and a half: every duration below is asserted
+ * against the exported constant, never a retyped copy.
  *
- *   T-1   submit enqueues the save and presents the next entry with the save open
- *   T-2   the new entry is readable but every control is disabled, with no wait copy
- *   T-3   the interval ends at ~2000ms with the save still unresolved
+ *   T-1   submit enqueues the save and shows the skeleton with no real sentence
+ *   T-2   the skeleton carries no real sentence, no real form, no wait copy
+ *   T-3   the interval ends at ~1500ms with the save still unresolved
  *   T-4   an early save confirmation does not shorten the interval
  *   T-5   a late save confirmation does not extend the interval
  *   T-6   presenting a third entry starts its own full interval
  *   T-7   same-entry re-renders and locale switches restart nothing and save nothing
  *   T-8   unmounting mid-interval cleans the timer up
- *   T-9   the single-flight latch still holds while settling renders disabled
+ *   T-9   the single-flight latch still holds (double submit enqueues once)
  *   T-10  the final entry transitions with no sixth-entry timer
- *
- * WHAT THIS DOES NOT PROVE
- * `happy-dom` dispatches on disabled custom buttons the way the shared harness
- * already relies on, so "disabled" here is asserted as rendered semantics
- * (every control carries `disabled`), not as a browser refusing a click — a
- * real browser's refusal is a separate, human step.
  */
 
 const BATCH_ID = "VAL_0a1b2c3d-:2026-09-30T12:00:00.000Z";
@@ -142,8 +137,8 @@ function mountRunner(locale: "en" | "fil" = "en"): void {
   );
 }
 
-/** Move the settling clock inside `act` so React commits the expiry. */
-async function advanceSettling(ms: number): Promise<void> {
+/** Move the transition clock inside `act` so React commits the expiry. */
+async function advanceTransition(ms: number): Promise<void> {
   await act(async () => {
     vi.advanceTimersByTime(ms);
   });
@@ -166,12 +161,8 @@ function instructionVisible(id: string): boolean {
   return (view.container.textContent ?? "").includes(`Instruction sentence for ${id}.`);
 }
 
-/** Every interactive control of the presented entry: four evaluation radios + submit. */
-function entryControls(): { radios: Element[]; submit: HTMLButtonElement } {
-  const group = view.all('[role="radiogroup"]')[0] as HTMLElement;
-  const radios = Array.from(group.querySelectorAll('button[role="radio"]'));
-  const submit = view.one('button[type="submit"]') as HTMLButtonElement;
-  return { radios, submit };
+function skeletonVisible(): boolean {
+  return view.all('[data-skeleton="validation"]').length === 1;
 }
 
 beforeEach(() => {
@@ -206,8 +197,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("T-1 — submit saves in the background and presents the next entry at once", () => {
-  it("enqueues entry 1 and shows entry 2 while its save is still open", async () => {
+describe("T-1 — submit saves in the background and shows the transition skeleton", () => {
+  it("enqueues entry 1 and shows the skeleton with neither sentence while its save is still open", async () => {
     const saveGate = deferred<SubmitValidationResult>();
     h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
     h.saveScript.push(() => saveGate.promise);
@@ -218,13 +209,14 @@ describe("T-1 — submit saves in the background and presents the next entry at 
     await submitCurrent();
 
     expect(h.saves).toHaveLength(1);
-    expect(instructionVisible("OD_0002")).toBe(true);
+    expect(skeletonVisible()).toBe(true);
     expect(instructionVisible("OD_0001")).toBe(false);
+    expect(instructionVisible("OD_0002")).toBe(false);
   });
 });
 
-describe("T-2 — the new entry settles before accepting input", () => {
-  it("keeps every control disabled while the sentence stays readable, with no wait copy", async () => {
+describe("T-2 — the transition shows a skeleton, never a disabled entry", () => {
+  it("renders no real sentence and no real form, with no wait copy", async () => {
     h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
     h.saveScript.push(async () => recordedFor("OD_0001"));
     mountRunner();
@@ -234,29 +226,22 @@ describe("T-2 — the new entry settles before accepting input", () => {
     await submitCurrent();
     await view.settle();
 
-    // Readable: the new sentence is on screen immediately.
-    expect(instructionVisible("OD_0002")).toBe(true);
-    // Unanswerable: every interactive control carries real disabled semantics.
-    const { radios, submit } = entryControls();
-    expect(radios).toHaveLength(4);
-    for (const radio of radios) {
-      expect((radio as HTMLButtonElement).disabled).toBe(true);
-    }
-    expect(submit.disabled).toBe(true);
-    // And the pause is never narrated: the label is the ordinary one, with no
-    // countdown, no wait sentence, and no saving commentary. (The evaluation
-    // hint legitimately contains the word "second", so that word alone is not
-    // asserted absent; what is asserted is the absence of wait-themed copy.)
-    expect(submit.textContent).toBe("Save and continue");
+    expect(skeletonVisible()).toBe(true);
+    expect(instructionVisible("OD_0001")).toBe(false);
+    expect(instructionVisible("OD_0002")).toBe(false);
+    // No real form is on screen during the transition.
+    expect(view.all("form").length).toBe(0);
+    expect(view.all('button[type="submit"]').length).toBe(0);
+    // And the pause is never narrated: no countdown, no wait sentence, no saving commentary.
     expect(view.container.textContent).not.toMatch(/Saving…/);
     expect(view.container.textContent).not.toMatch(/please wait/i);
     expect(view.container.textContent).not.toMatch(/Preparing your sentences/);
-    expect(view.container.getAttribute("aria-busy")).toBeNull();
+    expect(view.container.textContent).not.toMatch(/Loading next sentence/);
   });
 });
 
 describe("T-3/T-4/T-5 — the interval answers only to its own clock", () => {
-  it("enables at ~2000ms with the save still unresolved", async () => {
+  it("reveals at ~1500ms with the save still unresolved", async () => {
     const saveGate = deferred<SubmitValidationResult>();
     h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
     h.saveScript.push(() => saveGate.promise);
@@ -267,15 +252,18 @@ describe("T-3/T-4/T-5 — the interval answers only to its own clock", () => {
     await submitCurrent();
     await view.settle();
 
-    // Still settling just before the deadline, save open the whole time.
-    await advanceSettling(ENTRY_SETTLING_MS - 1);
-    expect(entryControls().submit.disabled).toBe(true);
+    // Still skeleton just before the deadline, save open the whole time.
+    await advanceTransition(ENTRY_TRANSITION_MS - 1);
+    expect(skeletonVisible()).toBe(true);
+    expect(instructionVisible("OD_0002")).toBe(false);
 
-    await advanceSettling(1);
-    expect(entryControls().submit.disabled).toBe(false);
-    for (const radio of entryControls().radios) {
-      expect((radio as HTMLButtonElement).disabled).toBe(false);
-    }
+    await advanceTransition(1);
+    expect(skeletonVisible()).toBe(false);
+    expect(instructionVisible("OD_0002")).toBe(true);
+    // Revealed entry is immediately interactive: the submit control is enabled.
+    const submit = view.one('button[type="submit"]') as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    expect(submit.textContent).toBe("Save and continue");
   });
 
   it("an early save confirmation does not shorten the interval", async () => {
@@ -292,11 +280,11 @@ describe("T-3/T-4/T-5 — the interval answers only to its own clock", () => {
     await view.settle(() => {
       saveGate.resolve(recordedFor("OD_0001"));
     });
-    await advanceSettling(ENTRY_SETTLING_MS - 1);
-    expect(entryControls().submit.disabled).toBe(true);
+    await advanceTransition(ENTRY_TRANSITION_MS - 1);
+    expect(skeletonVisible()).toBe(true);
 
-    await advanceSettling(1);
-    expect(entryControls().submit.disabled).toBe(false);
+    await advanceTransition(1);
+    expect(instructionVisible("OD_0002")).toBe(true);
   });
 
   it("a late save confirmation does not extend the interval", async () => {
@@ -310,9 +298,10 @@ describe("T-3/T-4/T-5 — the interval answers only to its own clock", () => {
     await submitCurrent();
     await view.settle();
 
-    await advanceSettling(ENTRY_SETTLING_MS * 3);
-    // Enabled while the save is STILL open: the interval never waited on it.
-    expect(entryControls().submit.disabled).toBe(false);
+    await advanceTransition(ENTRY_TRANSITION_MS * 3);
+    // Revealed while the save is STILL open: the interval never waited on it.
+    expect(skeletonVisible()).toBe(false);
+    expect(instructionVisible("OD_0002")).toBe(true);
 
     await view.settle(() => {
       saveGate.resolve(recordedFor("OD_0001"));
@@ -321,17 +310,8 @@ describe("T-3/T-4/T-5 — the interval answers only to its own clock", () => {
   });
 });
 
-describe("T-6 — each new entry gets its own full interval", () => {
-  it("entry 3 settles for its own full 2000ms after entry 2's interval elapsed", async () => {
-    // NOTE on what this does and does not prove (measured, not assumed):
-    // answering an entry requires enabled controls, so a newer entry can only
-    // ever be presented after the older entry's interval fully elapsed — timer
-    // overlap through the UI is unreachable by construction, and the updater's
-    // identity check (`current === presentedId`) is belt-and-braces for
-    // non-UI timer sources rather than a tested guard. What IS reachable, and
-    // what this proves, is that every presented entry gets its own full
-    // interval: entry 3 stays disabled for its own ~2000ms even though entry
-    // 2's timer fired long ago.
+describe("T-6 — each transition gets its own full interval", () => {
+  it("entry 3 shows its own full 1500ms skeleton after entry 2's interval elapsed", async () => {
     h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
     h.prefetchScript.set(2, [async () => readyFor(2, E3)]);
     h.saveScript.push(async () => recordedFor("OD_0001"));
@@ -342,21 +322,23 @@ describe("T-6 — each new entry gets its own full interval", () => {
     await answerFully();
     await submitCurrent();
     await view.settle();
+    expect(skeletonVisible()).toBe(true);
+    await advanceTransition(ENTRY_TRANSITION_MS);
     expect(instructionVisible("OD_0002")).toBe(true);
-    await advanceSettling(ENTRY_SETTLING_MS);
-    expect(entryControls().submit.disabled).toBe(false);
 
     await answerFully();
     await submitCurrent();
     await view.settle();
+    expect(skeletonVisible()).toBe(true);
+    expect(instructionVisible("OD_0003")).toBe(false);
+
+    // Entry 3's own interval: still skeleton just before its deadline.
+    await advanceTransition(ENTRY_TRANSITION_MS - 1);
+    expect(skeletonVisible()).toBe(true);
+
+    await advanceTransition(1);
+    expect(skeletonVisible()).toBe(false);
     expect(instructionVisible("OD_0003")).toBe(true);
-
-    // Entry 3's own interval: still settling just before its deadline.
-    await advanceSettling(ENTRY_SETTLING_MS - 1);
-    expect(entryControls().submit.disabled).toBe(true);
-
-    await advanceSettling(1);
-    expect(entryControls().submit.disabled).toBe(false);
   });
 });
 
@@ -373,7 +355,7 @@ describe("T-7 — same-entry renders and locale switches change nothing", () => 
     const savesAfterSubmit = h.saves.length;
     const prefetchesAfterSubmit = h.prefetchCalls.length;
 
-    await advanceSettling(1500);
+    await advanceTransition(1000);
     // Same entry, new locale: a re-render, not a change.
     view.rerender(
       <ValidationSessionRunner
@@ -382,13 +364,14 @@ describe("T-7 — same-entry renders and locale switches change nothing", () => 
       />,
     );
     await view.settle();
-    expect(instructionVisible("OD_0002")).toBe(true);
+    expect(skeletonVisible()).toBe(true);
     expect(h.saves.length).toBe(savesAfterSubmit);
     expect(h.prefetchCalls.length).toBe(prefetchesAfterSubmit);
 
-    // The ORIGINAL deadline still holds: 500ms more enables, not 2000 more.
-    await advanceSettling(500);
-    expect(entryControls().submit.disabled).toBe(false);
+    // The ORIGINAL deadline still holds: 500ms more reveals, not 1500 more.
+    await advanceTransition(500);
+    expect(skeletonVisible()).toBe(false);
+    expect(instructionVisible("OD_0002")).toBe(true);
   });
 });
 
@@ -407,12 +390,12 @@ describe("T-8 — unmounting cleans the timer up", () => {
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
     // Advancing the clock after unmount fires nothing and throws nothing.
-    await advanceSettling(ENTRY_SETTLING_MS * 2);
+    await advanceTransition(ENTRY_TRANSITION_MS * 2);
   });
 });
 
-describe("T-9 — protection survives the settling render", () => {
-  it("a double submit while settling still enqueues exactly one response", async () => {
+describe("T-9 — protection survives the transition render", () => {
+  it("a double submit still enqueues exactly one response", async () => {
     h.prefetchScript.set(1, [async () => readyFor(1, E2)]);
     h.saveScript.push(async () => recordedFor("OD_0001"));
     mountRunner();
@@ -428,7 +411,7 @@ describe("T-9 — protection survives the settling render", () => {
     });
 
     expect(h.saves).toHaveLength(1);
-    expect(instructionVisible("OD_0002")).toBe(true);
+    expect(skeletonVisible()).toBe(true);
   });
 });
 
@@ -444,7 +427,7 @@ describe("T-10 — the final entry creates no further interval", () => {
     await answerFully();
     await submitCurrent();
     await view.settle();
-    await advanceSettling(ENTRY_SETTLING_MS);
+    await advanceTransition(ENTRY_TRANSITION_MS);
 
     await answerFully();
     await submitCurrent();
@@ -452,5 +435,35 @@ describe("T-10 — the final entry creates no further interval", () => {
 
     expect(view.container.textContent).toContain("This batch is finished");
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("T-11 — a prefetch miss holds the generic skeleton until the fallback decides", () => {
+  it("shows no fake entry while the prefetch is still unknown", async () => {
+    const prefetchGate = deferred<RequestNextEntryResult>();
+    const saveGate = deferred<SubmitValidationResult>();
+    h.prefetchScript.set(1, [() => prefetchGate.promise]);
+    h.saveScript.push(() => saveGate.promise);
+    mountRunner();
+    await view.settle();
+
+    await answerFully();
+    await submitCurrent();
+    await view.settle();
+
+    // Generic skeleton: no sentence, stable shape, no invented entry.
+    expect(skeletonVisible()).toBe(true);
+    expect(instructionVisible("OD_0001")).toBe(false);
+    expect(instructionVisible("OD_0002")).toBe(false);
+
+    // Prefetch resolves mid-transition: shape fills in, still skeleton until expiry.
+    await view.settle(() => {
+      prefetchGate.resolve(readyFor(1, E2));
+    });
+    expect(skeletonVisible()).toBe(true);
+    expect(instructionVisible("OD_0002")).toBe(false);
+
+    await advanceTransition(ENTRY_TRANSITION_MS);
+    expect(instructionVisible("OD_0002")).toBe(true);
   });
 });

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { EntryCard } from "@/components/validation/entry-card";
+import { ValidationSkeleton } from "@/components/validation/validation-skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { InterfaceLocale } from "@/lib/domain/locale";
@@ -11,6 +12,7 @@ import { translatorFor } from "@/lib/i18n/copy";
 import { requestNextEntryAction } from "@/lib/validation/next-entry-actions";
 import { batchRouteHref } from "@/lib/validation/batch-route";
 import { failureMessageFor } from "@/lib/validation/entry-form-flow";
+import { sentenceLengthForEntry } from "@/lib/validation/sentence-skeleton";
 import type { SubmitValidationResult } from "@/lib/validation/validation-actions-core";
 import { verifyBatchResponsesAction } from "@/lib/validation/verify-batch-actions";
 import {
@@ -39,12 +41,16 @@ import { ValidationForm } from "./validation-form";
  * ============================================================================
  * The form validates locally and hands a payload up. The runner enqueues it —
  * the queue starts a same-origin POST immediately, up to `MAX_ACTIVE_SAVES` in
- * flight with the rest waiting FIFO — and swaps in the already prefetched next
- * entry in the same task. Advancement never waits on worker occupancy: a slow or
+ * flight with the rest waiting FIFO — and shows the layout-matched transition
+ * skeleton for `ENTRY_TRANSITION_MS`. Only when that presentational interval
+ * elapses is the already-resolved next entry revealed, immediately
+ * interactive. Advancement never waits on worker occupancy: a slow or
  * retrying save continues its own lifecycle while the session moves on. The
  * response is marked saved only when the server confirms it; until then the
  * complete payload sits in the queue, retried with bounded backoff, never
- * reported as saved, never dropped.
+ * reported as saved, never dropped. The next entry's real sentence and form
+ * are never rendered during the interval — the skeleton is the transition
+ * state, so no control is ever presented disabled by a timer.
  *
  * The runner never decides WHAT comes next. The prefetch response names the
  * entry, the position, and the figures; this component renders exactly those.
@@ -103,15 +109,20 @@ interface PrefetchedEntry extends PresentedEntry {
 type RunnerPhase = "answering" | "finishing";
 
 /**
- * How long a newly presented entry's controls stay disabled so the participant
- * registers the new sentence before answering.
+ * How long the transition skeleton shows before the next entry is revealed.
  *
  * PRESENTATION ONLY. This number never gates, delays, or observes persistence:
  * the previous entry's save started at submit time, and a save confirming early
  * does not shorten the interval while a save confirming late does not extend it.
  * Exported so tests assert against the shipped value rather than a retyped copy.
  */
-export const ENTRY_SETTLING_MS = 2000;
+export const ENTRY_TRANSITION_MS = 1500;
+
+interface PendingTransition {
+  readonly id: number;
+  readonly next: PresentedEntry | null;
+  readonly expired: boolean;
+}
 
 type CheckpointState =
   | { readonly kind: "checking" }
@@ -233,50 +244,54 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
   const [checkpoint, setCheckpoint] = useState<CheckpointState>({ kind: "checking" });
 
   /**
-   * The entry-settling interval: which presented entry is still reading-settling.
+   * The entry-to-entry transition: after a submit the runner shows the
+   * layout-matched skeleton for `ENTRY_TRANSITION_MS` and only then reveals
+   * the next entry, immediately interactive. The next entry's real sentence
+   * and form are never rendered during the interval — the skeleton is the
+   * transition state, so no control is ever presented disabled by a timer.
    *
-   * Belongs to the PRESENTED entry, not to the save. The effect below starts a
-   * fresh `ENTRY_SETTLING_MS` timer whenever the presented entry CHANGES — the
-   * first presentation is not a change, so it settles nothing — and clears the
-   * timer on entry change and unmount. Expiry re-checks
-   * identity, so a timer from an older entry can never enable a newer one early.
-   * `locale` is deliberately not a dependency (no locale value is read), so a
-   * language switch neither restarts the interval nor touches the queue. The
-   * queue is never consulted here: this state cannot see persistence, by
+   * `next` is the already-resolved entry when the prefetch for this position
+   * arrived before submit, else null (generic skeleton until the prefetch
+   * resolves or the fallback path decides). `expired` flips when the interval
+   * elapses; a separate effect below then reveals, finishes, or falls back.
+   * The timer never consults the queue: expiry cannot see persistence, by
    * construction rather than by discipline.
    */
-  const [settlingEntryId, setSettlingEntryId] = useState<string | null>(null);
+  const [transition, setTransition] = useState<PendingTransition | null>(null);
 
   /**
-   * The previously presented entry, so the first presentation is not mistaken
-   * for a change. StrictMode remounts reset this ref, and a remount is not a
-   * change either — either way no timer starts without an actual transition.
+   * Monotonic transition identity, so a timer from an older transition can
+   * never reveal or expire a newer one. Bare globals, not `window.`-qualified:
+   * in a browser they are the same function, and under test doubles they are
+   * the ones fake timers replace, so the interval stays controllable without
+   * ever sleeping a real 1.5 seconds.
    */
-  const previousEntryIdRef = useRef<string | null>(null);
+  const transitionIdRef = useRef(0);
+
+  /**
+   * The timer key: the transition id while its interval is still running,
+   * null otherwise. Keying the effect on the id alone (not the whole
+   * transition object) means a prefetch resolving mid-transition fills in
+   * `next` without restarting the clock, and a locale switch re-renders
+   * without touching it either.
+   */
+  const transitionTimerKey = transition === null || transition.expired ? null : transition.id;
 
   useEffect(() => {
-    const presentedId = view.entry.id;
-    const previous = previousEntryIdRef.current;
-    previousEntryIdRef.current = presentedId;
-    // The initial presentation is not a change: the participant arrives from a
-    // loading state with nothing to re-register, so the first entry is usable
-    // at once and only transitions settle.
-    if (previous === null) return;
-    setSettlingEntryId(presentedId);
-    // Bare globals, not `window.`-qualified: in a browser they are the same function, and under
-    // test doubles they are the ones fake timers replace, so the interval stays controllable
-    // without ever sleeping a real two seconds.
+    if (transitionTimerKey === null) return;
     const timer = setTimeout(() => {
-      setSettlingEntryId((current) => (current === presentedId ? null : current));
-    }, ENTRY_SETTLING_MS);
+      setTransition((current) =>
+        current !== null && current.id === transitionTimerKey
+          ? { ...current, expired: true }
+          : current,
+      );
+    }, ENTRY_TRANSITION_MS);
     return () => {
       clearTimeout(timer);
     };
-    // `locale` is deliberately not a dependency: switching language must not
-    // restart the settling interval. (No disable directive: the effect body
-    // references no locale value, so there is nothing for exhaustive-deps to
-    // ask for.)
-  }, [view.entry.id]);
+    // `locale`, the queue, the prefetch, and the save snapshot are deliberately
+    // not dependencies: nothing outside this transition moves its own clock.
+  }, [transitionTimerKey]);
 
   /**
    * Every submit this mount has enqueued, including ones that did not advance yet. When a
@@ -397,14 +412,16 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
    */
   useEffect(() => {
     if (phase !== "answering") return;
+    if (transition !== null) return;
     if (!submittedRef.current.has(view.entry.id)) return;
     if (snapshot.states[view.entry.id]?.kind !== "saved") return;
     advanceOrFlush();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- see the prefetch effect above: advanceOrFlush reads the prefetch and view as they are at the moment the save confirms; subscribing to them would re-fire the held advance on every unrelated prefetch resolution.
-  }, [phase, snapshot, view.entry.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see the prefetch effect above: advanceOrFlush reads the prefetch and view as they are at the moment the save confirms; subscribing to them would re-fire the held advance on every unrelated prefetch resolution. `transition` is read only as a guard (an advance already in flight needs no second), and its timer owns its own lifecycle below.
+  }, [phase, snapshot, view.entry.id, transition]);
 
   /** Swap the presented entry in place and record where the address bar says we are. */
   function advanceTo(next: PresentedEntry): void {
+    setTransition(null);
     setView(next);
     setPrefetched(null);
     setPrefetchAtEnd(false);
@@ -425,6 +442,9 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
     await queueRef.current?.drain();
     const after = queueRef.current?.snapshot() ?? emptySnapshot();
     if (after.unsaved.length > 0) {
+      // Staying on the entry with the unsaved panel: the transition skeleton
+      // clears so the participant sees the entry the panel refers to.
+      setTransition(null);
       return;
     }
     // Consume the held advance so the resume effect does not re-fire it: the view never
@@ -437,10 +457,12 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
   }
 
   /**
-   * The one branch every advance takes. Instant when the prefetch for THIS position is
-   * already here; in-place finished card at the end of the batch; flushed navigation only
-   * whenever no prefetch is usable. Never invents an entry, never skips the drain on the
-   * fallback path.
+   * The one branch every advance takes. Starting a transition, never revealing
+   * at once: the response is already enqueued, and the skeleton below owns the
+   * visible interval. Instant only at the end of the batch, where the finished
+   * card arrives with no sixth-entry transition; flushed navigation only
+   * whenever no prefetch is usable. Never invents an entry, never skips the
+   * drain on the fallback path.
    */
   function advanceOrFlush(): void {
     if (prefetchAtEnd) {
@@ -450,15 +472,68 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
       });
       return;
     }
+    transitionIdRef.current += 1;
     if (prefetched !== null && prefetched.forPosition === view.position) {
       const next = prefetched;
+      const id = transitionIdRef.current;
       startTransition(() => {
-        advanceTo(next);
+        setTransition({ id, next, expired: false });
       });
       return;
     }
-    void flushThenNavigate();
+    const id = transitionIdRef.current;
+    startTransition(() => {
+      setTransition({ id, next: null, expired: false });
+    });
   }
+
+  /**
+   * A prefetch resolving mid-transition fills the skeleton's shape in: the
+   * upcoming sentence is known now, so its length shapes the lines and the
+   * expiry below reveals it. Never restarts the clock — the timer is keyed on
+   * the transition id, not on this object — and never renders the sentence
+   * early, only its length.
+   */
+  useEffect(() => {
+    if (transition === null || transition.next !== null) return;
+    if (prefetched === null || prefetched.forPosition !== view.position) return;
+    const filled = prefetched;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronizing the transition with an external async source (the prefetch resolution): the skeleton's shape fills in when the server answer arrives, which is exactly what effects are for; the timer key is untouched so the clock never restarts.
+    setTransition((current) =>
+      current !== null && current.next === null ? { ...current, next: filled } : current,
+    );
+  }, [transition, prefetched, view.position]);
+
+  /**
+   * The interval elapsed: reveal what the transition holds. A resolved next
+   * entry appears at once, immediately interactive; the end of the batch
+   * finishes with no fake entry; a still-unknown next entry falls back to the
+   * confirm-then-navigate path, whose route boundary owns the wait from here.
+   */
+  useEffect(() => {
+    if (phase !== "answering") return;
+    if (transition === null || !transition.expired) return;
+    const pending = transition.next;
+    if (pending !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the timer expiry IS the external event this effect subscribes to: revealing the resolved entry on expiry is the transition's purpose, and the guard above means it fires once per transition rather than cascading.
+      advanceTo(pending);
+      return;
+    }
+    if (prefetchAtEnd) {
+      setTransition(null);
+      startTransition(() => {
+        setCheckpoint({ kind: "checking" });
+        setPhase("finishing");
+      });
+      return;
+    }
+    if (prefetched !== null && prefetched.forPosition === view.position) {
+      advanceTo(prefetched);
+      return;
+    }
+    void flushThenNavigate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- advanceTo and flushThenNavigate read the transition, prefetch, and view as they are at expiry; subscribing to them would re-fire the reveal on every unrelated render while expired.
+  }, [phase, transition, prefetchAtEnd, prefetched, view.position]);
 
   function handleValidSubmit(payload: ValidationResponseInput): void {
     const queue = queueRef.current;
@@ -536,6 +611,26 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
     );
   }
 
+  // The transition state: the submitted entry is gone and the next one is not
+  // shown yet. Only the skeleton is on screen — neither entry's real sentence
+  // nor any real control — so there is nothing to answer until the reveal,
+  // and nothing disabled pretending to be an answer.
+  if (transition !== null) {
+    return (
+      <>
+        <SaveStatus
+          locale={locale}
+          snapshot={snapshot}
+          queue={queueRef.current}
+          batchId={initial.batchId}
+        />
+        <ValidationSkeleton
+          upcomingInstructionLength={sentenceLengthForEntry(transition.next?.entry)}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <EntryCard
@@ -556,7 +651,6 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
           key={view.entry.id}
           locale={locale}
           datasetEntryId={view.entry.id}
-          settling={settlingEntryId === view.entry.id}
           onValidSubmit={handleValidSubmit}
         />
       </Card>
