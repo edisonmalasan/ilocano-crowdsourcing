@@ -125,7 +125,9 @@ export function resolveBatchSize(
  *
  * **The no-`/` rule was ADDED by `batch-route-round-trip`, and the reason is worth reading rather
  * than inheriting.** Producers emit the identifier RAW — encoding is the transport's business and the
- * route decodes it once — which is correct for the production scheme `VAL_<hex8>-<ISO>`. It does mean
+ * route decodes it once — which is correct for both identifier shapes this platform
+ * carries: new `BAT_` plus 32 lowercase hex (no reserved characters at all) and legacy
+ * `<validatorId>-<ISO>` stored batches. It does mean
  * the address a producer builds is exactly `/validate/` followed by whatever this schema accepts, so
  * an identifier containing a path separator would make the router address a DIFFERENT route.
  *
@@ -136,10 +138,11 @@ export function resolveBatchSize(
  * non-empty and perfectly valid to a `min(1)`.
  *
  * So the invariant is asserted where it belongs: an identifier that cannot appear in a stored batch
- * cannot be turned into an address that leaves `/validate`. `defaultBatchId` builds
- * `<validatorId>-<ISO>`, `AnonymousValidatorId` is `VAL_` plus eight hex characters, and an ISO
- * instant contains no solidus — so every identifier this platform can mint passes, and the rule
- * constrains nothing real while closing the hole.
+ * cannot be turned into an address that leaves `/validate`. `createBatchId` mints
+ * `BAT_` plus 32 lowercase hex, and legacy stored batches are `<validatorId>-<ISO>`
+ * where the attempt half is `VAL_` plus 8 (legacy) or 32 (new) hex characters and an ISO
+ * instant contains no solidus — so every identifier this platform can mint or has stored
+ * passes, and the rule constrains nothing real while closing the hole.
  */
 export const batchIdSchema = z
   .string()

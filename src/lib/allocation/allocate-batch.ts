@@ -101,14 +101,19 @@ export interface AllocationDependencies {
   /**
    * A batch's identity at the moment it is created: its identifier AND its creation instant.
    *
-   * BOTH COME FROM ONE `Date`, and that is the whole reason they are returned together rather than
-   * asked for separately. Migration `20261001120000` refuses to order batches by the ISO instant
-   * embedded in the identifier, on the grounds that the string exists for a different reason and a
-   * future id scheme would break the ordering silently. Having refused to READ that string, the
-   * application would then be writing two instants for one event — the one inside the id and the one
-   * in `created_at` — that could differ by however long the request took. A batch whose id says it
-   * was created at `T1` while the column says `T2` is a batch nobody can reason about, so the two
-   * are minted from the same `Date` and the dependency's return type says so.
+   * The two facts are deliberately DIFFERENT kinds of value now. The identifier is a fresh
+   * opaque capability (`BAT_` + 32 CSPRNG hex, see `createBatchId`): it carries neither the
+   * validator's identity nor the creation instant, so it cannot be read for either. The
+   * instant is the `created_at` column's value and nothing else. They are still returned
+   * together because they describe one event — a batch coming into existence — and the
+   * dependency's return type says so.
+   *
+   * The earlier scheme minted `<validatorId>-<ISO>` for the identifier and paired it with
+   * `created_at` from the same `Date` so the two instants could not disagree. That pairing
+   * rationale is RETIRED with the scheme: the identifier no longer embeds an instant, so
+   * there is exactly one instant (the column) and nothing to disagree with. What is kept is
+   * the single-`Date` discipline — the stored instant comes from the one `Date` handed to
+   * `defaultBatch`, never from a second clock read.
    */
   readonly newBatch: (validatorId: AnonymousValidatorId) => MintedBatchIdentity;
 }
@@ -121,32 +126,88 @@ export interface MintedBatchIdentity {
 }
 
 /**
- * Mints a batch identifier from the validator's identifier and the current time.
+ * New batch identifiers are independent opaque capabilities: `BAT_` plus 32 lowercase hex
+ * characters drawn fresh from the CSPRNG at batch creation (16 bytes, 128 bits of entropy).
  *
- * Deliberately not a UUID and not a bare counter: batch ids are read in logs and matched by hand
- * during review, so `VAL_a81d92c1-2026-09-30T20:14:03.117Z` is more useful than a random string.
- * The validator's own id is included so that a log line naming a batch also names whose batch it is
- * — and it is the validator's OWN identifier, never another one, because a batch id is readable to
- * the validator who owns it.
- *
- * The embedded instant is NOT an ordering source, and migration `20261001120000` says why at length:
- * it exists because a log line should be readable, so a future id scheme could drop it and would
- * break any ordering built on it silently while the query kept working. The authoritative creation
- * instant is the `created_at` column, and {@link defaultBatch} writes both from ONE `Date` so they
- * cannot disagree.
+ * The identifier is NEVER derived from, hashed from, or encoded from the validator ID, the
+ * creation instant, entry IDs, or a counter. Concealment of the old shape (encoding or
+ * hashing the validator ID into the batch ID) is explicitly rejected: this is a fresh
+ * random value, not a disguised old one. Lowercase hex is URL-safe with no reserved
+ * characters, so the existing exact-once-decode route round trip holds trivially.
  */
-export function defaultBatchId(validatorId: AnonymousValidatorId, now: Date): string {
-  return `${validatorId}-${now.toISOString()}`;
+export const BATCH_ID_PATTERN = /^BAT_[0-9a-f]{32}$/;
+
+/** Bytes of entropy per batch identifier (128 bits), matching the attempt mint. */
+const BATCH_RANDOM_BYTE_COUNT = 16;
+
+/** Lowercase hex, so the token is stable in URLs, logs, and case-sensitive comparisons. */
+const BATCH_HEX = "0123456789abcdef";
+
+/**
+ * Draws `byteCount` CSPRNG bytes and renders them as lowercase hex.
+ *
+ * Throws when no CSPRNG is reachable rather than falling back to `Math.random()`: a
+ * predictable batch identifier would let anyone open another attempt's batch, which is a
+ * worse outcome than a failed request.
+ */
+function randomHexToken(byteCount: number): string {
+  const cryptoApi = globalThis.crypto;
+
+  if (typeof cryptoApi?.getRandomValues !== "function") {
+    throw new Error(
+      "createBatchId requires Web Crypto (globalThis.crypto.getRandomValues). " +
+        "A predictable batch identifier would let batches be enumerated, so there is " +
+        "no non-cryptographic fallback.",
+    );
+  }
+
+  const bytes = new Uint8Array(byteCount);
+  cryptoApi.getRandomValues(bytes);
+
+  let token = "";
+  for (const byte of bytes) {
+    token += BATCH_HEX[byte >> 4]! + BATCH_HEX[byte & 0x0f]!;
+  }
+
+  return token;
 }
 
 /**
- * The production `newBatch`: a batch identifier and its creation instant, from one `Date`.
+ * Mints a new opaque batch identifier, independent of every other fact about the batch.
+ */
+export function createBatchId(): string {
+  return `BAT_${randomHexToken(BATCH_RANDOM_BYTE_COUNT)}`;
+}
+
+/**
+ * The `validatorId-timestamp` batch scheme (`<validatorId>-<ISO>`) is RETIRED for new
+ * batches: it embedded the owner's identifier and the creation instant in the address, so
+ * possession of the URL was both identity and authorization.
  *
- * Exported rather than inlined in `actions.ts` so that the pairing — one instant, two facts — is a
- * named thing a test can check rather than a detail of a dependency object.
+ * This name keeps its `(validatorId, now)` signature so existing callers and tests keep
+ * compiling, but the construction is the `BAT_` mint: both parameters are now threaded
+ * through to `defaultBatch` (which still needs `now` for `createdAt`) and neither one
+ * reaches the identifier.
+ */
+export function defaultBatchId(validatorId: AnonymousValidatorId, now: Date): string {
+  return defaultBatch(validatorId, now).id;
+}
+
+/**
+ * The production `newBatch`: a fresh opaque batch identifier plus its creation instant.
+ *
+ * The identifier comes from the CSPRNG and the instant from the one `Date` handed in —
+ * a single clock read for the single stored instant, so `createdAt` cannot disagree with
+ * a second read. `validatorId` is accepted for caller compatibility and is NOT consulted:
+ * the owner is persisted as the separate `validator_id` fact by the allocation call, never
+ * encoded into the address. (It precedes the used `now` parameter, so it is lint-quiet
+ * without an ignore comment — and a future removal must update every `newBatch` caller.)
+ *
+ * Exported rather than inlined in `actions.ts` so that the pairing — one instant, one
+ * stored fact — is a named thing a test can check rather than a detail of a dependency object.
  */
 export function defaultBatch(validatorId: AnonymousValidatorId, now: Date): MintedBatchIdentity {
-  return { id: defaultBatchId(validatorId, now), createdAt: now.toISOString() };
+  return { id: createBatchId(), createdAt: now.toISOString() };
 }
 
 /**

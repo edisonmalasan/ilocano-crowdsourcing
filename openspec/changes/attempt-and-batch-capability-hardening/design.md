@@ -49,6 +49,8 @@ masquerade. `Cannot confidently evaluate` bursts stay usable: thresholds are
 set from measured human-scale 5-entry-batch behavior, not from the 1.5s UI
 skeleton (bots call endpoints directly).
 
+Only `resume` and `session_open` buckets ship in this change (the two existence-oracle paths this change gates). Enrollment mints fresh identifiers (no oracle to throttle); allocation/start and response submission buckets are explicitly deferred to the planned abuse-controls follow-up (tasks.md 4.2), not silently dropped.
+
 ## Alternatives considered
 
 - Hashing/encrypting the old `VAL_-timestamp` batch string: rejected — it

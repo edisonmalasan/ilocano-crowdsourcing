@@ -15,27 +15,27 @@
 
 ## 2. Apply — identity + opaque batch mint (separate reviewable unit)
 
-- [ ] 2.1 Widen the attempt mint to 16 CSPRNG bytes (`VAL_` + 32 hex),
+- [x] 2.1 Widen the attempt mint to 16 CSPRNG bytes (`VAL_` + 32 hex),
   fail-closed, server-side; widen accept patterns to legacy + new while the
   mint pins to new-only; unit tests incl. can-fire (restore 4-byte mint →
   red; mint legacy shape → red).
-- [ ] 2.2 Add the independent `BAT_` + 32-hex mint; retire
+- [x] 2.2 Add the independent `BAT_` + 32-hex mint; retire
   `validatorId-timestamp` construction for new batches; allocation persists
   `validator_id`/`created_at` as separate facts; unit tests incl. can-fire
   (derive BAT from VAL → red; embed timestamp → red).
-- [ ] 2.3 Forward migration ONLY if required (accept both shapes, preserve all
+- [x] 2.3 Forward migration ONLY if required (accept both shapes, preserve all
   rows); re-measure hosted counts before migrating; PGlite integration proves
   legacy-seeded rows survive, RLS/RPC posture unchanged, no request-origin
   columns in research tables.
 
 ## 3. Apply — ownership gate + throttled resume (separate reviewable unit)
 
-- [ ] 3.1 Gate session open on `{ batchId, activeAttemptId }` with stored-owner
+- [x] 3.1 Gate session open on `{ batchId, activeAttemptId }` with stored-owner
   comparison; unified redirect to `/`; neutral initial render with no
   sentence before proof; legitimate refresh works; submissions still derive
   ownership server-side; tests incl. can-fire (remove comparison → shared-link
   test red; distinct public messages → oracle test red).
-- [ ] 3.2 Throttle public resume/ownership checks with per-action buckets
+- [x] 3.2 Throttle public resume/ownership checks with per-action buckets
   (short-lived hashed origin + per-attempt, generous human thresholds); no raw
   origin in research tables/exports; tests incl. can-fire (bypass throttle →
   abuse test red).

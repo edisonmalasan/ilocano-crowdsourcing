@@ -4,6 +4,7 @@ import {
   ANONYMOUS_VALIDATOR_ID_SHAPE,
   createAnonymousValidatorId,
   isAnonymousValidatorIdFormat,
+  isMintedAnonymousValidatorIdFormat,
 } from "@/lib/domain/anonymous-validator-id";
 import { normalizeResearchText } from "@/lib/domain/text";
 import * as domainModule from "@/lib/domain/validation-response";
@@ -26,8 +27,9 @@ describe("anonymous validator identifier", () => {
     for (let draw = 0; draw < 1000; draw += 1) {
       const id = createAnonymousValidatorId();
 
-      expect(id, `draw ${draw} produced ${id}`).toMatch(/^VAL_[0-9a-f]{8}$/);
+      expect(id, `draw ${draw} produced ${id}`).toMatch(/^VAL_[0-9a-f]{32}$/);
       expect(isAnonymousValidatorIdFormat(id)).toBe(true);
+      expect(isMintedAnonymousValidatorIdFormat(id)).toBe(true);
       // The schema is the single definition of the format, so the domain function and the
       // validator-facing contract cannot drift apart.
       expect(anonymousValidatorIdSchema.safeParse(id).success).toBe(true);
@@ -36,7 +38,7 @@ describe("anonymous validator identifier", () => {
 
   it("documents the shape it produces", () => {
     expect(ANONYMOUS_VALIDATOR_ID_SHAPE).toBe(
-      "VAL_ + 4 random bytes as 8 lowercase hex characters",
+      "VAL_ + 16 random bytes as 32 lowercase hex characters",
     );
   });
 
@@ -48,12 +50,12 @@ describe("anonymous validator identifier", () => {
 
     expect(first.slice(0, 4)).toBe("VAL_");
     expect(second.slice(0, 4)).toBe("VAL_");
-    expect(first).toHaveLength(12);
-    expect(second).toHaveLength(12);
+    expect(first).toHaveLength(36);
+    expect(second).toHaveLength(36);
   });
 
   it("has enough entropy that 1000 draws are overwhelmingly distinct", () => {
-    // 32 bits gives a birthday-collision probability around 1e-4 at this sample size, so >900
+    // 128 bits gives a birthday-collision probability around 1e-34 at this sample size, so >900
     // distinct values is the honest threshold. This asserts the generator is random, not
     // sequential, without claiming collision-freedom it cannot guarantee.
     const draws = Array.from({ length: 1000 }, () => createAnonymousValidatorId());

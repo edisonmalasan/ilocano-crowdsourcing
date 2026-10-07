@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { ANONYMOUS_VALIDATOR_ID_PATTERN } from "@/schemas/validator";
 import {
   batchEntryPositionSchema,
   batchIdSchema,
@@ -63,6 +64,52 @@ export const validationSessionRequestSchema = z.strictObject({
 export type ValidationSessionRequest = z.infer<typeof validationSessionRequestSchema>;
 
 /**
+ * ============================================================================
+ * THE OWNERSHIP-GATED REQUEST — batch identifier PLUS active attempt identity
+ * ============================================================================
+ * A batch address alone no longer grants access. Opening a session takes the
+ * requested batch identifier plus the browser's current active attempt
+ * identity, and the server compares the supplied attempt against the batch's
+ * stored owner. The batch identifier itself is OPAQUE throughout: it is
+ * carried, decoded once by the route, and looked up — never parsed for a
+ * validator identity or a timestamp, whether it spells a legacy
+ * `VAL_<hex>-<ISO>` row or a new `BAT_<hex>` capability.
+ *
+ * The attempt shape accepts BOTH the legacy 8-hex and the new 32-hex mint,
+ * because live validators still hold legacy rows (measured at proposal).
+ * The legacy half is DERIVED from the sibling-owned
+ * `ANONYMOUS_VALIDATOR_ID_PATTERN` rather than retyped, so the sibling's
+ * `attempt-and-batch-capability-hardening` task 2.1 widening cannot silently
+ * disagree with this gate; the 32-hex half is the contract that change mints.
+ * The mint itself stays sibling-owned — this schema ACCEPTS, never mints.
+ */
+const NEW_ANONYMOUS_VALIDATOR_ID_PATTERN = /^VAL_[0-9a-f]{32}$/;
+
+export const ownedAttemptIdSchema = z
+  .string()
+  .refine(
+    (value) =>
+      ANONYMOUS_VALIDATOR_ID_PATTERN.test(value) || NEW_ANONYMOUS_VALIDATOR_ID_PATTERN.test(value),
+    {
+      message: "attempt id must look like VAL_ followed by 8 or 32 lowercase hex characters",
+    },
+  );
+
+export const ownedValidationSessionRequestSchema = z.strictObject({
+  batchId: batchIdSchema,
+  position: batchEntryPositionSchema.optional(),
+  /**
+   * The browser's active attempt, supplied in the action body — never in the
+   * URL, so no `VAL_` reaches history, logs, or the address bar. Proof of
+   * session, never an override: the stored owner decides, this only names
+   * the claimant.
+   */
+  activeAttemptId: ownedAttemptIdSchema,
+});
+
+export type OwnedValidationSessionRequest = z.infer<typeof ownedValidationSessionRequestSchema>;
+
+/**
  * Type-level pin on the ordering input (`design.md` D1).
  *
  * A behavioural test cannot pin the absence of a parameter, because a mutation may name its field
@@ -79,6 +126,26 @@ export type ValidationSessionRequest = z.infer<typeof validationSessionRequestSc
  */
 export type SessionOrderingKeyIsPositionOnly =
   Exclude<keyof ValidationSessionRequest, "batchId" | "position"> extends never ? true : never;
+
+/**
+ * Type-level pin on the OWNED request's key set.
+ *
+ * Same reasoning as `SessionOrderingKeyIsPositionOnly`: a behavioural test
+ * cannot pin the absence of a parameter, because a mutation may name its
+ * field anything. `Exclude<…, "batchId" | "position" | "activeAttemptId">`
+ * resolves to `never` while the request carries exactly its batch, an
+ * optional position, and the active attempt — and to `never` the moment a
+ * fourth key appears, whatever it is called. In particular a
+ * `validatorId`-as-override smuggled beside `activeAttemptId` fails
+ * `pnpm run typecheck` here rather than arriving at the comparison.
+ */
+export type OwnedSessionRequestKeysAreExactlyTheseThree =
+  Exclude<
+    keyof OwnedValidationSessionRequest,
+    "batchId" | "position" | "activeAttemptId"
+  > extends never
+    ? true
+    : never;
 
 /**
  * Type-level pin on the finished outcome's key set (`design.md` D6, and `tasks.md` 0.3).
@@ -135,6 +202,17 @@ export interface ValidationSessionEntry {
  *   `finished`   — this validator has completed every entry in this batch. Not a failure, and not
  *                  something to apologise for.
  *   `absent`     — no such batch. A bookmark or a mistyped id, not a broken study.
+ *                  (Kept for the legacy open path. The ownership-gated open
+ *                  reports `redirectHome` for this case instead, so the two
+ *                  cannot be told apart from the outside.)
+ *   `redirectHome` — the ownership gate declined to say anything at all:
+ *                  owner mismatch, unknown batch, malformed or absent
+ *                  attempt, or a throttled check. ONE outcome across all of
+ *                  them: navigate to `/`, no sentence, no metadata, no
+ *                  identity, no existence distinction, and no validator
+ *                  auto-created on the way out. The participant-facing result
+ *                  is identical in every case by construction, because the
+ *                  value carries no reason to render differently.
  *   `failed`     — nothing could be read. `invalid` is a malformed request and nothing was read;
  *                  `persistence` is a read that failed and the entry is NOT reported; and
  *                  `not_configured` is added by the ROUTE, which is the only layer that has read
@@ -166,6 +244,7 @@ export type ValidationSessionOutcome =
       readonly lifetimeAnsweredCount: number;
     }
   | { readonly status: "absent" }
+  | { readonly status: "redirectHome" }
   | {
       readonly status: "failed";
       readonly reason: "invalid" | "persistence" | "not_configured";

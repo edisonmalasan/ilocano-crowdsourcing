@@ -1,5 +1,8 @@
 "use server";
 
+import { headers } from "next/headers";
+
+import { resolveOriginKey } from "@/lib/admin/origin";
 import { ServerEnvError, getServerEnv } from "@/lib/env/server";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 
@@ -8,7 +11,9 @@ import {
   runResume,
   type EnrollActionResult,
   type ResumeActionResult,
+  type ResumeThrottleContext,
 } from "./onboarding-actions-core";
+import { sharedPublicThrottle } from "./public-throttle";
 
 /**
  * The public Server Actions for onboarding.
@@ -70,7 +75,11 @@ export async function enrollValidatorAction(raw: unknown): Promise<EnrollActionR
 
 export async function resumeValidatorAction(raw: unknown): Promise<ResumeActionResult> {
   try {
-    return await runResume(raw, actionDependencies());
+    // The environment check runs FIRST, before the request headers are read:
+    // a deployment with no database reports `not_configured` regardless of
+    // what the request carried, and no header value is observed on that path.
+    const deps = actionDependencies();
+    return await runResume(raw, deps, await resumeThrottleContext());
   } catch (error) {
     if (error instanceof ServerEnvError) {
       logForOperator("resume attempted with no database configured", error);
@@ -79,4 +88,21 @@ export async function resumeValidatorAction(raw: unknown): Promise<ResumeActionR
     logForOperator("resume failed before reaching the service", error);
     return { status: "failed", reason: "persistence" };
   }
+}
+
+/**
+ * The pacing context for one resume request.
+ *
+ * Reads the request headers the same way the researcher sign-in does
+ * (`resolveOriginKey` over `next/headers`), against the shared process
+ * throttle. The raw header value is hashed inside the throttle and never
+ * reaches storage; when no header is present every such request shares the
+ * one fallback bucket, which is the documented limitation, not a secret.
+ */
+async function resumeThrottleContext(): Promise<ResumeThrottleContext> {
+  const jar = await headers();
+  return {
+    throttle: sharedPublicThrottle,
+    originKey: resolveOriginKey((name) => jar.get(name)),
+  };
 }
