@@ -455,6 +455,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `eliminate-duplicate-validation-loading-phase`, the FORTY-SEVENTH archived change, so this coupling has now
       // been paid THIRTY-TWO times. Same one-line edit, same reason.
       47: "Forty-seven",
+      // Added for `attempt-and-batch-capability-hardening`, the FORTY-EIGHTH archived change, so this coupling has now
+      // been paid THIRTY-THREE times. Same one-line edit, same reason.
+      48: "Forty-eight",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
