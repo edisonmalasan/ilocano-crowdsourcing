@@ -39,15 +39,11 @@ the expected or recommended answer.
 
 ### Requirement: A correction is offered exactly when the evaluation requires one
 
-The session SHALL offer a corrected Ilocano sentence **exactly when** the chosen evaluation requires a
-correction — *correct but sounds unnatural* and *incorrect* — and SHALL require a non-blank corrected
-sentence before that response can be completed.
+The session SHALL offer a corrected Ilocano sentence **exactly when** the chosen evaluation requires a correction — *correct but sounds unnatural* and *incorrect* — and SHALL require a non-blank corrected sentence before that response can be completed.
 
-For *correct and natural* and *cannot confidently evaluate* the session SHALL NOT offer a corrected
-sentence, and a response carrying one SHALL NOT be accepted as though the evaluation allowed it.
+For *correct and natural* and *cannot confidently evaluate* the session SHALL NOT offer a corrected sentence, and a response carrying one SHALL NOT be accepted as though the evaluation allowed it.
 
-Which evaluations require a correction SHALL be decided by the single rule already in force in
-`domain-contracts`, and this capability SHALL NOT restate it as a second rule that could disagree.
+Which evaluations require a correction SHALL be decided by the single rule already in force in `domain-contracts`, and this capability SHALL NOT restate it as a second rule that could disagree.
 
 During the entry-settling interval the correction input, when offered, SHALL be disabled along with every other interactive control; the rule for when it is offered is unchanged.
 
@@ -475,6 +471,7 @@ progress does not remove internal correctness or accounting.
   still being answered
 - **THEN** nothing of the prefetched entry's sentence is rendered, readable in
   the markup, or choosable, until the current entry is completed
+
 ### Requirement: Each presented entry begins with a fresh validation form
 
 When the session presents a dataset entry for validation, its form SHALL hold no state from any previously answered entry: no evaluation selected, no correction text, no English or Filipino translation text, the translation choice at its default, no field errors, and no pending submission. Advancing after a successful submit, arriving at an entry by position, or returning to an unanswered entry SHALL all present the same empty form. The reset SHALL clear the submitted payload as well as the visible inputs — hiding stale values while keeping them submittable is not a reset.
