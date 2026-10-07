@@ -49,6 +49,8 @@ sentence, and a response carrying one SHALL NOT be accepted as though the evalua
 Which evaluations require a correction SHALL be decided by the single rule already in force in
 `domain-contracts`, and this capability SHALL NOT restate it as a second rule that could disagree.
 
+During the entry-settling interval the correction input, when offered, SHALL be disabled along with every other interactive control; the rule for when it is offered is unchanged.
+
 #### Scenario: Choosing an evaluation that requires a correction reveals the correction input
 
 - **WHEN** a validator chooses *correct but sounds unnatural* or *incorrect*
@@ -64,6 +66,11 @@ Which evaluations require a correction SHALL be decided by the single rule alrea
 
 - **WHEN** a validator chooses *correct and natural* or *cannot confidently evaluate*
 - **THEN** no corrected Ilocano sentence is offered
+
+#### Scenario: The correction input settles with the rest of the form
+
+- **WHEN** a new entry requiring a correction is presented
+- **THEN** the correction input is disabled for the settling interval exactly like the other controls, and its offer/require rule is unchanged
 
 ### Requirement: Each evaluable response offers a translation language choice
 
