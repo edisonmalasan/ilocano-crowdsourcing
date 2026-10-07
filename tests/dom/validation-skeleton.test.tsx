@@ -183,7 +183,7 @@ describe("K-9 — the skeleton shares geometry with the real UI, not a redraw", 
     const skeleton = mountSkeleton();
     const { ENTRY_CARD_SECTION_CLASS, ENTRY_CARD_INNER_CLASS } =
       await import("@/components/validation/entry-card");
-    const { answerOptionClasses } = await import("@/components/validation/answer-option");
+    const { answerOptionClasses } = await import("@/components/validation/answer-option-styles");
     const { buttonClasses } = await import("@/components/ui/button");
 
     const section = skeleton.all("section")[0]!;

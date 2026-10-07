@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { answerOptionClasses } from "@/components/validation/answer-option";
+import { answerOptionClasses } from "@/components/validation/answer-option-styles";
 import {
   ENTRY_CARD_INNER_CLASS,
   ENTRY_CARD_SECTION_CLASS,

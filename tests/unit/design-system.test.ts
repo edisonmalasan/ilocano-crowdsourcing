@@ -8,7 +8,7 @@ import { buttonClasses, linkButtonClasses } from "@/components/ui/button";
 import { cardClasses } from "@/components/ui/card";
 import { controlClasses } from "@/components/ui/field";
 import { BatchProgress, segmentClasses, segmentState } from "@/components/ui/progress";
-import { answerOptionClasses } from "@/components/validation/answer-option";
+import { answerOptionClasses } from "@/components/validation/answer-option-styles";
 import { localeChoiceClasses } from "@/components/i18n/locale-switcher";
 
 /**
