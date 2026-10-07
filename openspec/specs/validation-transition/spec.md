@@ -58,6 +58,8 @@ The interval SHALL belong to the presented entry: presenting another entry start
 
 Where the participant genuinely waits on server work with a predictable layout — the `/validate` start orchestration and the validation session route resolution (initial open and next-batch navigation) — the platform SHALL show a calm validation-layout skeleton (neutral geometric blocks reserving space for the sentence card, evaluation options, and save-control areas) instead of a spinner card. The skeleton SHALL contain no sentence-like text and no fake research content, SHALL NOT be kept visible for any minimum duration, SHALL be replaced by the real entry the moment data resolves (no flash of skeleton when data is already ready beyond what the framework boundary inherently shows), and SHALL be replaced by the existing error state — never left standing — when the underlying work fails.
 
+Every skeleton-bearing state in the validating experience — `/validate` start loading, the session-route loading fallback, and the presenting session — SHALL render through one shared Validating page shell owning the main container width, page padding, "Validating" heading, description, spacing before content, and responsive behavior, so the three cannot drift. The session-route loading fallback SHALL render the heading and description above the skeleton, never a skeleton alone. The skeleton and the real session content SHALL occupy the same content slot, so replacing one with the other moves no heading, description, container, or padding.
+
 Skeletons SHALL be used for the entry-to-entry transition interval as well as for genuine server waits, and for audited loading states where real async work meets a predictable layout (recovery/resume loading, next-batch loading). Skeletons SHALL NOT be used for button-level submits, validation errors, confirmations, or states whose final shape is unknown.
 
 The skeleton SHALL be built on shared layout primitives with the real validation UI — same container width, same card width, padding, borders, border radius, and shadow, same spacing, same option-card heights, same save-button height, same responsive behavior — so the skeleton cannot drift from the real form. Random-width or arbitrary placeholder boxes SHALL NOT be used where the real layout is fixed: the form skeleton SHALL read as the real form with its contents masked.
@@ -111,6 +113,16 @@ Normal loading SHALL be communicated visually by the skeleton alone. No loading 
 - **WHEN** a skeleton is shown in the normal flow
 - **THEN** no preparing/loading/please-wait/countdown/saving text is presented alongside it
 
+#### Scenario: The session loading fallback keeps the Validating shell
+
+- **WHEN** the session route genuinely waits (direct visit, reload, or next-batch navigation with an unresolved session)
+- **THEN** the loading fallback shows the Validating heading and description above the skeleton in the shared shell geometry, never a skeleton alone
+
+#### Scenario: Start, fallback, and presenting states share one geometry
+
+- **WHEN** the start loading state, the session loading fallback, and the presenting session are compared at the same viewport
+- **THEN** main container width, page padding, heading, description, spacing, and content slot are identical, so moving between them shifts no layout
+
 ### Requirement: Settling and skeleton presentation stays accessible and calm
 
 Transition and loading skeletons SHALL be presentation-only: skeleton containers MAY use `aria-busy` with route/page context preserved, and visual skeleton pieces SHALL be `aria-hidden`. When the real next entry is revealed after the transition, its controls SHALL be immediately usable, focus SHALL NOT be moved unexpectedly by the timer, and no stale disabled state SHALL remain. The sentence of a revealed entry SHALL stay readable; focus SHALL NOT be trapped. Any skeleton animation SHALL respect `prefers-reduced-motion` (static equivalent), and nothing SHALL use aggressive shimmer or motion to mark the transition — a calm static skeleton is preferred.
@@ -157,3 +169,29 @@ The interval SHALL belong to the transition: submitting for another entry starts
 
 - **WHEN** a transition timer from an older submit fires after a newer transition has begun
 - **THEN** it changes nothing on screen: it neither reveals an entry early nor reveals the wrong entry
+
+### Requirement: The normal start handoff has exactly one loading phase
+
+In the normal start flow — where the start orchestration already returned the first entry — the platform SHALL move from the start skeleton to the real first entry inside the same mounted shell with no second loading phase between them. The Validating heading and description SHALL remain mounted and visible from the initial skeleton through the first real entry; there SHALL be no frame in which the skeleton renders without them and no skeleton-only batch loading state in this flow. The skeleton content slot SHALL be replaced in place by the real session content.
+
+This requirement covers the normal handoff only. Genuine session-route waits (direct visits, reloads, next-batch navigation with an unresolved session) still show the loading fallback, which itself carries the shared shell.
+
+#### Scenario: The heading survives the handoff
+
+- **WHEN** the start orchestration resolves in the normal flow
+- **THEN** the Validating heading mounted during the initial skeleton is the same mounted heading above the first real entry, with no unmount between them
+
+#### Scenario: The description survives the handoff
+
+- **WHEN** the start orchestration resolves in the normal flow
+- **THEN** the description mounted during the initial skeleton is the same mounted description above the first real entry, with no unmount between them
+
+#### Scenario: No skeleton-only state in the normal flow
+
+- **WHEN** the normal start handoff is observed frame by frame from Continue to the first real entry
+- **THEN** no frame shows a skeleton without the Validating heading and description
+
+#### Scenario: The first entry is not resolved twice
+
+- **WHEN** the normal start handoff completes
+- **THEN** exactly one first-entry resolution served the first render (the orchestration's), and no second session read ran before it
