@@ -14,12 +14,12 @@
 
 ## 3. Verify
 
-- [ ] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge
+- [x] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge (two WARNINGs repaired on the branch: rule-seen filename recording + D5 file reference)
 
 ## 4. Sync
 
-- [ ] 4.1 Append the ADDED scenario to `openspec/specs/data-access-boundary/spec.md`; spec count unchanged at 24 capabilities, strict validation green
+- [x] 4.1 Append the ADDED scenario to `openspec/specs/data-access-boundary/spec.md`; spec count unchanged at 24 capabilities, strict validation green (merged as PR #213)
 
 ## 5. Archive
 
-- [ ] 5.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit
+- [x] 5.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit
