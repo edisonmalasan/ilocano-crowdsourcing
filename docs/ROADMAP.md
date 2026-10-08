@@ -32,7 +32,7 @@ this platform, and a local `pnpm run lint` gives false assurance. **There is no 
 because `ubuntu-latest` reports forward-slash paths and the rule fires normally there.
 `eslint.config.mjs` is **unchanged from `main`**. The repair is a path-separator-agnostic test on the
 resolved path rather than the raw string, and it should be its own small change with its own probe
-rather than a drive-by edit to a shared config file. **Read the `Verification project tools` claim that
+rather than a drive-by edit to a shared config file. **Update 2026-10-08 (`cross-platform-privileged-import-guard`): repaired as prescribed — the gate now normalizes backslashes before the substring test, carries a five-case rule-level probe (`tests/unit/privileged-import-guard.test.ts`) that is red on the old line and green on the new, and leaves the `Verification project tools` claim above otherwise unchanged.** **Read the `Verification project tools` claim that
 the rule "accepts every file" as a statement about the files it was run over, never as proof that the
 gate fires for a file not yet written on this platform** — which is the same
 absence-is-invisible shape as the CI truncation recorded below.
