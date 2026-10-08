@@ -219,7 +219,7 @@ export function submitControlState(isPending: boolean, t: Translate): SubmitCont
 /**
  * The sentence a participant reads when a submission does not succeed.
  *
- * FIVE reasons, THREE sentences — and that grouping is a decision rather than an omission, so it is
+ * SIX reasons, THREE sentences — and that grouping is a decision rather than an omission, so it is
  * worth stating because the earlier version of this comment claimed "four reasons, four sentences" and
  * was wrong twice over: there are five reasons, and four distinct sentences would have meant telling a
  * participant something about the inside of the system they cannot act on.
@@ -228,14 +228,16 @@ export function submitControlState(isPending: boolean, t: Translate): SubmitCont
  *                        the only one where the next action differs.
  *   `not_configured`   → the study is not open. Distinct because "come back later" is true and
  *                        "try again" would be a lie — retrying cannot succeed until a human deploys.
- *   everything else    → `unknown_batch`, `not_in_batch`, and `persistence` all resolve to one
- *                        sentence, and deliberately so. A stale link, an entry that is not in the batch,
- *                        and an unreachable table are three different faults with one participant-
- *                        visible consequence: the answer is not stored and there is nothing the
- *                        participant can do about which of the three it was. Splitting them would
- *                        produce three sentences that differ only in a fact nobody reading them can
- *                        check, and the differences are already available where they belong — in the
- *                        operator log and in the three distinct result reasons this function receives.
+ *   everything else    → `unknown_batch`, `not_in_batch`, `persistence`, and `throttled` all resolve
+ *                        to one sentence, and deliberately so. A stale link, an entry that is not in
+ *                        the batch, an unreachable table, and a pacing refusal are four different
+ *                        facts with one participant-visible consequence: the answer is not stored and
+ *                        there is nothing the participant can do about which of the four it was.
+ *                        Splitting them would produce sentences that differ only in a fact nobody
+ *                        reading them can check, and the differences are already available where they
+ *                        belong — in the operator log and in the distinct result reasons this function
+ *                        receives. (`throttled` additionally gets the retry control beside the
+ *                        sentence, because retrying it after a moment WILL succeed.)
  *
  * The word "Nothing was saved" appears in all of them deliberately: a participant who is told a write
  * failed and not told what survived has no way to know whether to retype an answer they already gave

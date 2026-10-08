@@ -1,6 +1,8 @@
+import { resolveOriginKey } from "@/lib/admin/origin";
 import { ServerEnvError, getServerEnv } from "@/lib/env/server";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 import { runSubmitResponse } from "@/lib/validation/submit-response-core";
+import { sharedPublicThrottle } from "@/lib/validators/public-throttle";
 
 /**
  * The background response write: `POST /api/validation-responses`.
@@ -35,10 +37,21 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const startedMs = Date.now();
-    const result = await runSubmitResponse(raw, {
-      validations: repositories.validations,
-      now: () => new Date(),
-    });
+    const result = await runSubmitResponse(
+      raw,
+      {
+        validations: repositories.validations,
+        now: () => new Date(),
+      },
+      // Paced per origin plus per batch capability, after parsing and before
+      // the RPC. `request.headers` is read directly — no `next/headers`
+      // needed in a Route Handler — and the raw value is hashed inside the
+      // throttle, never stored or logged.
+      {
+        throttle: sharedPublicThrottle,
+        originKey: resolveOriginKey((name) => request.headers.get(name)),
+      },
+    );
     // Operator timing only: status and duration. Never response text, translations,
     // validator ids, or credentials.
     console.info(
@@ -50,6 +63,10 @@ export async function POST(request: Request): Promise<Response> {
     if (result.reason === "invalid") return json(result, 400);
     if (result.reason === "unknown_batch") return json(result, 404);
     if (result.reason === "not_in_batch") return json(result, 422);
+    // Pacing, not a fault: 429 tells a well-behaved client to wait and retry
+    // the same bytes, which WILL succeed after the window. Never 503 — nothing
+    // is broken — and never collapsed into an honest error.
+    if (result.reason === "throttled") return json(result, 429);
     return json(result, 503);
   } catch (error) {
     console.error("[sadino:validation] response POST failed before reaching the service", error);

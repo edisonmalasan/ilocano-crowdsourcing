@@ -5,6 +5,7 @@ import {
   type ValidationsRepository,
 } from "@/lib/repositories";
 import { isWriteIntentError, parseWriteIntent } from "@/lib/server/write-intake";
+import type { PublicThrottle } from "@/lib/validators/public-throttle";
 import { datasetEntryIdSchema } from "@/schemas/dataset";
 import { validationBatchIdSchema, validationResponseInputSchema } from "@/schemas/validation";
 import { z } from "zod";
@@ -65,6 +66,27 @@ function buildRpcInput(
 }
 
 /**
+ * What the paced submit path is gated on.
+ *
+ * Optional, so suites that never thought about abuse keep working unchanged:
+ * with no throttle context the save runs exactly as before, and pacing is
+ * simply off. Production always supplies both halves. The actor component is
+ * the client-supplied batch capability — the server derives the validator
+ * from stored batch state and never trusts a browser-supplied one, so the
+ * batch is the only safe per-caller key. Batch capabilities are 128-bit
+ * opaque values, so a 429 for a guessed batch versus a 404 for an unknown
+ * one is not an oracle: confirming a guess is infeasible.
+ */
+export interface SubmitThrottleContext {
+  readonly throttle: PublicThrottle;
+  /**
+   * The request-origin signal, hashed inside the throttle. The raw header
+   * value never reaches storage, a research table, or an export.
+   */
+  readonly originKey: string;
+}
+
+/**
  * Persists one completed response through exactly one versioned function call.
  *
  * "Immediately" is not a comment: this is called once per finished entry, so a validator
@@ -75,6 +97,7 @@ function buildRpcInput(
 export async function runSubmitResponse(
   raw: unknown,
   deps: SubmitResponseDependencies,
+  throttleContext?: SubmitThrottleContext,
 ): Promise<SubmitValidationResult> {
   let intent: SubmitResponseIntent;
   try {
@@ -86,6 +109,17 @@ export async function runSubmitResponse(
       return { status: "failed", reason: "invalid", issues: error.issues };
     }
     throw error;
+  }
+
+  // Paced after parsing but before the RPC: a refused save runs zero database
+  // calls, and a malformed POST is still refused by parsing first, unchanged.
+  if (throttleContext !== undefined) {
+    const allowed = throttleContext.throttle.check(
+      "submit",
+      throttleContext.originKey,
+      intent.batchId,
+    );
+    if (!allowed) return { status: "failed", reason: "throttled" };
   }
 
   const timestamp = deps.now().toISOString();

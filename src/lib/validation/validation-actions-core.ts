@@ -118,6 +118,10 @@ export type SubmitValidationFailureReason = Extract<
  *   `failed`/`persistence`        — a read or the write failed. The response is NOT reported as
  *                         saved, because a participant who is told their answer is stored when it
  *                         is not has no way to know to give it again.
+ *   `failed`/`throttled`         — the pacing gate refused the call before any database work.
+ *                         Produced ONLY by that gate, never by the repository. The correct
+ *                         response is to wait and retry, so the queue classifies it transient:
+ *                         re-sending the same bytes after the window WILL succeed.
  */
 export type SubmitValidationResult =
   | {
@@ -129,7 +133,12 @@ export type SubmitValidationResult =
   | {
       readonly status: "failed";
       readonly reason:
-        "invalid" | "not_configured" | "unknown_batch" | "not_in_batch" | "persistence";
+        | "invalid"
+        | "not_configured"
+        | "unknown_batch"
+        | "not_in_batch"
+        | "persistence"
+        | "throttled";
       /** Field-scoped messages, present only for `invalid`. Safe to render to a participant. */
       readonly issues?: readonly { readonly path: string; readonly message: string }[];
     };

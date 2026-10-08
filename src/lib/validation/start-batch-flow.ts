@@ -58,6 +58,11 @@ export function decideStartBatch(
       // new screened attempt, not a retry, so this needs its own decision kind
       // rather than sharing the error message path.
       if (outcome.reason === "screening_required") return { kind: "screening_required" };
+      // Pacing, not a fault either: the participant's next step is to wait a
+      // moment and retry — which the error phase's retry control does — so
+      // this must never read as exhaustion or a study fault.
+      if (outcome.reason === "throttled")
+        return { kind: "error", message: t("validateStart.failure.throttled") };
       return {
         kind: "error",
         message:

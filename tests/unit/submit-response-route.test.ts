@@ -182,6 +182,38 @@ describe("POST /api/validation-responses", () => {
     h.envAvailable = true;
   });
 
+  it("answers 429 for a paced save with zero RPCs, so the client waits and retries", async () => {
+    h.envAvailable = true;
+    h.submitCalls.length = 0;
+    h.submitScript.length = 0;
+
+    // A batch id no other test uses: the route paces per batch capability, so
+    // this burst measures exactly thirty allowed saves and one refusal without
+    // sharing budget with the tests above.
+    const pacedBatchId = "VAL_a81d92c1-2026-09-30T20:14:04.117Z";
+    const pacedBody = () => ({ ...validBody(), batchId: pacedBatchId });
+
+    // Thirty saves against one batch capability fit; the thirty-first is refused
+    // before any RPC, and the route answers 429 — never 503, nothing is broken.
+    for (let n = 0; n < 30; n += 1) {
+      h.submitScript.push(async () => ({
+        status: "recorded",
+        responseId: `rsp_${n}`,
+        reservationReleased: true,
+      }));
+    }
+    for (let n = 0; n < 30; n += 1) {
+      const { status } = await post(pacedBody());
+      expect(status).toBe(200);
+    }
+    expect(h.submitCalls).toHaveLength(30);
+
+    const refused = await post(pacedBody());
+    expect(refused.status).toBe(429);
+    expect(refused.json).toEqual({ status: "failed", reason: "throttled" });
+    expect(h.submitCalls).toHaveLength(30);
+  });
+
   it("never caches: the answer is private and unrepeatable", async () => {
     h.envAvailable = true;
     h.submitCalls.length = 0;

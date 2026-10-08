@@ -198,6 +198,10 @@ export const ENGLISH_COPY = {
     "Signing you up did not finish. Nothing was saved. Try again in a moment.",
   "screening.failure.persistence.resume":
     "The saved identity did not check out just now, and nothing changed. Try again in a moment.",
+  "screening.failure.throttled.enroll":
+    "Too many sign-up tries just now. Nothing was saved. Wait a moment, then try again.",
+  "screening.failure.throttled.resume":
+    "Too many tries just now, and nothing changed. Wait a moment, then try again.",
 
   // -- Confirmation route (direct visits only; the normal flow no longer passes through) --
   // Doubles as the page title. The document title and the heading are the same approved string,
@@ -271,6 +275,8 @@ export const ENGLISH_COPY = {
     "Ilocano question first.",
   "validateStart.failure.persistence":
     "Your sentences did not come through just now, and no batch was created. Try again in a moment.",
+  "validateStart.failure.throttled":
+    "Too many tries just now, and no batch was created. Wait a moment, then try again.",
   "validateStart.screeningRequired":
     "This attempt was created before the Ilocano question became required, so it cannot receive " +
     "sentences. Start a new attempt to answer it. Nothing you have already submitted is affected.",
@@ -423,6 +429,9 @@ export const ENGLISH_COPY = {
   "validate.finished.failure.persistence":
     "Your next batch did not come through just now, and none was created. Everything you " +
     "already submitted is unchanged.",
+  "validate.finished.failure.throttled":
+    "Too many tries just now, and no new batch was created. Everything you already submitted " +
+    "is unchanged. Wait a moment, then try again.",
   "validate.finished.failure.screeningRequired":
     "This attempt was created before the Ilocano question became required, so it cannot take " +
     "another batch. Finish here, then start a new one. Nothing you already submitted is " +
@@ -584,6 +593,12 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "screening.failure.persistence.resume":
     "Bigo ang pag-check sa naka-save na pagkakakilanlan, at walang nagbago. Subukan mong muli " +
     "maya-maya.",
+  "screening.failure.throttled.enroll":
+    "Masyadong maraming beses sinubukang mag-sign up. Walang nase-save. Maghintay ka muna, " +
+    "saka subukang muli.",
+  "screening.failure.throttled.resume":
+    "Masyadong maraming beses sinubukan, at walang nagbago. Maghintay ka muna, saka subukang " +
+    "muli.",
 
   // -- Confirmation route (direct visits only; the normal flow no longer passes through) --
   "ready.title": "Bago ka magsimula",
@@ -658,6 +673,9 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validateStart.failure.persistence":
     "Hindi dumating ang mga pangungusap mo ngayon, at walang batch na nalikha. Subukan mong " +
     "muli maya-maya.",
+  "validateStart.failure.throttled":
+    "Masyadong maraming beses sinubukan, at walang batch na nalikha. Maghintay ka muna, saka " +
+    "subukang muli.",
   "validateStart.screeningRequired":
     "Nilikha ang pagsubok na ito bago naging required ang tanong sa Ilocano, kaya hindi ito " +
     "mabibigyan ng mga pangungusap. Magsimula ng bagong pagsubok para sagutin ito. Walang " +
@@ -787,6 +805,9 @@ export const FILIPINO_COPY: Record<CopyKey, string> = {
   "validate.finished.failure.persistence":
     "Hindi maihanda ang susunod na batch mo ngayon, at wala ring nalikha. Walang nagbago sa " +
     "lahat ng ipinasa mo.",
+  "validate.finished.failure.throttled":
+    "Masyadong maraming beses sinubukan, at walang bagong batch na nalikha. Walang nagbago " +
+    "sa lahat ng ipinasa mo. Maghintay ka muna, saka subukang muli.",
   "validate.finished.failure.screeningRequired":
     "Nilikha ang pagsubok na ito bago naging required ang tanong sa Ilocano, kaya hindi ito " +
     "mabibigyan ng panibagong batch. Tapusin dito, pagkatapos ay magsimula ng bagong " +
