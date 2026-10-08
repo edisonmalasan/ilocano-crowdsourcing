@@ -111,7 +111,8 @@ const boundaryPlugin = {
         // where privileged access belongs — so they are skipped here and instead rely on the
         // `server-only` runtime backstop.
         const isClientModule = /^\s*(['"])use client\1/.test(sourceCode.getText(sourceCode.ast));
-        const isComponent = context.filename.includes("/components/");
+        const normalizedFilename = context.filename.replace(/\\/g, "/");
+        const isComponent = normalizedFilename.includes("/components/");
 
         if (!isClientModule && !isComponent) return {};
 
@@ -146,6 +147,13 @@ const boundaryPlugin = {
     },
   },
 };
+
+/**
+ * Named export for the rule-level probe suite (`tests/unit/privileged-import-guard.test.ts`),
+ * which drives the real rule through ESLint's `Linter` with host-style filenames. The flat-config
+ * default export below is untouched, so lint behavior is identical with or without this export.
+ */
+export const sadinoBoundaryPlugin = boundaryPlugin;
 
 const eslintConfig = defineConfig([
   ...nextVitals,

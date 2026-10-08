@@ -7,10 +7,10 @@
 
 ## 2. Apply
 
-- [ ] 2.1 Normalize separators before the components test in `eslint.config.mjs` and export the plugin object; confirm `pnpm run lint` still exits 0 on the clean tree
-- [ ] 2.2 Add the four-case `Linter.verify` probe suite; confirm it is red on the old line (case 1 silent) and green on the new line with byte-identical restore of the config between
-- [ ] 2.3 Correct the AGENTS.md repair-prescription paragraph with one measured sentence recording the landed repair
-- [ ] 2.4 Run the full matrix (lint, format:check, typecheck, unit, dom, integration, build) with counts read back from output, plus strict OpenSpec validation
+- [x] 2.1 Normalize separators before the components test in `eslint.config.mjs` and export the plugin object; confirm `pnpm run lint` still exits 0 on the clean tree
+- [x] 2.2 Add the five-case `Linter.verify` probe suite (eslintrc harness — flat mode refuses inline configs for named files); confirm it is red on the old line (case 1 silent, 1 failed / 4 passed) and green on the new line (5 passed) with byte-identical restore of the config between (`dc431d77…`)
+- [x] 2.3 Correct the repair-prescription paragraph (lives in `docs/ROADMAP.md`, not `AGENTS.md` as design D5 misnamed it) with one measured sentence recording the landed repair
+- [x] 2.4 Run the full matrix (lint, format:check, typecheck, unit, dom, integration, build) with counts read back from output, plus strict OpenSpec validation
 
 ## 3. Verify
 
