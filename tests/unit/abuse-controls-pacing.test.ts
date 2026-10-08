@@ -176,7 +176,6 @@ describe("start orchestration pacing", () => {
   it("keeps throttled distinct from exhausted, screening_required, and honest errors", async () => {
     const calls: string[] = [];
     const deps = startDeps(calls);
-    const throttle = createPublicThrottle(() => 0);
     // One-shot refused throttle: the reason is its own, never a terminal twin.
     const refused = await runStartValidation(VALID_START, deps, {
       throttle: { check: () => false },
