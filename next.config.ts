@@ -71,7 +71,37 @@ const nextConfig: NextConfig = {
    * area — a new researcher route is covered by omission here for the same reason it is covered by
    * omission in the guarded layout.
    */
+  /**
+   * Global browser-hardening headers (Change 4 of the pre-Phase-11 guardrail
+   * program). Measured on main: this was the missing set — no route sent any
+   * of these five. Declared here as a static `/:path*` block rather than set
+   * per-response or in middleware, for the same reason the researcher block
+   * above avoids middleware: one declaration, no second place to get it
+   * wrong. Next.js applies EVERY block whose `source` matches the request
+   * path and merges their header lists, so this composes with the
+   * researcher-scoped block below instead of replacing it.
+   *
+   * `Permissions-Policy` switches off camera, microphone, and geolocation.
+   * Geolocation is the one the anonymous study model cares about: location
+   * must never be collected, so the platform declares it unavailable.
+   */
   headers: async () => [
+    {
+      source: "/:path*",
+      headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=63072000; includeSubDomains",
+        },
+        {
+          key: "Permissions-Policy",
+          value: "camera=(), microphone=(), geolocation=()",
+        },
+      ],
+    },
     {
       source: "/researcher/:path*",
       headers: [
