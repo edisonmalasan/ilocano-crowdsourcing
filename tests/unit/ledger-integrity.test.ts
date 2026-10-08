@@ -461,6 +461,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `public-participant-abuse-controls`, the FORTY-NINTH archived change, so this coupling has now
       // been paid THIRTY-FOUR times. Same one-line edit, same reason.
       49: "Forty-nine",
+      // Added for `cross-platform-privileged-import-guard`, the FIFTIETH archived change, so this coupling has now
+      // been paid THIRTY-FIVE times. Same one-line edit, same reason.
+      50: "Fifty",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
