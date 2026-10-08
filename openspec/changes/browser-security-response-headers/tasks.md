@@ -18,7 +18,7 @@
 
 ## 4. Sync
 
-- [ ] 4.1 Install `openspec/specs/browser-security-headers/spec.md` from the delta; spec count 24 → 25 at exactly the Sync merge, strict validation green
+- [x] 4.1 Install `openspec/specs/browser-security-headers/spec.md` from the delta (recast with Purpose/Requirements frame; requirement plus both scenarios verbatim); spec count 24 → 25 at exactly the Sync merge, strict validation green (25/25)
 
 ## 5. Archive
 
