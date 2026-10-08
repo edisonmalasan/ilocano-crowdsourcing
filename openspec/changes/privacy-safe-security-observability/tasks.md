@@ -8,7 +8,7 @@
 ## 2. Apply
 
 - [ ] 2.1 Add the pure diagnostic module plus the seven log call sites with injected sinks, leaving every outward refusal message byte-identical; confirm `pnpm run build` still compiles
-- [ ] 2.2 Harden `csvField` with the single-quote prefix rule; re-aim the round-trip test at safe encoding and add the per-character neutralization test with byte-identical restore between red and green
+- [ ] 2.2 Harden `csvField` with the single-quote prefix rule; keep the existing round-trip test byte-identical and add the per-character neutralization test with byte-identical restore between red and green
 - [ ] 2.3 Advance the roadmap's `Next eligible objective` row with one measured sentence recording the landed guardrail (done on the branch: Change 5 named as in-Apply)
 - [ ] 2.4 Run the full matrix (lint, format:check, typecheck, unit, dom, integration, build) with counts read back from output, plus strict OpenSpec validation
 

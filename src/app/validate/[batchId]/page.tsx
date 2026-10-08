@@ -145,6 +145,7 @@ export default async function ValidatePage({ params, searchParams }: ValidatePag
         throttleContext: {
           throttle: sharedPublicThrottle,
           originKey: resolveOriginKey((name) => jar.get(name)),
+          log: (line) => console.info(`[sadino:abuse] ${line}`),
         },
       });
     } catch (error) {

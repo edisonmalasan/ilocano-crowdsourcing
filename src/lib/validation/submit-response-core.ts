@@ -5,6 +5,10 @@ import {
   type ValidationsRepository,
 } from "@/lib/repositories";
 import { isWriteIntentError, parseWriteIntent } from "@/lib/server/write-intake";
+import {
+  digestPublicSecurityComponent,
+  formatPublicSecurityDiagnostic,
+} from "@/lib/abuse/public-security-diagnostic";
 import type { PublicThrottle } from "@/lib/validators/public-throttle";
 import { datasetEntryIdSchema } from "@/schemas/dataset";
 import { validationBatchIdSchema, validationResponseInputSchema } from "@/schemas/validation";
@@ -84,6 +88,12 @@ export interface SubmitThrottleContext {
    * value never reaches storage, a research table, or an export.
    */
   readonly originKey: string;
+  /**
+   * Where one privacy-safe line goes on a pacing refusal or a failed
+   * batch-capability check. Optional so suites that never thought about
+   * abuse keep working; production always supplies it.
+   */
+  readonly log?: (line: string) => void;
 }
 
 /**
@@ -119,7 +129,18 @@ export async function runSubmitResponse(
       throttleContext.originKey,
       intent.batchId,
     );
-    if (!allowed) return { status: "failed", reason: "throttled" };
+    if (!allowed) {
+      const log = throttleContext.log ?? ((): void => {});
+      log(
+        formatPublicSecurityDiagnostic({
+          action: "submit",
+          reason: "throttled",
+          originDigest: digestPublicSecurityComponent(throttleContext.originKey),
+          actorDigest: digestPublicSecurityComponent(intent.batchId),
+        }),
+      );
+      return { status: "failed", reason: "throttled" };
+    }
   }
 
   const timestamp = deps.now().toISOString();
@@ -132,6 +153,21 @@ export async function runSubmitResponse(
     // that variant shares one object shape across two literals — and the fallthrough
     // then cannot name `reason`.
     if (outcome.status === "refused") {
+      // A batch capability naming no batch is a probing signal, so it gets
+      // the same one-line treatment as a pacing refusal — digests only,
+      // outward 404 unchanged. `not_in_batch` is routine state (a wrong
+      // entry for a real batch) and stays silent.
+      if (outcome.reason === "unknown_batch" && throttleContext !== undefined) {
+        const log = throttleContext.log ?? ((): void => {});
+        log(
+          formatPublicSecurityDiagnostic({
+            action: "submit",
+            reason: "unknown_batch",
+            originDigest: digestPublicSecurityComponent(throttleContext.originKey),
+            actorDigest: digestPublicSecurityComponent(intent.batchId),
+          }),
+        );
+      }
       return { status: "failed", reason: outcome.reason };
     }
     if (outcome.status === "already_recorded") {

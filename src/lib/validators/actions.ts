@@ -105,6 +105,7 @@ async function enrollThrottleContext(): Promise<EnrollThrottleContext> {
   return {
     throttle: sharedPublicThrottle,
     originKey: resolveOriginKey((name) => jar.get(name)),
+    log: (line) => console.info(`[sadino:abuse] ${line}`),
   };
 }
 
@@ -122,5 +123,6 @@ async function resumeThrottleContext(): Promise<ResumeThrottleContext> {
   return {
     throttle: sharedPublicThrottle,
     originKey: resolveOriginKey((name) => jar.get(name)),
+    log: (line) => console.info(`[sadino:abuse] ${line}`),
   };
 }

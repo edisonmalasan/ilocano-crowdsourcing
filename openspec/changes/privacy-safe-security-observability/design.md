@@ -37,8 +37,9 @@ collection.
   of the origin key and — where the action has an actor bucket — of the
   raw actor value. The raw header value and the raw `VAL_`/`BAT_`
   identifier never reach the log; neither does response content,
-  proficiency, or any credential. Digests are computed at the shell
-  from values it already holds, so cores stay pure and the throttle's
+  proficiency, or any credential. Digests are computed in the cores
+  from values they already hold, so the raw values never reach the log
+  line; the shells supply only the `console.info` sink, and the throttle's
   "raw values never reach the table" standing is untouched.
 - **D2 — Exactly these seven sites.** The five `throttled` refusals
   (enroll, allocate, submit, resume-as-`absent`,

@@ -87,6 +87,7 @@ export async function requestStartValidationAction(raw: unknown): Promise<StartV
       {
         throttle: sharedPublicThrottle,
         originKey: resolveOriginKey((name) => jar.get(name)),
+        log: (line) => console.info(`[sadino:abuse] ${line}`),
       },
     );
   } catch (error) {

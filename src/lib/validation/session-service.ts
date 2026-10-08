@@ -16,6 +16,10 @@ import {
   validationSessionRequestSchema,
   type ValidationSessionOutcome,
 } from "./session";
+import {
+  digestPublicSecurityComponent,
+  formatPublicSecurityDiagnostic,
+} from "@/lib/abuse/public-security-diagnostic";
 import type { BatchRecord } from "@/schemas/batch";
 import type { PublicThrottle } from "@/lib/validators/public-throttle";
 
@@ -137,6 +141,12 @@ export interface OwnedSessionThrottleContext {
   readonly throttle: PublicThrottle;
   /** Hashed inside the throttle; the raw header value never reaches storage. */
   readonly originKey: string;
+  /**
+   * Where one privacy-safe line goes on a pacing refusal or a failed
+   * ownership check. Optional so recording-fake suites keep working;
+   * production always supplies it.
+   */
+  readonly log?: (line: string) => void;
 }
 
 export interface OwnedValidationSessionDependencies extends ValidationSessionDependencies {
@@ -180,15 +190,42 @@ export async function openOwnedValidationSession(
       dependencies.throttleContext.originKey,
       activeAttemptId,
     );
-    if (!allowed) return { status: "redirectHome" };
+    if (!allowed) {
+      const log = dependencies.throttleContext.log ?? ((): void => {});
+      log(
+        formatPublicSecurityDiagnostic({
+          action: "session_open",
+          reason: "throttled",
+          originDigest: digestPublicSecurityComponent(dependencies.throttleContext.originKey),
+          actorDigest: digestPublicSecurityComponent(activeAttemptId),
+        }),
+      );
+      return { status: "redirectHome" };
+    }
   }
 
   try {
     const batch = await dependencies.batches.findById(batchId);
     // Unknown batch and owner mismatch share ONE outcome. Naming which
-    // happened would tell a prober whether the identifier exists.
+    // happened would tell a prober whether the identifier exists. An
+    // unknown batch is a stale link — routine navigation, silent — while a
+    // found batch naming another owner is a probing signal and gets one
+    // privacy-safe line, outward outcome unchanged.
     if (batch === null) return { status: "redirectHome" };
-    if (batch.validatorId !== activeAttemptId) return { status: "redirectHome" };
+    if (batch.validatorId !== activeAttemptId) {
+      if (dependencies.throttleContext !== undefined) {
+        const log = dependencies.throttleContext.log ?? ((): void => {});
+        log(
+          formatPublicSecurityDiagnostic({
+            action: "session_open",
+            reason: "owner_mismatch",
+            originDigest: digestPublicSecurityComponent(dependencies.throttleContext.originKey),
+            actorDigest: digestPublicSecurityComponent(activeAttemptId),
+          }),
+        );
+      }
+      return { status: "redirectHome" };
+    }
 
     return await presentLoadedBatch(batch, batchId, position, dependencies);
   } catch (error) {

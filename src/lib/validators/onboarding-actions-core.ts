@@ -15,6 +15,10 @@ import {
   type EnrollmentOutcome,
   type ResumeOutcome,
 } from "./enrollment";
+import {
+  digestPublicSecurityComponent,
+  formatPublicSecurityDiagnostic,
+} from "@/lib/abuse/public-security-diagnostic";
 import type { PublicThrottle } from "./public-throttle";
 
 /**
@@ -152,7 +156,17 @@ export async function runEnroll(
   // identifier; the participant-facing message says exactly that.
   if (throttleContext !== undefined) {
     const allowed = throttleContext.throttle.check("enroll", throttleContext.originKey);
-    if (!allowed) return { status: "failed", reason: "throttled" };
+    if (!allowed) {
+      const log = throttleContext.log ?? ((): void => {});
+      log(
+        formatPublicSecurityDiagnostic({
+          action: "enroll",
+          reason: "throttled",
+          originDigest: digestPublicSecurityComponent(throttleContext.originKey),
+        }),
+      );
+      return { status: "failed", reason: "throttled" };
+    }
   }
 
   let outcome: EnrollmentOutcome;
@@ -190,6 +204,12 @@ export interface EnrollThrottleContext {
    * value never reaches storage, a research table, or an export.
    */
   readonly originKey: string;
+  /**
+   * Where one privacy-safe line goes on a pacing refusal. Optional so
+   * recording-fake suites keep working; production always supplies it.
+   * The core formats the line and never sees the console.
+   */
+  readonly log?: (line: string) => void;
 }
 
 /**
@@ -207,6 +227,11 @@ export interface ResumeThrottleContext {
    * value never reaches storage, a research table, or an export.
    */
   readonly originKey: string;
+  /**
+   * Where one privacy-safe line goes on a pacing refusal. Optional so the
+   * recording-fake suites keep working; production always supplies it.
+   */
+  readonly log?: (line: string) => void;
 }
 
 /**
@@ -257,7 +282,18 @@ export async function runResume(
       throttleContext.originKey,
       intent.storedId,
     );
-    if (!allowed) return { status: "absent" };
+    if (!allowed) {
+      const log = throttleContext.log ?? ((): void => {});
+      log(
+        formatPublicSecurityDiagnostic({
+          action: "resume",
+          reason: "throttled",
+          originDigest: digestPublicSecurityComponent(throttleContext.originKey),
+          actorDigest: digestPublicSecurityComponent(intent.storedId),
+        }),
+      );
+      return { status: "absent" };
+    }
   }
 
   const parsed = anonymousValidatorIdSchema.safeParse(intent.storedId);
