@@ -14,7 +14,7 @@
 
 ## 3. Verify
 
-- [ ] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge
+- [x] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge (verdict PASS, no findings: exact five values, researcher block byte-identical, real-config probe non-vacuous, no middleware/CSP/preload/migration/tracking, no in-force spec touched, roadmap diff one row, no merge-behavior overclaim)
 
 ## 4. Sync
 
