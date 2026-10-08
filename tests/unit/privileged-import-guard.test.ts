@@ -25,6 +25,27 @@ const RULE_ID = "no-privileged-imports-probe";
 
 const rule = sadinoBoundaryPlugin.rules["no-privileged-imports"];
 
+type DefineRuleParam = Parameters<Linter["defineRule"]>[1];
+type RuleContext = { filename: string };
+type RuleCreate = (context: RuleContext) => Record<string, unknown>;
+
+/**
+ * Wraps the real rule so the probe can assert what `context.filename` the
+ * rule actually saw. A runner that normalized backslashes in transit could
+ * otherwise satisfy the Windows case vacuously; the backslash assertion
+ * below refuses that shape (design D3).
+ */
+function makeRecordingRule(seen: string[]): DefineRuleParam {
+  const create = rule.create as unknown as RuleCreate;
+  return {
+    ...(rule as unknown as Record<string, unknown>),
+    create(context: RuleContext) {
+      seen.push(context.filename);
+      return create(context);
+    },
+  } as unknown as DefineRuleParam;
+}
+
 const PRIVILEGED_IMPORT = `import { createAdminClient } from "@/lib/supabase/admin";\n`;
 
 const PLAIN_COMPONENT = `${PRIVILEGED_IMPORT}\nexport function probe() {\n  return createAdminClient !== undefined;\n}\n`;
@@ -33,7 +54,8 @@ const DIRECTIVE_COMPONENT = `"use client";\n\n${PLAIN_COMPONENT}`;
 
 function ruleErrors(code: string, filename: string) {
   const linter = new Linter({ configType: "eslintrc" });
-  linter.defineRule(RULE_ID, rule as unknown as Parameters<Linter["defineRule"]>[1]);
+  const seen: string[] = [];
+  linter.defineRule(RULE_ID, makeRecordingRule(seen));
   const messages = linter.verify(
     code,
     {
@@ -42,7 +64,10 @@ function ruleErrors(code: string, filename: string) {
     },
     { filename },
   );
-  return messages.filter((message) => message.ruleId === RULE_ID);
+  return {
+    errors: messages.filter((message) => message.ruleId === RULE_ID),
+    seenFilename: seen.at(-1) ?? "",
+  };
 }
 
 describe("the privileged-import gate fires on any host path separator", () => {
@@ -51,22 +76,31 @@ describe("the privileged-import gate fires on any host path separator", () => {
   });
 
   it("reports a directive-less component import on a Windows-style path", () => {
-    const errors = ruleErrors(PLAIN_COMPONENT, "C:\\repo\\src\\components\\probe.tsx");
+    const { errors, seenFilename } = ruleErrors(
+      PLAIN_COMPONENT,
+      "C:\\repo\\src\\components\\probe.tsx",
+    );
+    expect(seenFilename).toContain("\\");
     expect(errors).toHaveLength(1);
   });
 
   it("reports a directive-less component import on a POSIX-style path", () => {
-    const errors = ruleErrors(PLAIN_COMPONENT, "/repo/src/components/probe.tsx");
+    const { errors } = ruleErrors(PLAIN_COMPONENT, "/repo/src/components/probe.tsx");
     expect(errors).toHaveLength(1);
   });
 
   it("stays silent for a directive-less non-component file on a Windows-style path", () => {
-    const errors = ruleErrors(PLAIN_COMPONENT, "C:\\repo\\src\\lib\\probe.ts");
+    const { errors, seenFilename } = ruleErrors(PLAIN_COMPONENT, "C:\\repo\\src\\lib\\probe.ts");
+    expect(seenFilename).toContain("\\");
     expect(errors).toHaveLength(0);
   });
 
   it("reports a directive-carrying file outside components on a Windows-style path", () => {
-    const errors = ruleErrors(DIRECTIVE_COMPONENT, "C:\\repo\\src\\lib\\probe.ts");
+    const { errors, seenFilename } = ruleErrors(
+      DIRECTIVE_COMPONENT,
+      "C:\\repo\\src\\lib\\probe.ts",
+    );
+    expect(seenFilename).toContain("\\");
     expect(errors).toHaveLength(1);
   });
 });

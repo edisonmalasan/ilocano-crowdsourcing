@@ -53,11 +53,12 @@ logging; any anonymous-study-model change.
   requirement ("No client-side access to privileged persistence internals")
   already mandates static enforcement; the delta adds the cross-platform
   scenario the old line violated. Sync appends it; nothing else moves.
-- **D5 — Record the AGENTS.md repair note at Apply.** The durable-rules file
-  carries a paragraph prescribing exactly this repair ("should be its own
-  small change with its own probe"); landing the change without correcting
-  that paragraph would leave a prescription for work already done. One
-  corrective sentence, no rule change.
+- **D5 — Record the repair-prescription paragraph at Apply.** The paragraph
+  prescribing exactly this repair ("should be its own small change with its
+  own probe") lives in `docs/ROADMAP.md` (the design draft misnamed it as
+  `AGENTS.md`); landing the change without correcting that paragraph would
+  leave a prescription for work already done. One corrective sentence, no rule
+  change.
 
 ## Risks / Trade-offs
 
