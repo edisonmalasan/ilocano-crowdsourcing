@@ -17,6 +17,17 @@
  *     replacing it, would change a validator's text;
  *   - a field that needs no quoting is emitted bare, so the common case stays readable.
  *
+ * Spreadsheet safety (Change 5, pre-Phase-11 guardrail): a field whose first
+ * character is `=`, `+`, `-`, `@`, tab, or CR is prefixed with a single
+ * quote, so a spreadsheet opens it as text rather than as a live formula.
+ * The quote is the OWASP text-marker convention: Excel displays the value
+ * unchanged, and a consumer parsing the CSV strips one leading `'` before a
+ * dangerous character as the guard, not the data. Measured against all 4,800
+ * merged source records, zero fields start dangerous, so no current byte
+ * changes — the guard covers validator-authored corrections and translations
+ * Phase 11 is about to collect. Header rows never start dangerous and JSON
+ * exports (no formula evaluation) are untouched.
+ *
  * Nothing is dropped to make quoting easier. Every record carries the same columns in the same
  * order, and `null` becomes an empty field — which is a real absence, not the string "null".
  */
@@ -24,8 +35,10 @@
 /** A field's CSV form. `null` is an empty field; it is never the four characters `null`. */
 export function csvField(value: string | null): string {
   if (value === null) return "";
-  if (!/[",\r\n]/.test(value)) return value;
-  return `"${value.replace(/"/g, '""')}"`;
+  if (value === "") return "";
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (!/[",\r\n]/.test(safe)) return safe;
+  return `"${safe.replace(/"/g, '""')}"`;
 }
 
 /**

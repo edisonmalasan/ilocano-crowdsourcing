@@ -18,6 +18,10 @@ import {
 import { z } from "zod";
 
 import { allocateBatch, type MintedBatchIdentity } from "@/lib/allocation/allocate-batch";
+import {
+  digestPublicSecurityComponent,
+  formatPublicSecurityDiagnostic,
+} from "@/lib/abuse/public-security-diagnostic";
 import type { PublicThrottle } from "@/lib/validators/public-throttle";
 import { projectAllocatedEntry } from "./allocated-entry";
 import { resolveSessionEntry } from "./session";
@@ -243,6 +247,12 @@ export interface StartThrottleContext {
    * value never reaches storage, a research table, or an export.
    */
   readonly originKey: string;
+  /**
+   * Where one privacy-safe line goes on a pacing refusal. Optional so
+   * suites that never thought about abuse keep working; production always
+   * supplies it.
+   */
+  readonly log?: (line: string) => void;
 }
 
 /**
@@ -280,7 +290,18 @@ export async function runStartValidation(
       throttleContext.originKey,
       intent.validatorId,
     );
-    if (!allowed) return { status: "failed", reason: "throttled" };
+    if (!allowed) {
+      const log = throttleContext.log ?? ((): void => {});
+      log(
+        formatPublicSecurityDiagnostic({
+          action: "allocate",
+          reason: "throttled",
+          originDigest: digestPublicSecurityComponent(throttleContext.originKey),
+          actorDigest: digestPublicSecurityComponent(intent.validatorId),
+        }),
+      );
+      return { status: "failed", reason: "throttled" };
+    }
   }
 
   try {

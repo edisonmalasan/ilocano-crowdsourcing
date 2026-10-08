@@ -50,6 +50,7 @@ export async function POST(request: Request): Promise<Response> {
       {
         throttle: sharedPublicThrottle,
         originKey: resolveOriginKey((name) => request.headers.get(name)),
+        log: (line) => console.info(`[sadino:abuse] ${line}`),
       },
     );
     // Operator timing only: status and duration. Never response text, translations,

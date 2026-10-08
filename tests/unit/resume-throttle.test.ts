@@ -201,9 +201,9 @@ describe("no request-origin value may appear outside the origin module", () => {
   });
 
   it("logs no raw attempt or origin value on the throttled resume path", () => {
-    // The operator log in `actions.ts` names static sentences; a log line
-    // interpolating the attempted identifier or the origin key would persist
-    // exactly what the throttle hashes to forget.
+    // Change 5 adds one namespaced abuse line per refusal: the core formats
+    // digests only, the shell supplies `console.info` as the sink. The guard
+    // therefore forbids raw values and unnamespaced logging, not the sink.
     const source = readFileSync("src/lib/validators/actions.ts", "utf8");
     const code = source
       .split("\n")
@@ -212,6 +212,14 @@ describe("no request-origin value may appear outside the origin module", () => {
         return trimmed !== "" && !trimmed.startsWith("//") && !trimmed.startsWith("*");
       })
       .join("\n");
-    expect(code).not.toMatch(/storedId|originKey.*\$\{|console\.(log|debug|info)/);
+    expect(code).not.toMatch(/storedId/);
+    expect(code).not.toMatch(/originKey.*\$\{/);
+    expect(code).not.toMatch(/console\.(log|debug)/);
+    const infoLines = code.split("\n").filter((line) => line.includes("console.info"));
+    expect(infoLines.length).toBeGreaterThan(0);
+    for (const line of infoLines) {
+      expect(line).toContain("[sadino:abuse]");
+      expect(line).not.toMatch(/storedId|originKey/);
+    }
   });
 });
