@@ -339,7 +339,7 @@ describe("openOwnedValidationSession", () => {
 
   it("paces the check on the ATTEMPTED identity, not only on well-formed ones", async () => {
     const { openOwnedValidationSession } = await loadService();
-    const seen: Array<{ attempt: string }> = [];
+    const seen: Array<{ attempt: string | undefined }> = [];
     const deps = createRecording({
       throttleContext: {
         throttle: {

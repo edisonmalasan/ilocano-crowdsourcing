@@ -1,7 +1,11 @@
 import type { AnonymousValidatorId, IlocanoProficiency } from "@/schemas/validator";
 import type { CopyKey, Translate } from "@/lib/i18n/copy";
 
-import type { EnrollActionResult, ResumeActionResult } from "./onboarding-actions-core";
+import type {
+  EnrollActionResult,
+  OnboardingFailureReason,
+  ResumeActionResult,
+} from "./onboarding-actions-core";
 
 /**
  * Onboarding flow decisions.
@@ -174,18 +178,17 @@ export type OnboardingSubject = "enrollment" | "resume";
 /**
  * The catalog key for one (reason, subject) failure.
  *
- * `CopyKey` rather than a built template string, and the reason is worth stating because a template
- * literal would have compiled: `` `screening.failure.${reason}.${suffix}` `` is typed `string`, and a
- * `string` handed to a `Translate` is a compile error - so the first version would have been
- * caught. What the table additionally buys is the reverse direction: a new approved failure reason
- * added to `EnrollActionResult` and to the catalogs cannot be typed into this record without a
- * compile error here, so a reason can never be handled by falling through to the generic message
- * because someone forgot to add a key.
+ * Derived from `OnboardingFailureReason` rather than hand-duplicated, so a
+ * new approved failure reason is a compile error here until its keys exist.
+ * (The comment below describing that pin predates the derivation and is kept
+ * because it states the property, not the mechanism.)
  *
- * `Record<FailureReason, …>` is a small exhaustiveness pin of exactly the kind the module header
- * on `@/lib/i18n/copy` describes: the key set is derived, never maintained by hand.
+ * `throttled` on the resume subject is defensive totality, stated rather
+ * than hidden: a throttled resume returns `absent` before any reason is
+ * produced, so that key is unreachable today. It exists so the record stays
+ * total over the shared reason type instead of silently narrowing it.
  */
-type FailureReason = "not_configured" | "invalid" | "persistence";
+type FailureReason = OnboardingFailureReason;
 
 const FAILURE_KEYS: Record<FailureReason, Record<OnboardingSubject, CopyKey>> = {
   not_configured: {
@@ -199,6 +202,10 @@ const FAILURE_KEYS: Record<FailureReason, Record<OnboardingSubject, CopyKey>> = 
   persistence: {
     enrollment: "screening.failure.persistence.enroll",
     resume: "screening.failure.persistence.resume",
+  },
+  throttled: {
+    enrollment: "screening.failure.throttled.enroll",
+    resume: "screening.failure.throttled.resume",
   },
 };
 

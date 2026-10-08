@@ -278,12 +278,22 @@ export type AllocatedEntry = z.infer<typeof allocatedEntrySchema>;
  *   created before proficiency became required. Distinct from every reason above because the
  *   correct response is to start a new screened attempt, not to retry, wait, or report trouble:
  *   re-requesting a deterministic refusal is a control that can never succeed.
+ * `throttled`
+ *   The start orchestration's pacing gate refused the call before any database work. Produced
+ *   ONLY by that gate, never by `allocateBatch` itself — a burst stopped before it could burn
+ *   reservations. Distinct from `persistence` because the correct response is to wait a moment
+ *   and retry, not to report a study fault.
  *
- * These five are kept apart rather than collapsed into one "failed" on purpose. Collapsing would be
+ * These six are kept apart rather than collapsed into one "failed" on purpose. Collapsing would be
  * less code and would erase the one distinction that decides what a participant is told.
  */
 export type AllocationFailureReason =
-  "invalid" | "unknown_validator" | "persistence" | "not_configured" | "screening_required";
+  | "invalid"
+  | "unknown_validator"
+  | "persistence"
+  | "not_configured"
+  | "screening_required"
+  | "throttled";
 
 /**
  * The result of one allocation request.

@@ -2,12 +2,16 @@ import { createHash } from "node:crypto";
 
 /**
  * ============================================================================
- * PUBLIC THROTTLE — per-action backstops for the unauthenticated read surface
+ * PUBLIC THROTTLE — per-action backstops for the unauthenticated surface
  * ============================================================================
  * `resume` (identifier present/absent?) and `session_open` (does this browser
  * hold this batch?) are both valid/invalid oracles taken at network speed:
  * every refusal is cheap, every answer is one bit, and nothing but pacing
- * separates a participant from a prober. This module paces.
+ * separates a participant from a prober. `enroll`, `allocate`, and `submit`
+ * are the same problem one layer up: each accepted call performs a database
+ * write (one validator row, one allocation RPC, one submission RPC), so an
+ * unpaced caller mints junk rows and burns reservations at machine speed.
+ * This module paces all five.
  *
  * WHAT IT IS AND IS NOT. It is a RATE LIMIT, not an authorization control.
  * The authorization decision is the stored-owner comparison in
@@ -16,7 +20,7 @@ import { createHash } from "node:crypto";
  * answers can be collected. See `@/lib/admin/origin` for the same distinction
  * on the researcher side, and the honest limitation recorded there about
  * forwarded headers: on a deployment that does not strip `x-forwarded-for`
- * a party can choose its own origin component, so the per-attempt component
+ * a party can choose its own origin component, so the per-actor component
  * is what still binds a guessing run to one budget per guessed identity.
  *
  * ============================================================================
@@ -47,12 +51,12 @@ import { createHash } from "node:crypto";
  * only throttle the honest client). A resume happens about once per visit;
  * a session open about once per page load plus retries. Campus Wi-Fi, NAT,
  * and shared households put many humans behind one origin, so the
- * per-origin allowance is a multiple of the per-attempt one: one noisy
+ * per-origin allowance is a multiple of the per-actor one: one noisy
  * household must not starve itself, and one prober must still slow down.
  * These are OPERATIONAL values, pending production observation — raising or
  * lowering them changes no schema, no export, and no research semantics.
  */
-export type PublicThrottleAction = "resume" | "session_open";
+export type PublicThrottleAction = "resume" | "session_open" | "enroll" | "allocate" | "submit";
 
 interface ThrottleBucketSpec {
   /** How many allowed checks fit in one window. */
@@ -63,7 +67,14 @@ interface ThrottleBucketSpec {
 
 interface ActionThrottleSpec {
   readonly origin: ThrottleBucketSpec;
-  readonly attempt: ThrottleBucketSpec;
+  /**
+   * The per-actor bucket, absent when the action has no actor to scope to.
+   * The actor is whatever unguessable client-supplied value names the caller:
+   * the attempt identifier for `resume`/`session_open`/`allocate`, the batch
+   * capability for `submit`. `enroll` has none — no identity exists yet —
+   * so it carries an origin bucket only.
+   */
+  readonly actor?: ThrottleBucketSpec;
 }
 
 const ACTION_THROTTLE_SPEC: Record<PublicThrottleAction, ActionThrottleSpec> = {
@@ -73,14 +84,34 @@ const ACTION_THROTTLE_SPEC: Record<PublicThrottleAction, ActionThrottleSpec> = {
   // minute and then waits out the window for every further guess.
   resume: {
     origin: { limit: 60, windowSeconds: 300 },
-    attempt: { limit: 30, windowSeconds: 300 },
+    actor: { limit: 30, windowSeconds: 300 },
   },
   // A session open happens once per page load, plus refreshes and retries.
   // Generous by a factor no human reaches by refreshing: one hundred twenty
   // per identity and three hundred per origin per five minutes.
   session_open: {
     origin: { limit: 300, windowSeconds: 300 },
-    attempt: { limit: 120, windowSeconds: 300 },
+    actor: { limit: 120, windowSeconds: 300 },
+  },
+  // Enrollment mints one validator row per accepted call and happens once per
+  // browser session for a human. Thirty per origin per five minutes admits a
+  // classroom behind one NAT while stopping a script minting junk rows.
+  enroll: {
+    origin: { limit: 30, windowSeconds: 300 },
+  },
+  // One allocation RPC plus reads per accepted call, about once per batch
+  // (minutes of answering) for a human. Mirrors the `resume` shape: sixty
+  // per origin and twenty per attempt per five minutes.
+  allocate: {
+    origin: { limit: 60, windowSeconds: 300 },
+    actor: { limit: 20, windowSeconds: 300 },
+  },
+  // Five saves per batch plus retries and already-recorded replays per human.
+  // Thirty per batch capability and three hundred per origin per five minutes
+  // admit a NAT classroom submitting concurrently while stopping a flood.
+  submit: {
+    origin: { limit: 300, windowSeconds: 300 },
+    actor: { limit: 30, windowSeconds: 300 },
   },
 };
 
@@ -95,11 +126,16 @@ export const PUBLIC_THROTTLE_NO_ORIGIN = "no-origin-signal";
  */
 export interface PublicThrottle {
   /**
-   * True when the check may proceed. An allowed check CONSUMES one unit
-   * from both the origin and the attempt bucket; a refused one consumes
-   * nothing, so refusal never extends its own window.
+   * True when the check may proceed. An allowed check CONSUMES one unit from
+   * the origin bucket and, where the action has one, from the actor bucket; a
+   * refused one consumes nothing, so refusal never extends its own window.
+   *
+   * `actorRaw` is the unguessable client-supplied value naming the caller
+   * (attempt identifier, or batch capability for `submit`), hashed inside
+   * like every other key component. Actions without an actor bucket ignore
+   * it; callers of those actions pass none.
    */
-  check(action: PublicThrottleAction, originRaw: string, attemptRaw: string): boolean;
+  check(action: PublicThrottleAction, originRaw: string, actorRaw?: string): boolean;
 }
 
 /** SHA-256 hex of one raw key component. Raw values never reach the table. */
@@ -107,7 +143,7 @@ function hashedComponent(raw: string): string {
   return createHash("sha256").update(raw, "utf8").digest("hex");
 }
 
-function bucketKey(action: PublicThrottleAction, scope: "origin" | "attempt", raw: string): string {
+function bucketKey(action: PublicThrottleAction, scope: "origin" | "actor", raw: string): string {
   return `${action}:${scope}:${hashedComponent(raw)}`;
 }
 
@@ -130,23 +166,34 @@ export function createPublicThrottle(nowMs: () => number = () => Date.now()): Pu
   }
 
   return {
-    check(action, originRaw, attemptRaw): boolean {
+    check(action, originRaw, actorRaw): boolean {
       const spec = ACTION_THROTTLE_SPEC[action];
       const now = nowMs();
       const originKey = bucketKey(action, "origin", originRaw);
-      const attemptKey = bucketKey(action, "attempt", attemptRaw);
       const originWindowMs = spec.origin.windowSeconds * 1000;
-      const attemptWindowMs = spec.attempt.windowSeconds * 1000;
 
       const originHits = recent(originKey, originWindowMs, now);
-      const attemptHits = recent(attemptKey, attemptWindowMs, now);
       if (originHits.length >= spec.origin.limit) return false;
-      if (attemptHits.length >= spec.attempt.limit) return false;
+
+      let actorHits: number[] | null = null;
+      let actorKey = "";
+      if (spec.actor !== undefined) {
+        // An action WITH an actor bucket and no actor value supplied is a
+        // caller bug, not a free pass: refusing closed keeps an unwired call
+        // site from pacing nothing while appearing paced.
+        if (actorRaw === undefined) return false;
+        actorKey = bucketKey(action, "actor", actorRaw);
+        const actorWindowMs = spec.actor.windowSeconds * 1000;
+        actorHits = recent(actorKey, actorWindowMs, now);
+        if (actorHits.length >= spec.actor.limit) return false;
+      }
 
       originHits.push(now);
-      attemptHits.push(now);
       hits.set(originKey, originHits);
-      hits.set(attemptKey, attemptHits);
+      if (actorHits !== null) {
+        actorHits.push(now);
+        hits.set(actorKey, actorHits);
+      }
       return true;
     },
   };

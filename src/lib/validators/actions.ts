@@ -10,6 +10,7 @@ import {
   runEnroll,
   runResume,
   type EnrollActionResult,
+  type EnrollThrottleContext,
   type ResumeActionResult,
   type ResumeThrottleContext,
 } from "./onboarding-actions-core";
@@ -25,8 +26,8 @@ import { sharedPublicThrottle } from "./public-throttle";
  *
  * Every decision lives in `onboarding-actions-core.ts`, which takes its
  * dependencies as arguments and is therefore unit-tested with no database and no
- * credential. These two functions do exactly three things: read the environment,
- * build the repositories, delegate.
+ * credential. These two functions build the request's dependencies —
+ * environment, repositories, pacing context — and delegate.
  *
  * The service-role credential bypasses Row Level Security, so these actions are
  * reachable only from the server and only through the service, which has already
@@ -60,7 +61,12 @@ function logForOperator(message: string, error: unknown): void {
 
 export async function enrollValidatorAction(raw: unknown): Promise<EnrollActionResult> {
   try {
-    return await runEnroll(raw, actionDependencies());
+    // The environment check runs FIRST, before the request headers are read,
+    // for the same reason as on the resume path: a deployment with no
+    // database reports `not_configured` regardless of what the request
+    // carried, and no header value is observed on that path.
+    const deps = actionDependencies();
+    return await runEnroll(raw, deps, await enrollThrottleContext());
   } catch (error) {
     // A configuration failure is thrown while BUILDING dependencies, so it never
     // reaches the core. Translate it here, and log the real cause.
@@ -88,6 +94,18 @@ export async function resumeValidatorAction(raw: unknown): Promise<ResumeActionR
     logForOperator("resume failed before reaching the service", error);
     return { status: "failed", reason: "persistence" };
   }
+}
+
+/**
+ * The pacing context for one enrollment request: origin only, since no
+ * identity exists yet to scope an actor bucket to.
+ */
+async function enrollThrottleContext(): Promise<EnrollThrottleContext> {
+  const jar = await headers();
+  return {
+    throttle: sharedPublicThrottle,
+    originKey: resolveOriginKey((name) => jar.get(name)),
+  };
 }
 
 /**

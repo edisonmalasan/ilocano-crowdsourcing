@@ -1,8 +1,12 @@
 "use server";
 
+import { headers } from "next/headers";
+
+import { resolveOriginKey } from "@/lib/admin/origin";
 import { ServerEnvError, getServerEnv } from "@/lib/env/server";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 import { allocationConfigSchema } from "@/schemas/batch";
+import { sharedPublicThrottle } from "@/lib/validators/public-throttle";
 
 import { defaultBatch } from "@/lib/allocation/allocate-batch";
 import { runStartValidation, type StartValidationOutcome } from "./start-validation-core";
@@ -61,22 +65,30 @@ export async function requestStartValidationAction(raw: unknown): Promise<StartV
     // because only that file can see it.
     getServerEnv();
     const { validators, validations, batches, datasetEntries } = createSupabaseRepositories();
+    const jar = await headers();
 
-    return await runStartValidation(raw, {
-      validators,
-      validations,
-      batches,
-      datasetEntries,
-      // The schema's own defaults, parsed through the schema rather than written as
-      // literals, so that when the approved batch size arrives it changes in
-      // `allocationConfigSchema` and nowhere else.
-      config: allocationConfigSchema.parse({}),
-      // ONE `Date` per batch, for the identifier AND the `created_at` the migration
-      // requires the server to write. Two reads of the clock would let a batch's id and
-      // its column disagree, and the column is the one that orders.
-      newBatch: (validatorId) => defaultBatch(validatorId, new Date()),
-      ConfigurationFailure: ServerEnvError,
-    });
+    return await runStartValidation(
+      raw,
+      {
+        validators,
+        validations,
+        batches,
+        datasetEntries,
+        // The schema's own defaults, parsed through the schema rather than written as
+        // literals, so that when the approved batch size arrives it changes in
+        // `allocationConfigSchema` and nowhere else.
+        config: allocationConfigSchema.parse({}),
+        // ONE `Date` per batch, for the identifier AND the `created_at` the migration
+        // requires the server to write. Two reads of the clock would let a batch's id and
+        // its column disagree, and the column is the one that orders.
+        newBatch: (validatorId) => defaultBatch(validatorId, new Date()),
+        ConfigurationFailure: ServerEnvError,
+      },
+      {
+        throttle: sharedPublicThrottle,
+        originKey: resolveOriginKey((name) => jar.get(name)),
+      },
+    );
   } catch (error) {
     // A configuration failure is thrown while BUILDING dependencies, so it never reaches
     // the core. Translate it here, and log the real cause.

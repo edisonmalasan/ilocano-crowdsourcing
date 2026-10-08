@@ -30,9 +30,12 @@ import type {
  *   confirmed  — `recorded` and `already_recorded`. Both mean the entry is complete on the
  *                server. `already_recorded` is the duplicate-submit race resolving in favour
  *                of safety: the response IS stored, so the queue must not hold it again.
- *   transient  — `persistence` and `not_configured`. The payload was acceptable; the world
- *                was not. Retried with bounded backoff, because an unbounded retry is a
- *                battery drain wearing a reliability costume.
+ *   transient  — `persistence`, `not_configured`, and `throttled`. The payload was acceptable;
+ *                the world was not (or the caller was too fast). Retried with bounded backoff,
+ *                because an unbounded retry is a battery drain wearing a reliability costume.
+ *                `throttled` is transient, never permanent: re-sending the same bytes after the
+ *                window WILL succeed, so parking it as "not stored" would be a lie the retry
+ *                control then has to unsay.
  *   permanent  — `invalid`, `unknown_batch`, `not_in_batch`. Re-sending the same bytes cannot
  *                succeed: the payload is refused, the batch is gone, or the entry was never in
  *                it. Never retried; surfaced so the participant learns the answer was not stored.
@@ -116,7 +119,7 @@ const realWait = (ms: number): Promise<void> =>
   });
 
 function isTransientReason(reason: SubmitValidationFailureReason): boolean {
-  return reason === "persistence" || reason === "not_configured";
+  return reason === "persistence" || reason === "not_configured" || reason === "throttled";
 }
 
 export function createSaveQueue(options: SaveQueueOptions) {

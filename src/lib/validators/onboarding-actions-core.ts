@@ -96,7 +96,7 @@ const resumeIntentSchema = z.strictObject({
   storedId: z.string(),
 });
 
-export type OnboardingFailureReason = "not_configured" | "invalid" | "persistence";
+export type OnboardingFailureReason = "not_configured" | "invalid" | "persistence" | "throttled";
 
 export type EnrollActionResult =
   | { readonly status: "enrolled"; readonly validatorId: AnonymousValidatorId }
@@ -136,6 +136,7 @@ function isConfigurationFailure(error: unknown, deps: OnboardingActionDependenci
 export async function runEnroll(
   raw: unknown,
   deps: OnboardingActionDependencies,
+  throttleContext?: EnrollThrottleContext,
 ): Promise<EnrollActionResult> {
   let intent: z.output<typeof enrollmentIntentSchema>;
   try {
@@ -143,6 +144,15 @@ export async function runEnroll(
   } catch (error) {
     if (isWriteIntentError(error)) return { status: "failed", reason: "invalid" };
     throw error;
+  }
+
+  // Paced AFTER parsing: an invalid payload is refused without consuming
+  // budget, so garbage cannot starve a shared origin's later valid
+  // enrollment. A refused enrollment creates no validator row and stores no
+  // identifier; the participant-facing message says exactly that.
+  if (throttleContext !== undefined) {
+    const allowed = throttleContext.throttle.check("enroll", throttleContext.originKey);
+    if (!allowed) return { status: "failed", reason: "throttled" };
   }
 
   let outcome: EnrollmentOutcome;
@@ -163,6 +173,23 @@ export async function runEnroll(
   }
 
   return { status: "enrolled", validatorId: outcome.validatorId };
+}
+
+/**
+ * What the paced enrollment path is gated on.
+ *
+ * Origin only: no identity exists yet, so there is nothing to scope an actor
+ * bucket to. Optional for the same reason the resume context is — suites
+ * that never thought about abuse keep working, and production always
+ * supplies it.
+ */
+export interface EnrollThrottleContext {
+  readonly throttle: PublicThrottle;
+  /**
+   * The request-origin signal, hashed inside the throttle. The raw header
+   * value never reaches storage, a research table, or an export.
+   */
+  readonly originKey: string;
 }
 
 /**

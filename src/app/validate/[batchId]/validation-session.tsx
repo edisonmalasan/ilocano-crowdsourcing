@@ -695,7 +695,8 @@ function SaveStatus({
         {snapshot.unsaved.map((item) => {
           const state = snapshot.states[item.key];
           const reason = state !== undefined && state.kind === "unsaved" ? state.reason : null;
-          const retryable = reason === "persistence" || reason === "not_configured";
+          const retryable =
+            reason === "persistence" || reason === "not_configured" || reason === "throttled";
           return (
             <div key={item.key} className="flex flex-col gap-2">
               <p className="text-small text-status-alert font-semibold">

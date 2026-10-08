@@ -18,6 +18,7 @@ import {
 import { z } from "zod";
 
 import { allocateBatch, type MintedBatchIdentity } from "@/lib/allocation/allocate-batch";
+import type { PublicThrottle } from "@/lib/validators/public-throttle";
 import { projectAllocatedEntry } from "./allocated-entry";
 import { resolveSessionEntry } from "./session";
 
@@ -51,7 +52,7 @@ import { resolveSessionEntry } from "./session";
  *
  * Terminal outcomes reuse `AllocationFailureReason` rather than inventing a second vocabulary:
  * `invalid` (nothing read, nothing written), `unknown_validator`, `screening_required`,
- * `not_configured`, and `persistence` already say everything a start can report, and the two
+ * `not_configured`, `persistence`, and `throttled` already say everything a start can report, and the two
  * start screens' existing deciders (`decideStartBatch`, `decideContinueBatch`) already map every
  * one of them to a participant-facing state with an onward action.
  *
@@ -227,6 +228,24 @@ async function resolveFirstEntry(
 }
 
 /**
+ * What the paced start path is gated on.
+ *
+ * Optional, so suites that never thought about abuse keep working unchanged:
+ * with no throttle context the orchestration runs exactly as before, and
+ * pacing is simply off. Production always supplies both halves. The actor
+ * component is the supplied validator identity — paced on the ATTEMPTED
+ * value even when it names nobody, by the same reasoning as the resume gate.
+ */
+export interface StartThrottleContext {
+  readonly throttle: PublicThrottle;
+  /**
+   * The request-origin signal, hashed inside the throttle. The raw header
+   * value never reaches storage, a research table, or an export.
+   */
+  readonly originKey: string;
+}
+
+/**
  * Runs one validation start: recovery check, allocation where needed, first-entry
  * resolution — in a single server invocation.
  *
@@ -238,6 +257,7 @@ async function resolveFirstEntry(
 export async function runStartValidation(
   raw: unknown,
   deps: StartValidationDependencies,
+  throttleContext?: StartThrottleContext,
 ): Promise<StartValidationOutcome> {
   let intent: z.output<typeof startValidationIntentSchema>;
   try {
@@ -247,6 +267,20 @@ export async function runStartValidation(
   } catch (error) {
     if (isWriteIntentError(error)) return { status: "failed", reason: "invalid" };
     throw error;
+  }
+
+  // Paced after parsing but before the first read: a refused start allocates
+  // nothing, reads nothing, and keeps every terminal outcome below reachable
+  // and unchanged for non-throttled calls. The refusal carries its own reason
+  // rather than collapsing into `exhausted` or an honest error, because the
+  // participant's next step is to retry, not to conclude the study is done.
+  if (throttleContext !== undefined) {
+    const allowed = throttleContext.throttle.check(
+      "allocate",
+      throttleContext.originKey,
+      intent.validatorId,
+    );
+    if (!allowed) return { status: "failed", reason: "throttled" };
   }
 
   try {
