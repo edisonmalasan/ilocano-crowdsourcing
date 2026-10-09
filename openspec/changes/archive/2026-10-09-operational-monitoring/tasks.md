@@ -15,12 +15,12 @@
 
 ## 3. Verify
 
-- [ ] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge
+- [x] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge
 
 ## 4. Sync
 
-- [ ] 4.1 Install `openspec/specs/operational-monitoring/spec.md` from the delta; spec count rises by exactly one at the Sync merge (27 → 28 if the CSP Sync landed first, else 26 → 27 — state which), strict validation green
+- [x] 4.1 Install `openspec/specs/operational-monitoring/spec.md` from the delta; spec count rises by exactly one at the Sync merge (27 → 28 if the CSP Sync landed first, else 26 → 27 — state which), strict validation green
 
 ## 5. Archive
 
-- [ ] 5.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit
+- [x] 5.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit
