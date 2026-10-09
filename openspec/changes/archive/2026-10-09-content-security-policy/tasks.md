@@ -14,7 +14,7 @@
 
 ## 3. Verify
 
-- [ ] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge
+- [x] 3.1 Independent verification pass over the Apply branch against this change's artifacts; no CRITICAL findings open at merge — PASS at archive (subagent ses_ee18e7f90ffe9r46bXT93Y8GzL on branch tip 8685a77: all 3 delta scenarios mapped to implementation plus named tests; served policy byte-identical to the 10-directive literal with unsafe-eval/wildcard/external-origin negative pins; fresh unsafe-eval mutant re-derived red at 2 failed / 3 passed with sha256-identical restore `d7f45918…47b`; zero migration files; lint plus typecheck exit 0). One non-blocking WARNING recorded: scenario 2's positive half (flows load clean) rests on the one-off CDP observation, not an automated guard — the approved design coverage shape (D5/D6), not a defect. Production re-read at archive (read-only HEAD on `https://sadino-web.vercel.app/`, 200): the served `Content-Security-Policy` is byte-identical to the specified literal and all five hardening headers ride alongside (`nosniff`, `DENY`, `strict-origin-when-cross-origin`, HSTS two years plus subdomains, camera/microphone/geolocation off).
 
 ## 4. Sync
 
@@ -22,4 +22,4 @@
 
 ## 5. Archive
 
-- [ ] 5.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit
+- [x] 5.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit
