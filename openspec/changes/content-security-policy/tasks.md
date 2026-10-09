@@ -7,10 +7,10 @@
 
 ## 2. Apply
 
-- [ ] 2.1 Add the enforced `Content-Security-Policy` header to the global `/:path*` block in `next.config.ts`, leaving the five existing headers and the researcher block byte-identical; confirm `pnpm run build` still compiles
-- [ ] 2.2 Add the resolved-config probe suite; confirm it is red on the old config and green on the new, plus a can-fire mutation (wildcard or dropped directive) with byte-identical restore
-- [ ] 2.3 Run the full matrix (lint, format:check, typecheck, unit, dom, integration, build) with counts read back from output, plus strict OpenSpec validation; observe the served header sets once on local dev and on the preview deployment via read-only header reads
-- [ ] 2.4 Exercise the production build over public routes, researcher sign-in, and validation flows watching the browser console for CSP violations; fix regressions rather than weakening the policy
+- [x] 2.1 Add the enforced `Content-Security-Policy` header to the global `/:path*` block in `next.config.ts`, leaving the five existing headers and the researcher block byte-identical; confirm `pnpm run build` still compiles (Compiled successfully; served from `next start` on 3101: `/` carries all five plus the policy, `/researcher/sign-in` carries the policy plus `Cache-Control`/`X-Robots-Tag`, `/validate` carries the policy)
+- [x] 2.2 Add the resolved-config probe suite (`content-security-policy-headers.test.ts`, 5 tests) plus the preserved-headers update in `security-headers.test.ts`; confirmed red on the old config (drop-CSP mutant: 3 failed / 2 passed) and green on the new (9 passed across both files), plus a can-fire wildcard-in-value mutant (3 failed / 2 passed) with byte-identical restore
+- [x] 2.3 Run the full matrix (lint exit 0, format clean, typecheck exit 0, unit 105/2048, dom 12/137, integration 17/279, build compiled successfully) with counts read back from output, plus strict OpenSpec validation; observe the served header sets once on local dev (`next start` production build: `/`, `/validate`, `/researcher/sign-in` all serve the policy; researcher route also serves `Cache-Control`/`X-Robots-Tag`) and record the preview limit (Vercel preview sits behind SSO so its headers are unreadable by curl; production re-read belongs to Archive)
+- [x] 2.4 Exercise the production build in real headless Chrome (155) over `/`, `/start`, `/validate`, `/researcher/sign-in` via a CDP console harness: zero console errors, zero uncaught exceptions, zero security/CSP log entries, zero CSP-blocked loads on every route; harness proved capable first (console.error, uncaught throw, and a `script-src 'none'` control violation all observed); one transient `ERR_ABORTED` with no blocked reason on first sign-in load did not reproduce and never carried a security entry; landing screenshot confirms intact rendering; interactive screening-to-validation flows remain covered by dom tests (no test responses submitted, no production writes)
 
 ## 3. Verify
 

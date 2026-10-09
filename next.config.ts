@@ -84,6 +84,17 @@ const nextConfig: NextConfig = {
    * `Permissions-Policy` switches off camera, microphone, and geolocation.
    * Geolocation is the one the anonymous study model cares about: location
    * must never be collected, so the platform declares it unavailable.
+   *
+   * `Content-Security-Policy` is enforced in the same block (follow-up to
+   * Change 4, which had deferred it). The policy is closed by default (`default-src 'self'`) with no
+   * `unsafe-eval`, no wildcards, and no external origins: scripts and
+   * styles allow `'unsafe-inline'` because the Next.js App Router injects
+   * hydration/flight-data inline payloads despite zero author inline code,
+   * `connect-src 'self'` covers the same-origin validation POST plus Server
+   * Actions (the Supabase browser client has no callers, so no Supabase
+   * origin is declared), fonts are `next/font`-self-hosted, and `img-src
+   * data:` covers one inline SVG grain in global CSS. `frame-ancestors
+   * 'none'` pairs with `X-Frame-Options: DENY`.
    */
   headers: async () => [
     {
@@ -99,6 +110,11 @@ const nextConfig: NextConfig = {
         {
           key: "Permissions-Policy",
           value: "camera=(), microphone=(), geolocation=()",
+        },
+        {
+          key: "Content-Security-Policy",
+          value:
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
         },
       ],
     },

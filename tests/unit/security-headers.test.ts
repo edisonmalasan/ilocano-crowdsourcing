@@ -5,7 +5,8 @@
  * `/researcher/:path*`, so no public route sent `X-Content-Type-Options`,
  * `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security`, or
  * `Permissions-Policy`. These cases resolve the REAL config and assert the
- * global `/:path*` block carries exactly the five declared pairs while the
+ * global `/:path*` block carries exactly the five declared pairs plus the
+ * enforced Content-Security-Policy while the
  * researcher block stays byte-identical — no fixture server, no CLI spawn.
  *
  * The probe rests on one framework premise, stated rather than hidden:
@@ -36,6 +37,11 @@ const EXPECTED_GLOBAL: Array<{ key: string; value: string }> = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
   },
+  {
+    key: "Content-Security-Policy",
+    value:
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+  },
 ];
 
 const EXPECTED_RESEARCHER: Array<{ key: string; value: string }> = [
@@ -63,7 +69,7 @@ describe("the browser-hardening response headers", () => {
     expect(researcher?.headers).toEqual(EXPECTED_RESEARCHER);
   });
 
-  it("declares the global block with exactly the five hardening pairs", async () => {
+  it("declares the global block with exactly the five hardening pairs plus the enforced CSP", async () => {
     const blocks = await resolvedHeaders();
     const global = blocks.find((block) => block.source === GLOBAL_SOURCE);
     expect(global, "a global /:path* headers block must exist").toBeDefined();
