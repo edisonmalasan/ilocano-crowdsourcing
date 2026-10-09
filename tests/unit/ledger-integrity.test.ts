@@ -476,6 +476,9 @@ describe("the ledger describes the archive directory", () => {
       // Added for `content-security-policy`, the FIFTY-FOURTH archived change, so this coupling has now
       // been paid THIRTY-NINE times. Same one-line edit, same reason.
       54: "Fifty-four",
+      // Added for `roadmap-readiness-reconciliation`, the FIFTY-FIFTH archived change, so this coupling has now
+      // been paid FORTY times. Same one-line edit, same reason.
+      55: "Fifty-five",
     };
     const expected = WORDS[onDisk.length] ?? null;
 
