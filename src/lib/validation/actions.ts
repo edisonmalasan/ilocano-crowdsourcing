@@ -1,6 +1,9 @@
 "use server";
 
 import { ServerEnvError, getServerEnv } from "@/lib/env/server";
+import { getOpsWebhookUrl } from "@/lib/ops/dispatch";
+import type { OperationalSignal } from "@/lib/ops/monitoring";
+import { safeRecordOperationalSignal } from "@/lib/ops/recorder";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 
 import {
@@ -49,21 +52,41 @@ function actionDependencies(): ValidationActionDependencies {
   return {
     batches,
     validations,
-    entryReservations,
+    // Decorated so a failed release is counted as an abandoned reservation before the core
+    // absorbs it: the core treats release as best-effort (a stuck row decays by TTL) and
+    // swallows the failure, so the wrapper is the only layer that can observe it. The
+    // rethrow preserves the core's own handling exactly.
+    entryReservations: {
+      releaseReservation: async (validatorId: string, entryId: string): Promise<void> => {
+        try {
+          await entryReservations.releaseReservation(validatorId, entryId);
+        } catch (error) {
+          await tryRecordOperationalSignal("reservation_abandoned");
+          throw error;
+        }
+      },
+    },
     now: () => new Date(),
   };
 }
 
 /** Logs the underlying failure for the operator. Never rendered to a participant. */
 function logForOperator(message: string, error: unknown): void {
-  // No error-monitoring dependency exists yet. The message names no value: `ServerEnvError` is safe
-  // to log by construction, and a `RepositoryError` message describes an operation, not a credential.
+  // The message names no value: `ServerEnvError` is safe to log by construction, and a
+  // `RepositoryError` message describes an operation, not a credential. Durable counting
+  // lives in the operational recorder (`tryRecordOperationalSignal` below), not in this line.
   console.error(`[sadino:validation] ${message}`, error);
 }
 
 export async function submitValidationAction(raw: unknown): Promise<SubmitValidationResult> {
   try {
-    return await runSubmitValidation(raw, actionDependencies());
+    const result = await runSubmitValidation(raw, actionDependencies());
+    if (result.status === "failed" && result.reason === "persistence") {
+      await tryRecordOperationalSignal("persistence_failed");
+    } else if (result.status === "already_recorded") {
+      await tryRecordOperationalSignal("already_recorded_spike");
+    }
+    return result;
   } catch (error) {
     // A configuration failure is thrown while BUILDING dependencies, so it never reaches the core.
     if (error instanceof ServerEnvError) {
@@ -72,5 +95,27 @@ export async function submitValidationAction(raw: unknown): Promise<SubmitValida
     }
     logForOperator("validation submission failed before reaching the service", error);
     return { status: "failed", reason: "persistence" };
+  }
+}
+
+/**
+ * Best-effort operational counter. Own dependencies, own environment check, never throws:
+ * `safeRecordOperationalSignal` cannot, and the construction above it is guarded. Awaited,
+ * never floated — floating it would let the serverless instance freeze before the write lands.
+ */
+async function tryRecordOperationalSignal(signal: OperationalSignal): Promise<void> {
+  try {
+    getServerEnv();
+    const { operationalEvents } = createSupabaseRepositories();
+    await safeRecordOperationalSignal(
+      {
+        events: operationalEvents,
+        webhookUrl: getOpsWebhookUrl(),
+        log: logForOperator,
+      },
+      signal,
+    );
+  } catch {
+    // Absorbed: the recorder already logged, and validation already decided its answer.
   }
 }

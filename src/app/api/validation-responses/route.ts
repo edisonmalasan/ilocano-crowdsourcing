@@ -1,5 +1,8 @@
 import { resolveOriginKey } from "@/lib/admin/origin";
 import { ServerEnvError, getServerEnv } from "@/lib/env/server";
+import { getOpsWebhookUrl } from "@/lib/ops/dispatch";
+import type { OperationalSignal } from "@/lib/ops/monitoring";
+import { safeRecordOperationalSignal } from "@/lib/ops/recorder";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 import { runSubmitResponse } from "@/lib/validation/submit-response-core";
 import { sharedPublicThrottle } from "@/lib/validators/public-throttle";
@@ -58,6 +61,14 @@ export async function POST(request: Request): Promise<Response> {
     console.info(
       `[sadino:validation] response POST status=${result.status} durationMs=${Date.now() - startedMs}`,
     );
+    // Best-effort operational counters. The dedupe material below is hashed inside the
+    // recorder and never stored raw: it lets a retried submission count once per window
+    // rather than inflating the signal.
+    if (result.status === "already_recorded") {
+      await tryRecordOperationalSignal("already_recorded_spike", dedupeMaterialFor(raw));
+    } else if (result.status === "failed" && result.reason === "persistence") {
+      await tryRecordOperationalSignal("persistence_failed", dedupeMaterialFor(raw));
+    }
     if (result.status === "recorded" || result.status === "already_recorded") {
       return json(result, 200);
     }
@@ -71,7 +82,44 @@ export async function POST(request: Request): Promise<Response> {
     return json(result, 503);
   } catch (error) {
     console.error("[sadino:validation] response POST failed before reaching the service", error);
+    await tryRecordOperationalSignal("persistence_failed");
     return json({ status: "failed", reason: "persistence" }, 503);
+  }
+}
+
+/**
+ * Digest material for one submission: the batch/entry pair when both are well-shaped
+ * strings, `undefined` otherwise. The recorder hashes this before storage, so the raw pair
+ * never reaches a row, a payload, or a log.
+ */
+function dedupeMaterialFor(raw: unknown): string | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.batchId !== "string" || typeof record.datasetEntryId !== "string") {
+    return undefined;
+  }
+  return `${record.batchId}:${record.datasetEntryId}`;
+}
+
+/** Best-effort operational counter. Own dependencies, own environment check, never throws. */
+async function tryRecordOperationalSignal(
+  signal: OperationalSignal,
+  dedupeMaterial?: string,
+): Promise<void> {
+  try {
+    getServerEnv();
+    const { operationalEvents } = createSupabaseRepositories();
+    await safeRecordOperationalSignal(
+      {
+        events: operationalEvents,
+        webhookUrl: getOpsWebhookUrl(),
+        log: (message, error) => console.error(`[sadino:validation] ${message}`, error),
+      },
+      signal,
+      dedupeMaterial,
+    );
+  } catch {
+    // Absorbed: the recorder already logged, and the response already decided its answer.
   }
 }
 

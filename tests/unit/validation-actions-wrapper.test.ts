@@ -255,10 +255,14 @@ describe("submitting a validation on a CONFIGURED deployment", () => {
     expect(result).toEqual({ status: "already_recorded", datasetEntryId: "OD_0001" });
     expect(runSubmitValidation).toHaveBeenCalledTimes(1);
 
-    // The dependency SHAPE is the claim: `batches`, `validations`, and `entryReservations`
-    // are handed straight through, so the wrapper adds nothing the core did not ask for. A wrapper
-    // that passed the whole repository factory, or wrapped any of them in a new object, would fail
-    // this and no other assertion here.
+    // The dependency SHAPE is the claim: `batches` and `validations` are handed straight
+    // through, so the wrapper adds nothing the core did not ask for. `entryReservations` is
+    // the DELIBERATE exception, and this sentence records the change rather than letting it
+    // look like drift: the `operational-monitoring` change wraps it so a failed release is
+    // counted as an abandoned reservation before the core absorbs it (the core swallows
+    // release failures by design — a stuck row decays by TTL — so the wrapper is the only
+    // layer that can observe one). The wrapper delegates the call itself, and rethrows, so
+    // the core's handling is unchanged.
     const deps = runSubmitValidation.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(Object.keys(deps).sort()).toEqual([
       "batches",
@@ -268,7 +272,12 @@ describe("submitting a validation on a CONFIGURED deployment", () => {
     ]);
     expect(deps["batches"]).toBe(batches);
     expect(deps["validations"]).toBe(validations);
-    expect(deps["entryReservations"]).toBe(entryReservations);
+    expect(deps["entryReservations"]).not.toBe(entryReservations);
+    const decorated = deps["entryReservations"] as {
+      readonly releaseReservation: (validatorId: string, entryId: string) => Promise<void>;
+    };
+    await decorated.releaseReservation("VAL_x", "OD_0001");
+    expect(entryReservations.releaseReservation).toHaveBeenCalledWith("VAL_x", "OD_0001");
     expect(typeof deps["now"]).toBe("function");
   });
 

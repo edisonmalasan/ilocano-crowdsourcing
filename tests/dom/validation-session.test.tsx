@@ -209,9 +209,18 @@ beforeEach(() => {
   h.verifyScript.length = 0;
   // Background writes travel as same-origin POSTs. The stub records the request body and
   // answers from the scripted save outcomes, so a held-open save is an ordinary deferred.
+  // URL-routed on purpose: the retry-exhaustion beacon POSTs to `/api/ops-beacon`, and a
+  // stub that consumed a scripted save answer for EVERY fetch would let the diagnostic
+  // beacon steal the next save's answer (found when the beacon wiring landed: S-15 went
+  // red because the beacon consumed `second.promise`). Only validation-responses touches
+  // the script; anything else is acknowledged without recording.
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+      const url = typeof _url === "string" ? _url : String(_url ?? "");
+      if (!url.includes("/api/validation-responses")) {
+        return { json: async () => ({ status: "recorded" }) };
+      }
       let parsed: unknown = null;
       try {
         parsed = typeof init?.body === "string" ? JSON.parse(init.body) : null;

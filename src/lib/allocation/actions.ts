@@ -1,6 +1,9 @@
 "use server";
 
 import { ServerEnvError, getServerEnv } from "@/lib/env/server";
+import { getOpsWebhookUrl } from "@/lib/ops/dispatch";
+import type { OperationalSignal } from "@/lib/ops/monitoring";
+import { safeRecordOperationalSignal } from "@/lib/ops/recorder";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 import { allocationConfigSchema } from "@/schemas/batch";
 
@@ -76,9 +79,30 @@ function logForOperator(message: string, error: unknown): void {
   console.error(`[sadino:allocation] ${message}`, error);
 }
 
+/**
+ * Best-effort operational counter for a failed allocation request. Own dependencies, own
+ * environment check, never throws — see the onboarding actions' identical helper.
+ */
+async function tryRecordOperationalSignal(signal: OperationalSignal): Promise<void> {
+  try {
+    getServerEnv();
+    const { operationalEvents } = createSupabaseRepositories();
+    await safeRecordOperationalSignal(
+      { events: operationalEvents, webhookUrl: getOpsWebhookUrl(), log: logForOperator },
+      signal,
+    );
+  } catch {
+    // Absorbed: the recorder already logged, and allocation already decided its answer.
+  }
+}
+
 export async function requestBatchAction(raw: unknown): Promise<AllocationOutcome> {
   try {
-    return await runAllocateBatch(raw, actionDependencies());
+    const outcome = await runAllocateBatch(raw, actionDependencies());
+    if (outcome.status === "failed" && outcome.reason !== "invalid") {
+      await tryRecordOperationalSignal("allocation_failed");
+    }
+    return outcome;
   } catch (error) {
     // A configuration failure is thrown while BUILDING dependencies, so it never reaches the core.
     // Translate it here, and log the real cause.

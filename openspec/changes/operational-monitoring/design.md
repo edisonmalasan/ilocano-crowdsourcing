@@ -14,7 +14,7 @@ with the dashboard panel as the credential-free operator surface.
 
 ## Goals / Non-Goals
 
-**Goals:** durable aggregate counters for all seven signals with
+**Goals:** durable aggregate counters for all eight signals with
 5-minute windows; digest-only dedupe so retries cannot mislead;
 documented per-signal thresholds; once-per-window dispatch of
 aggregate-only payloads; failure of the recorder never breaking a

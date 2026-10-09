@@ -7,11 +7,11 @@
 
 ## 2. Apply
 
-- [ ] 2.1 Add the migration (`operational_events` + `operational_alerts`, deny-all RLS, retention bound) with integration coverage against the production migration files
-- [ ] 2.2 Add the pure domain module (taxonomy, windows, thresholds, breach evaluation) with unit tests for accuracy and threshold boundaries
-- [ ] 2.3 Add the server-only recorder plus call sites at the existing failure points and the retry-exhaustion beacon; prove recorder failure cannot break a research write, with can-fire probes and byte-identical restores
-- [ ] 2.4 Add the webhook dispatch module (aggregate-only payload, configured-URL gating, failure handling) plus the researcher dashboard panel; document the exact remaining webhook configuration steps
-- [ ] 2.5 Add payload-privacy tests asserting the absence of every forbidden field by shape; run the full matrix with counts read back, plus strict OpenSpec validation
+- [x] 2.1 Add the migration (`operational_events` + `operational_alerts`, deny-all RLS, retention bound) with integration coverage against the production migration files
+- [x] 2.2 Add the pure domain module (taxonomy, windows, thresholds, breach evaluation) with unit tests for accuracy and threshold boundaries
+- [x] 2.3 Add the server-only recorder plus call sites at the existing failure points and the retry-exhaustion beacon; prove recorder failure cannot break a research write, with can-fire probes and byte-identical restores
+- [x] 2.4 Add the webhook dispatch module (aggregate-only payload, configured-URL gating, failure handling) plus the researcher dashboard panel; document the exact remaining webhook configuration steps
+- [x] 2.5 Add payload-privacy tests asserting the absence of every forbidden field by shape; run the full matrix with counts read back, plus strict OpenSpec validation
 
 ## 3. Verify
 

@@ -22,7 +22,7 @@ promised only diagnostic logs, never counters or delivery.
   unique index) and `operational_alerts` (once-per-window dispatch
   record per rule), both deny-all RLS service-role-only like every
   research table, with a documented retention bound.
-- One pure domain module: the seven-signal taxonomy, 5-minute window
+- One pure domain module: the eight-signal taxonomy, 5-minute window
   bucketing, the documented threshold table, and breach evaluation over
   counts — no I/O, no identifiers, no content.
 - One server-only recorder called from the existing failure points

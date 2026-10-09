@@ -4,6 +4,9 @@ import { headers } from "next/headers";
 
 import { resolveOriginKey } from "@/lib/admin/origin";
 import { ServerEnvError, getServerEnv } from "@/lib/env/server";
+import { getOpsWebhookUrl } from "@/lib/ops/dispatch";
+import { safeRecordOperationalSignal } from "@/lib/ops/recorder";
+import type { OperationalSignal } from "@/lib/ops/monitoring";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 
 import {
@@ -59,6 +62,31 @@ function logForOperator(message: string, error: unknown): void {
   console.error(`[sadino:onboarding] ${message}`, error);
 }
 
+/**
+ * Best-effort operational counter for a failed onboarding request.
+ *
+ * Builds its own dependencies (and therefore its own `getServerEnv` check) so a deployment
+ * with no database degrades to the existing log rather than a second failure. Never throws:
+ * `safeRecordOperationalSignal` cannot, and the construction above it is guarded. Awaited by
+ * the caller — floating it would let the serverless instance freeze before the write lands.
+ */
+async function tryRecordOperationalSignal(signal: OperationalSignal): Promise<void> {
+  try {
+    getServerEnv();
+    const { operationalEvents } = createSupabaseRepositories();
+    await safeRecordOperationalSignal(
+      {
+        events: operationalEvents,
+        webhookUrl: getOpsWebhookUrl(),
+        log: logForOperator,
+      },
+      signal,
+    );
+  } catch {
+    // Absorbed: the recorder already logged, and onboarding already decided its answer.
+  }
+}
+
 export async function enrollValidatorAction(raw: unknown): Promise<EnrollActionResult> {
   try {
     // The environment check runs FIRST, before the request headers are read,
@@ -66,7 +94,11 @@ export async function enrollValidatorAction(raw: unknown): Promise<EnrollActionR
     // database reports `not_configured` regardless of what the request
     // carried, and no header value is observed on that path.
     const deps = actionDependencies();
-    return await runEnroll(raw, deps, await enrollThrottleContext());
+    const result = await runEnroll(raw, deps, await enrollThrottleContext());
+    if (result.status === "failed" && result.reason !== "invalid") {
+      await tryRecordOperationalSignal("enroll_failed");
+    }
+    return result;
   } catch (error) {
     // A configuration failure is thrown while BUILDING dependencies, so it never
     // reaches the core. Translate it here, and log the real cause.
@@ -85,7 +117,11 @@ export async function resumeValidatorAction(raw: unknown): Promise<ResumeActionR
     // a deployment with no database reports `not_configured` regardless of
     // what the request carried, and no header value is observed on that path.
     const deps = actionDependencies();
-    return await runResume(raw, deps, await resumeThrottleContext());
+    const result = await runResume(raw, deps, await resumeThrottleContext());
+    if (result.status === "failed" && result.reason !== "invalid") {
+      await tryRecordOperationalSignal("resume_failed");
+    }
+    return result;
   } catch (error) {
     if (error instanceof ServerEnvError) {
       logForOperator("resume attempted with no database configured", error);

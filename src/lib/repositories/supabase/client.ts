@@ -130,6 +130,16 @@ export interface TableHandleLike {
    */
   insert(values: Record<string, unknown> | readonly Record<string, unknown>[]): FilterHandleLike;
   update(values: Record<string, unknown>): FilterHandleLike;
+  /**
+   * Deletes matching rows, further narrowed by the filter builder it returns.
+   *
+   * OPTIONAL, and that is deliberate rather than hesitant: no other repository needs a delete,
+   * so requiring it would force every existing fake to implement a member nothing it tests can
+   * reach. The one caller (`SupabaseOperationalEventsRepository.pruneBefore`) checks for its
+   * presence and skips the cleanup when the client cannot express it. The real PostgREST
+   * builder exposes it, which `factory.ts` asserts at compile time like every other member.
+   */
+  delete?: () => FilterHandleLike;
 }
 
 /** The filterable, chainable builder, plus the terminals. */
@@ -140,6 +150,13 @@ export interface FilterHandleLike extends PromiseLike<PostgrestResultLike> {
    */
   select(columns?: string, options?: SelectOptionsLike): FilterHandleLike;
   eq(column: string, value: unknown): FilterHandleLike;
+  /**
+   * Strictly-earlier comparison, for the retention cleanup only.
+   *
+   * OPTIONAL for the same reason as `TableHandleLike.delete`: nothing else needs it, so no
+   * existing fake is required to provide it, and the single caller checks before using it.
+   */
+  lt?: (column: string, value: unknown) => FilterHandleLike;
   in(column: string, values: readonly unknown[]): FilterHandleLike;
   order(column: string, options?: OrderOptionsLike): FilterHandleLike;
   limit(count: number): FilterHandleLike;

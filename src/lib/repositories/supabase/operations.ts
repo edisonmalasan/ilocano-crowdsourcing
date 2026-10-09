@@ -4,6 +4,7 @@ import type {
   BatchesRepository,
   DatasetEntriesRepository,
   EntryReservationsRepository,
+  OperationalEventsRepository,
   RepositoryOperation,
   SignInAttemptsRepository,
   ValidationsRepository,
@@ -148,3 +149,21 @@ export const SIGN_IN_ATTEMPTS_OPERATIONS = {
   recordAttempt: "researcher_signin_attempts.recordAttempt",
   clear: "researcher_signin_attempts.clear",
 } as const satisfies Record<keyof SignInAttemptsRepository, RepositoryOperation>;
+
+/**
+ * The operational counters share one repository interface across both tables, so one map
+ * covers all five methods. `recordEvent`/`countForWindow`/`pruneBefore` name the events
+ * table they read or write; `hasDispatch`/`recordDispatch` name the alerts table.
+ * `operational_alerts.list` is reserved for the dashboard's future window-history read and
+ * has no method yet — it is declared in the union so the read can arrive without reopening
+ * the vocabulary, and the bidirectional union check in
+ * `tests/unit/repositories-supabase.test.ts` does not cover this map (it enumerates its own
+ * `maps` object), so the reservation fails nothing today.
+ */
+export const OPERATIONAL_OPERATIONS = {
+  recordEvent: "operational_events.record",
+  countForWindow: "operational_events.count",
+  hasDispatch: "operational_alerts.has",
+  recordDispatch: "operational_alerts.record",
+  pruneBefore: "operational_events.prune",
+} as const satisfies Record<keyof OperationalEventsRepository, RepositoryOperation>;

@@ -92,6 +92,15 @@ export interface SaveQueueOptions {
   readonly backoffMs?: readonly number[];
   /** Called after every state change. The runner renders status from this. */
   readonly notify?: (snapshot: SaveQueueSnapshot) => void;
+  /**
+   * Called once when a TRANSIENT failure exhausts its attempts and the entry parks as
+   * unsaved. Permanent refusals never call this: re-sending those bytes cannot succeed, so
+   * there is no retry episode to report — only an exhausted one fires the operational
+   * beacon. The session wires this to the retry-exhaustion beacon POST; a test may pass a
+   * spy. A throwing handler is absorbed where it is called, so a diagnostic callback can
+   * never break the park path or the drain.
+   */
+  readonly onExhausted?: (item: QueuedSave) => void;
 }
 
 /**
@@ -227,6 +236,18 @@ export function createSaveQueue(options: SaveQueueOptions) {
         // rather than deleting it: the entry leaves `pending` (so the drain observes only live
         // work) but the response itself is never dropped and stays retryable.
         if (!isTransientReason(result.reason) || attempt >= maxAttempts) {
+          if (isTransientReason(result.reason)) {
+            // True retry exhaustion: a transient world outlasted the bounded attempts. The
+            // beacon reports the episode, never the payload — the handler receives the item
+            // so a test can attribute the call, and the production handler ignores everything
+            // but the fact that it fired. Guarded: a diagnostic callback must not break the
+            // park path below or the drain that waits on it.
+            try {
+              options.onExhausted?.(item);
+            } catch {
+              // Absorbed: parking the complete payload is the guarantee; the beacon is not.
+            }
+          }
           states.set(item.key, { kind: "unsaved", reason: result.reason });
           pending.delete(item.key);
           retained.set(item.key, item);

@@ -1,6 +1,12 @@
 import { SignOutButton } from "@/app/researcher/sign-out-button";
+import { OperationalPanel } from "@/app/researcher/(protected)/operational-panel";
 import { OverviewView } from "@/app/researcher/(protected)/overview";
 import { loadDashboardOverview } from "@/lib/admin/dashboard";
+import {
+  OPERATIONAL_SIGNALS,
+  OPERATIONAL_THRESHOLDS,
+  floorWindowStart,
+} from "@/lib/ops/monitoring";
 import { createSupabaseRepositories } from "@/lib/repositories/supabase";
 
 /**
@@ -32,12 +38,14 @@ import { createSupabaseRepositories } from "@/lib/repositories/supabase";
  * discipline fail the suite. "Even the construction cannot hand this page a write" was false.
  */
 export default async function ResearcherDashboardPage() {
-  const { datasetEntries, validators, validations } = createSupabaseRepositories();
+  const { datasetEntries, validators, validations, operationalEvents } =
+    createSupabaseRepositories();
   const overview = await loadDashboardOverview({
     entries: datasetEntries,
     validations,
     validators,
   });
+  const operationalStates = await loadOperationalStates(operationalEvents);
 
   return (
     <main id="main" className="mx-auto w-full max-w-3xl px-5 py-12 sm:px-8">
@@ -47,6 +55,45 @@ export default async function ResearcherDashboardPage() {
       </div>
 
       <OverviewView overview={overview} />
+      <OperationalPanel states={operationalStates} />
     </main>
   );
+}
+
+/**
+ * The current-window operational states, as READS ONLY.
+ *
+ * The parameter type is `Pick` of the two read methods for the same reason
+ * `loadDashboardOverview` narrows its own: the page cannot reach a write through this value,
+ * so the read-only guarantee `tests/unit/dashboard-read-only.test.ts` scans for holds one
+ * layer down as well. Any failure (including the ops tables being absent on a deployment
+ * migrated before them) degrades to an empty panel rather than breaking the dashboard.
+ */
+async function loadOperationalStates(
+  events: Pick<
+    import("@/lib/repositories").OperationalEventsRepository,
+    "countForWindow" | "hasDispatch"
+  >,
+): Promise<
+  readonly import("@/app/researcher/(protected)/operational-panel").OperationalRuleState[]
+> {
+  try {
+    const windowStart = floorWindowStart(new Date());
+    const states = await Promise.all(
+      OPERATIONAL_SIGNALS.map(async (rule) => {
+        const count = await events.countForWindow(rule, windowStart);
+        const threshold = OPERATIONAL_THRESHOLDS[rule];
+        return {
+          rule,
+          windowStart: windowStart.toISOString(),
+          count,
+          threshold,
+          breached: count >= threshold,
+        };
+      }),
+    );
+    return states;
+  } catch {
+    return [];
+  }
 }
