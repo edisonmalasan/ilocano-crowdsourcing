@@ -18,7 +18,7 @@
 
 ## 4. Sync
 
-- [ ] 4.1 Install `openspec/specs/content-security-policy/spec.md` from the delta; spec count 26 → 27 at exactly the Sync merge, strict validation green
+- [x] 4.1 Install `openspec/specs/content-security-policy/spec.md` from the delta; spec count 26 → 27 at exactly the Sync merge, strict validation green
 
 ## 5. Archive
 
