@@ -65,7 +65,12 @@ const EXPECTED_TABLES = [
  * research tables for cascade integrity, and the test after next pins that they point nowhere
  * else: keys are not data, but a new column holding data would be.
  */
-const EXPECTED_NON_RESEARCH_TABLES = ["entry_reservations", "researcher_signin_attempts"];
+const EXPECTED_NON_RESEARCH_TABLES = [
+  "entry_reservations",
+  "operational_alerts",
+  "operational_events",
+  "researcher_signin_attempts",
+];
 
 const EXPECTED_MIGRATIONS = [
   "20260930120000_research_schema.sql",
@@ -136,6 +141,13 @@ const EXPECTED_MIGRATIONS = [
   // It ADDS one function and changes nothing else, so it appears here and in no table list.
   // Same reason as the entries above: a migration this list does not name must FAIL here.
   "20261008120000_submit_validation_response.sql",
+  // Arrived with operational-monitoring: the two durable aggregate counter tables
+  // (`operational_events` per-signal window rows with digest-only dedupe, `operational_alerts`
+  // once-per-window dispatch records), both deny-all RLS. It ADDS two tables and changes
+  // nothing else, so it appears here and in the non-research table list, but not in the
+  // research list. Same reason as the entries above: a migration this list does not name
+  // must FAIL here, which is what keeps a CLOSED list closed.
+  "20261009120000_operational_monitoring.sql",
 ] as const;
 
 /**

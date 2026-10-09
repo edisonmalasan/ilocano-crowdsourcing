@@ -172,9 +172,17 @@ beforeEach(() => {
   h.saveScript.length = 0;
   h.prefetchCalls.length = 0;
   h.prefetchScript.clear();
+  // URL-routed on purpose: the retry-exhaustion beacon POSTs to `/api/ops-beacon`, and a
+  // stub that consumed a scripted save answer for EVERY fetch would let the diagnostic
+  // beacon steal the next save's answer. Only validation-responses touches the script;
+  // anything else is acknowledged without recording.
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url: unknown, init?: { body?: unknown }) => {
+      const url = typeof _url === "string" ? _url : String(_url ?? "");
+      if (!url.includes("/api/validation-responses")) {
+        return { json: async () => ({ status: "recorded" }) };
+      }
       h.saves.push(typeof init?.body === "string" ? JSON.parse(init.body) : null);
       const next = h.saveScript.shift();
       if (next === undefined) throw new Error("save with no scripted answer");

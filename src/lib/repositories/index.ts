@@ -40,5 +40,6 @@ export type {
   AllocatedPlacement,
 } from "./batches-repository";
 export type { SignInAttemptsRepository } from "./sign-in-attempts-repository";
+export type { OperationalEventsRepository } from "./operational-repository";
 
 export type { IsoDateTimeString, ListDatasetEntriesOptions } from "./types";

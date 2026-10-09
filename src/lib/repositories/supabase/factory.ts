@@ -7,6 +7,7 @@ import type { FilterHandleLike, SupabaseClientLike, TableHandleLike } from "./cl
 import { SupabaseBatchesRepository } from "./batches";
 import { SupabaseDatasetEntriesRepository } from "./dataset-entries";
 import { SupabaseEntryReservationsRepository } from "./entry-reservations";
+import { SupabaseOperationalEventsRepository } from "./operational-events";
 import { SupabaseSignInAttemptsRepository } from "./sign-in-attempts";
 import { SupabaseValidationsRepository } from "./validations";
 import { SupabaseValidatorsRepository } from "./validators";
@@ -174,6 +175,7 @@ export function createSupabaseRepositories(
     validations: new SupabaseValidationsRepository(client),
     batches: new SupabaseBatchesRepository(client),
     entryReservations: new SupabaseEntryReservationsRepository(client),
+    operationalEvents: new SupabaseOperationalEventsRepository(client),
   };
 }
 

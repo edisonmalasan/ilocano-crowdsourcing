@@ -62,7 +62,13 @@ export type RepositoryOperation =
   | "researcher_signin_attempts.recordAttempt"
   | "researcher_signin_attempts.clear"
   | "entry_reservations.claim"
-  | "entry_reservations.release";
+  | "entry_reservations.release"
+  | "operational_events.record"
+  | "operational_events.count"
+  | "operational_events.prune"
+  | "operational_alerts.record"
+  | "operational_alerts.has"
+  | "operational_alerts.list";
 
 export interface RepositoryErrorOptions {
   /** The original failure, preserved for diagnostics. Never re-wrapped into a bare message. */

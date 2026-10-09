@@ -11,8 +11,15 @@ import {
   researcherSignInRefusalMessage,
 } from "@/lib/admin/signin-core";
 import { resolveOriginKey } from "@/lib/admin/origin";
+import { getServerEnv } from "@/lib/env/server";
+import { getOpsWebhookUrl } from "@/lib/ops/dispatch";
+import type { OperationalSignal } from "@/lib/ops/monitoring";
+import { safeRecordOperationalSignal } from "@/lib/ops/recorder";
 import type { SignInAttemptsRepository } from "@/lib/repositories";
-import { createSignInAttemptsRepository } from "@/lib/repositories/supabase";
+import {
+  createSignInAttemptsRepository,
+  createSupabaseRepositories,
+} from "@/lib/repositories/supabase";
 import { isWriteIntentError, parseWriteIntent } from "@/lib/server/write-intake";
 import { researcherSignInInputSchema } from "@/schemas/researcher";
 
@@ -158,6 +165,10 @@ export async function signInAction(formData: FormData): Promise<ResearcherSignIn
   });
 
   if (outcome.status === "refused") {
+    // Best-effort operational counter for a refused sign-in. Refusals that never reach the
+    // core (malformed payload, unconfigured deployment) are not sign-in failures and are not
+    // counted here — this mirrors the durable attempt counter's own scope.
+    await tryRecordOperationalSignal("researcher_signin_failed");
     return { status: "refused", message: researcherSignInRefusalMessage() };
   }
 
@@ -187,6 +198,27 @@ export async function signInAction(formData: FormData): Promise<ResearcherSignIn
 export async function signOutAction(): Promise<void> {
   await clearResearcherSessionCookie();
   redirect(RESEARCHER_SIGN_IN);
+}
+
+/**
+ * Best-effort operational counter for a refused researcher sign-in. Own dependencies, own
+ * environment check, never throws — see the onboarding actions' identical helper.
+ */
+async function tryRecordOperationalSignal(signal: OperationalSignal): Promise<void> {
+  try {
+    getServerEnv();
+    const { operationalEvents } = createSupabaseRepositories();
+    await safeRecordOperationalSignal(
+      {
+        events: operationalEvents,
+        webhookUrl: getOpsWebhookUrl(),
+        log: (message, error) => console.info(`[sadino:researcher-signin] ${message}`, error),
+      },
+      signal,
+    );
+  } catch {
+    // Absorbed: the recorder already logged, and sign-in already decided its answer.
+  }
 }
 
 /**

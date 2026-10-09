@@ -21,6 +21,7 @@ import {
   type SaveQueue,
   type SaveQueueSnapshot,
 } from "@/lib/validation/save-queue";
+import { mintBeaconId, postOpsBeacon } from "@/lib/validation/ops-beacon-client";
 import type { ValidationResponseInput } from "@/schemas/validation";
 import type { AllocatedEntry } from "@/schemas/batch";
 
@@ -331,6 +332,13 @@ export function ValidationSessionRunner({ locale, initial }: ValidationSessionRu
       submit: (item: QueuedSave) => postQueuedSave(item),
       notify: (next: SaveQueueSnapshot) => {
         setSnapshot(next);
+      },
+      // Retry-exhaustion beacon: when a transient failure outlasts the bounded attempts,
+      // the parked entry stays resumable AND one nonce-only POST leaves for the operational
+      // counter. Floated on purpose (`void`): the beacon never throws and answers nothing
+      // the session renders, so awaiting it would hold the park path for no reason.
+      onExhausted: () => {
+        void postOpsBeacon(mintBeaconId());
       },
     });
   }
