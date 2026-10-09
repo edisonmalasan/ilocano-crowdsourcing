@@ -14,8 +14,8 @@
 
 ## 3. Verify
 
-- [ ] 3.1 Independent verification pass over the Apply branch against this change's artifacts (every rewritten figure re-derived from its instrument, no inherited numbers, no new unverified claims); no CRITICAL findings open at merge
+- [x] 3.1 Independent verification pass over the Apply branch against this change's artifacts (every rewritten figure re-derived from its instrument, no inherited numbers, no new unverified claims); no CRITICAL findings open at merge — done: subagent pass PASS on all four areas (scope, figures re-derived by hand-count, roadmap count, no invented run ids) with one WARNING (stale "archive in flight" parenthetical for CSP) repaired on the branch as `6050d39`, lint exit 0 re-verified after repair
 
 ## 4. Archive
 
-- [ ] 4.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit
+- [x] 4.1 Move the change directory, update the roadmap ledger (count, table row, next-eligible row), extend the ledger-integrity WORDS table, merge by merge commit — done on this branch: directory moved to `openspec/changes/archive/2026-10-09-roadmap-readiness-reconciliation/`, count 54→55 re-derived from the directory, new ledger table row, WORDS gains Fifty-five, `Next eligible objective` verdict updated with Apply PR #233 merged
